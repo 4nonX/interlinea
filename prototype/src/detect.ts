@@ -5,6 +5,9 @@
 // a page of running text and honest about uncertainty on short or mixed text.
 
 import type { LangCode } from "./data";
+import { countWords, type PendingDoc } from "./draft";
+import { extractDocx } from "./core";
+import { plain } from "./editor/model";
 
 export interface Detection {
   /** Best guess, or null when the text gives no usable evidence. */
@@ -98,4 +101,26 @@ export async function readText(file: File): Promise<string | null> {
   if (!textual) return null;
   const text = await file.text();
   return text.slice(0, 20000);
+}
+
+/**
+ * Reads a chosen file for the New project flow. Word documents go through
+ * the core's filter (WebAssembly), which also keeps their formatting for
+ * the translated file; plain text formats are read directly.
+ */
+export async function readDocument(file: File): Promise<PendingDoc> {
+  if (/\.docx$/i.test(file.name)) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    try {
+      // Sentence rules barely matter for detection; the units are extracted
+      // again with the confirmed source language when the project is created.
+      const ex = await extractDocx(bytes, "en");
+      const text = ex.segments.map((s) => plain(s.source)).join("\n");
+      return { file: file.name, words: countWords(text), text: text.slice(0, 20000), bytes };
+    } catch (e) {
+      return { file: file.name, words: 0, text: null, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  const text = await readText(file);
+  return { file: file.name, words: text ? countWords(text) : 0, text };
 }

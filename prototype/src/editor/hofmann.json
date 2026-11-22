@@ -1,0 +1,747 @@
+{
+  "units": [
+    {
+      "id": "document/p1/s1",
+      "block": "document/p1",
+      "source": [
+        {
+          "text": "Mietvertrag über Wohnraum"
+        }
+      ]
+    },
+    {
+      "id": "document/p2/s1",
+      "block": "document/p2",
+      "source": [
+        {
+          "text": "Zwischen "
+        },
+        {
+          "tag": {
+            "kind": "open",
+            "id": "1",
+            "type": "bold",
+            "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
+          }
+        },
+        {
+          "text": "Herrn Jonas Hofmann"
+        },
+        {
+          "tag": {
+            "kind": "close",
+            "id": "1",
+            "type": "bold"
+          }
+        },
+        {
+          "text": " (Vermieter) und "
+        },
+        {
+          "tag": {
+            "kind": "open",
+            "id": "2",
+            "type": "bold",
+            "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
+          }
+        },
+        {
+          "text": "Frau Lea Kraus"
+        },
+        {
+          "tag": {
+            "kind": "close",
+            "id": "2",
+            "type": "bold"
+          }
+        },
+        {
+          "text": " (Mieterin) wird folgender Mietvertrag geschlossen:"
+        }
+      ]
+    },
+    {
+      "id": "document/p3/s1",
+      "block": "document/p3",
+      "source": [
+        {
+          "text": "§ 1 Mietsache"
+        }
+      ]
+    },
+    {
+      "id": "document/p4/s1",
+      "block": "document/p4",
+      "source": [
+        {
+          "text": "Vermietet wird die Wohnung im zweiten Obergeschoss des Hauses Lindenstraße 12, 80331 München."
+        }
+      ]
+    },
+    {
+      "id": "document/p4/s2",
+      "block": "document/p4",
+      "source": [
+        {
+          "text": "Die Mietsache besteht aus drei Zimmern, einer Küche, einem Bad und einem Kellerraum."
+        }
+      ]
+    },
+    {
+      "id": "document/p5/s1",
+      "block": "document/p5",
+      "source": [
+        {
+          "text": "§ 2 Mietzeit"
+        }
+      ]
+    },
+    {
+      "id": "document/p6/s1",
+      "block": "document/p6",
+      "source": [
+        {
+          "text": "Das Mietverhältnis beginnt am 1. Januar 2027 und läuft auf unbestimmte Zeit."
+        }
+      ]
+    },
+    {
+      "id": "document/p6/s2",
+      "block": "document/p6",
+      "source": [
+        {
+          "text": "Die ordentliche Kündigung richtet sich nach den gesetzlichen Vorschriften."
+        }
+      ]
+    },
+    {
+      "id": "document/p7/s1",
+      "block": "document/p7",
+      "source": [
+        {
+          "text": "§ 3 Miete und Betriebskosten"
+        }
+      ]
+    },
+    {
+      "id": "document/p8/s1",
+      "block": "document/p8",
+      "source": [
+        {
+          "text": "Die monatliche Miete beträgt "
+        },
+        {
+          "tag": {
+            "kind": "open",
+            "id": "1",
+            "type": "bold",
+            "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
+          }
+        },
+        {
+          "text": "1.250,00 EUR"
+        },
+        {
+          "tag": {
+            "kind": "close",
+            "id": "1",
+            "type": "bold"
+          }
+        },
+        {
+          "text": " zuzüglich einer Vorauszahlung auf die Betriebskosten in Höhe von "
+        },
+        {
+          "tag": {
+            "kind": "open",
+            "id": "2",
+            "type": "bold",
+            "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
+          }
+        },
+        {
+          "text": "220,00 EUR"
+        },
+        {
+          "tag": {
+            "kind": "close",
+            "id": "2",
+            "type": "bold"
+          }
+        },
+        {
+          "text": "."
+        }
+      ]
+    },
+    {
+      "id": "document/p9/s1",
+      "block": "document/p9",
+      "source": [
+        {
+          "text": "Nettokaltmiete"
+        }
+      ]
+    },
+    {
+      "id": "document/p10/s1",
+      "block": "document/p10",
+      "source": [
+        {
+          "text": "1.250,00 EUR"
+        }
+      ]
+    },
+    {
+      "id": "document/p11/s1",
+      "block": "document/p11",
+      "source": [
+        {
+          "text": "Vorauszahlung Betriebskosten"
+        }
+      ]
+    },
+    {
+      "id": "document/p12/s1",
+      "block": "document/p12",
+      "source": [
+        {
+          "text": "220,00 EUR"
+        }
+      ]
+    },
+    {
+      "id": "document/p13/s1",
+      "block": "document/p13",
+      "source": [
+        {
+          "text": "Gesamtmiete"
+        }
+      ]
+    },
+    {
+      "id": "document/p14/s1",
+      "block": "document/p14",
+      "source": [
+        {
+          "text": "1.470,00 EUR"
+        }
+      ]
+    },
+    {
+      "id": "document/p15/s1",
+      "block": "document/p15",
+      "source": [
+        {
+          "text": "Die Miete ist monatlich im Voraus, spätestens am dritten Werktag eines Monats, auf das Konto des Vermieters zu zahlen."
+        }
+      ]
+    },
+    {
+      "id": "document/p15/s2",
+      "block": "document/p15",
+      "source": [
+        {
+          "text": "Über die Betriebskosten wird jährlich abgerechnet."
+        }
+      ]
+    },
+    {
+      "id": "document/p16/s1",
+      "block": "document/p16",
+      "source": [
+        {
+          "text": "§ 4 Kaution"
+        }
+      ]
+    },
+    {
+      "id": "document/p17/s1",
+      "block": "document/p17",
+      "source": [
+        {
+          "text": "Der Mieter leistet eine Kaution in Höhe von drei Nettokaltmieten."
+        }
+      ]
+    },
+    {
+      "id": "document/p17/s2",
+      "block": "document/p17",
+      "source": [
+        {
+          "text": "Die Kaution ist zu Beginn des Mietverhältnisses fällig und wird nach Beendigung des Mietverhältnisses zurückgezahlt."
+        }
+      ]
+    },
+    {
+      "id": "document/p18/s1",
+      "block": "document/p18",
+      "source": [
+        {
+          "text": "§ 5 Pflichten des Mieters"
+        }
+      ]
+    },
+    {
+      "id": "document/p19/s1",
+      "block": "document/p19",
+      "source": [
+        {
+          "text": "Der Mieter übernimmt die Schönheitsreparaturen auf eigene Kosten."
+        }
+      ]
+    },
+    {
+      "id": "document/p19/s2",
+      "block": "document/p19",
+      "source": [
+        {
+          "text": "Eine Untervermietung bedarf der "
+        },
+        {
+          "tag": {
+            "kind": "open",
+            "id": "1",
+            "type": "italic",
+            "native": "\u003cw:rPr\u003e\u003cw:i/\u003e\u003cw:iCs/\u003e\u003c/w:rPr\u003e"
+          }
+        },
+        {
+          "text": "vorherigen schriftlichen"
+        },
+        {
+          "tag": {
+            "kind": "close",
+            "id": "1",
+            "type": "italic"
+          }
+        },
+        {
+          "text": " Zustimmung des Vermieters."
+        }
+      ]
+    },
+    {
+      "id": "document/p20/s1",
+      "block": "document/p20",
+      "source": [
+        {
+          "text": "Das Recht zur Mietminderung"
+        },
+        {
+          "tag": {
+            "kind": "standalone",
+            "id": "1",
+            "type": "footnote",
+            "native": "\u003cw:r\u003e\u003cw:rPr\u003e\u003cw:rStyle w:val=\"FootnoteReference\"/\u003e\u003c/w:rPr\u003e\u003cw:footnoteReference w:id=\"2\"/\u003e\u003c/w:r\u003e"
+          }
+        },
+        {
+          "text": " bleibt unberührt."
+        }
+      ]
+    },
+    {
+      "id": "document/p20/s2",
+      "block": "document/p20",
+      "source": [
+        {
+          "text": "Der Vermieter kann Räumungsklage erheben, wenn der Mieter mit zwei Monatsmieten in Verzug ist."
+        }
+      ]
+    },
+    {
+      "id": "document/p21/s1",
+      "block": "document/p21",
+      "source": [
+        {
+          "text": "§ 6 Schlussbestimmungen"
+        }
+      ]
+    },
+    {
+      "id": "document/p22/s1",
+      "block": "document/p22",
+      "source": [
+        {
+          "text": "Änderungen und Ergänzungen dieses Vertrages bedürfen der Schriftform."
+        }
+      ]
+    },
+    {
+      "id": "document/p22/s2",
+      "block": "document/p22",
+      "source": [
+        {
+          "text": "Sollte eine Bestimmung dieses Vertrages unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt."
+        }
+      ]
+    },
+    {
+      "id": "document/p23/s1",
+      "block": "document/p23",
+      "source": [
+        {
+          "text": "Die genannten Gesetze sind unter "
+        },
+        {
+          "tag": {
+            "kind": "open",
+            "id": "1",
+            "type": "link",
+            "native": "\u003cw:hyperlink r:id=\"rIdLink1\" w:history=\"1\"\u003e\u003cw:rPr\u003e\u003cw:rStyle w:val=\"Hyperlink\"/\u003e\u003c/w:rPr\u003e"
+          }
+        },
+        {
+          "text": "Gesetze im Internet"
+        },
+        {
+          "tag": {
+            "kind": "close",
+            "id": "1",
+            "type": "link"
+          }
+        },
+        {
+          "text": " abrufbar."
+        }
+      ]
+    },
+    {
+      "id": "document/p25/s1",
+      "block": "document/p25",
+      "source": [
+        {
+          "text": "Ort, Datum"
+        }
+      ]
+    },
+    {
+      "id": "document/p26/s1",
+      "block": "document/p26",
+      "source": [
+        {
+          "text": "Ort, Datum"
+        }
+      ]
+    },
+    {
+      "id": "document/p27/s1",
+      "block": "document/p27",
+      "source": [
+        {
+          "text": "Unterschrift Vermieter"
+        }
+      ]
+    },
+    {
+      "id": "document/p28/s1",
+      "block": "document/p28",
+      "source": [
+        {
+          "text": "Unterschrift Mieter"
+        }
+      ]
+    },
+    {
+      "id": "footnotes/p1/s1",
+      "block": "footnotes/p1",
+      "source": [
+        {
+          "text": "Siehe §§ 573 ff. BGB."
+        }
+      ]
+    },
+    {
+      "id": "footnotes/p2/s1",
+      "block": "footnotes/p2",
+      "source": [
+        {
+          "text": "Siehe § 536 BGB."
+        }
+      ]
+    },
+    {
+      "id": "header1/p1/s1",
+      "block": "header1/p1",
+      "source": [
+        {
+          "text": "Mietvertrag Hofmann, Entwurf vom 16. November 2026"
+        }
+      ]
+    },
+    {
+      "id": "footer1/p1/s1",
+      "block": "footer1/p1",
+      "source": [
+        {
+          "text": "Seite "
+        },
+        {
+          "tag": {
+            "kind": "standalone",
+            "id": "1",
+            "type": "field",
+            "native": "\u003cw:r\u003e\u003cw:fldChar w:fldCharType=\"begin\"/\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:instrText xml:space=\"preserve\"\u003e PAGE \u003c/w:instrText\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:fldChar w:fldCharType=\"separate\"/\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:t xml:space=\"preserve\"\u003e1\u003c/w:t\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:fldChar w:fldCharType=\"end\"/\u003e\u003c/w:r\u003e"
+          }
+        },
+        {
+          "text": " von"
+        }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "id": "document/p1",
+      "part": "body",
+      "file": "word/document.xml",
+      "style": "Title",
+      "styleName": "Title",
+      "heading": 1
+    },
+    {
+      "id": "document/p2",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p3",
+      "part": "body",
+      "file": "word/document.xml",
+      "style": "Heading1",
+      "styleName": "heading 1",
+      "heading": 1
+    },
+    {
+      "id": "document/p4",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p5",
+      "part": "body",
+      "file": "word/document.xml",
+      "style": "Heading1",
+      "styleName": "heading 1",
+      "heading": 1
+    },
+    {
+      "id": "document/p6",
+      "part": "body",
+      "file": "word/document.xml",
+      "trail": [
+        "footnote"
+      ]
+    },
+    {
+      "id": "document/p7",
+      "part": "body",
+      "file": "word/document.xml",
+      "style": "Heading1",
+      "styleName": "heading 1",
+      "heading": 1
+    },
+    {
+      "id": "document/p8",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p9",
+      "part": "body",
+      "file": "word/document.xml",
+      "cell": {
+        "table": 0,
+        "row": 0,
+        "col": 0
+      }
+    },
+    {
+      "id": "document/p10",
+      "part": "body",
+      "file": "word/document.xml",
+      "align": "right",
+      "cell": {
+        "table": 0,
+        "row": 0,
+        "col": 1
+      }
+    },
+    {
+      "id": "document/p11",
+      "part": "body",
+      "file": "word/document.xml",
+      "cell": {
+        "table": 0,
+        "row": 1,
+        "col": 0
+      }
+    },
+    {
+      "id": "document/p12",
+      "part": "body",
+      "file": "word/document.xml",
+      "align": "right",
+      "cell": {
+        "table": 0,
+        "row": 1,
+        "col": 1
+      }
+    },
+    {
+      "id": "document/p13",
+      "part": "body",
+      "file": "word/document.xml",
+      "cell": {
+        "table": 0,
+        "row": 2,
+        "col": 0
+      }
+    },
+    {
+      "id": "document/p14",
+      "part": "body",
+      "file": "word/document.xml",
+      "align": "right",
+      "cell": {
+        "table": 0,
+        "row": 2,
+        "col": 1
+      }
+    },
+    {
+      "id": "document/p15",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p16",
+      "part": "body",
+      "file": "word/document.xml",
+      "style": "Heading1",
+      "styleName": "heading 1",
+      "heading": 1
+    },
+    {
+      "id": "document/p17",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p18",
+      "part": "body",
+      "file": "word/document.xml",
+      "style": "Heading1",
+      "styleName": "heading 1",
+      "heading": 1
+    },
+    {
+      "id": "document/p19",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p20",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p21",
+      "part": "body",
+      "file": "word/document.xml",
+      "style": "Heading1",
+      "styleName": "heading 1",
+      "heading": 1
+    },
+    {
+      "id": "document/p22",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p23",
+      "part": "body",
+      "file": "word/document.xml"
+    },
+    {
+      "id": "document/p25",
+      "part": "body",
+      "file": "word/document.xml",
+      "cell": {
+        "table": 1,
+        "row": 0,
+        "col": 0
+      }
+    },
+    {
+      "id": "document/p26",
+      "part": "body",
+      "file": "word/document.xml",
+      "cell": {
+        "table": 1,
+        "row": 0,
+        "col": 1
+      }
+    },
+    {
+      "id": "document/p27",
+      "part": "body",
+      "file": "word/document.xml",
+      "cell": {
+        "table": 1,
+        "row": 1,
+        "col": 0
+      }
+    },
+    {
+      "id": "document/p28",
+      "part": "body",
+      "file": "word/document.xml",
+      "cell": {
+        "table": 1,
+        "row": 1,
+        "col": 1
+      }
+    },
+    {
+      "id": "footnotes/p1",
+      "part": "footnote",
+      "file": "word/footnotes.xml",
+      "style": "FootnoteText",
+      "styleName": "footnote text",
+      "note": "1",
+      "lead": [
+        "note-mark"
+      ]
+    },
+    {
+      "id": "footnotes/p2",
+      "part": "footnote",
+      "file": "word/footnotes.xml",
+      "style": "FootnoteText",
+      "styleName": "footnote text",
+      "note": "2",
+      "lead": [
+        "note-mark"
+      ]
+    },
+    {
+      "id": "header1/p1",
+      "part": "header",
+      "file": "word/header1.xml",
+      "style": "Header",
+      "styleName": "header"
+    },
+    {
+      "id": "footer1/p1",
+      "part": "footer",
+      "file": "word/footer1.xml",
+      "style": "Footer",
+      "styleName": "footer",
+      "trail": [
+        "field"
+      ]
+    }
+  ]
+}

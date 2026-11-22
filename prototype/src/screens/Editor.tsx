@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { AlertTriangle, ArrowLeft, Check, CircleDashed, Copy, GitMerge, Keyboard, PencilLine, Plus, Repeat2, Search, Tag, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, Check, CircleDashed, Copy, Download, Eye, GitMerge, Keyboard, PencilLine, Plus, Repeat2, Search, Tag, X } from "lucide-react";
 import { lang, USER } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges } from "../merge";
-import { isTag, missingTags, plain, sourceKey, wordCount, TM_UNITS, type Run, type Segment, type TmUnit } from "../editor/model";
-import { concordance, lookup, qa, recognize, type QaIssue, type TermHit, type TmMatch } from "../editor/match";
+import { isTag, missingTags, plain, sourceKey, wordCount, type Run, type Segment, type TmUnit } from "../editor/model";
+import { concordance, qa, recognize, type QaIssue, type TermHit } from "../editor/match";
+import { analyze, bandOf, clientMemory, documentUnits, scoreDescription, scoreLabel, scoredLookup, type ScoredMatch } from "../editor/analysis";
+import { Preview } from "../editor/Preview";
+import { AnalysisTable } from "../components/AnalysisTable";
+import { DOCX_TYPE, download, mergeDocx } from "../core";
 import { TargetEditor, chipText, tagDescription, type TargetEditorHandle } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, plural } from "../format";
@@ -12,7 +16,7 @@ import { fmtDate, plural } from "../format";
 const STATUS_TEXT: Record<Segment["status"], string> = { new: "Not translated", draft: "Draft", confirmed: "Confirmed" };
 
 type Filter = "all" | "todo" | "warnings";
-type Result = { kind: "tm"; m: TmMatch } | { kind: "term"; h: TermHit };
+type Result = { kind: "tm"; m: ScoredMatch } | { kind: "term"; h: TermHit };
 
 export function Editor({ projectId }: { projectId: string }) {
   const { state, dispatch, notify } = useStore();
@@ -24,6 +28,9 @@ export function Editor({ projectId }: { projectId: string }) {
   const [capture, setCapture] = useState<{ source: string; target: string } | null>(null);
   const [lookupText, setLookupText] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
+  const [showPreview, setShowPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const analysisDialog = useRef<HTMLDialogElement>(null);
   const [announcement, setAnnouncement] = useState("");
   const editor = useRef<TargetEditorHandle>(null);
   const sourceSelection = useRef("");
@@ -40,13 +47,11 @@ export function Editor({ projectId }: { projectId: string }) {
   // The memory: the client's memory (sample project only) plus every segment
   // confirmed in this document, which is what confirming stores in Trados,
   // memoQ and Phrase.
-  const memory = useMemo<TmUnit[]>(() => {
-    const doc = segments
-      .map((s, i) => ({ s, i }))
-      .filter(({ s }) => s.status === "confirmed" && plain(s.target).trim())
-      .map(({ s, i }) => ({ source: s.source, target: s.target, project: project?.name ?? "", by: USER, at: project?.createdAt ?? "", docSegment: i + 1 }));
-    return [...(project?.id === "p-hofmann" ? TM_UNITS : []), ...doc];
-  }, [segments, project?.id, project?.name, project?.createdAt]);
+  const clientTm = useMemo(() => (project ? clientMemory(project) : []), [project]);
+  const memory = useMemo<TmUnit[]>(
+    () => [...clientTm, ...documentUnits(segments, project?.name ?? "", USER, project?.createdAt ?? "")],
+    [clientTm, segments, project?.name, project?.createdAt],
+  );
 
   const active = segments.find((s) => s.id === activeId);
   const index = segments.findIndex((s) => s.id === activeId);
@@ -56,7 +61,7 @@ export function Editor({ projectId }: { projectId: string }) {
     const others = memory.filter((u) => u.docSegment !== index + 1);
     // Identical units (a repetition confirmed twice) show once.
     const seen = new Set<string>();
-    return lookup(active.source, others, 70, 6)
+    return scoredLookup(segments, index, others, 70, 6)
       .filter((m) => {
         const k = sourceKey(m.unit.source) + "|" + sourceKey(m.unit.target);
         if (seen.has(k)) return false;
@@ -64,7 +69,7 @@ export function Editor({ projectId }: { projectId: string }) {
         return true;
       })
       .slice(0, 3);
-  }, [active, memory, index]);
+  }, [active, memory, index, segments]);
   const issues = useMemo(() => (active ? qa(active.source, active.target, hits, source, target) : []), [active, hits, source, target]);
   const allIssues = useMemo<QaIssue[]>(() => {
     if (!active) return [];
@@ -106,9 +111,9 @@ export function Editor({ projectId }: { projectId: string }) {
     const best = matches[0];
     if (state.autoInsert && best && active.status === "new" && !plain(active.target).trim()) {
       insertMatch(best);
-      parts.push(`${best.score}% match inserted`);
+      parts.push(`${scoreDescription(best.score, best.context)} inserted`);
     } else if (best) {
-      parts.push(`${plural(matches.length, "memory match", "memory matches")}, best ${best.score}%`);
+      parts.push(`${plural(matches.length, "memory match", "memory matches")}, best ${scoreLabel(best.score, best.context)}`);
     }
     if (hits.length) parts.push(plural(hits.length, "term", "terms"));
     if (active.warnings?.length) parts.push(plural(active.warnings.length, "warning", "warnings"));
@@ -186,9 +191,26 @@ export function Editor({ projectId }: { projectId: string }) {
     setTimeout(() => setAnnouncement((a) => `${said.join(". ")}. ${a}`), 0);
   }
 
-  function insertMatch(m: TmMatch) {
+  function insertMatch(m: ScoredMatch) {
     editor.current?.setRuns(m.unit.target);
-    setTarget(m.unit.target, "draft", { kind: "tm", score: m.score, inserted: plain(m.unit.target) });
+    setTarget(m.unit.target, "draft", { kind: "tm", score: m.score, inserted: plain(m.unit.target), context: m.context });
+  }
+
+  async function saveDocument() {
+    if (!project?.original) return;
+    setSaving(true);
+    try {
+      const bytes = project.original.bytes ?? new Uint8Array(await (await fetch(new URL(project.original.url!, document.baseURI))).arrayBuffer());
+      const out = await mergeDocx(bytes, source, target, segments);
+      const name = project.file.replace(/\.docx$/i, "") + `_${target}.docx`;
+      download(out, name, DOCX_TYPE);
+      const open = segments.filter((s) => !plain(s.target).trim()).length;
+      notify(open ? `Saved ${name}. ${plural(open, "segment", "segments")} without a translation kept the ${lang(source).name} text.` : `Saved ${name}`);
+    } catch (e) {
+      notify(`Could not save the document: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function insertTerm(h: TermHit) {
@@ -305,13 +327,46 @@ export function Editor({ projectId }: { projectId: string }) {
             <span>Warnings{withWarnings > 0 && ` (${withWarnings})`}</span>
           </label>
         </div>
-        {pendingChanges > 0 && (
-          <a className="btn btn-small" href={`#/merge/${project.id}`}>
-            <GitMerge size={14} aria-hidden="true" />
-            {w("reviewMerge")} ({pendingChanges})
-          </a>
-        )}
+        <div className="editor-actions">
+          {pendingChanges > 0 && (
+            <a className="btn btn-small" href={`#/merge/${project.id}`}>
+              <GitMerge size={14} aria-hidden="true" />
+              {w("reviewMerge")} ({pendingChanges})
+            </a>
+          )}
+          <button type="button" className="btn btn-small" onClick={() => analysisDialog.current?.showModal()} disabled={segments.length === 0}>
+            <BarChart3 size={14} aria-hidden="true" />
+            Analysis
+          </button>
+          {project.blocks && (
+            <button type="button" className="btn btn-small" aria-pressed={showPreview} onClick={() => setShowPreview((v) => !v)}>
+              <Eye size={14} aria-hidden="true" />
+              Preview
+            </button>
+          )}
+          {project.original && (
+            <button type="button" className="btn btn-small" onClick={saveDocument} disabled={saving}>
+              <Download size={14} aria-hidden="true" />
+              {saving ? "Saving…" : "Save translated document"}
+            </button>
+          )}
+        </div>
       </header>
+
+      <dialog ref={analysisDialog} className="dialog" aria-labelledby="analysis-title">
+        <form method="dialog" className="dialog-body">
+          <h2 id="analysis-title" className="dialog-title">
+            Analysis
+          </h2>
+          <p className="help">
+            {project.file} against {clientTm.length ? `the ${project.client} memory` : "no client memory"}, counted as in Trados: context matches first, then repetitions inside the document, then the best match. Below 50% counts as new.
+          </p>
+          <DialogAnalysis segments={segments} units={clientTm} />
+          <div className="row">
+            <button className="btn btn-primary btn-small">Close</button>
+          </div>
+        </form>
+      </dialog>
 
       <p className="sr-only" role="status" aria-live="polite">
         {announcement}
@@ -323,7 +378,7 @@ export function Editor({ projectId }: { projectId: string }) {
           <p>The document has no readable text here (for example a scan, or a format only the full product imports). Text recognition for scans comes with the file filters.</p>
         </div>
       ) : (
-        <div className="editor-body">
+        <div className={`editor-body${showPreview && project.blocks ? " with-preview" : ""}`}>
           <ol className="segments" aria-label="Segments">
             {visible.map((s) => {
               const n = segments.indexOf(s) + 1;
@@ -357,6 +412,13 @@ export function Editor({ projectId }: { projectId: string }) {
               );
             })}
           </ol>
+
+          {showPreview && project.blocks && (
+            <section className="preview-pane" aria-label="Preview of the translated document">
+              <p className="preview-note">Layout from the Word file. Untranslated text appears in the source language. The saved file is exact.</p>
+              <Preview blocks={project.blocks} segments={segments} activeId={activeId} sourceLang={source} targetLang={target} onPick={activate} />
+            </section>
+          )}
 
           <aside className="results" aria-label="Translation results">
             <p id="seg-help" className="sr-only">
@@ -565,7 +627,7 @@ function SegmentStatusCell({ s }: { s: Segment }) {
           <span aria-hidden="true">{warnings.length}</span>
         </span>
       )}
-      {s.origin?.kind === "tm" && <span className="seg-origin">{s.origin.score}%</span>}
+      {s.origin?.kind === "tm" && <ScoreBadge origin={s.origin} edited={plain(s.target) !== s.origin.inserted} />}
       {s.origin?.kind === "repetition" && (
         <span className="seg-origin">
           <Repeat2 size={13} aria-label="Repetition" />
@@ -575,10 +637,31 @@ function SegmentStatusCell({ s }: { s: Segment }) {
   );
 }
 
-function MatchBody({ m, source, target }: { m: TmMatch; source: string; target: string }) {
+/** The match score next to a segment, as in Trados' status column. */
+function ScoreBadge({ origin, edited }: { origin: { score: number; context?: boolean }; edited: boolean }) {
+  const label = scoreLabel(origin.score, origin.context);
+  const desc = `${scoreDescription(origin.score, origin.context)}${edited ? ", edited" : ""}`;
+  return (
+    <span className={`score band-${bandOf(origin.score, origin.context)}${edited ? " is-edited" : ""}`} title={desc}>
+      <span aria-hidden="true">{label}</span>
+      <span className="sr-only">{desc}</span>
+    </span>
+  );
+}
+
+function DialogAnalysis({ segments, units }: { segments: Segment[]; units: TmUnit[] }) {
+  // Computed when the dialog renders, against the memory as it is now.
+  const a = useMemo(() => analyze(segments, units), [segments, units]);
+  return <AnalysisTable rows={a.rows} words={a.words} segments={a.segments} caption="Match analysis" />;
+}
+
+function MatchBody({ m, source, target }: { m: ScoredMatch; source: string; target: string }) {
   return (
     <>
-      <span className={`result-score${m.score === 100 ? " is-exact" : ""}`}>{m.score}%</span>
+      <span className={`result-score score band-${bandOf(m.score, m.context)}`} title={scoreDescription(m.score, m.context)}>
+        <span aria-hidden="true">{scoreLabel(m.score, m.context)}</span>
+        <span className="sr-only">{scoreDescription(m.score, m.context)}</span>
+      </span>
       <span className="result-body">
         <span className="result-source" lang={source}>
           {m.diff.map((d, k) => (

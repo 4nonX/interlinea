@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, FileText, Info, Plus, X } from "lucide-react";
 import { LANGUAGES, SAMPLE_DOCS, lang, primary, type LangCode, type Location, type SetupMode } from "../data";
-import { CONFIDENT, detectLanguage, readText, type Detection } from "../detect";
-import { countWords, takePendingDoc, type PendingDoc } from "../draft";
+import { CONFIDENT, detectLanguage, readDocument, type Detection } from "../detect";
+import { extractDocx, type Extracted } from "../core";
+import { analyze, clientMemory } from "../editor/analysis";
+import { segmentText } from "../editor/model";
+import { AnalysisTable } from "../components/AnalysisTable";
+import { takePendingDoc, type PendingDoc } from "../draft";
+import type { Block, Segment } from "../editor/model";
 import { useStore, useWords } from "../store";
 import { fmtNum, plural } from "../format";
 import { LangChip, LocationBadge, PageHeader } from "../components/ui";
@@ -86,14 +91,49 @@ export function NewProject({ sample }: { sample?: number }) {
   const targetError = targets.length === 0 ? "Choose at least one target language." : targets.includes(source) ? "A target language can't be the same as the source language." : null;
   const nameError = name.trim() ? null : "Give the project a name.";
 
-  function create() {
+  const [creating, setCreating] = useState(false);
+  // Word documents are extracted again with the chosen source language when
+  // the review step opens; the analysis and the new project both use it.
+  const [prepared, setPrepared] = useState<{ lang: LangCode; ex: Extracted } | null>(null);
+  useEffect(() => {
+    if (step !== 2 || !doc?.bytes || !source || prepared?.lang === source) return;
+    let live = true;
+    extractDocx(doc.bytes, source).then(
+      (ex) => live && setPrepared({ lang: source, ex }),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [step, doc, source, prepared?.lang]);
+  const analysisSegments: Segment[] | null = useMemo(() => {
+    if (doc?.bytes) return prepared?.lang === source ? prepared.ex.segments : null;
+    return doc?.text ? segmentText(doc.text).map((t, i) => ({ id: `a${i}`, source: [t], target: [], status: "new" as const })) : [];
+  }, [doc, prepared, source]);
+  const analysisMemory = useMemo(() => clientMemory({ client: client.trim(), sourceLang: source, targetLangs: targets }), [client, source, targets]);
+  const analysis = useMemo(() => (analysisSegments ? analyze(analysisSegments, analysisMemory) : null), [analysisSegments, analysisMemory]);
+
+  async function create() {
     const id = `p-${Date.now().toString(36)}`;
     const usedMasters = mode === "direct" ? [directTarget] : mode === "layered" ? selectedMasters : [];
+    let extracted: { segments: Segment[]; blocks: Block[]; bytes: Uint8Array } | undefined;
+    if (doc!.bytes) {
+      setCreating(true);
+      try {
+        // Sentence breaks follow the confirmed source language.
+        const ex = prepared?.lang === source ? prepared.ex : await extractDocx(doc!.bytes, source);
+        extracted = { ...ex, bytes: doc!.bytes };
+      } catch (e) {
+        notify(`Could not read ${doc!.file}: ${e instanceof Error ? e.message : String(e)}`);
+        setCreating(false);
+        return;
+      }
+    }
     dispatch({
       type: "createProject",
       id,
       now: new Date().toISOString(),
-      input: { name: name.trim(), file: doc!.file, words: doc!.words, sourceLang: source, targetLangs: targets, client: client.trim() || undefined, mode, masters: usedMasters, location, text: doc!.text },
+      input: { name: name.trim(), file: doc!.file, words: doc!.words, sourceLang: source, targetLangs: targets, client: client.trim() || undefined, mode, masters: usedMasters, location, text: doc!.text, extracted },
     });
     notify(`Created project “${name.trim()}”`);
     go({ page: "editor", projectId: id });
@@ -136,12 +176,21 @@ export function NewProject({ sample }: { sample?: number }) {
             <FileText size={20} aria-hidden="true" />
             <div>
               <div className="cell-title">{doc.file}</div>
-              <div className="cell-sub">{doc.words ? plural(doc.words, "word", "words") : "Word count after import"}</div>
+              <div className="cell-sub">
+                {doc.words ? plural(doc.words, "word", "words") : "Word count after import"}
+                {doc.bytes && ", formatting kept by the Word filter"}
+              </div>
             </div>
             <button type="button" className="btn btn-quiet btn-small file-row-action" onClick={() => setDoc(null)}>
               Choose another file
             </button>
           </div>
+          {doc.error && (
+            <p className="detect detect-warn" role="alert">
+              <AlertTriangle size={16} aria-hidden="true" />
+              <span>This Word file could not be read: {doc.error}</span>
+            </p>
+          )}
 
           <div className="field">
             <label htmlFor="source">Source language</label>
@@ -382,13 +431,30 @@ export function NewProject({ sample }: { sample?: number }) {
             <dd>
               <TerminologySummary mode={mode} masters={mode === "direct" ? [directTarget] : selectedMasters} location={location} autoUpdate={autoUpdate} />
             </dd>
+            <dt>Match analysis</dt>
+            <dd>
+              {analysis === null ? (
+                <p className="muted">Analysing the document…</p>
+              ) : analysis.segments === 0 ? (
+                <p className="muted">Available once the text can be read.</p>
+              ) : (
+                <>
+                  <p className="help">
+                    {analysisMemory.length
+                      ? `Against the ${client.trim()} memory, counted as in Trados.`
+                      : "No translation memory for this client and language pair yet, so only repetitions inside the document count."}
+                  </p>
+                  <AnalysisTable rows={analysis.rows} words={analysis.words} segments={analysis.segments} caption="Match analysis of the document" />
+                </>
+              )}
+            </dd>
           </dl>
           <div className="panel-actions">
             <button type="button" className="btn btn-quiet" onClick={() => setStep(1)}>
               Back
             </button>
-            <button type="button" className="btn btn-primary" onClick={create}>
-              Create project
+            <button type="button" className="btn btn-primary" onClick={create} disabled={creating}>
+              {creating ? "Reading the document…" : "Create project"}
             </button>
           </div>
         </section>
@@ -533,7 +599,7 @@ function ChooseDocument({ onChosen }: { onChosen: (d: PendingDoc) => void }) {
       <section className="dropzone" aria-labelledby="dz2">
         <div className="dropzone-text">
           <h2 id="dz2">Choose the document to translate</h2>
-          <p>Interlinea detects its source language. Plain text formats are read in this prototype; other formats fall back to your usual source language.</p>
+          <p>Interlinea detects its source language. Word documents (.docx) go through the core's file filter, so the translation keeps their formatting. Plain text formats are read as text; other formats fall back to your usual source language.</p>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => input.current?.click()}>
           Choose document
@@ -545,8 +611,7 @@ function ChooseDocument({ onChosen }: { onChosen: (d: PendingDoc) => void }) {
           onChange={async (e) => {
             const f = e.target.files?.[0];
             if (!f) return;
-            const text = await readText(f);
-            onChosen({ file: f.name, words: text ? countWords(text) : 0, text });
+            onChosen(await readDocument(f));
           }}
         />
       </section>

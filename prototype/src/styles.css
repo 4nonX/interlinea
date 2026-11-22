@@ -1774,8 +1774,8 @@ kbd {
 
 .editor-title {
   display: grid;
+  flex: 1 1 200px;
   min-width: 0;
-  margin-right: auto;
 }
 
 .editor-title h1 {
@@ -1795,8 +1795,23 @@ kbd {
   display: flex;
   align-items: center;
   gap: var(--s3);
+  min-width: 0;
   color: var(--text-3);
   font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.editor-meta .lang-pair {
+  flex: none;
+}
+
+.editor-bar {
+  flex-wrap: wrap;
+  row-gap: var(--s2);
+}
+
+.editor-bar .segmented {
+  flex: none;
 }
 
 .editor-progress {
@@ -1839,6 +1854,7 @@ kbd {
 }
 
 .segments {
+  container-type: inline-size;
   margin: 0;
   padding: 0 0 40vh;
   overflow-y: auto;
@@ -2073,11 +2089,6 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-.result-score.is-exact {
-  background: var(--ok-bg);
-  color: var(--ok);
-}
-
 .result-score.result-term {
   background: var(--accent-weak);
   color: var(--accent-text);
@@ -2294,6 +2305,354 @@ kbd {
   border-radius: 2px;
 }
 
+
+
+/* A narrow segment list (preview open, small window) stacks the target
+   under the source instead of squeezing two columns. */
+@container (max-width: 620px) {
+  .seg {
+    grid-template-columns: 36px minmax(0, 1fr) 48px;
+  }
+
+  .seg-source {
+    grid-column: 2;
+    border-right: 0;
+    padding-bottom: var(--s1);
+  }
+
+  .seg-target {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .seg-status {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+
+  .seg-num {
+    grid-row: 1 / span 2;
+  }
+}
+
+/* Match scores, coloured by band as in Trados: context and exact matches
+   green, high fuzzy olive, middle amber, low orange, weak grey. */
+.score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.band-cm,
+.band-100 {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.band-95 {
+  background: #edf3d6;
+  color: #4b5e0c;
+}
+
+.band-85 {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.band-75 {
+  background: #fde8d6;
+  color: #8a3f00;
+}
+
+.band-50,
+.band-new {
+  background: #eef0f3;
+  color: var(--text-2);
+}
+
+.band-rep {
+  background: var(--server-bg);
+  color: var(--server);
+}
+
+/* Edited after insertion: outlined, so untouched matches stand out. */
+.score.is-edited {
+  background: transparent;
+  border-color: currentColor;
+}
+
+.seg-status .score {
+  min-width: 0;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 0.6875rem;
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
+/* Dialog */
+.dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+}
+
+.dialog::backdrop {
+  background: rgba(20, 30, 45, 0.32);
+}
+
+.dialog-body {
+  display: grid;
+  gap: var(--s3);
+  padding: var(--s5);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.dialog .row {
+  justify-content: flex-end;
+}
+
+/* Analysis */
+.analysis-band {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+}
+
+.analysis th[scope="row"] {
+  background: none;
+  color: var(--text);
+  font-weight: 500;
+  white-space: normal;
+}
+
+.analysis-label {
+  display: grid;
+}
+
+.analysis-hint {
+  color: var(--text-3);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.analysis tr.is-zero td,
+.analysis tr.is-zero .analysis-label {
+  color: var(--text-3);
+}
+
+.analysis tfoot th,
+.analysis tfoot td {
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 0;
+  font-weight: 600;
+}
+
+.analysis td.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Preview: the translated document, approximately as Word lays it out. */
+.editor-body.with-preview {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr) 340px;
+}
+
+.preview-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  background: #e6e9ee;
+}
+
+.preview-note {
+  margin: 0;
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 0.75rem;
+}
+
+.preview {
+  overflow-y: auto;
+  padding: var(--s4);
+}
+
+.pv-page {
+  display: grid;
+  gap: var(--s4);
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 36px 40px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 30, 45, 0.18);
+  color: #111;
+  font-family: Calibri, Carlito, "Segoe UI", system-ui, sans-serif;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.pv-body > .pv-p,
+.pv-body > table {
+  margin: 0 0 9px;
+}
+
+.pv-p {
+  margin: 0;
+}
+
+.pv-title {
+  margin-bottom: 14px !important;
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.pv-h1 {
+  margin-top: 14px !important;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.pv-h2,
+.pv-h3 {
+  margin-top: 10px !important;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.pv-center {
+  text-align: center;
+}
+
+.pv-right {
+  text-align: right;
+}
+
+.pv-justify {
+  text-align: justify;
+}
+
+.pv-list {
+  padding-left: 18px;
+}
+
+.pv-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pv-table td {
+  padding: 3px 6px;
+  border: 1px solid #333;
+  vertical-align: top;
+}
+
+.pv-header {
+  color: #666;
+  font-size: 10px;
+  text-align: right;
+}
+
+.pv-footer {
+  font-size: 10px;
+  text-align: center;
+}
+
+.pv-notes {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding-top: 6px;
+  font-size: 10px;
+}
+
+/* The short rule Word draws above footnotes. */
+.pv-notes::before {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  border-top: 1px solid #333;
+  content: "";
+}
+
+.pv-seg {
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.pv-seg:hover {
+  background: #eef3fd;
+}
+
+.pv-seg.is-active {
+  background: #dbe6fb;
+  box-shadow: 0 0 0 2px #dbe6fb;
+}
+
+.pv-seg.is-source {
+  color: #6b7280;
+  text-decoration: underline dotted #9aa3ae;
+  text-underline-offset: 3px;
+}
+
+.pv-link {
+  color: #0563c1;
+  text-decoration: underline;
+}
+
+.pv-field {
+  padding: 0 3px;
+  border-radius: 2px;
+  background: #e8e8e8;
+  color: #555;
+}
+
+.pv-tab {
+  display: inline-block;
+  width: 3em;
+}
+
+.pv-image {
+  padding: 0 4px;
+  border: 1px dashed #999;
+  color: #777;
+  font-size: 10px;
+}
+
 @media (max-width: 960px) {
   .app {
     grid-template-columns: minmax(0, 1fr);
@@ -2374,8 +2733,14 @@ kbd {
     flex-wrap: wrap;
   }
 
-  .editor-body {
+  .editor-body,
+  .editor-body.with-preview {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview-pane {
+    border-left: 0;
+    border-top: 1px solid var(--border);
   }
 
   .segments {
@@ -2435,8 +2800,17 @@ kbd {
   del,
   .tag-chip,
   .term-hit,
-  .result-score {
+  .result-score,
+  .score {
     border: 1px solid CanvasText;
+  }
+
+  .score.is-edited {
+    border-style: dashed;
+  }
+
+  .pv-seg.is-active {
+    outline: 2px solid Highlight;
   }
 
   .brand-mark {

@@ -1,12 +1,72 @@
 // Segment content for the editor: text interleaved with inline tags, the same
 // model as the Go core's content package.
 
+import hofmann from "./hofmann.json";
+
 export interface TagRun {
   kind: "open" | "close" | "standalone";
   /** Pairs open and close tags inside a segment. */
   id: string;
   /** Short label shown on the chip, e.g. "b", "fn", "br". */
   label: string;
+  /** What the tag stands for in the file, as the core reports it ("bold", "link", "footnote"). */
+  type?: string;
+}
+
+/** A paragraph of the original document (the core's filter.Block). */
+export interface Block {
+  id: string;
+  part: "body" | "footnote" | "endnote" | "header" | "footer";
+  file: string;
+  style?: string;
+  styleName?: string;
+  heading?: number;
+  list?: boolean;
+  align?: string;
+  cell?: { table: number; row: number; col: number };
+  note?: string;
+  /** Tag types kept at the paragraph edges, outside the segments. */
+  lead?: string[];
+  trail?: string[];
+}
+
+/** A run as the core encodes it (content.Run). */
+export interface CoreRun {
+  text?: string;
+  tag?: { kind: TagRun["kind"]; id: string; type?: string; native?: string };
+}
+
+/** Short chip labels for the tag types the filter reports. */
+export const TAG_LABELS: Record<string, string> = {
+  bold: "b",
+  italic: "i",
+  underline: "u",
+  superscript: "sup",
+  subscript: "sub",
+  format: "fmt",
+  link: "link",
+  footnote: "fn",
+  "note-mark": "fn",
+  tab: "tab",
+  lb: "br",
+  pagebreak: "page",
+  columnbreak: "col",
+  field: "field",
+  image: "img",
+  symbol: "sym",
+  anchor: "bm",
+  comment: "cmt",
+  control: "ctl",
+  math: "math",
+  inline: "x",
+};
+
+export function coreToRuns(runs: CoreRun[]): Run[] {
+  return runs.map((r) => (r.tag ? { kind: r.tag.kind, id: r.tag.id, label: TAG_LABELS[r.tag.type ?? ""] ?? "x", type: r.tag.type } : (r.text ?? "")));
+}
+
+export function runsToCore(runs: Run[]): CoreRun[] {
+  return runs.filter((r) => r !== "").map((r) => (typeof r === "string" ? { text: r } : { tag: { kind: r.kind, id: r.id } }));
 }
 
 export type Run = string | TagRun;
@@ -15,11 +75,13 @@ export type SegmentStatus = "new" | "draft" | "confirmed";
 
 export interface Segment {
   id: string;
+  /** The paragraph of the original document this segment is in. */
+  block?: string;
   source: Run[];
   target: Run[];
   status: SegmentStatus;
   /** Where the current target came from, if it was inserted. */
-  origin?: { kind: "tm"; score: number; inserted: string } | { kind: "copy" } | { kind: "repetition"; from: string };
+  origin?: { kind: "tm"; score: number; inserted: string; context?: boolean } | { kind: "copy" } | { kind: "repetition"; from: string };
   /** Check results saved when the segment was confirmed (as memoQ and Phrase do). */
   warnings?: { kind: string; text: string }[];
   /** Warnings the translator marked as false alarms. */
@@ -103,47 +165,39 @@ export function segmentText(text: string): string[] {
   return out;
 }
 
-const b = (id: string): [TagRun, TagRun] => [
-  { kind: "open", id, label: "b" },
-  { kind: "close", id, label: "b" },
-];
-const fn = (id: string): TagRun => ({ kind: "standalone", id, label: "fn" });
+// The sample lease is a real Word document (public/samples). Its units come
+// from the core's Word filter (make sample regenerates hofmann.json), so the
+// editor, the preview and "Save translated document" all work on the file.
+const SAMPLE = hofmann as { units: { id: string; block: string; source: CoreRun[] }[]; blocks: Block[] };
 
-const [b1o, b1c] = b("1");
-const [b2o, b2c] = b("2");
-const [b3o, b3c] = b("3");
-const [b4o, b4c] = b("4");
+const tag = (kind: TagRun["kind"], id: string, type: string): TagRun => ({ kind, id, type, label: TAG_LABELS[type] ?? "x" });
+const bold = (id: string, text: string): Run[] => [tag("open", id, "bold"), text, tag("close", id, "bold")];
 
-/** Sample: residential lease, German to English. Synthetic text. */
-export const HOFMANN_SEGMENTS: Segment[] = [
-  { id: "s1", source: [b1o, "Mietvertrag über Wohnraum", b1c], target: [b1o, "Residential lease agreement", b1c], status: "confirmed" },
-  { id: "s2", source: ["Zwischen Herrn Jonas Hofmann (Vermieter) und Frau Lea Kraus (Mieterin) wird folgender Mietvertrag geschlossen:"], target: ["The following lease agreement is concluded between Mr Jonas Hofmann (landlord) and Ms Lea Kraus (tenant):"], status: "confirmed" },
-  { id: "s3", source: [b2o, "§ 1 Mietsache", b2c], target: [b2o, "§ 1 Leased property", b2c], status: "confirmed" },
-  { id: "s4", source: ["Vermietet wird die Wohnung im zweiten Obergeschoss des Hauses Lindenstraße 12, 80331 München."], target: ["The flat on the second floor of the building at Lindenstraße 12, 80331 Munich, is let."], status: "confirmed" },
-  { id: "s5", source: ["Die Mietsache besteht aus drei Zimmern, einer Küche, einem Bad und einem Kellerraum."], target: ["The leased property comprises three rooms, a kitchen, a bathroom and a cellar room."], status: "confirmed" },
-  { id: "s6", source: [b3o, "§ 2 Mietzeit", b3c], target: [b3o, "§ 2 Term of the lease", b3c], status: "confirmed" },
-  { id: "s7", source: ["Das Mietverhältnis beginnt am 1. Januar 2027 und läuft auf unbestimmte Zeit."], target: ["The tenancy commences on 1 January 2027 and runs for an indefinite period."], status: "confirmed" },
-  { id: "s8", source: ["Die ordentliche Kündigung richtet sich nach den gesetzlichen Vorschriften.", fn("f1")], target: ["Termination with notice is governed by the statutory provisions.", fn("f1")], status: "draft" },
-  { id: "s9", source: [b4o, "§ 3 Miete und Betriebskosten", b4c], target: [], status: "new" },
-  { id: "s10", source: ["Die monatliche Miete beträgt 1.250,00 EUR zuzüglich einer Vorauszahlung auf die Betriebskosten in Höhe von 220,00 EUR."], target: [], status: "new" },
-  { id: "s11", source: ["Die Miete ist monatlich im Voraus, spätestens am dritten Werktag eines Monats, auf das Konto des Vermieters zu zahlen."], target: [], status: "new" },
-  { id: "s12", source: ["Über die Betriebskosten wird jährlich abgerechnet."], target: [], status: "new" },
-  { id: "s13", source: [{ kind: "open", id: "5", label: "b" }, "§ 4 Kaution", { kind: "close", id: "5", label: "b" }], target: [], status: "new" },
-  { id: "s14", source: ["Der Mieter leistet eine Kaution in Höhe von drei Nettokaltmieten."], target: [], status: "new" },
-  { id: "s15", source: ["Die Kaution ist zu Beginn des Mietverhältnisses fällig und wird nach Beendigung des Mietverhältnisses zurückgezahlt."], target: [], status: "new" },
-  { id: "s16", source: [{ kind: "open", id: "6", label: "b" }, "§ 5 Schönheitsreparaturen", { kind: "close", id: "6", label: "b" }], target: [], status: "new" },
-  { id: "s17", source: ["Der Mieter übernimmt die Schönheitsreparaturen auf eigene Kosten."], target: [], status: "new" },
-  { id: "s18", source: ["Eine Untervermietung bedarf der vorherigen schriftlichen Zustimmung des Vermieters."], target: [], status: "new" },
-  { id: "s19", source: ["Das Recht zur Mietminderung bleibt unberührt.", fn("f2")], target: [], status: "new" },
-  { id: "s20", source: ["Der Vermieter kann Räumungsklage erheben, wenn der Mieter mit zwei Monatsmieten in Verzug ist."], target: [], status: "new" },
-  { id: "s21", source: [{ kind: "open", id: "7", label: "b" }, "§ 6 Schlussbestimmungen", { kind: "close", id: "7", label: "b" }], target: [], status: "new" },
-  { id: "s22", source: ["Änderungen und Ergänzungen dieses Vertrages bedürfen der Schriftform."], target: [], status: "new" },
-  { id: "s23", source: ["Sollte eine Bestimmung dieses Vertrages unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt."], target: [], status: "new" },
-  { id: "s24", source: ["Ort, Datum"], target: [], status: "new" },
-  { id: "s25", source: ["Unterschrift Vermieter"], target: [], status: "new" },
-  { id: "s26", source: ["Ort, Datum"], target: [], status: "new" },
-  { id: "s27", source: ["Unterschrift Mieter"], target: [], status: "new" },
-];
+/** Work done before the prototype opens: the first segments are translated. */
+const SAMPLE_WORK: Record<string, { target: Run[]; status: SegmentStatus }> = {
+  "document/p1/s1": { target: ["Residential lease agreement"], status: "confirmed" },
+  "document/p2/s1": {
+    target: ["The following lease agreement is concluded between ", ...bold("1", "Mr Jonas Hofmann"), " (landlord) and ", ...bold("2", "Ms Lea Kraus"), " (tenant):"],
+    status: "confirmed",
+  },
+  "document/p3/s1": { target: ["§ 1 Leased property"], status: "confirmed" },
+  "document/p4/s1": { target: ["The flat on the second floor of the building at Lindenstraße 12, 80331 Munich, is let."], status: "confirmed" },
+  "document/p4/s2": { target: ["The leased property comprises three rooms, a kitchen, a bathroom and a cellar room."], status: "confirmed" },
+  "document/p5/s1": { target: ["§ 2 Term of the lease"], status: "confirmed" },
+  "document/p6/s1": { target: ["The tenancy commences on 1 January 2027 and runs for an indefinite period."], status: "confirmed" },
+  "document/p6/s2": { target: ["Termination with notice is governed by the statutory provisions."], status: "draft" },
+};
+
+export const HOFMANN_BLOCKS: Block[] = SAMPLE.blocks;
+export const HOFMANN_FILE = "samples/Mietvertrag_Hofmann_2026.docx";
+
+export const HOFMANN_SEGMENTS: Segment[] = SAMPLE.units.map((u) => ({
+  id: u.id,
+  block: u.block,
+  source: coreToRuns(u.source),
+  target: SAMPLE_WORK[u.id]?.target ?? [],
+  status: SAMPLE_WORK[u.id]?.status ?? "new",
+}));
 
 export interface TmUnit {
   source: Run[];
@@ -151,20 +205,45 @@ export interface TmUnit {
   project: string;
   by: string;
   at: string;
+  /** Plain source of the segment before it when it was translated (context match). */
+  prev?: string;
   /** Set for segments confirmed earlier in the open document. */
   docSegment?: number;
 }
 
 /** Translation memory "Kanzlei Weber (DE-EN)". Synthetic. */
 export const TM_UNITS: TmUnit[] = [
-  { source: ["Die monatliche Miete beträgt 980,00 EUR zuzüglich einer Vorauszahlung auf die Betriebskosten in Höhe von 180,00 EUR."], target: ["The monthly rent is EUR 980.00 plus an advance payment on the service charges of EUR 180.00."], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:10:00Z" },
+  {
+    source: ["Die monatliche Miete beträgt ", ...bold("1", "980,00 EUR"), " zuzüglich einer Vorauszahlung auf die Betriebskosten in Höhe von ", ...bold("2", "180,00 EUR"), "."],
+    target: ["The monthly rent is ", ...bold("1", "EUR 980.00"), " plus an advance payment on the service charges of ", ...bold("2", "EUR 180.00"), "."],
+    project: "Mietvertrag Schuster",
+    by: "Dan",
+    at: "2025-04-22T16:10:00Z",
+  },
+  { source: ["Nettokaltmiete"], target: ["Basic rent"], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:11:00Z" },
+  { source: ["Gesamtmiete"], target: ["Total rent"], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:11:30Z" },
   { source: ["Die Miete ist monatlich im Voraus, spätestens am dritten Werktag eines Monats, zu zahlen."], target: ["The rent is payable monthly in advance, no later than the third working day of each month."], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:12:00Z" },
-  { source: ["Über die Betriebskosten wird jährlich abgerechnet."], target: ["Service charges are settled annually."], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T10:40:00Z" },
+  {
+    source: ["Über die Betriebskosten wird jährlich abgerechnet."],
+    target: ["Service charges are settled annually."],
+    prev: "Die Miete ist monatlich im Voraus, spätestens am dritten Werktag eines Monats, auf das Konto des Vermieters zu zahlen.",
+    project: "Gewerbemietvertrag Lang",
+    by: "Dan",
+    at: "2025-03-04T10:40:00Z",
+  },
   { source: ["Der Mieter leistet eine Kaution in Höhe von zwei Nettokaltmieten."], target: ["The tenant shall pay a deposit equal to two months' basic rent."], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:20:00Z" },
   { source: ["Die Kaution wird nach Beendigung des Mietverhältnisses zurückgezahlt."], target: ["The deposit is repaid after the end of the tenancy."], project: "Mietvertrag Schuster", by: "Eva Brandt", at: "2025-09-18T11:00:00Z" },
   { source: ["Eine Untervermietung bedarf der Zustimmung des Vermieters."], target: ["Subletting requires the landlord's consent."], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T11:02:00Z" },
   { source: ["Änderungen dieses Vertrages bedürfen der Schriftform."], target: ["Amendments to this agreement must be made in writing."], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T11:30:00Z" },
-  { source: ["Sollte eine Bestimmung dieses Vertrages unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt."], target: ["Should any provision of this agreement be invalid, the validity of the remaining provisions shall remain unaffected."], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T11:31:00Z" },
-  { source: [{ kind: "open", id: "1", label: "b" }, "§ 3 Miete", { kind: "close", id: "1", label: "b" }], target: [{ kind: "open", id: "1", label: "b" }, "§ 3 Rent", { kind: "close", id: "1", label: "b" }], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:05:00Z" },
-  { source: ["Der Vermieter kann fristlos kündigen, wenn der Mieter mit zwei Monatsmieten in Verzug ist."], target: ["The landlord may terminate without notice if the tenant is two months' rent in arrears."], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:40:00Z" },
+  {
+    source: ["Sollte eine Bestimmung dieses Vertrages unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt."],
+    target: ["Should any provision of this agreement be invalid, the validity of the remaining provisions shall remain unaffected."],
+    prev: "Änderungen dieses Vertrages bedürfen der Schriftform.",
+    project: "Gewerbemietvertrag Lang",
+    by: "Dan",
+    at: "2025-03-04T11:31:00Z",
+  },
+  { source: ["Ort, Datum"], target: ["Place, date"], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T11:40:00Z" },
+  { source: ["Siehe § 536 BGB."], target: ["See section 536 BGB."], project: "Mietvertrag Schuster", by: "Eva Brandt", at: "2025-09-18T11:05:00Z" },
+  { source: ["Mietvertrag Schuster, Entwurf vom 22. April 2025"], target: ["Lease Schuster, draft of 22 April 2025"], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:00:00Z" },
 ];

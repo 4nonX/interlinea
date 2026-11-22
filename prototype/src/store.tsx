@@ -4,7 +4,7 @@ import {
   type Commit, type Entry, type InfoType, type LangCode, type Location, type Project, type SetupMode, type Termbase,
 } from "./data";
 import { applyMerge, type Change, type Decision } from "./merge";
-import { confirmedShare, normalize, segmentText, sourceKey, type Run, type Segment, type SegmentStatus } from "./editor/model";
+import { confirmedShare, normalize, segmentText, sourceKey, type Block, type Run, type Segment, type SegmentStatus } from "./editor/model";
 
 function withSegments(state: State, projectId: string, f: (segments: Segment[]) => Segment[]): State {
   return {
@@ -43,6 +43,8 @@ export interface NewProjectInput {
   location: Location;
   /** Document text when the prototype could read it; becomes the segments. */
   text: string | null;
+  /** Units, structure and bytes from the core's Word filter; used instead of text. */
+  extracted?: { segments: Segment[]; blocks: Block[]; bytes: Uint8Array };
 }
 
 export interface NewTermInput {
@@ -126,7 +128,13 @@ function reducer(state: State, action: Action): State {
         setup: { mode: input.mode, masters: input.masters, projectTermbaseId, location: input.location },
         createdAt: now,
         progress: 0,
-        segments: input.text ? segmentText(input.text).map((src, i) => ({ id: `s${i + 1}`, source: [src], target: [], status: "new" as const })) : undefined,
+        segments: input.extracted
+          ? input.extracted.segments
+          : input.text
+            ? segmentText(input.text).map((src, i) => ({ id: `s${i + 1}`, source: [src], target: [], status: "new" as const }))
+            : undefined,
+        blocks: input.extracted?.blocks,
+        original: input.extracted ? { bytes: input.extracted.bytes } : undefined,
       };
       return { ...state, termbases, projects: [project, ...state.projects], branchedAt: { ...state.branchedAt, [id]: now } };
     }

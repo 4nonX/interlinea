@@ -1,7 +1,7 @@
 // Mock data for the prototype. Every name, entry and server address here is
 // synthetic demonstration material.
 
-import { HOFMANN_SEGMENTS, confirmedShare, wordCount, type Segment } from "./editor/model";
+import { HOFMANN_BLOCKS, HOFMANN_FILE, HOFMANN_SEGMENTS, confirmedShare, wordCount, type Block, type Segment } from "./editor/model";
 
 export type LangCode = string;
 
@@ -113,6 +113,10 @@ export interface Project {
   progress: number;
   /** Segments of the document. Absent when the prototype has no text for it. */
   segments?: Segment[];
+  /** Paragraph structure from the file filter, for the preview. */
+  blocks?: Block[];
+  /** The original file, when the core's filter read it: needed to save the translation. */
+  original?: { url?: string; bytes?: Uint8Array };
 }
 
 export const SERVER = "terms.kanzlei-weber.example";
@@ -294,6 +298,8 @@ export const INITIAL_PROJECTS: Project[] = [
     due: d("2026-11-26T16:00:00Z"),
     progress: confirmedShare(HOFMANN_SEGMENTS),
     segments: HOFMANN_SEGMENTS,
+    blocks: HOFMANN_BLOCKS,
+    original: { url: HOFMANN_FILE },
   },
   {
     id: "p-ifu",

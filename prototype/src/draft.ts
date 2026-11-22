@@ -6,6 +6,10 @@ export interface PendingDoc {
   /** Extracted text, or null when the prototype cannot read this format. */
   text: string | null;
   client?: string;
+  /** The file itself when the core's Word filter can read it (.docx). */
+  bytes?: Uint8Array;
+  /** Why the text could not be read, when the filter failed. */
+  error?: string;
 }
 
 let pending: PendingDoc | null = null;

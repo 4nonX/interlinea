@@ -3,8 +3,8 @@ import { FileText, GitMerge, Upload } from "lucide-react";
 import { SAMPLE_DOCS } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges } from "../merge";
-import { countWords, setPendingDoc } from "../draft";
-import { readText } from "../detect";
+import { setPendingDoc } from "../draft";
+import { readDocument } from "../detect";
 import { fmtDate, fmtNum } from "../format";
 import { LangChip, LocationBadge, PageHeader } from "../components/ui";
 import { go } from "../App";
@@ -16,8 +16,7 @@ export function Projects() {
   const [dragging, setDragging] = useState(false);
 
   async function start(file: File) {
-    const text = await readText(file);
-    setPendingDoc({ file: file.name, words: text ? countWords(text) : 0, text });
+    setPendingDoc(await readDocument(file));
     go({ page: "new" });
   }
 
