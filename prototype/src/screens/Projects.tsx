@@ -127,7 +127,9 @@ export function Projects() {
                 return (
                   <tr key={p.id}>
                     <td>
-                      <div className="cell-title">{p.name}</div>
+                      <a className="cell-title cell-link" href={`#/editor/${p.id}`}>
+                        {p.name}
+                      </a>
                       <div className="cell-sub">{p.file}</div>
                     </td>
                     <td>

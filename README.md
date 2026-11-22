@@ -107,7 +107,8 @@ that match by primary language only (`de-AT` for `de-DE`).
 ## Prototype
 
 `prototype/` is a clickable React prototype (mock data) of project creation,
-termbase setup, terminology management and the git-like merge review.
+termbase setup, the translation editor, terminology management and the
+git-like merge review.
 
 ```
 cd prototype
@@ -117,7 +118,12 @@ npm run dev
 
 Sample documents and a deep link per sample (`#/new/sample/0` to `4`) show
 language detection, including the fallback for files without readable text.
-Settings switches between plain wording and git terms. `PRODUCT.md` and
+Creating a project opens it in the editor (`#/editor/p-hofmann` for the
+sample lease): segments with tags, memory matches with differences marked,
+recognised terms, checks for terms, tags and numbers, and adding a term while
+translating, which then shows up in the merge review. The shortcuts are listed
+in the editor's side panel. Settings switches between plain wording and git
+terms. `PRODUCT.md` and
 `DESIGN.md` describe the product and the visual system.
 
 ## Design skills

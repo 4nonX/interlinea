@@ -4,6 +4,7 @@ import {
   type Commit, type Entry, type InfoType, type LangCode, type Location, type Project, type SetupMode, type Termbase,
 } from "./data";
 import { applyMerge, type Change, type Decision } from "./merge";
+import { normalize, segmentText, wordCount, type Run, type Segment, type SegmentStatus } from "./editor/model";
 
 export interface State {
   termbases: Termbase[];
@@ -25,6 +26,16 @@ export interface NewProjectInput {
   mode: SetupMode;
   masters: string[];
   location: Location;
+  /** Document text when the prototype could read it; becomes the segments. */
+  text: string | null;
+}
+
+export interface NewTermInput {
+  projectId: string;
+  source: string;
+  target: string;
+  note?: string;
+  segment: string;
 }
 
 type Action =
@@ -36,6 +47,8 @@ type Action =
   | { type: "setField"; entryId: string; field: string; value: string; now: string }
   | { type: "setTermField"; entryId: string; langCode: LangCode; termIndex: number; field: string; value: string; now: string }
   | { type: "setGitWords"; value: boolean }
+  | { type: "setTarget"; projectId: string; segmentId: string; target: Run[]; status: SegmentStatus; origin?: Segment["origin"] }
+  | { type: "addTerm"; input: NewTermInput; id: string; now: string }
   | { type: "toast"; text: string }
   | { type: "clearToast" };
 
@@ -93,6 +106,7 @@ function reducer(state: State, action: Action): State {
         setup: { mode: input.mode, masters: input.masters, projectTermbaseId, location: input.location },
         createdAt: now,
         progress: 0,
+        segments: input.text ? segmentText(input.text).map((src, i) => ({ id: `s${i + 1}`, source: [src], target: [], status: "new" as const })) : undefined,
       };
       return { ...state, termbases, projects: [project, ...state.projects], branchedAt: { ...state.branchedAt, [id]: now } };
     }
@@ -151,6 +165,44 @@ function reducer(state: State, action: Action): State {
     }
     case "setGitWords":
       return { ...state, gitWords: action.value };
+    case "setTarget": {
+      return {
+        ...state,
+        projects: state.projects.map((p) => {
+          if (p.id !== action.projectId || !p.segments) return p;
+          const segments = p.segments.map((sg) =>
+            sg.id === action.segmentId ? { ...sg, target: normalize(action.target), status: action.status, origin: action.origin ?? sg.origin } : sg,
+          );
+          const total = segments.reduce((n, sg) => n + wordCount(sg.source), 0) || 1;
+          const done = segments.filter((sg) => sg.status === "confirmed").reduce((n, sg) => n + wordCount(sg.source), 0);
+          return { ...p, segments, progress: done / total };
+        }),
+      };
+    }
+    case "addTerm": {
+      const { input, id, now } = action;
+      const p = state.projects.find((x) => x.id === input.projectId)!;
+      const termbaseId = p.setup.mode === "direct" ? p.setup.masters[0]! : p.setup.projectTermbaseId!;
+      const tb = state.termbases.find((t) => t.id === termbaseId)!;
+      const entry: Entry = {
+        id,
+        termbaseId,
+        version: 1,
+        concept: {},
+        terms: {
+          [p.sourceLang]: [{ text: input.source, status: "proposed" }],
+          [p.targetLangs[0]!]: [{ text: input.target, status: "proposed", fields: input.note ? { note: input.note } : undefined }],
+        },
+        history: [{ id: `c-${id}`, at: now, by: USER, summary: "Added while translating", project: p.name, segment: input.segment }],
+      };
+      // A termbase gains the project's languages the first time they are used.
+      const languages = [...new Set([...tb.languages, p.sourceLang, p.targetLangs[0]!])];
+      return {
+        ...state,
+        entries: [...state.entries, entry],
+        termbases: state.termbases.map((t) => (t.id === termbaseId ? { ...t, languages } : t)),
+      };
+    }
     case "toast":
       return { ...state, toast: { id: ++toastSeq, text: action.text } };
     case "clearToast":

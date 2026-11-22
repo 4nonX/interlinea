@@ -93,10 +93,10 @@ export function NewProject({ sample }: { sample?: number }) {
       type: "createProject",
       id,
       now: new Date().toISOString(),
-      input: { name: name.trim(), file: doc!.file, words: doc!.words, sourceLang: source, targetLangs: targets, client: client.trim() || undefined, mode, masters: usedMasters, location },
+      input: { name: name.trim(), file: doc!.file, words: doc!.words, sourceLang: source, targetLangs: targets, client: client.trim() || undefined, mode, masters: usedMasters, location, text: doc!.text },
     });
     notify(`Created project “${name.trim()}”`);
-    go({ page: "projects" });
+    go({ page: "editor", projectId: id });
   }
 
   if (!doc) return <ChooseDocument onChosen={setDoc} />;

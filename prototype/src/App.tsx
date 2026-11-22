@@ -7,12 +7,14 @@ import { NewProject } from "./screens/NewProject";
 import { Terminology } from "./screens/Terminology";
 import { MergeReview } from "./screens/MergeReview";
 import { Settings } from "./screens/Settings";
+import { Editor } from "./screens/Editor";
 
 export type Route =
   | { page: "projects" }
   | { page: "new"; sample?: number }
   | { page: "terminology"; termbaseId?: string; entryId?: string }
   | { page: "merge"; projectId: string }
+  | { page: "editor"; projectId: string }
   | { page: "settings" };
 
 export function parseRoute(hash: string): Route {
@@ -24,6 +26,8 @@ export function parseRoute(hash: string): Route {
       return { page: "terminology", termbaseId: a || undefined, entryId: b || undefined };
     case "merge":
       return a ? { page: "merge", projectId: a } : { page: "projects" };
+    case "editor":
+      return a ? { page: "editor", projectId: a } : { page: "projects" };
     case "settings":
       return { page: "settings" };
     default:
@@ -41,6 +45,8 @@ export function href(r: Route): string {
       return `#/terminology${r.termbaseId ? `/${r.termbaseId}` : ""}${r.entryId ? `/${r.entryId}` : ""}`;
     case "merge":
       return `#/merge/${r.projectId}`;
+    case "editor":
+      return `#/editor/${r.projectId}`;
     case "settings":
       return "#/settings";
   }
@@ -95,7 +101,7 @@ function useRoute(): Route {
 
 function Rail({ route }: { route: Route }) {
   const { state } = useStore();
-  const active = route.page === "new" || route.page === "merge" ? "projects" : route.page;
+  const active = route.page === "new" || route.page === "merge" || route.page === "editor" ? "projects" : route.page;
   const items = [
     { id: "projects", label: "Projects", icon: FolderOpen, to: { page: "projects" } as Route },
     { id: "terminology", label: "Terminology", icon: BookText, to: { page: "terminology" } as Route },
@@ -138,8 +144,10 @@ function Rail({ route }: { route: Route }) {
 
 function Screen({ route }: { route: Route }) {
   // Move focus to the page heading on navigation, so keyboard and screen
-  // reader users land on the new content.
+  // reader users land on the new content. The editor puts the caret in the
+  // active segment instead; its label and the status line say where you are.
   useEffect(() => {
+    if (route.page === "editor") return;
     document.getElementById("page-title")?.focus({ preventScroll: true });
   }, [route]);
   switch (route.page) {
@@ -152,6 +160,8 @@ function Screen({ route }: { route: Route }) {
       return <Terminology termbaseId={route.termbaseId} entryId={route.entryId} />;
     case "merge":
       return <MergeReview projectId={route.projectId} />;
+    case "editor":
+      return <Editor key={route.projectId} projectId={route.projectId} />;
     case "settings":
       return <Settings />;
   }
@@ -165,7 +175,7 @@ function Shell() {
         Skip to content
       </a>
       <Rail route={route} />
-      <main id="main" className="main">
+      <main id="main" className={route.page === "editor" ? "main main-editor" : "main"}>
         <Screen route={route} />
       </main>
       <Toast />

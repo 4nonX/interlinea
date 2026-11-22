@@ -1,6 +1,8 @@
 // Mock data for the prototype. Every name, entry and server address here is
 // synthetic demonstration material.
 
+import { HOFMANN_SEGMENTS, type Segment } from "./editor/model";
+
 export type LangCode = string;
 
 export interface Language {
@@ -109,6 +111,8 @@ export interface Project {
   createdAt: string;
   due?: string;
   progress: number;
+  /** Segments of the document. Absent when the prototype has no text for it. */
+  segments?: Segment[];
 }
 
 export const SERVER = "terms.kanzlei-weber.example";
@@ -289,6 +293,7 @@ export const INITIAL_PROJECTS: Project[] = [
     createdAt: d("2026-11-16T08:30:00Z"),
     due: d("2026-11-26T16:00:00Z"),
     progress: 0.82,
+    segments: HOFMANN_SEGMENTS,
   },
   {
     id: "p-ifu",
