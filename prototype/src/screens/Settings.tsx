@@ -1,0 +1,53 @@
+import { Cloud } from "lucide-react";
+import { SERVER } from "../data";
+import { useStore } from "../store";
+import { PageHeader } from "../components/ui";
+
+export function Settings() {
+  const { state, dispatch } = useStore();
+  return (
+    <div className="page page-narrow">
+      <PageHeader title="Settings" />
+
+      <section className="panel" aria-labelledby="s-words">
+        <h2 id="s-words" className="panel-title">
+          Terminology wording
+        </h2>
+        <p className="help">Project termbases work like branches of a master. Choose how the interface names this. The behaviour is the same either way.</p>
+        <fieldset className="field">
+          <legend className="sr-only">Wording</legend>
+          <label className="choice">
+            <input type="radio" name="words" checked={!state.gitWords} onChange={() => dispatch({ type: "setGitWords", value: false })} />
+            <span className="choice-body">
+              <span className="choice-title">Plain words</span>
+              <span className="choice-desc">Project termbase, review and merge, update from master, history.</span>
+            </span>
+          </label>
+          <label className="choice">
+            <input type="radio" name="words" checked={state.gitWords} onChange={() => dispatch({ type: "setGitWords", value: true })} />
+            <span className="choice-body">
+              <span className="choice-title">Git terms</span>
+              <span className="choice-desc">Branch, diff and merge, pull, log, ours and theirs.</span>
+            </span>
+          </label>
+        </fieldset>
+      </section>
+
+      <section className="panel" aria-labelledby="s-servers">
+        <h2 id="s-servers" className="panel-title">
+          Servers
+        </h2>
+        <ul className="server-list">
+          <li>
+            <Cloud size={18} aria-hidden="true" />
+            <div>
+              <div className="cell-title">{SERVER}</div>
+              <div className="cell-sub">Connected as Dan. Sample server in this prototype.</div>
+            </div>
+            <span className="status status-approved">Connected</span>
+          </li>
+        </ul>
+      </section>
+    </div>
+  );
+}

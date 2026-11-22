@@ -13,3 +13,7 @@ go.work.sum
 #   npx skills experimental_install
 /.claude/skills/
 /.agents/
+
+# Prototype
+node_modules/
+/prototype/dist/

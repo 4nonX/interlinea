@@ -104,6 +104,22 @@ that match by primary language only (`de-AT` for `de-DE`).
   open a database spend about 0.8 s at start-up compiling the embedded SQLite;
   a long-running process (the future desktop app or server) pays this once.
 
+## Prototype
+
+`prototype/` is a clickable React prototype (mock data) of project creation,
+termbase setup, terminology management and the git-like merge review.
+
+```
+cd prototype
+npm install
+npm run dev
+```
+
+Sample documents and a deep link per sample (`#/new/sample/0` to `4`) show
+language detection, including the fallback for files without readable text.
+Settings switches between plain wording and git terms. `PRODUCT.md` and
+`DESIGN.md` describe the product and the visual system.
+
 ## Design skills
 
 UI and UX work on the desktop and browser clients uses agent skills pinned by
