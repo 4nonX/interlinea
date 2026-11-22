@@ -663,6 +663,14 @@ input[type="radio"] {
   border-top: 1px solid var(--border);
 }
 
+.field-label {
+  padding: 0;
+  margin-bottom: var(--s1);
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
 .field {
   display: grid;
   align-content: start;
@@ -2607,6 +2615,38 @@ kbd {
   width: 40%;
   border-top: 1px solid #333;
   content: "";
+}
+
+.pv-frame {
+  padding: 4px 6px;
+  border: 1px solid #1f5bd6;
+}
+
+.pv-extra {
+  display: grid;
+  gap: 4px;
+  max-width: 600px;
+  margin: var(--s4) auto 0;
+  padding: 16px 20px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(20, 30, 45, 0.18);
+  font-size: 12px;
+}
+
+.pv-extra-title {
+  margin: 0 0 4px;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.pv-label {
+  display: inline-block;
+  margin-right: 8px !important;
+  padding: 1px 6px;
+  border: 1px solid #d0d5dc;
+  border-radius: 3px;
 }
 
 .pv-seg {

@@ -116,7 +116,7 @@ export async function readDocument(file: File): Promise<PendingDoc> {
       // again with the confirmed source language when the project is created.
       const ex = await extractDocx(bytes, "en");
       const text = ex.segments.map((s) => plain(s.source)).join("\n");
-      return { file: file.name, words: countWords(text), text: text.slice(0, 20000), bytes };
+      return { file: file.name, words: countWords(text), text: text.slice(0, 20000), bytes, warnings: ex.warnings };
     } catch (e) {
       return { file: file.name, words: 0, text: null, error: e instanceof Error ? e.message : String(e) };
     }

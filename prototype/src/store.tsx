@@ -28,6 +28,8 @@ export interface State {
   autoInsert: boolean;
   /** Editor: confirming fills identical segments further on (auto-propagation). */
   autoPropagate: boolean;
+  /** Context matches: the segment before must match (Trados) or before and after (memoQ). */
+  contextRule: "previous" | "both";
   toast: { id: number; text: string } | null;
 }
 
@@ -65,6 +67,7 @@ type Action =
   | { type: "setTermField"; entryId: string; langCode: LangCode; termIndex: number; field: string; value: string; now: string }
   | { type: "setGitWords"; value: boolean }
   | { type: "setEditorOption"; option: "autoInsert" | "autoPropagate"; value: boolean }
+  | { type: "setContextRule"; value: "previous" | "both" }
   | { type: "confirm"; projectId: string; segmentId: string; warnings: { kind: string; text: string }[] }
   | { type: "ignoreIssue"; projectId: string; segmentId: string; text: string }
   | { type: "setTarget"; projectId: string; segmentId: string; target: Run[]; status: SegmentStatus; origin?: Segment["origin"] }
@@ -81,6 +84,7 @@ const initial: State = {
   gitWords: false,
   autoInsert: true,
   autoPropagate: true,
+  contextRule: "previous",
   toast: null,
 };
 
@@ -195,6 +199,8 @@ function reducer(state: State, action: Action): State {
       return { ...state, gitWords: action.value };
     case "setEditorOption":
       return { ...state, [action.option]: action.value };
+    case "setContextRule":
+      return { ...state, contextRule: action.value };
     case "setTarget":
       return withSegments(state, action.projectId, (segments) =>
         segments.map((sg) =>

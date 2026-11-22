@@ -10,6 +10,8 @@ export interface PendingDoc {
   bytes?: Uint8Array;
   /** Why the text could not be read, when the filter failed. */
   error?: string;
+  /** What the filter changes or cannot translate (tracked changes, for example). */
+  warnings?: string[];
 }
 
 let pending: PendingDoc | null = null;

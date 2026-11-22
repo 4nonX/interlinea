@@ -73,6 +73,11 @@ export function Preview({ blocks, segments, activeId, sourceLang, targetLang, on
   const header = part("header");
   const footer = part("footer");
   const notes = [...part("footnote"), ...part("endnote")];
+  const extras: { title: string; blocks: Block[] }[] = [
+    { title: "Charts", blocks: part("chart") },
+    { title: "SmartArt", blocks: part("diagram") },
+    { title: "Comments", blocks: part("comment") },
+  ].filter((x) => x.blocks.length > 0);
   return (
     <div className="preview" ref={root} lang={targetLang}>
       <div className="pv-page">
@@ -81,6 +86,12 @@ export function Preview({ blocks, segments, activeId, sourceLang, targetLang, on
         {notes.length > 0 && <div className="pv-notes">{notes.map(renderBlock)}</div>}
         {footer.length > 0 && <div className="pv-footer">{footer.map(renderBlock)}</div>}
       </div>
+      {extras.map((x) => (
+        <div key={x.title} className="pv-extra">
+          <p className="pv-extra-title">{x.title}</p>
+          {x.blocks.map(renderBlock)}
+        </div>
+      ))}
     </div>
   );
 }
@@ -103,6 +114,8 @@ function BlockView({
   counter: { fn: number };
 }) {
   const cls = ["pv-p"];
+  if (b.frame === "textbox") cls.push("pv-frame");
+  if (b.style === "label") cls.push("pv-label");
   if (b.heading) cls.push(b.style === "Title" ? "pv-title" : `pv-h${Math.min(b.heading, 3)}`);
   if (b.list) cls.push("pv-list");
   if (b.align === "center") cls.push("pv-center");

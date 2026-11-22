@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { AlertTriangle, ArrowLeft, BarChart3, Check, CircleDashed, Copy, Download, Eye, GitMerge, Keyboard, PencilLine, Plus, Repeat2, Search, Tag, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, Check, CircleDashed, Copy, Database, Download, Eye, Upload, GitMerge, Keyboard, PencilLine, Plus, Repeat2, Search, Tag, X } from "lucide-react";
 import { lang, USER } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges } from "../merge";
 import { isTag, missingTags, plain, sourceKey, wordCount, type Run, type Segment, type TmUnit } from "../editor/model";
-import { concordance, qa, recognize, type QaIssue, type TermHit } from "../editor/match";
-import { analyze, bandOf, clientMemory, documentUnits, scoreDescription, scoreLabel, scoredLookup, type ScoredMatch } from "../editor/analysis";
+import { qa, recognize, type QaIssue, type TermHit } from "../editor/match";
+import { analyze, bandOf, scoreDescription, scoreLabel, scoredLookup, type ContextRule, type ScoredMatch } from "../editor/analysis";
+import { concordanceAll, documentMemory, projectMemories, type MemoryInfo } from "../editor/memory";
 import { Preview } from "../editor/Preview";
 import { AnalysisTable } from "../components/AnalysisTable";
-import { DOCX_TYPE, download, mergeDocx } from "../core";
+import { core, DOCX_TYPE, download, loadCore, mergeDocx, tm } from "../core";
 import { TargetEditor, chipText, tagDescription, type TargetEditorHandle } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
-import { fmtDate, plural } from "../format";
+import { fmtDate, fmtNum, plural } from "../format";
 
 const STATUS_TEXT: Record<Segment["status"], string> = { new: "Not translated", draft: "Draft", confirmed: "Confirmed" };
 
@@ -31,6 +32,8 @@ export function Editor({ projectId }: { projectId: string }) {
   const [showPreview, setShowPreview] = useState(false);
   const [saving, setSaving] = useState(false);
   const analysisDialog = useRef<HTMLDialogElement>(null);
+  const memoryDialog = useRef<HTMLDialogElement>(null);
+  const tmxInput = useRef<HTMLInputElement>(null);
   const [announcement, setAnnouncement] = useState("");
   const editor = useRef<TargetEditorHandle>(null);
   const sourceSelection = useRef("");
@@ -47,29 +50,34 @@ export function Editor({ projectId }: { projectId: string }) {
   // The memory: the client's memory (sample project only) plus every segment
   // confirmed in this document, which is what confirming stores in Trados,
   // memoQ and Phrase.
-  const clientTm = useMemo(() => (project ? clientMemory(project) : []), [project]);
-  const memory = useMemo<TmUnit[]>(
-    () => [...clientTm, ...documentUnits(segments, project?.name ?? "", USER, project?.createdAt ?? "")],
-    [clientTm, segments, project?.name, project?.createdAt],
+  // Memories live in the core: the client's, the project's (TMX imports)
+  // and the document's confirmed segments, which is what confirming stores
+  // in Trados, memoQ and Phrase.
+  const [ready, setReady] = useState(() => core() !== null);
+  const [memVersion, setMemVersion] = useState(0);
+  useEffect(() => {
+    if (ready) return;
+    let live = true;
+    loadCore().then(
+      () => live && setReady(true),
+      (e: unknown) => live && notify(`The translation memory could not be loaded: ${e instanceof Error ? e.message : String(e)}`),
+    );
+    return () => {
+      live = false;
+    };
+  }, [ready, notify]);
+  const c = ready ? core() : null;
+  const fixedMemories = useMemo(() => (c && project ? projectMemories(c, project) : []), [c, project?.id, memVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  const memories = useMemo<MemoryInfo[]>(
+    () => (c && project ? [...fixedMemories, documentMemory(c, project, segments, USER)] : []),
+    [c, project, fixedMemories, segments],
   );
+  const clientTm = fixedMemories.filter((m) => m.kind !== "document");
 
   const active = segments.find((s) => s.id === activeId);
   const index = segments.findIndex((s) => s.id === activeId);
   const hits = useMemo(() => (active ? recognize(plain(active.source), source, target, termbases, state.entries) : []), [active, source, target, termbases, state.entries]);
-  const matches = useMemo(() => {
-    if (!active) return [];
-    const others = memory.filter((u) => u.docSegment !== index + 1);
-    // Identical units (a repetition confirmed twice) show once.
-    const seen = new Set<string>();
-    return scoredLookup(segments, index, others, 70, 6)
-      .filter((m) => {
-        const k = sourceKey(m.unit.source) + "|" + sourceKey(m.unit.target);
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      })
-      .slice(0, 3);
-  }, [active, memory, index, segments]);
+  const matches = useMemo(() => (active && c ? scoredLookup(c, memories, segments, index, state.contextRule, 70, 3) : []), [active, c, memories, index, segments, state.contextRule]);
   const issues = useMemo(() => (active ? qa(active.source, active.target, hits, source, target) : []), [active, hits, source, target]);
   const allIssues = useMemo<QaIssue[]>(() => {
     if (!active) return [];
@@ -87,7 +95,15 @@ export function Editor({ projectId }: { projectId: string }) {
     ...matches.map((m) => ({ kind: "tm" as const, m })),
     ...hits.filter((h) => h.targets.some((t) => t.status !== "forbidden")).map((h) => ({ kind: "term" as const, h })),
   ];
-  const concordanceHits = useMemo(() => (lookupText ? concordance(lookupText, memory) : []), [lookupText, memory]);
+  const concordanceHits = useMemo(() => {
+    if (!lookupText || lookupText.trim().length < 2 || !c) return [];
+    const q = lookupText.trim().toLocaleLowerCase();
+    return concordanceAll(c, memories, lookupText, 8).map((h) => {
+      const text = plain(h.side === "source" ? h.unit.source : h.unit.target);
+      const at = text.toLocaleLowerCase().indexOf(q);
+      return { ...h, start: Math.max(0, at), end: at >= 0 ? at + q.length : 0 };
+    });
+  }, [lookupText, memories, c]);
 
   // Track a selection made in the active source text, for "Add term" and concordance.
   useEffect(() => {
@@ -118,7 +134,7 @@ export function Editor({ projectId }: { projectId: string }) {
     if (hits.length) parts.push(plural(hits.length, "term", "terms"));
     if (active.warnings?.length) parts.push(plural(active.warnings.length, "warning", "warnings"));
     setAnnouncement(parts.join(". ") + ".");
-  }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!project) {
     return (
@@ -334,6 +350,10 @@ export function Editor({ projectId }: { projectId: string }) {
               {w("reviewMerge")} ({pendingChanges})
             </a>
           )}
+          <button type="button" className="btn btn-small" onClick={() => memoryDialog.current?.showModal()} disabled={!c}>
+            <Database size={14} aria-hidden="true" />
+            Memories
+          </button>
           <button type="button" className="btn btn-small" onClick={() => analysisDialog.current?.showModal()} disabled={segments.length === 0}>
             <BarChart3 size={14} aria-hidden="true" />
             Analysis
@@ -353,15 +373,84 @@ export function Editor({ projectId }: { projectId: string }) {
         </div>
       </header>
 
+      <dialog ref={memoryDialog} className="dialog" aria-labelledby="memory-title">
+        <form method="dialog" className="dialog-body">
+          <h2 id="memory-title" className="dialog-title">
+            Translation memories
+          </h2>
+          <p className="help">Matches come from these memories, in the core. Confirmed segments are stored in the document memory. TMX files you import go into the project memory.</p>
+          {c && (
+            <table className="table">
+              <caption className="sr-only">Memories of this project</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Memory</th>
+                  <th scope="col" className="num">
+                    Units
+                  </th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {memories.map((m) => (
+                  <tr key={m.name}>
+                    <th scope="row" className="cell-title">
+                      {m.label}
+                    </th>
+                    <td className="num">{fmtNum(tm.count(c, m.name))}</td>
+                    <td className="row">
+                      {m.kind === "project" && (
+                        <button type="button" className="btn btn-small" onClick={() => tmxInput.current?.click()}>
+                          <Upload size={14} aria-hidden="true" />
+                          Import TMX
+                        </button>
+                      )}
+                      <button type="button" className="btn btn-quiet btn-small" onClick={() => download(tm.exportTMX(c, m.name), `${m.label.replace(/[^\p{L}\p{N}]+/gu, "_")}.tmx`, "application/x-tmx+xml")} disabled={tm.count(c, m.name) === 0}>
+                        <Download size={14} aria-hidden="true" />
+                        Export TMX
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <input
+            ref={tmxInput}
+            type="file"
+            accept=".tmx,application/x-tmx+xml,text/xml"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              const proj = memories.find((m) => m.kind === "project");
+              if (!f || !c || !proj) return;
+              try {
+                const st = tm.importTMX(c, proj.name, new Uint8Array(await f.arrayBuffer()));
+                setMemVersion((v) => v + 1);
+                notify(`Imported ${plural(st.stored, "unit", "units")} from ${f.name}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}`);
+              } catch (err) {
+                notify(`Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+              }
+            }}
+          />
+          <div className="row">
+            <button className="btn btn-primary btn-small">Close</button>
+          </div>
+        </form>
+      </dialog>
+
       <dialog ref={analysisDialog} className="dialog" aria-labelledby="analysis-title">
         <form method="dialog" className="dialog-body">
           <h2 id="analysis-title" className="dialog-title">
             Analysis
           </h2>
           <p className="help">
-            {project.file} against {clientTm.length ? `the ${project.client} memory` : "no client memory"}, counted as in Trados: context matches first, then repetitions inside the document, then the best match. Below 50% counts as new.
+            {project.file} against {clientTm.map((m) => m.label).join(" and ") || "no memory"}, counted as in Trados: context matches first, then repetitions inside the document, then the best match. Below 50% counts as new.
           </p>
-          <DialogAnalysis segments={segments} units={clientTm} />
+          {c ? <DialogAnalysis c={c} segments={segments} memories={clientTm} rule={state.contextRule} /> : <p className="muted">Loading the memory…</p>}
           <div className="row">
             <button className="btn btn-primary btn-small">Close</button>
           </div>
@@ -611,8 +700,13 @@ export function Editor({ projectId }: { projectId: string }) {
   );
 }
 
-function unitMeta(u: TmUnit): string {
-  return u.docSegment ? `This document, segment ${u.docSegment}` : `Memory, ${u.project}, ${u.by}, ${fmtDate(u.at)}`;
+function unitMeta(u: TmUnit & { memory?: MemoryInfo }): string {
+  if (u.docSegment) return `This document, segment ${u.docSegment}`;
+  const parts = [u.memory?.label ?? "Memory"];
+  if (u.project && u.project !== u.memory?.label) parts.push(u.project);
+  if (u.by) parts.push(u.by);
+  if (u.at) parts.push(fmtDate(u.at));
+  return parts.join(", ");
 }
 
 function SegmentStatusCell({ s }: { s: Segment }) {
@@ -649,9 +743,9 @@ function ScoreBadge({ origin, edited }: { origin: { score: number; context?: boo
   );
 }
 
-function DialogAnalysis({ segments, units }: { segments: Segment[]; units: TmUnit[] }) {
-  // Computed when the dialog renders, against the memory as it is now.
-  const a = useMemo(() => analyze(segments, units), [segments, units]);
+function DialogAnalysis({ c, segments, memories, rule }: { c: NonNullable<ReturnType<typeof core>>; segments: Segment[]; memories: MemoryInfo[]; rule: ContextRule }) {
+  // Computed when the dialog renders, against the memories as they are now.
+  const a = useMemo(() => analyze(c, memories, segments, rule), [c, memories, segments, rule]);
   return <AnalysisTable rows={a.rows} words={a.words} segments={a.segments} caption="Match analysis" />;
 }
 
@@ -742,7 +836,7 @@ export function RunsView({ runs }: { runs: Run[] }) {
         typeof r === "string" ? (
           <span key={i}>{r}</span>
         ) : (
-          <span key={i} className={`tag-chip tag-${r.kind}`} role="img" aria-label={tagDescription(r)}>
+          <span key={i} className={`tag-chip tag-${r.kind}`} role="img" aria-label={tagDescription(r)} title={r.desc}>
             {chipText(r)}
           </span>
         ),
@@ -758,7 +852,7 @@ function SourceText({ runs, hits }: { runs: Run[]; hits: TermHit[] }) {
   runs.forEach((r, i) => {
     if (typeof r !== "string") {
       out.push(
-        <span key={`t${i}`} className={`tag-chip tag-${r.kind}`} role="img" aria-label={tagDescription(r)}>
+        <span key={`t${i}`} className={`tag-chip tag-${r.kind}`} role="img" aria-label={tagDescription(r)} title={r.desc}>
           {chipText(r)}
         </span>,
       );

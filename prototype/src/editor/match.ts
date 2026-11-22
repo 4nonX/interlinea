@@ -89,6 +89,14 @@ export interface TmMatch {
   diff: { text: string; changed: boolean; space: boolean }[];
 }
 
+/** Tokens of a memory source with the ones that differ from the segment marked. */
+export function diffAgainst(source: Run[], memorySource: Run[]): TmMatch["diff"] {
+  const cur = tokenize(source);
+  const tmTokens = tokenize(memorySource);
+  const { changedInB } = align(cur, tmTokens);
+  return tmTokens.filter((t) => t.kind !== "tag").map((t, i) => ({ text: t.text, changed: changedInB[tmTokens.indexOf(t)] ?? false, space: i > 0 && t.kind === "word" }));
+}
+
 export function lookup(source: Run[], units: TmUnit[], min = 70, limit = 3): TmMatch[] {
   const cur = tokenize(source);
   return units

@@ -4,17 +4,77 @@
 
 import { coreToRuns, runsToCore, type Block, type CoreRun, type Segment } from "./editor/model";
 
+export { unwrap };
+
 export type { Block };
 
 interface CoreExtraction {
   units: { id: string; block: string; source: CoreRun[] }[];
   blocks: Block[];
+  warnings?: string[];
 }
 
+type Res<T> = { ok: true; value: T } | { ok: false; error: string };
+
 interface CoreApi {
-  extract(bytes: Uint8Array, lang: string): { ok: true; value: string } | { ok: false; error: string };
-  merge(bytes: Uint8Array, lang: string, target: string, translations: string): { ok: true; value: Uint8Array } | { ok: false; error: string };
+  extract(bytes: Uint8Array, lang: string, options?: string): Res<string>;
+  merge(bytes: Uint8Array, lang: string, target: string, translations: string, options?: string): Res<Uint8Array>;
+  tmOpen(name: string, source: string, target: string): Res<boolean>;
+  tmAdd(name: string, units: string): Res<number>;
+  tmLookup(name: string, source: string, min: number, limit: number): Res<string>;
+  tmConcordance(name: string, query: string, inTarget: boolean, limit: number): Res<string>;
+  tmCount(name: string): Res<number>;
+  tmImportTMX(name: string, bytes: Uint8Array): Res<string>;
+  tmExportTMX(name: string): Res<Uint8Array>;
+  termImport(bytes: Uint8Array, format: string, options: string): Res<string>;
+  termExport(termbase: string, format: string, options: string): Res<Uint8Array>;
+  termDetect(bytes: Uint8Array, name: string): Res<string>;
 }
+
+function unwrap<T>(r: Res<T>): T {
+  if (!r.ok) throw new Error(r.error);
+  return r.value;
+}
+
+/** The loaded core, or null while it is still loading. */
+export function core(): CoreApi | null {
+  return window.interlineaCore ?? null;
+}
+
+/** A translation memory unit as the core stores it. */
+export interface MemUnit {
+  id?: number;
+  source: CoreRun[];
+  target: CoreRun[];
+  createdBy?: string;
+  createdAt?: string;
+  attributes?: Record<string, string>;
+  score?: number;
+}
+
+export const tm = {
+  open(c: CoreApi, name: string, source: string, target: string) {
+    unwrap(c.tmOpen(name, source, target));
+  },
+  add(c: CoreApi, name: string, units: MemUnit[]) {
+    return unwrap(c.tmAdd(name, JSON.stringify(units)));
+  },
+  lookup(c: CoreApi, name: string, source: CoreRun[], min: number, limit: number): MemUnit[] {
+    return JSON.parse(unwrap(c.tmLookup(name, JSON.stringify(source), min, limit))) as MemUnit[];
+  },
+  concordance(c: CoreApi, name: string, query: string, inTarget: boolean, limit: number): MemUnit[] {
+    return JSON.parse(unwrap(c.tmConcordance(name, query, inTarget, limit))) as MemUnit[];
+  },
+  count(c: CoreApi, name: string): number {
+    return unwrap(c.tmCount(name));
+  },
+  importTMX(c: CoreApi, name: string, bytes: Uint8Array): { read: number; stored: number; skipped: number } {
+    return JSON.parse(unwrap(c.tmImportTMX(name, bytes)));
+  },
+  exportTMX(c: CoreApi, name: string): Uint8Array {
+    return unwrap(c.tmExportTMX(name));
+  },
+};
 
 declare global {
   interface Window {
@@ -65,6 +125,8 @@ export function loadCore(): Promise<CoreApi> {
 export interface Extracted {
   segments: Segment[];
   blocks: Block[];
+  /** Things the filter changes or cannot translate (tracked changes, for example). */
+  warnings: string[];
 }
 
 /** Extracts the units of a Word document as editor segments. */
@@ -76,6 +138,7 @@ export async function extractDocx(bytes: Uint8Array, lang: string): Promise<Extr
   return {
     segments: ex.units.map((u) => ({ id: u.id, block: u.block, source: coreToRuns(u.source), target: [], status: "new" as const })),
     blocks: ex.blocks,
+    warnings: ex.warnings ?? [],
   };
 }
 

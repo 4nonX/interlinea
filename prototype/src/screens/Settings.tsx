@@ -101,6 +101,23 @@ export function Settings() {
             </span>
           </label>
         </div>
+        <fieldset className="field">
+          <legend className="field-label">Context matches (CM)</legend>
+          <label className="choice">
+            <input type="radio" name="ctx" checked={state.contextRule === "previous"} onChange={() => dispatch({ type: "setContextRule", value: "previous" })} />
+            <span className="choice-body">
+              <span className="choice-title">The segment before also matches</span>
+              <span className="choice-desc">As in Trados Studio.</span>
+            </span>
+          </label>
+          <label className="choice">
+            <input type="radio" name="ctx" checked={state.contextRule === "both"} onChange={() => dispatch({ type: "setContextRule", value: "both" })} />
+            <span className="choice-body">
+              <span className="choice-title">The segments before and after also match</span>
+              <span className="choice-desc">Stricter, as memoQ counts 101% matches.</span>
+            </span>
+          </label>
+        </fieldset>
       </section>
 
       <section className="panel" aria-labelledby="s-servers">

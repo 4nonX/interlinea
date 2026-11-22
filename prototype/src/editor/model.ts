@@ -12,12 +12,14 @@ export interface TagRun {
   label: string;
   /** What the tag stands for in the file, as the core reports it ("bold", "link", "footnote"). */
   type?: string;
+  /** A description for people ("Colour #C00000", "Field PAGE"). */
+  desc?: string;
 }
 
 /** A paragraph of the original document (the core's filter.Block). */
 export interface Block {
   id: string;
-  part: "body" | "footnote" | "endnote" | "header" | "footer";
+  part: "body" | "footnote" | "endnote" | "header" | "footer" | "comment" | "chart" | "diagram";
   file: string;
   style?: string;
   styleName?: string;
@@ -26,6 +28,8 @@ export interface Block {
   align?: string;
   cell?: { table: number; row: number; col: number };
   note?: string;
+  frame?: string;
+  revisions?: boolean;
   /** Tag types kept at the paragraph edges, outside the segments. */
   lead?: string[];
   trail?: string[];
@@ -34,7 +38,7 @@ export interface Block {
 /** A run as the core encodes it (content.Run). */
 export interface CoreRun {
   text?: string;
-  tag?: { kind: TagRun["kind"]; id: string; type?: string; native?: string };
+  tag?: { kind: TagRun["kind"]; id: string; type?: string; desc?: string; native?: string };
 }
 
 /** Short chip labels for the tag types the filter reports. */
@@ -45,7 +49,18 @@ export const TAG_LABELS: Record<string, string> = {
   superscript: "sup",
   subscript: "sub",
   format: "fmt",
+  strike: "s",
+  color: "col",
+  highlight: "hl",
+  font: "font",
+  size: "size",
+  caps: "Aa",
+  style: "sty",
+  hidden: "hid",
   link: "link",
+  insertion: "ins",
+  deletion: "del",
+  end: "¶",
   footnote: "fn",
   "note-mark": "fn",
   tab: "tab",
@@ -63,7 +78,7 @@ export const TAG_LABELS: Record<string, string> = {
 };
 
 export function coreToRuns(runs: CoreRun[]): Run[] {
-  return runs.map((r) => (r.tag ? { kind: r.tag.kind, id: r.tag.id, label: TAG_LABELS[r.tag.type ?? ""] ?? "x", type: r.tag.type } : (r.text ?? "")));
+  return runs.map((r) => (r.tag ? { kind: r.tag.kind, id: r.tag.id, label: TAG_LABELS[r.tag.type ?? ""] ?? "x", type: r.tag.type, desc: r.tag.desc } : (r.text ?? "")));
 }
 
 export function runsToCore(runs: Run[]): CoreRun[] {
@@ -207,8 +222,9 @@ export interface TmUnit {
   project: string;
   by: string;
   at: string;
-  /** Plain source of the segment before it when it was translated (context match). */
+  /** Plain source of the segments before and after it when it was translated (context match). */
   prev?: string;
+  next?: string;
   /** Set for segments confirmed earlier in the open document. */
   docSegment?: number;
 }
@@ -229,6 +245,7 @@ export const TM_UNITS: TmUnit[] = [
     source: ["Über die Betriebskosten wird jährlich abgerechnet."],
     target: ["Service charges are settled annually."],
     prev: "Die Miete ist monatlich im Voraus, spätestens am dritten Werktag eines Monats, auf das Konto des Vermieters zu zahlen.",
+    next: "§ 4 Kaution",
     project: "Gewerbemietvertrag Lang",
     by: "Dan",
     at: "2025-03-04T10:40:00Z",

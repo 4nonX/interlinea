@@ -10,7 +10,7 @@ export interface TargetEditorHandle {
 }
 
 export function tagDescription(t: TagRun): string {
-  const what = t.label === "b" ? "bold" : t.label === "fn" ? "footnote" : t.label === "br" ? "line break" : t.label;
+  const what = t.desc ?? (t.label === "b" ? "bold" : t.label === "fn" ? "footnote" : t.label === "br" ? "line break" : t.label);
   return t.kind === "open" ? `Tag ${t.id} start, ${what}` : t.kind === "close" ? `Tag ${t.id} end, ${what}` : `Tag ${t.id}, ${what}`;
 }
 
@@ -27,6 +27,9 @@ function chip(t: TagRun): HTMLElement {
   el.dataset.label = t.label;
   el.setAttribute("role", "img");
   el.setAttribute("aria-label", tagDescription(t));
+  if (t.desc) el.title = t.desc;
+  if (t.type) el.dataset.type = t.type;
+  if (t.desc) el.dataset.desc = t.desc;
   el.textContent = chipText(t);
   return el;
 }
@@ -45,7 +48,7 @@ function read(el: HTMLElement): Run[] {
     }
     if (!(n instanceof HTMLElement)) return;
     if (n.dataset.kind) {
-      out.push({ kind: n.dataset.kind as TagRun["kind"], id: n.dataset.id!, label: n.dataset.label ?? "" });
+      out.push({ kind: n.dataset.kind as TagRun["kind"], id: n.dataset.id!, label: n.dataset.label ?? "", type: n.dataset.type, desc: n.dataset.desc });
       return;
     }
     if (n.tagName === "BR") return;

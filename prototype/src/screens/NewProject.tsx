@@ -3,7 +3,9 @@ import { AlertTriangle, CheckCircle2, FileText, Info, Plus, X } from "lucide-rea
 import { LANGUAGES, SAMPLE_DOCS, lang, primary, type LangCode, type Location, type SetupMode } from "../data";
 import { CONFIDENT, detectLanguage, readDocument, type Detection } from "../detect";
 import { extractDocx, type Extracted } from "../core";
-import { analyze, clientMemory } from "../editor/analysis";
+import { analyze } from "../editor/analysis";
+import { clientMemories } from "../editor/memory";
+import { core, loadCore } from "../core";
 import { segmentText } from "../editor/model";
 import { AnalysisTable } from "../components/AnalysisTable";
 import { takePendingDoc, type PendingDoc } from "../draft";
@@ -110,8 +112,18 @@ export function NewProject({ sample }: { sample?: number }) {
     if (doc?.bytes) return prepared?.lang === source ? prepared.ex.segments : null;
     return doc?.text ? segmentText(doc.text).map((t, i) => ({ id: `a${i}`, source: [t], target: [], status: "new" as const })) : [];
   }, [doc, prepared, source]);
-  const analysisMemory = useMemo(() => clientMemory({ client: client.trim(), sourceLang: source, targetLangs: targets }), [client, source, targets]);
-  const analysis = useMemo(() => (analysisSegments ? analyze(analysisSegments, analysisMemory) : null), [analysisSegments, analysisMemory]);
+  const [coreReady, setCoreReady] = useState(() => core() !== null);
+  useEffect(() => {
+    if (step === 2 && !coreReady) loadCore().then(() => setCoreReady(true), () => undefined);
+  }, [step, coreReady]);
+  const analysisMemory = useMemo(() => {
+    const c = coreReady ? core() : null;
+    return c ? clientMemories(c, { client: client.trim(), sourceLang: source, targetLangs: targets }) : [];
+  }, [coreReady, client, source, targets]);
+  const analysis = useMemo(() => {
+    const c = coreReady ? core() : null;
+    return analysisSegments && c ? analyze(c, analysisMemory, analysisSegments, state.contextRule) : null;
+  }, [coreReady, analysisSegments, analysisMemory, state.contextRule]);
 
   async function create() {
     const id = `p-${Date.now().toString(36)}`;
@@ -185,6 +197,12 @@ export function NewProject({ sample }: { sample?: number }) {
               Choose another file
             </button>
           </div>
+          {doc.warnings?.map((w) => (
+            <p key={w} className="detect detect-warn">
+              <AlertTriangle size={16} aria-hidden="true" />
+              <span>{w}</span>
+            </p>
+          ))}
           {doc.error && (
             <p className="detect detect-warn" role="alert">
               <AlertTriangle size={16} aria-hidden="true" />
@@ -441,7 +459,7 @@ export function NewProject({ sample }: { sample?: number }) {
                 <>
                   <p className="help">
                     {analysisMemory.length
-                      ? `Against the ${client.trim()} memory, counted as in Trados.`
+                      ? `Against ${analysisMemory.map((m) => m.label).join(" and ")}, counted as in Trados.`
                       : "No translation memory for this client and language pair yet, so only repetitions inside the document count."}
                   </p>
                   <AnalysisTable rows={analysis.rows} words={analysis.words} segments={analysis.segments} caption="Match analysis of the document" />

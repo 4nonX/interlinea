@@ -8,6 +8,9 @@
 //
 // options is JSON: {"keepRevisions": true}.
 //
+// plus translation memory (tm*, see tm.go) and termbase (term*, see
+// term.go) functions.
+//
 // Build: make wasm
 package main
 
@@ -105,11 +108,18 @@ func merge(_ js.Value, args []js.Value) (out any) {
 }
 
 func main() {
-	js.Global().Set("interlineaCore", map[string]any{
+	api := map[string]any{
 		"extract": js.FuncOf(extract),
 		"merge":   js.FuncOf(merge),
-		"version": "1",
-	})
+		"version": "2",
+	}
+	for k, v := range tmFuncs() {
+		api[k] = v
+	}
+	for k, v := range termFuncs() {
+		api[k] = v
+	}
+	js.Global().Set("interlineaCore", api)
 	if cb := js.Global().Get("interlineaCoreReady"); cb.Type() == js.TypeFunction {
 		cb.Invoke()
 	}
