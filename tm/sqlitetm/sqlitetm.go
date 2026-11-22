@@ -79,11 +79,11 @@ func Open(path string) (*DB, error) {
 
 // fileDSN builds the SQLite URI for an absolute path with forward slashes
 // ("/home/dan/x.db" or "C:/Users/Dan/x.db") and the connection settings.
+//
+// The path is written without an authority ("file:/home/..." and
+// "file:C:/Users/..."). The SQLite inside the driver decodes URIs the Unix
+// way, so "file:///C:/..." would become "/C:/...", which Windows rejects.
 func fileDSN(slashPath string) string {
-	p := slashPath
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p // Windows: C:/x becomes /C:/x in a file URI.
-	}
 	q := url.Values{}
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "journal_mode(wal)")
@@ -93,7 +93,28 @@ func fileDSN(slashPath string) string {
 	// applies; a deferred transaction that reads first could fail with
 	// SQLITE_BUSY when it upgrades to a write.
 	q.Set("_txlock", "immediate")
-	return (&url.URL{Scheme: "file", Path: p, RawQuery: q.Encode()}).String()
+	return "file:" + escapeURIPath(slashPath) + "?" + q.Encode()
+}
+
+// escapeURIPath percent-encodes every byte of p except unreserved characters
+// and the separators "/" and ":", so "?", "#", "%", spaces and non-ASCII
+// characters survive the URI unchanged.
+func escapeURIPath(p string) string {
+	const hex = "0123456789ABCDEF"
+	var b strings.Builder
+	for i := 0; i < len(p); i++ {
+		c := p[i]
+		switch {
+		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9',
+			c == '-', c == '.', c == '_', c == '~', c == '/', c == ':':
+			b.WriteByte(c)
+		default:
+			b.WriteByte('%')
+			b.WriteByte(hex[c>>4])
+			b.WriteByte(hex[c&15])
+		}
+	}
+	return b.String()
 }
 
 // Close closes the database.

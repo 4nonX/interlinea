@@ -227,14 +227,18 @@ func BenchmarkLookup10k(b *testing.B) {
 
 func TestFileDSN(t *testing.T) {
 	cases := map[string]string{
-		"/home/dan/memories.db":                   "file:///home/dan/memories.db?",
-		"C:/Users/Dan/AppData/Roaming/x.db":       "file:///C:/Users/Dan/AppData/Roaming/x.db?",
-		"C:/Users/Dan/Übersetzungen/Mein TM#1.db": "file:///C:/Users/Dan/%C3%9Cbersetzungen/Mein%20TM%231.db?",
+		"/home/dan/memories.db":                     "file:/home/dan/memories.db?",
+		"C:/Users/Dan/AppData/Roaming/x.db":         "file:C:/Users/Dan/AppData/Roaming/x.db?",
+		"C:/Users/Dan/Übersetzungen/Mein TM#1?.db":  "file:C:/Users/Dan/%C3%9Cbersetzungen/Mein%20TM%231%3F.db?",
+		"C:/Users/RUNNER~1/AppData/Local/Temp/a.db": "file:C:/Users/RUNNER~1/AppData/Local/Temp/a.db?",
 	}
 	for in, prefix := range cases {
 		got := fileDSN(in)
 		if !strings.HasPrefix(got, prefix) || !strings.Contains(got, "_txlock=immediate") || !strings.Contains(got, "journal_mode%28wal%29") {
 			t.Errorf("fileDSN(%q) = %q", in, got)
+		}
+		if strings.Count(got, "?") != 1 {
+			t.Errorf("fileDSN(%q) has an unescaped '?': %q", in, got)
 		}
 	}
 }
