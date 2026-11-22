@@ -49,6 +49,18 @@ export interface NewProjectInput {
   extracted?: { segments: Segment[]; blocks: Block[]; bytes: Uint8Array };
 }
 
+/** The result of an import the user confirmed; worked out with the core's plan. */
+export interface ImportInput {
+  termbaseId: string;
+  /** Set when the import creates the termbase. */
+  create?: Termbase;
+  languages: LangCode[];
+  infoTypes: InfoType[];
+  adds: Entry[];
+  updates: { entryId: string; content: Pick<Entry, "concept" | "terms" | "langFields">; summary: string }[];
+  now: string;
+}
+
 export interface NewTermInput {
   projectId: string;
   source: string;
@@ -72,6 +84,15 @@ type Action =
   | { type: "ignoreIssue"; projectId: string; segmentId: string; text: string }
   | { type: "setTarget"; projectId: string; segmentId: string; target: Run[]; status: SegmentStatus; origin?: Segment["origin"] }
   | { type: "addTerm"; input: NewTermInput; id: string; now: string }
+  | { type: "updateTermbase"; termbaseId: string; patch: Partial<Pick<Termbase, "name" | "languages" | "infoTypes">> }
+  | { type: "removeLanguage"; termbaseId: string; langCode: LangCode; now: string }
+  | { type: "removeInfoType"; termbaseId: string; infoTypeId: string; now: string }
+  | { type: "deleteTermbase"; termbaseId: string }
+  | { type: "createEntry"; entry: Entry }
+  | { type: "saveEntry"; entryId: string; content: Pick<Entry, "concept" | "terms" | "langFields">; summary: string; now: string }
+  | { type: "deleteEntries"; entryIds: string[] }
+  | { type: "mergeEntries"; keepId: string; removeIds: string[]; content: Pick<Entry, "concept" | "terms" | "langFields">; summary: string; now: string }
+  | { type: "importEntries"; input: ImportInput }
   | { type: "toast"; text: string }
   | { type: "clearToast" };
 
@@ -89,6 +110,11 @@ const initial: State = {
 };
 
 let toastSeq = 0;
+let commitSeq = 0;
+
+function commit(at: string, summary: string): Commit {
+  return { id: `c-${Date.now().toString(36)}-${++commitSeq}`, at, by: USER, summary };
+}
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -262,6 +288,97 @@ function reducer(state: State, action: Action): State {
         entries: [...state.entries, entry],
         termbases: state.termbases.map((t) => (t.id === termbaseId ? { ...t, languages } : t)),
       };
+    }
+    case "updateTermbase":
+      return { ...state, termbases: state.termbases.map((t) => (t.id === action.termbaseId ? { ...t, ...action.patch } : t)) };
+    case "removeLanguage": {
+      const name = action.langCode;
+      return {
+        ...state,
+        termbases: state.termbases.map((t) => (t.id === action.termbaseId ? { ...t, languages: t.languages.filter((l) => l !== action.langCode) } : t)),
+        entries: state.entries.map((e) => {
+          if (e.termbaseId !== action.termbaseId || (!e.terms[action.langCode] && !e.langFields?.[action.langCode])) return e;
+          const terms = { ...e.terms };
+          delete terms[action.langCode];
+          const langFields = e.langFields ? { ...e.langFields } : undefined;
+          if (langFields) delete langFields[action.langCode];
+          return { ...e, terms, langFields, version: e.version + 1, history: [...e.history, commit(action.now, `Removed the language ${name}`)] };
+        }),
+      };
+    }
+    case "removeInfoType": {
+      const tb = state.termbases.find((t) => t.id === action.termbaseId)!;
+      const it = tb.infoTypes.find((i) => i.id === action.infoTypeId);
+      const drop = (r?: Record<string, string>) => {
+        if (!r || !(action.infoTypeId in r)) return r;
+        const out = { ...r };
+        delete out[action.infoTypeId];
+        return out;
+      };
+      return {
+        ...state,
+        termbases: state.termbases.map((t) => (t.id === action.termbaseId ? { ...t, infoTypes: t.infoTypes.filter((i) => i.id !== action.infoTypeId) } : t)),
+        entries: state.entries.map((e) => {
+          if (e.termbaseId !== action.termbaseId) return e;
+          const concept = drop(e.concept)!;
+          const terms = Object.fromEntries(Object.entries(e.terms).map(([l, ts]) => [l, ts.map((t) => ({ ...t, fields: drop(t.fields) }))]));
+          const langFields = e.langFields ? Object.fromEntries(Object.entries(e.langFields).map(([l, f]) => [l, drop(f)!])) : undefined;
+          const had = concept !== e.concept || JSON.stringify(terms) !== JSON.stringify(e.terms) || JSON.stringify(langFields) !== JSON.stringify(e.langFields);
+          return had ? { ...e, concept, terms, langFields, version: e.version + 1, history: [...e.history, commit(action.now, `Removed the field ${it?.name ?? action.infoTypeId}`)] } : e;
+        }),
+      };
+    }
+    case "deleteTermbase":
+      return {
+        ...state,
+        termbases: state.termbases.filter((t) => t.id !== action.termbaseId),
+        entries: state.entries.filter((e) => e.termbaseId !== action.termbaseId),
+      };
+    case "createEntry":
+      return { ...state, entries: [...state.entries, action.entry] };
+    case "saveEntry":
+      return {
+        ...state,
+        entries: state.entries.map((e) =>
+          e.id === action.entryId ? { ...e, ...action.content, version: e.version + 1, history: [...e.history, commit(action.now, action.summary)] } : e,
+        ),
+      };
+    case "deleteEntries": {
+      const ids = new Set(action.entryIds);
+      return { ...state, entries: state.entries.filter((e) => !ids.has(e.id)) };
+    }
+    case "mergeEntries": {
+      const ids = new Set(action.removeIds);
+      const removed = state.entries.filter((e) => ids.has(e.id));
+      return {
+        ...state,
+        entries: state.entries
+          .filter((e) => !ids.has(e.id))
+          .map((e) =>
+            e.id === action.keepId
+              ? {
+                  ...e,
+                  ...action.content,
+                  version: e.version + 1,
+                  // The merged entry keeps the history of all of them, as in MultiTerm.
+                  history: [...e.history, ...removed.flatMap((r) => r.history)].sort((a, b) => a.at.localeCompare(b.at)).concat(commit(action.now, action.summary)),
+                }
+              : e,
+          ),
+      };
+    }
+    case "importEntries": {
+      const { input } = action;
+      const updates = new Map(input.updates.map((u) => [u.entryId, u]));
+      let termbases = input.create ? [...state.termbases, input.create] : state.termbases;
+      termbases = termbases.map((t) =>
+        t.id === input.termbaseId ? { ...t, languages: [...new Set([...t.languages, ...input.languages])], infoTypes: [...t.infoTypes, ...input.infoTypes] } : t,
+      );
+      const entries = state.entries.map((e) => {
+        const u = updates.get(e.id);
+        return u ? { ...e, ...u.content, version: e.version + 1, history: [...e.history, commit(input.now, u.summary)] } : e;
+      });
+      return { ...state, termbases, entries: [...entries, ...input.adds] };
     }
     case "toast":
       return { ...state, toast: { id: ++toastSeq, text: action.text } };

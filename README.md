@@ -8,7 +8,7 @@ server mode and the browser client will build on it.
 
 ## Status
 
-Milestone 1: core foundation, plus the first file filter (Word).
+Milestone 1: core foundation, the first file filter (Word) and termbase exchange.
 
 | Package | What it does |
 |---|---|
@@ -21,9 +21,10 @@ Milestone 1: core foundation, plus the first file filter (Word).
 | `tm/sqlitetm` | Persistent backend: any number of memories in one SQLite file, term index for fuzzy candidates, FTS5 trigram index for concordance |
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |
-| `filter/docx` | Word filter: extracts body, footnotes, endnotes, headers and footers; rebuilds the file from translations, keeping every byte it did not translate |
+| `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
+| `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add) and duplicate detection |
 | `cmd/interlinea` | Command-line interface to all of the above |
-| `cmd/interlinea-wasm` | The filters compiled to WebAssembly for the browser prototype |
+| `cmd/interlinea-wasm` | The filters, memories and termbase formats compiled to WebAssembly for the browser prototype |
 
 The SQLite driver is pure Go (SQLite compiled to WebAssembly), so builds need
 no C compiler on any platform.
@@ -90,6 +91,18 @@ interlinea extract -lang de-DE -json lease.docx > units.json
 interlinea merge -lang de-DE -target en-GB -o lease_en-GB.docx lease.docx translations.json
 ```
 
+Termbase files:
+
+```
+interlinea term info glossary.xlsx
+interlinea term convert glossary.xlsx glossary.tbx            # TBX 3
+interlinea term convert -to tbx2 client.tbx client_v2.tbx
+interlinea term convert export.xml export.csv                  # MultiTerm XML to CSV
+interlinea term mapping glossary.csv > mapping.json            # edit, then:
+interlinea term convert -mapping mapping.json glossary.csv glossary.tbx
+interlinea term duplicates -lang de client.tbx
+```
+
 `translations.json` maps unit IDs to their translation, either a plain string
 or the run array `extract -json` prints (with tags as `{"tag":{"kind":"open","id":"1"}}`).
 Units without a translation keep their source text.
@@ -113,9 +126,25 @@ that match by primary language only (`de-AT` for `de-DE`).
   the target language (`w:val`, or `w:eastAsia` / `w:bidi` for the scripts
   Word keeps separately). A translation that leaves a span open has it closed
   at the end of the unit; a placeholder left out of a translation is not
-  written. Not yet extracted: text boxes, content controls, charts, SmartArt
-  and comments (all kept as they are). Tracked changes in a rewritten
-  paragraph are accepted.
+  written. Text boxes (with their compatibility fallback), content controls,
+  comments, chart titles and labels (and the chart's embedded workbook) and
+  SmartArt text (and its drawing cache) are extracted too. Tags say what they
+  are (bold, colour, font, size, style, link and so on). Tracked changes in
+  a rewritten paragraph are accepted, with a warning; `-keep-revisions`
+  keeps them as tags instead.
+- Termbases: an entry is one concept with its terms per language, as in
+  MultiTerm, memoQ and TBX. Statuses map to TBX `administrativeStatus`
+  (approved = preferredTerm, proposed = admittedTerm, forbidden =
+  deprecatedTerm). Fields TBX-Basic has no category for are written as
+  `<note>[Name] value</note>` and read back as fields. MultiTerm XML is
+  written as UTF-16 with a byte order mark, as MultiTerm exports it.
+  Spreadsheets have one row per entry; the column mapping is guessed from
+  headers such as `German`, `de-DE`, `Status (en)` or `en Term Note`, and
+  synonyms share a cell (`;`, or `|` when a file uses that). A MultiTerm
+  definition (.xdt) is read for its languages only and is not written.
+  Imports into an existing termbase match on a shared term (in one or any
+  language), the entry ID, or nothing, then merge (only adds), overwrite,
+  skip or add.
 - Match scores: 100 means identical text and identical tag structure (tag IDs
   may differ). Case-only and punctuation differences cost little, a changed
   word costs a full token, tags count half.
@@ -161,6 +190,11 @@ matches, the percentage coloured by band, outlined once edited; Analysis
 counts segments and words per band (also shown before a project is
 created). Preview shows the translated document with its headings, tables
 and footnotes. Terms added while translating show up in the merge review.
+Terminology manages termbases: create, rename and delete them, set their
+languages and fields, add and edit entries, terms and statuses, find and
+merge duplicates, import TBX, MultiTerm XML, Excel and CSV files (with column
+and language mapping and a preview of what the import changes), and export
+in all of these formats.
 Settings holds the editor options and switches between plain wording and git
 terms. `PRODUCT.md` and `DESIGN.md` describe the product and the visual
 system.

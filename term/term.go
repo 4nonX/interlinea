@@ -208,7 +208,7 @@ func NormalizeStatus(s string) string {
 
 // InferDefinition builds the definition from the entries: every language
 // and every field name with its level. Fields whose values come from a
-// small set become picklists.
+// small set of short values, each used several times, become picklists.
 func InferDefinition(name string, entries []Entry) Definition {
 	d := Definition{Name: name}
 	langSeen := map[string]bool{}
@@ -246,7 +246,7 @@ func InferDefinition(name string, entries []Entry) Definition {
 	for _, k := range order {
 		f := Field{Name: k.name, Level: k.level, Kind: KindText}
 		vs := values[k]
-		if len(vs) <= 12 && counts[k] >= 2*len(vs) {
+		if picklistLike(vs, counts[k]) {
 			f.Kind = KindPicklist
 			for v := range vs {
 				f.Values = append(f.Values, v)
@@ -256,6 +256,20 @@ func InferDefinition(name string, entries []Entry) Definition {
 		d.Fields = append(d.Fields, f)
 	}
 	return d
+}
+
+// picklistLike reports whether a field's values look like choices from a
+// list: a few short values, each used several times.
+func picklistLike(vs map[string]bool, uses int) bool {
+	if len(vs) > 12 || uses < 6 || uses < 3*len(vs) {
+		return false
+	}
+	for v := range vs {
+		if len([]rune(v)) > 40 {
+			return false
+		}
+	}
+	return true
 }
 
 // Stats counts entries and terms per language.

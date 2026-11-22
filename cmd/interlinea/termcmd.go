@@ -156,7 +156,7 @@ func runTermInfo(args []string, stdout, stderr io.Writer) error {
 	}
 	fmt.Fprintln(stdout, "Languages:")
 	for _, l := range tb.Languages {
-		fmt.Fprintf(stdout, "  %-8s %-20s %d terms\n", l, term.LangName(l), perLang[l])
+		fmt.Fprintf(stdout, "  %-8s %-26s %d terms\n", l, term.LangName(l), perLang[l])
 	}
 	if len(tb.Fields) > 0 {
 		fmt.Fprintln(stdout, "Fields:")

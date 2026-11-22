@@ -16,7 +16,7 @@ interface CoreExtraction {
 
 type Res<T> = { ok: true; value: T } | { ok: false; error: string };
 
-interface CoreApi {
+export interface CoreApi {
   extract(bytes: Uint8Array, lang: string, options?: string): Res<string>;
   merge(bytes: Uint8Array, lang: string, target: string, translations: string, options?: string): Res<Uint8Array>;
   tmOpen(name: string, source: string, target: string): Res<boolean>;
@@ -26,9 +26,7 @@ interface CoreApi {
   tmCount(name: string): Res<number>;
   tmImportTMX(name: string, bytes: Uint8Array): Res<string>;
   tmExportTMX(name: string): Res<Uint8Array>;
-  termImport(bytes: Uint8Array, format: string, options: string): Res<string>;
-  termExport(termbase: string, format: string, options: string): Res<Uint8Array>;
-  termDetect(bytes: Uint8Array, name: string): Res<string>;
+  // Termbase functions: see termio.ts.
 }
 
 function unwrap<T>(r: Res<T>): T {

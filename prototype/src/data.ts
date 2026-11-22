@@ -30,8 +30,26 @@ export const LANGUAGES: Language[] = [
   { code: "ar-SA", name: "Arabic (Saudi Arabia)", native: "العربية", dir: "rtl" },
 ];
 
+let displayNames: Intl.DisplayNames | null | undefined;
+
+/** A language by code; codes outside the list get their English name from the browser (de becomes German). */
 export function lang(code: LangCode): Language {
-  return LANGUAGES.find((l) => l.code === code) ?? { code, name: code, native: code };
+  const known = LANGUAGES.find((l) => l.code === code);
+  if (known) return known;
+  if (displayNames === undefined) {
+    try {
+      displayNames = new Intl.DisplayNames(["en"], { type: "language" });
+    } catch {
+      displayNames = null;
+    }
+  }
+  let name = code;
+  try {
+    name = displayNames?.of(code) ?? code;
+  } catch {
+    // Not a valid language tag: show it as it is.
+  }
+  return { code, name, native: name };
 }
 
 export function primary(code: LangCode): string {
@@ -73,6 +91,10 @@ export interface Entry {
   termbaseId: string;
   concept: Record<string, string>;
   terms: Record<LangCode, Term[]>;
+  /** Values of language-level fields, per language. */
+  langFields?: Record<LangCode, Record<string, string>>;
+  /** The entry's ID in the file it was imported from; used to match it on the next import. */
+  externalId?: string;
   /** Increases with every change; used to detect conflicts on merge. */
   version: number;
   /** For entries in a project termbase that started as a copy of a master entry. */
