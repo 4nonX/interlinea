@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -234,7 +235,7 @@ func TestFileDSN(t *testing.T) {
 	}
 	for in, prefix := range cases {
 		got := fileDSN(in)
-		if !strings.HasPrefix(got, prefix) || !strings.Contains(got, "_txlock=immediate") || !strings.Contains(got, "journal_mode%28wal%29") {
+		if !strings.HasPrefix(got, prefix) || !strings.Contains(got, "_txlock=immediate") || !strings.Contains(got, "busy_timeout%2810000%29") {
 			t.Errorf("fileDSN(%q) = %q", in, got)
 		}
 		if strings.Count(got, "?") != 1 {
@@ -244,7 +245,12 @@ func TestFileDSN(t *testing.T) {
 }
 
 func TestOpenPathWithSpecialCharacters(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "Übersetzungen", "Mein TM #1?.db")
+	// Windows forbids "?" in file names; elsewhere it must survive the URI.
+	name := "Mein TM #1 %20 & Co.db"
+	if runtime.GOOS != "windows" {
+		name = "Mein TM #1? %20 & Co.db"
+	}
+	path := filepath.Join(t.TempDir(), "Übersetzungen", name)
 	db, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -255,5 +261,17 @@ func TestOpenPathWithSpecialCharacters(t *testing.T) {
 	db.Close()
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("database not created at the literal path: %v", err)
+	}
+	db2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db2.Close()
+	if _, err := db2.Memory(ctx, "x"); err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	var mode string
+	if err := db2.sql.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil || mode != "wal" {
+		t.Fatalf("journal mode = %q, %v", mode, err)
 	}
 }

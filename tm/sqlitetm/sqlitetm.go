@@ -70,6 +70,15 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("sqlitetm: open %s: %w", path, err)
 	}
 	d := &DB{sql: sdb, now: func() time.Time { return time.Now().UTC() }}
+	var mode string
+	if err := sdb.QueryRow(`PRAGMA journal_mode = wal`).Scan(&mode); err != nil {
+		sdb.Close()
+		return nil, fmt.Errorf("sqlitetm: enable WAL: %w", err)
+	}
+	if !strings.EqualFold(mode, "wal") {
+		sdb.Close()
+		return nil, fmt.Errorf("sqlitetm: database does not support WAL mode (got %q)", mode)
+	}
 	if err := d.migrate(context.Background()); err != nil {
 		sdb.Close()
 		return nil, err
@@ -85,10 +94,13 @@ func Open(path string) (*DB, error) {
 // way, so "file:///C:/..." would become "/C:/...", which Windows rejects.
 func fileDSN(slashPath string) string {
 	q := url.Values{}
-	q.Add("_pragma", "foreign_keys(1)")
-	q.Add("_pragma", "journal_mode(wal)")
-	q.Add("_pragma", "synchronous(normal)")
+	// busy_timeout comes first: the driver applies these pragmas to every new
+	// connection, and the ones after it may need a lock that another
+	// connection holds at that moment. WAL mode is stored in the database
+	// file and is set once in Open.
 	q.Add("_pragma", "busy_timeout(10000)")
+	q.Add("_pragma", "foreign_keys(1)")
+	q.Add("_pragma", "synchronous(normal)")
 	// Write transactions take the write lock at BEGIN, where the busy timeout
 	// applies; a deferred transaction that reads first could fail with
 	// SQLITE_BUSY when it upgrades to a write.
