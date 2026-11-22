@@ -46,16 +46,49 @@ export function href(r: Route): string {
   }
 }
 
+// Routing works in memory first and mirrors the route into the URL hash
+// where the host allows it, so the prototype also runs in sandboxed viewers
+// that drop or rewrite hash paths.
+const ROUTE_EVENT = "interlinea:route";
+let current: Route = parseRoute(window.location.hash);
+
 export function go(r: Route) {
-  window.location.hash = href(r);
+  current = r;
+  window.dispatchEvent(new Event(ROUTE_EVENT));
+  try {
+    const h = href(r);
+    if (window.location.hash !== h) history.pushState(null, "", h);
+  } catch {
+    // The host does not allow changing the address; in-memory routing suffices.
+  }
 }
 
 function useRoute(): Route {
-  const [route, setRoute] = useState(() => parseRoute(window.location.hash));
+  const [route, setRoute] = useState(current);
   useEffect(() => {
-    const on = () => setRoute(parseRoute(window.location.hash));
-    window.addEventListener("hashchange", on);
-    return () => window.removeEventListener("hashchange", on);
+    const onInternal = () => setRoute(current);
+    const onHash = () => {
+      current = parseRoute(window.location.hash);
+      setRoute(current);
+    };
+    window.addEventListener(ROUTE_EVENT, onInternal);
+    window.addEventListener("hashchange", onHash);
+    window.addEventListener("popstate", onHash);
+    // Plain links inside the app navigate through go().
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as Element | null)?.closest?.("a[href^='#/']");
+      if (!a) return;
+      e.preventDefault();
+      go(parseRoute(a.getAttribute("href")!));
+    };
+    document.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener(ROUTE_EVENT, onInternal);
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("popstate", onHash);
+      document.removeEventListener("click", onClick);
+    };
   }, []);
   return route;
 }
@@ -108,7 +141,7 @@ function Screen({ route }: { route: Route }) {
   // reader users land on the new content.
   useEffect(() => {
     document.getElementById("page-title")?.focus({ preventScroll: true });
-  }, [route.page]);
+  }, [route]);
   switch (route.page) {
     case "projects":
       return <Projects />;
