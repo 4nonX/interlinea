@@ -11,7 +11,7 @@
       <languagerule languagerulename="German">
         <!-- Common abbreviations (case-sensitive on purpose). -->
         <rule break="no">
-          <beforebreak>(?:^|[\s(\[„"«»])(?:z\.\s?B|d\.\s?h|u\.\s?a|u\.\s?U|o\.\s?ä|s\.\s?o|s\.\s?u|i\.\s?d\.\s?R|i\.\s?S\.\s?d|u\.\s?v\.\s?m|usw|bzw|ca|vgl|ggf|evtl|inkl|exkl|zzgl|abzgl|bspw|etc|Nr|Abs|Art|Aufl|Bd|Hrsg|Kap|Anm|Tel|Fax|Str|St|Dr|Prof|Dipl|Ing|Hr|Fr|Mio|Mrd|Tsd|Jh|Jhd|Jg|Mo|Di|Mi|Do|Sa|So|Jan|Feb|Mär|Apr|Jun|Jul|Aug|Sep|Sept|Okt|Nov|Dez|lt|gem|bzgl|zit|Ziff|lit|Rn|Rdnr|Az|Verf|Beschl|Urt|Anl|einschl|sog|allg|insb|max|min|geb|verh|Ges|Gesch|AG|Kfz|Pkw|Lkw)\.</beforebreak>
+          <beforebreak>(?:^|[\s(\[„"«»])(?:z\.\s?B|d\.\s?h|u\.\s?a|u\.\s?U|o\.\s?ä|s\.\s?o|s\.\s?u|i\.\s?d\.\s?R|i\.\s?S\.\s?d|u\.\s?v\.\s?m|usw|bzw|ca|vgl|ggf|evtl|inkl|exkl|zzgl|abzgl|bspw|etc|Nr|Abs|Art|Aufl|Bd|Hrsg|Kap|Anm|Tel|Fax|Str|St|Dr|Prof|Dipl|Ing|Hr|Fr|Mio|Mrd|Tsd|Jh|Jhd|Jg|Mo|Di|Mi|Do|Sa|So|Jan|Feb|Mär|Apr|Jun|Jul|Aug|Sep|Sept|Okt|Nov|Dez|lt|gem|bzgl|zit|Ziff|lit|Rn|Rdnr|ff|f|Az|Verf|Beschl|Urt|Anl|einschl|sog|allg|insb|max|min|geb|verh|Ges|Gesch|AG|Kfz|Pkw|Lkw)\.</beforebreak>
           <afterbreak>\s</afterbreak>
         </rule>
         <!-- Section sign and paragraph references: "§ 5 Abs. 2". -->

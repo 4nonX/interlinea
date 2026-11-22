@@ -1,6 +1,6 @@
 // Command interlinea is the command-line interface to the Interlinea core:
-// segmentation, stored translation memories, TMX inspection, lookup and
-// concordance.
+// segmentation, stored translation memories, TMX inspection, lookup,
+// concordance and Word documents.
 package main
 
 import (
@@ -27,6 +27,8 @@ var commands = []command{
 	{"lookup", "fuzzy-match a segment directly against a TMX file", runLookup},
 	{"concordance", "search a TMX file directly for a word or phrase", runConcordance},
 	{"score", "show the match percentage between two segments", runScore},
+	{"extract", "list the translatable units of a Word document", runExtract},
+	{"merge", "write a translated copy of a Word document", runMerge},
 	{"version", "print the version", runVersion},
 }
 
