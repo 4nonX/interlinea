@@ -4,7 +4,8 @@ import { lang, USER } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges } from "../merge";
 import { isTag, missingTags, plain, sourceKey, wordCount, type Run, type Segment, type TmUnit } from "../editor/model";
-import { qa, recognize, type QaIssue, type TermHit } from "../editor/match";
+import { qa, type QaIssue, type TermHit } from "../editor/match";
+import { buildIndex, checkTerms, recognizeTerms } from "../termio";
 import { analyze, bandOf, scoreDescription, scoreLabel, scoredLookup, type ContextRule, type ScoredMatch } from "../editor/analysis";
 import { concordanceAll, documentMemory, projectMemories, type MemoryInfo } from "../editor/memory";
 import { Preview } from "../editor/Preview";
@@ -76,9 +77,34 @@ export function Editor({ projectId }: { projectId: string }) {
 
   const active = segments.find((s) => s.id === activeId);
   const index = segments.findIndex((s) => s.id === activeId);
-  const hits = useMemo(() => (active ? recognize(plain(active.source), source, target, termbases, state.entries) : []), [active, source, target, termbases, state.entries]);
+  // Term recognition runs in the core; the index is rebuilt when an entry changes.
+  const termIndex = useMemo(() => {
+    if (!c || !project) return null;
+    const name = `editor:${project.id}`;
+    buildIndex(c, name, termbases, state.entries);
+    // A new object each rebuild, so hits and checks recompute.
+    return { name };
+  }, [c, project, termbases, state.entries]);
+  const hits = useMemo((): TermHit[] => {
+    if (!active || !c || !termIndex) return [];
+    const out: TermHit[] = [];
+    for (const h of recognizeTerms(c, termIndex.name, plain(active.source), source, target)) {
+      const entry = state.entries.find((e) => e.id === h.entryId);
+      const tb = termbases.find((t) => t.id === h.source);
+      if (!entry || !tb) continue;
+      const own = (code: string) => Object.entries(entry.terms).filter(([l]) => l === code || primaryOf(l) === primaryOf(code)).flatMap(([, ts]) => ts);
+      const term = own(source).find((t) => t.text === h.term.text) ?? { text: h.term.text, status: "approved" as const };
+      const targets = h.targets.map((ct) => own(target).find((t) => t.text === ct.text) ?? { text: ct.text, status: (ct.status as TermHit["term"]["status"]) || "approved" });
+      out.push({ entry, termbase: tb, term, start: h.start, end: h.end, targets });
+    }
+    return out;
+  }, [active, c, termIndex, source, target, state.entries, termbases]);
   const matches = useMemo(() => (active && c ? scoredLookup(c, memories, segments, index, state.contextRule, 70, 3) : []), [active, c, memories, index, segments, state.contextRule]);
-  const issues = useMemo(() => (active ? qa(active.source, active.target, hits, source, target) : []), [active, hits, source, target]);
+  const issues = useMemo(() => {
+    if (!active) return [];
+    const termIssues = c && termIndex && plain(active.target).trim() ? checkTerms(c, termIndex.name, plain(active.source), source, plain(active.target), target) : [];
+    return qa(active.source, active.target, termIssues, source, target);
+  }, [active, c, termIndex, source, target]);
   const allIssues = useMemo<QaIssue[]>(() => {
     if (!active) return [];
     const extra: QaIssue[] = [];
@@ -846,6 +872,10 @@ export function RunsView({ runs }: { runs: Run[] }) {
 }
 
 /** Source text with tags as chips and recognised terms underlined. */
+function primaryOf(code: string): string {
+  return code.split("-")[0]!.toLowerCase();
+}
+
 function SourceText({ runs, hits }: { runs: Run[]; hits: TermHit[] }) {
   const out: ReactNode[] = [];
   let offset = 0;

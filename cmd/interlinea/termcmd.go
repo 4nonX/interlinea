@@ -20,14 +20,16 @@ func runTerm(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		"convert":    runTermConvert,
 		"mapping":    runTermMapping,
 		"duplicates": runTermDuplicates,
+		"recognize":  runTermRecognize,
 	}
 	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprintln(stderr, "Usage: interlinea term <info|convert|mapping|duplicates> [options] file")
+		fmt.Fprintln(stderr, "Usage: interlinea term <info|convert|mapping|duplicates|recognize> [options] file")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "  info        show languages, fields and counts of a termbase file")
 		fmt.Fprintln(stderr, "  convert     convert between TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel")
 		fmt.Fprintln(stderr, "  mapping     print the guessed column mapping of a spreadsheet as JSON")
 		fmt.Fprintln(stderr, "  duplicates  list entries that share a term")
+		fmt.Fprintln(stderr, "  recognize   find the terms of a termbase in a sentence and check its translation")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "Formats: "+formatList())
 		if len(args) == 0 {
@@ -284,4 +286,64 @@ func describeEntry(e term.Entry, i int) string {
 	}
 	sort.Strings(terms)
 	return id + " " + strings.Join(terms, ", ")
+}
+
+func runTermRecognize(args []string, stdout, stderr io.Writer) error {
+	fs := newFlags("term recognize", "termbase \"source text\"", stderr)
+	from := fs.String("from", "", "termbase format (default: detected)")
+	mapping := fs.String("mapping", "", "column mapping JSON for CSV, TSV and Excel")
+	src := fs.String("src", "", "source language (required)")
+	tgt := fs.String("tgt", "", "target language (required)")
+	target := fs.String("target", "", "translation to check for missing and forbidden terms")
+	asJSON := fs.Bool("json", false, "print hits and issues as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 2 {
+		return usageErr("expected a termbase file and a source text")
+	}
+	if *src == "" || *tgt == "" {
+		return usageErr("-src and -tgt are required")
+	}
+	tb, rep, _, err := readTermFile(fs.Arg(0), *from, *mapping)
+	if err != nil {
+		return err
+	}
+	x := term.NewIndex()
+	x.Add(tb.Name, tb.Entries)
+	text := fs.Arg(1)
+	hits := x.Recognize(text, *src, *tgt)
+	var issues []term.Issue
+	if *target != "" {
+		issues = x.Check(hits, *target, *tgt)
+	}
+	if *asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(struct {
+			Hits   []term.Hit   `json:"hits"`
+			Issues []term.Issue `json:"issues,omitempty"`
+		}{hits, issues})
+	}
+	for _, h := range hits {
+		var ts []string
+		for _, t := range h.Targets {
+			s := t.Text
+			if t.Status != "" && t.Status != term.StatusApproved {
+				s += " (" + t.Status + ")"
+			}
+			ts = append(ts, s)
+		}
+		fmt.Fprintf(stdout, "%s\t%s\t%s\n", text[h.Start:h.End], h.Term.Text, strings.Join(ts, "; "))
+	}
+	for _, is := range issues {
+		switch is.Kind {
+		case "missing":
+			fmt.Fprintf(stdout, "missing: %q is usually %q\n", is.Term, is.Expected)
+		case "forbidden":
+			fmt.Fprintf(stdout, "forbidden: %q\n", is.Found)
+		}
+	}
+	printWarnings(stderr, rep.Warnings)
+	return nil
 }

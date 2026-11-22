@@ -1,8 +1,9 @@
-// Fuzzy matching and term recognition for the editor. Mirrors the Go core:
+// Diffs and checks for the editor. Term recognition runs in the Go core
+// (termio.ts); the diff tokenizer mirrors the core's matcher:
 // weighted token edit distance (words 1, punctuation and tags 0.5, case-only
 // differences 0.2).
 
-import type { Entry, LangCode, Term, Termbase } from "../data";
+import type { Entry, Term, Termbase } from "../data";
 import { isTag, plain, tagKey, type Run, type TmUnit } from "./model";
 
 interface Token {
@@ -125,68 +126,30 @@ export interface TermHit {
   targets: Term[];
 }
 
-// Inflection endings tolerated on the last word of a term (German first).
-const ENDINGS = ["", "e", "n", "en", "s", "es", "er", "ern", "em"];
-
-function stemVariants(word: string): string[] {
-  const w = word.toLocaleLowerCase();
-  const base = w.replace(/(en|er|e|n|s)$/u, "");
-  return [...new Set([w, base.length >= 4 ? base : w])];
-}
-
-/**
- * Finds termbase terms in a segment. Matching ignores case and tolerates
- * common inflection on the last word ("Kaution" in "Kautionen", "Mietsache"
- * in "Mietsachen"); the real engine uses lemmatisation per language.
- */
-export function recognize(text: string, sourceLang: LangCode, targetLang: LangCode, termbases: Termbase[], entries: Entry[]): TermHit[] {
-  const lower = text.toLocaleLowerCase();
-  const hits: TermHit[] = [];
-  for (const tb of termbases) {
-    for (const e of entries.filter((x) => x.termbaseId === tb.id)) {
-      for (const t of e.terms[sourceLang] ?? []) {
-        if (t.status === "forbidden") continue;
-        const words = t.text.split(/\s+/);
-        const last = words.pop()!;
-        for (const stem of stemVariants(last)) {
-          const head = words.map((w) => w.toLocaleLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
-          const re = new RegExp(`(?<![\\p{L}\\p{N}])${head ? head + "\\s+" : ""}${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:${ENDINGS.join("|")})(?![\\p{L}\\p{N}])`, "gu");
-          let m: RegExpExecArray | null;
-          while ((m = re.exec(lower))) {
-            const start = m.index;
-            const end = start + m[0].length;
-            if (hits.some((h) => h.entry.id === e.id || (start < h.end && end > h.start && h.end - h.start >= end - start))) continue;
-            hits.push({ entry: e, termbase: tb, term: t, start, end, targets: e.terms[targetLang] ?? [] });
-          }
-        }
-      }
-    }
-  }
-  // Longest match wins where two overlap.
-  return hits
-    .sort((a, b) => b.end - b.start - (a.end - a.start))
-    .filter((h, i, all) => !all.slice(0, i).some((o) => h.start < o.end && h.end > o.start))
-    .sort((a, b) => a.start - b.start);
-}
-
 export interface QaIssue {
   kind: "term-missing" | "forbidden" | "tags" | "numbers" | "unedited";
   text: string;
 }
 
-export function qa(source: Run[], target: Run[], hits: TermHit[], sourceLang: string, targetLang: string): QaIssue[] {
+/** Terminology issues as the core's term check reports them. */
+export interface TermIssue {
+  kind: "missing" | "forbidden";
+  term?: string;
+  expected?: string;
+  found?: string;
+}
+
+/**
+ * Checks a translation: terminology (from the core's term check, which
+ * tolerates inflection), tags and numbers.
+ */
+export function qa(source: Run[], target: Run[], termIssues: TermIssue[], sourceLang: string, targetLang: string): QaIssue[] {
   const out: QaIssue[] = [];
-  const t = plain(target).toLocaleLowerCase();
+  const t = plain(target);
   if (!t.trim()) return out;
-  for (const h of hits) {
-    const allowed = h.targets.filter((x) => x.status !== "forbidden");
-    const forbidden = h.targets.filter((x) => x.status === "forbidden");
-    for (const f of forbidden) {
-      if (t.includes(f.text.toLocaleLowerCase())) out.push({ kind: "forbidden", text: `“${f.text}” is a forbidden term for “${h.term.text}”.` });
-    }
-    if (allowed.length && !allowed.some((a) => t.includes(a.text.toLocaleLowerCase()))) {
-      out.push({ kind: "term-missing", text: `“${h.term.text}” is usually “${allowed[0]!.text}”.` });
-    }
+  for (const i of termIssues) {
+    if (i.kind === "forbidden") out.push({ kind: "forbidden", text: i.term ? `“${i.found}” is a forbidden term for “${i.term}”.` : `“${i.found}” is a forbidden term.` });
+    else out.push({ kind: "term-missing", text: `“${i.term}” is usually “${i.expected}”.` });
   }
   const missing = source.filter(isTag).filter((s) => !target.some((r) => isTag(r) && tagKey(r) === tagKey(s)));
   if (missing.length) out.push({ kind: "tags", text: `${missing.length === 1 ? "A tag is" : `${missing.length} tags are`} missing (press F9 to insert the next one).` });

@@ -64,6 +64,11 @@ func TestTermCommands(t *testing.T) {
 	if code, _, _ = exec(t, "", "term", "convert", src, filepath.Join(dir, "x.bin")); code != 2 {
 		t.Fatalf("unknown extension should be a usage error, got %d", code)
 	}
+	code, out, errOut = exec(t, "", "term", "recognize", "-src", "de-DE", "-tgt", "en-GB", "-target", "The lessee pays the deposit.", src, "Die Mieter zahlen die Kaution.")
+	want := "Mieter\tMieter\ttenant\nMieter\tMieter\tlessee (forbidden)\nforbidden: \"lessee\"\nmissing: \"Mieter\" is usually \"tenant\"\n"
+	if code != 0 || out != want {
+		t.Fatalf("recognize: %d %q %q", code, out, errOut)
+	}
 	if code, _, _ = exec(t, "", "term", "frob"); code != 2 {
 		t.Fatalf("unknown subcommand: %d", code)
 	}

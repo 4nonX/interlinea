@@ -22,7 +22,7 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |
 | `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
-| `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add) and duplicate detection |
+| `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
 | `cmd/interlinea` | Command-line interface to all of the above |
 | `cmd/interlinea-wasm` | The filters, memories and termbase formats compiled to WebAssembly for the browser prototype |
 
@@ -101,6 +101,7 @@ interlinea term convert export.xml export.csv                  # MultiTerm XML t
 interlinea term mapping glossary.csv > mapping.json            # edit, then:
 interlinea term convert -mapping mapping.json glossary.csv glossary.tbx
 interlinea term duplicates -lang de client.tbx
+interlinea term recognize -src de-DE -tgt en-GB -target "The operating costs." client.tbx "Die Betriebskosten."
 ```
 
 `translations.json` maps unit IDs to their translation, either a plain string
@@ -145,6 +146,19 @@ that match by primary language only (`de-AT` for `de-DE`).
   Imports into an existing termbase match on a shared term (in one or any
   language), the entry ID, or nothing, then merge (only adds), overwrite,
   skip or add.
+- Term recognition ignores case and tolerates inflection without a
+  dictionary: endings added to a term's last word (Kaution, Kautionen;
+  Mieter, Mieters; deposit, deposits), German umlaut plurals (Vertrag,
+  Verträge) and German adjective endings before the noun (ordentliche
+  Kündigung, der ordentlichen Kündigung). Endings are only added, never
+  swapped, so Miete does not match Mieter and Kauf does not match Käufer.
+  Irregular forms, changed stems and terms inside compounds are not found.
+  Korean allows particles after a term; Chinese, Japanese and Thai match as
+  substrings. Where matches overlap the longest wins; a term in several
+  termbases is shown once per termbase. Terms are looked up in the exact
+  language variant first, then any variant of the language. The check
+  reports a recognized term with no allowed translation in the target
+  (inflected target forms count) and every forbidden term in the target.
 - Match scores: 100 means identical text and identical tag structure (tag IDs
   may differ). Case-only and punctuation differences cost little, a changed
   word costs a full token, tags count half.
@@ -183,7 +197,8 @@ Creating a project opens it in the editor (`#/editor/p-hofmann` for the
 sample lease, a real Word file in `prototype/samples`). It follows the
 conventions Trados Studio, memoQ and Phrase share: the best match goes into
 an empty segment when it opens, Ctrl+Enter confirms and fills repetitions,
-Ctrl+1 to 9 insert numbered results, checks run again on confirm and stay on
+Ctrl+1 to 9 insert numbered results, terms are recognized by the core
+(including inflected forms), checks run again on confirm and stay on
 the segment as warnings until fixed or ignored, Ctrl+K searches the memory,
 and F9 inserts the next tag. Match scores look as in Trados: CM for context
 matches, the percentage coloured by band, outlined once edited; Analysis
