@@ -162,7 +162,7 @@ export function recognize(text: string, sourceLang: LangCode, targetLang: LangCo
 }
 
 export interface QaIssue {
-  kind: "term-missing" | "forbidden" | "tags" | "numbers";
+  kind: "term-missing" | "forbidden" | "tags" | "numbers" | "unedited";
   text: string;
 }
 
@@ -207,6 +207,24 @@ export function numbers(text: string, language: string): { text: string; value: 
     raw = raw.split(group).join("");
     const value = Number(raw.replace(decimal, "."));
     if (!Number.isNaN(value)) out.push({ text: m[0].trim(), value });
+  }
+  return out;
+}
+
+/** Concordance: memory units whose source or target contains the phrase. */
+export function concordance(phrase: string, units: TmUnit[], limit = 8): { unit: TmUnit; side: "source" | "target"; start: number; end: number }[] {
+  const q = phrase.trim().toLocaleLowerCase();
+  if (q.length < 2) return [];
+  const out: { unit: TmUnit; side: "source" | "target"; start: number; end: number }[] = [];
+  for (const u of units) {
+    for (const side of ["source", "target"] as const) {
+      const i = plain(u[side]).toLocaleLowerCase().indexOf(q);
+      if (i >= 0) {
+        out.push({ unit: u, side, start: i, end: i + q.length });
+        break;
+      }
+    }
+    if (out.length >= limit) break;
   }
   return out;
 }

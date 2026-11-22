@@ -1,7 +1,7 @@
 // Mock data for the prototype. Every name, entry and server address here is
 // synthetic demonstration material.
 
-import { HOFMANN_SEGMENTS, type Segment } from "./editor/model";
+import { HOFMANN_SEGMENTS, confirmedShare, wordCount, type Segment } from "./editor/model";
 
 export type LangCode = string;
 
@@ -285,14 +285,14 @@ export const INITIAL_PROJECTS: Project[] = [
     id: "p-hofmann",
     name: "Mietvertrag Hofmann",
     file: "Mietvertrag_Hofmann_2026.docx",
-    words: 6412,
+    words: HOFMANN_SEGMENTS.reduce((n, sg) => n + wordCount(sg.source), 0),
     sourceLang: "de-DE",
     targetLangs: ["en-GB"],
     client: "Kanzlei Weber",
     setup: { mode: "layered", masters: ["tb-weber"], projectTermbaseId: "tb-p-weber-lease", location: "server" },
     createdAt: d("2026-11-16T08:30:00Z"),
     due: d("2026-11-26T16:00:00Z"),
-    progress: 0.82,
+    progress: confirmedShare(HOFMANN_SEGMENTS),
     segments: HOFMANN_SEGMENTS,
   },
   {

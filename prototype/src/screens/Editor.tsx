@@ -1,24 +1,29 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { AlertTriangle, ArrowLeft, Check, CircleDashed, Copy, GitMerge, Keyboard, PencilLine, Plus, Tag } from "lucide-react";
-import { lang } from "../data";
+import { AlertTriangle, ArrowLeft, Check, CircleDashed, Copy, GitMerge, Keyboard, PencilLine, Plus, Repeat2, Search, Tag, X } from "lucide-react";
+import { lang, USER } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges } from "../merge";
-import { isTag, missingTags, plain, wordCount, TM_UNITS, type Run, type Segment } from "../editor/model";
-import { lookup, qa, recognize, type TermHit, type TmMatch } from "../editor/match";
+import { isTag, missingTags, plain, sourceKey, wordCount, TM_UNITS, type Run, type Segment, type TmUnit } from "../editor/model";
+import { concordance, lookup, qa, recognize, type QaIssue, type TermHit, type TmMatch } from "../editor/match";
 import { TargetEditor, chipText, tagDescription, type TargetEditorHandle } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, plural } from "../format";
 
 const STATUS_TEXT: Record<Segment["status"], string> = { new: "Not translated", draft: "Draft", confirmed: "Confirmed" };
 
+type Filter = "all" | "todo" | "warnings";
+type Result = { kind: "tm"; m: TmMatch } | { kind: "term"; h: TermHit };
+
 export function Editor({ projectId }: { projectId: string }) {
   const { state, dispatch, notify } = useStore();
   const w = useWords();
   const project = state.projects.find((p) => p.id === projectId);
-  const segments = project?.segments ?? [];
+  const segments = useMemo(() => project?.segments ?? [], [project?.segments]);
   const [activeId, setActiveId] = useState(() => segments.find((s) => s.status !== "confirmed")?.id ?? segments[0]?.id ?? "");
-  const [filter, setFilter] = useState<"all" | "todo">("all");
+  const [filter, setFilter] = useState<Filter>("all");
   const [capture, setCapture] = useState<{ source: string; target: string } | null>(null);
+  const [lookupText, setLookupText] = useState<string | null>(null);
+  const [selected, setSelected] = useState(0);
   const [announcement, setAnnouncement] = useState("");
   const editor = useRef<TargetEditorHandle>(null);
   const sourceSelection = useRef("");
@@ -32,13 +37,54 @@ export function Editor({ projectId }: { projectId: string }) {
   }, [project, state.termbases]);
   const writeTermbase = project ? state.termbases.find((t) => t.id === (project.setup.mode === "direct" ? project.setup.masters[0] : project.setup.projectTermbaseId)) : undefined;
 
+  // The memory: the client's memory (sample project only) plus every segment
+  // confirmed in this document, which is what confirming stores in Trados,
+  // memoQ and Phrase.
+  const memory = useMemo<TmUnit[]>(() => {
+    const doc = segments
+      .map((s, i) => ({ s, i }))
+      .filter(({ s }) => s.status === "confirmed" && plain(s.target).trim())
+      .map(({ s, i }) => ({ source: s.source, target: s.target, project: project?.name ?? "", by: USER, at: project?.createdAt ?? "", docSegment: i + 1 }));
+    return [...(project?.id === "p-hofmann" ? TM_UNITS : []), ...doc];
+  }, [segments, project?.id, project?.name, project?.createdAt]);
+
   const active = segments.find((s) => s.id === activeId);
   const index = segments.findIndex((s) => s.id === activeId);
   const hits = useMemo(() => (active ? recognize(plain(active.source), source, target, termbases, state.entries) : []), [active, source, target, termbases, state.entries]);
-  const matches = useMemo(() => (active && project?.id === "p-hofmann" ? lookup(active.source, TM_UNITS) : []), [active, project?.id]);
+  const matches = useMemo(() => {
+    if (!active) return [];
+    const others = memory.filter((u) => u.docSegment !== index + 1);
+    // Identical units (a repetition confirmed twice) show once.
+    const seen = new Set<string>();
+    return lookup(active.source, others, 70, 6)
+      .filter((m) => {
+        const k = sourceKey(m.unit.source) + "|" + sourceKey(m.unit.target);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .slice(0, 3);
+  }, [active, memory, index]);
   const issues = useMemo(() => (active ? qa(active.source, active.target, hits, source, target) : []), [active, hits, source, target]);
+  const allIssues = useMemo<QaIssue[]>(() => {
+    if (!active) return [];
+    const extra: QaIssue[] = [];
+    // Unedited fuzzy match: a common check in memoQ, Phrase and Trados Verify.
+    if (active.origin?.kind === "tm" && active.origin.score < 100 && plain(active.target) === active.origin.inserted) {
+      extra.push({ kind: "unedited", text: `The ${active.origin.score}% match is unchanged. Check what differs from the memory source.` });
+    }
+    const ignored = new Set(active.ignored ?? []);
+    return [...issues, ...extra].filter((q) => !ignored.has(q.text));
+  }, [active, issues]);
 
-  // Track a selection made in the active source text, for "Add term".
+  // The numbered results list: memory matches first, then terms (as in memoQ).
+  const results: Result[] = [
+    ...matches.map((m) => ({ kind: "tm" as const, m })),
+    ...hits.filter((h) => h.targets.some((t) => t.status !== "forbidden")).map((h) => ({ kind: "term" as const, h })),
+  ];
+  const concordanceHits = useMemo(() => (lookupText ? concordance(lookupText, memory) : []), [lookupText, memory]);
+
+  // Track a selection made in the active source text, for "Add term" and concordance.
   useEffect(() => {
     const on = () => {
       const sel = window.getSelection();
@@ -50,14 +96,23 @@ export function Editor({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("selectionchange", on);
   }, []);
 
-  // Announce the segment to screen readers when it becomes active.
+  // When a segment opens: insert the best match into an empty target (Trados'
+  // default), then tell screen readers where they are.
   useEffect(() => {
     if (!active) return;
-    const parts = [`Segment ${index + 1} of ${segments.length}`, STATUS_TEXT[active.status]];
-    if (matches.length) parts.push(`${plural(matches.length, "memory match", "memory matches")}, best ${matches[0]!.score}%`);
-    if (hits.length) parts.push(plural(hits.length, "term", "terms"));
-    setAnnouncement(parts.join(". ") + ".");
+    setSelected(0);
     sourceSelection.current = "";
+    const parts = [`Segment ${index + 1} of ${segments.length}`, STATUS_TEXT[active.status]];
+    const best = matches[0];
+    if (state.autoInsert && best && active.status === "new" && !plain(active.target).trim()) {
+      insertMatch(best);
+      parts.push(`${best.score}% match inserted`);
+    } else if (best) {
+      parts.push(`${plural(matches.length, "memory match", "memory matches")}, best ${best.score}%`);
+    }
+    if (hits.length) parts.push(plural(hits.length, "term", "terms"));
+    if (active.warnings?.length) parts.push(plural(active.warnings.length, "warning", "warnings"));
+    setAnnouncement(parts.join(". ") + ".");
   }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!project) {
@@ -73,7 +128,11 @@ export function Editor({ projectId }: { projectId: string }) {
     );
   }
 
-  const visible = filter === "all" ? segments : segments.filter((s) => s.status !== "confirmed" || s.id === activeId);
+  const visible =
+    filter === "all"
+      ? segments
+      : segments.filter((s) => s.id === activeId || (filter === "todo" ? s.status !== "confirmed" : (s.warnings?.length ?? 0) > 0));
+  const withWarnings = segments.filter((s) => s.warnings?.length).length;
   const totalWords = segments.reduce((n, s) => n + wordCount(s.source), 0);
   const doneWords = segments.filter((s) => s.status === "confirmed").reduce((n, s) => n + wordCount(s.source), 0);
   const pendingChanges =
@@ -96,8 +155,7 @@ export function Editor({ projectId }: { projectId: string }) {
   }
 
   function move(delta: number) {
-    const i = segments.findIndex((s) => s.id === activeId);
-    const next = segments[i + delta];
+    const next = segments[index + delta];
     if (next) activate(next.id);
   }
 
@@ -107,24 +165,41 @@ export function Editor({ projectId }: { projectId: string }) {
       setAnnouncement("The target is empty. Type a translation or insert a match first.");
       return;
     }
-    dispatch({ type: "setTarget", projectId, segmentId: active.id, target: active.target, status: "confirmed" });
-    const i = segments.findIndex((s) => s.id === activeId);
-    const next = segments.slice(i + 1).find((s) => s.status !== "confirmed") ?? segments.find((s) => s.status !== "confirmed" && s.id !== activeId);
+    const key = sourceKey(active.source);
+    const repetitions = state.autoPropagate ? segments.filter((s) => s.id !== active.id && s.status !== "confirmed" && sourceKey(s.source) === key) : [];
+    const warnings = allIssues.map((q) => ({ kind: q.kind, text: q.text }));
+    dispatch({ type: "confirm", projectId, segmentId: active.id, warnings });
+
+    const said = [warnings.length ? `Confirmed with ${plural(warnings.length, "warning", "warnings")}` : "Confirmed"];
+    if (repetitions.length) {
+      said.push(`${plural(repetitions.length, "repetition", "repetitions")} filled: segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")}`);
+      notify(`Also filled ${plural(repetitions.length, "repetition", "repetitions")} (segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")})`);
+    }
+    const skip = new Set([active.id, ...repetitions.map((r) => r.id)]);
+    const next = segments.slice(index + 1).find((s) => s.status !== "confirmed" && !skip.has(s.id)) ?? segments.find((s) => s.status !== "confirmed" && !skip.has(s.id));
     if (next) activate(next.id);
     else {
       notify("All segments confirmed");
-      setAnnouncement("All segments are confirmed.");
+      said.push("All segments are confirmed");
     }
+    // The next segment's own announcement follows this one.
+    setTimeout(() => setAnnouncement((a) => `${said.join(". ")}. ${a}`), 0);
   }
 
   function insertMatch(m: TmMatch) {
     editor.current?.setRuns(m.unit.target);
-    setTarget(m.unit.target, "draft", { kind: "tm", score: m.score });
+    setTarget(m.unit.target, "draft", { kind: "tm", score: m.score, inserted: plain(m.unit.target) });
   }
 
   function insertTerm(h: TermHit) {
     const t = h.targets.find((x) => x.status !== "forbidden");
     if (t) editor.current?.insertText(t.text);
+  }
+
+  function insertResult(r: Result | undefined) {
+    if (!r) return;
+    if (r.kind === "tm") insertMatch(r.m);
+    else insertTerm(r.h);
   }
 
   function insertNextTag() {
@@ -135,17 +210,18 @@ export function Editor({ projectId }: { projectId: string }) {
   }
 
   function openCapture() {
+    setLookupText(null);
     setCapture({ source: sourceSelection.current, target: editor.current?.selectedText() ?? "" });
   }
 
-  // The numbered results list: memory matches first, then terms (as in memoQ).
-  const results: ({ kind: "tm"; m: TmMatch } | { kind: "term"; h: TermHit })[] = [
-    ...matches.map((m) => ({ kind: "tm" as const, m })),
-    ...hits.filter((h) => h.targets.some((t) => t.status !== "forbidden")).map((h) => ({ kind: "term" as const, h })),
-  ];
+  function openLookup() {
+    setCapture(null);
+    setLookupText(editor.current?.selectedText() || sourceSelection.current || "");
+  }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const mod = e.ctrlKey || e.metaKey;
+    const digit = /^Digit([1-9])$/.exec(e.code);
     if (mod && e.key === "Enter") {
       e.preventDefault();
       confirmAndNext();
@@ -155,24 +231,39 @@ export function Editor({ projectId }: { projectId: string }) {
     } else if (e.altKey && e.key === "ArrowUp") {
       e.preventDefault();
       move(-1);
+    } else if (mod && !e.shiftKey && digit) {
+      // Ctrl+1 to 9 inserts a numbered result in Trados, memoQ, Phrase and Smartcat.
+      const r = results[Number(digit[1]) - 1];
+      if (r) {
+        e.preventDefault();
+        insertResult(r);
+      }
+    } else if (mod && e.key === "ArrowDown" && results.length) {
+      e.preventDefault();
+      setSelected((i) => Math.min(i + 1, results.length - 1));
+    } else if (mod && e.key === "ArrowUp" && results.length) {
+      e.preventDefault();
+      setSelected((i) => Math.max(i - 1, 0));
+    } else if (mod && e.code === "Space" && results.length) {
+      e.preventDefault();
+      insertResult(results[Math.min(selected, results.length - 1)]);
     } else if (mod && e.key === "Insert") {
       e.preventDefault();
       if (active) editor.current?.setRuns(active.source);
-    } else if (mod && e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
-      const r = results[Number(e.code.slice(5)) - 1];
-      if (r) {
-        e.preventDefault();
-        if (r.kind === "tm") insertMatch(r.m);
-        else insertTerm(r.h);
-      }
-    } else if (mod && e.shiftKey && e.code === "KeyE") {
+    } else if (mod && !e.shiftKey && e.code === "KeyE") {
       e.preventDefault();
       openCapture();
+    } else if ((mod && !e.shiftKey && e.code === "KeyK") || e.key === "F3") {
+      e.preventDefault();
+      openLookup();
     } else if (e.key === "F9") {
       e.preventDefault();
       insertNextTag();
     }
   }
+
+  // Announce the highlighted result when it moves with Ctrl+arrows.
+  const highlighted = results[Math.min(selected, results.length - 1)];
 
   return (
     <div className="editor">
@@ -208,6 +299,10 @@ export function Editor({ projectId }: { projectId: string }) {
           <label className="segment">
             <input type="radio" name="segfilter" checked={filter === "todo"} onChange={() => setFilter("todo")} />
             <span>To do</span>
+          </label>
+          <label className="segment">
+            <input type="radio" name="segfilter" checked={filter === "warnings"} onChange={() => setFilter("warnings")} />
+            <span>Warnings{withWarnings > 0 && ` (${withWarnings})`}</span>
           </label>
         </div>
         {pendingChanges > 0 && (
@@ -252,15 +347,12 @@ export function Editor({ projectId }: { projectId: string }) {
                         onKeyDown={onKeyDown}
                       />
                     ) : (
-                      <button type="button" className="seg-target-view" lang={target} onClick={() => activate(s.id)} aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. Edit`}>
+                      <button type="button" className="seg-target-view" lang={target} onClick={() => activate(s.id)} aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. ${STATUS_TEXT[s.status]}${s.warnings?.length ? `, ${plural(s.warnings.length, "warning", "warnings")}` : ""}. Edit`}>
                         <span className="seg-target-text">{s.target.length ? <RunsView runs={s.target} /> : <span className="missing">Not translated</span>}</span>
                       </button>
                     )}
                   </div>
-                  <span className="seg-status" title={STATUS_TEXT[s.status]}>
-                    {s.status === "confirmed" ? <Check size={16} aria-label="Confirmed" /> : s.status === "draft" ? <PencilLine size={15} aria-label="Draft" /> : <CircleDashed size={15} aria-label="Not translated" />}
-                    {s.origin?.kind === "tm" && <span className="seg-origin">{s.origin.score}%</span>}
-                  </span>
+                  <SegmentStatusCell s={s} />
                 </li>
               );
             })}
@@ -268,7 +360,7 @@ export function Editor({ projectId }: { projectId: string }) {
 
           <aside className="results" aria-label="Translation results">
             <p id="seg-help" className="sr-only">
-              Control Enter confirms and moves on. Control Shift and a number inserts a numbered result. Control Shift E adds a term. F9 inserts the next tag.
+              Control Enter confirms and moves on. Control and a number inserts a numbered result. Control E adds a term. Control K searches the memory. F9 inserts the next tag.
             </p>
             {active && (
               <>
@@ -277,86 +369,94 @@ export function Editor({ projectId }: { projectId: string }) {
                     <p className="muted">No memory matches or terms for this segment.</p>
                   ) : (
                     <ol className="result-list">
-                      {results.map((r, i) =>
-                        r.kind === "tm" ? (
-                          <li key={`tm-${i}`}>
-                            <button type="button" className="result" onClick={() => insertMatch(r.m)}>
-                              <span className="result-key" aria-hidden="true">
-                                {i + 1}
-                              </span>
-                              <span className={`result-score${r.m.score === 100 ? " is-exact" : ""}`}>{r.m.score}%</span>
-                              <span className="result-body">
-                                <span className="result-source" lang={source}>
-                                  {r.m.diff.map((d, k) => (
-                                    <span key={k}>
-                                      {d.space && " "}
-                                      {d.changed ? <mark>{d.text}</mark> : d.text}
-                                    </span>
-                                  ))}
-                                </span>
-                                <span className="result-target" lang={target}>
-                                  <RunsView runs={r.m.unit.target} />
-                                </span>
-                                <span className="result-meta">
-                                  Memory, {r.m.unit.project}, {r.m.unit.by}, {fmtDate(r.m.unit.at)}
-                                </span>
-                              </span>
-                            </button>
-                          </li>
-                        ) : (
-                          <li key={`t-${r.h.entry.id}`}>
-                            <button type="button" className="result" onClick={() => insertTerm(r.h)}>
-                              <span className="result-key" aria-hidden="true">
-                                {i + 1}
-                              </span>
-                              <span className="result-score result-term">
-                                <Tag size={13} aria-hidden="true" />
-                                <span className="sr-only">Term</span>
-                              </span>
-                              <span className="result-body">
-                                <span className="result-source">
-                                  <InLang code={source}>{r.h.term.text}</InLang>
-                                </span>
-                                <span className="result-target">
-                                  {r.h.targets.map((t, k) => (
-                                    <span key={t.text}>
-                                      {k > 0 && ", "}
-                                      <span className={t.status === "forbidden" ? "term-forbidden" : undefined}>
-                                        <InLang code={target}>{t.text}</InLang>
-                                      </span>
-                                      {t.status !== "approved" && (
-                                        <>
-                                          {" "}
-                                          <StatusBadge status={t.status} />
-                                        </>
-                                      )}
-                                    </span>
-                                  ))}
-                                </span>
-                                <span className="result-meta">{r.h.termbase.name}</span>
-                              </span>
-                            </button>
-                          </li>
-                        ),
-                      )}
+                      {results.map((r, i) => (
+                        <li key={r.kind === "tm" ? `tm-${i}` : `t-${r.h.entry.id}`}>
+                          <button type="button" className={`result${r === highlighted ? " is-selected" : ""}`} onClick={() => insertResult(r)} aria-keyshortcuts={i < 9 ? `Control+${i + 1}` : undefined}>
+                            <span className="result-key" aria-hidden="true">
+                              {i + 1}
+                            </span>
+                            {r.kind === "tm" ? <MatchBody m={r.m} source={source} target={target} /> : <TermBody h={r.h} source={source} target={target} />}
+                          </button>
+                        </li>
+                      ))}
                     </ol>
                   )}
                 </Section>
 
-                <Section title="Checks" count={issues.length}>
-                  {issues.length === 0 ? (
-                    <p className="muted">{plain(active.target).trim() ? "No problems found." : "Checks run as you type."}</p>
+                <Section title="Checks" count={allIssues.length}>
+                  {allIssues.length === 0 ? (
+                    <p className="muted">{plain(active.target).trim() ? "No problems found." : "Checks run as you type and again when you confirm."}</p>
                   ) : (
                     <ul className="issues">
-                      {issues.map((q) => (
+                      {allIssues.map((q) => (
                         <li key={q.text} className={`issue issue-${q.kind}`}>
                           <AlertTriangle size={14} aria-hidden="true" />
-                          {q.text}
+                          <span className="issue-text">{q.text}</span>
+                          <button type="button" className="btn btn-quiet btn-tiny" onClick={() => dispatch({ type: "ignoreIssue", projectId, segmentId: active.id, text: q.text })} aria-label={`Ignore: ${q.text}`}>
+                            Ignore
+                          </button>
                         </li>
                       ))}
                     </ul>
                   )}
+                  {(active.ignored?.length ?? 0) > 0 && <p className="help">{plural(active.ignored!.length, "warning", "warnings")} ignored for this segment.</p>}
                 </Section>
+
+                {lookupText !== null && (
+                  <Section title="Memory search">
+                    <form
+                      className="lookup"
+                      role="search"
+                      onSubmit={(e) => e.preventDefault()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          setLookupText(null);
+                          editor.current?.focus();
+                        }
+                      }}
+                    >
+                      <label htmlFor="lookup-q" className="sr-only">
+                        Search the memory
+                      </label>
+                      <Search size={14} aria-hidden="true" />
+                      <input id="lookup-q" autoFocus value={lookupText} onChange={(e) => setLookupText(e.target.value)} placeholder="Words in either language" />
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-tiny"
+                        aria-label="Close memory search"
+                        onClick={() => {
+                          setLookupText(null);
+                          editor.current?.focus();
+                        }}
+                      >
+                        <X size={14} aria-hidden="true" />
+                      </button>
+                    </form>
+                    {lookupText.trim().length >= 2 && (
+                      <>
+                        <p className="sr-only" role="status">
+                          {plural(concordanceHits.length, "result", "results")}
+                        </p>
+                        {concordanceHits.length === 0 ? (
+                          <p className="muted">Nothing in the memory contains “{lookupText.trim()}”.</p>
+                        ) : (
+                          <ul className="lookup-list">
+                            {concordanceHits.map((c, i) => (
+                              <li key={i}>
+                                <span lang={source}>{c.side === "source" ? <Highlight text={plain(c.unit.source)} start={c.start} end={c.end} /> : plain(c.unit.source)}</span>
+                                <span lang={target} className="lookup-target">
+                                  {c.side === "target" ? <Highlight text={plain(c.unit.target)} start={c.start} end={c.end} /> : plain(c.unit.target)}
+                                </span>
+                                <span className="result-meta">{unitMeta(c.unit)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </>
+                    )}
+                  </Section>
+                )}
 
                 <Section title="Add a term">
                   {capture ? (
@@ -381,11 +481,18 @@ export function Editor({ projectId }: { projectId: string }) {
                   ) : (
                     <div className="capture-intro">
                       <p className="muted">Select the term in the source and its translation in the target, then add it. The sentence is saved with it.</p>
-                      <button type="button" className="btn btn-small" onClick={openCapture}>
-                        <Plus size={14} aria-hidden="true" />
-                        Add term
-                        <kbd>Ctrl+Shift+E</kbd>
-                      </button>
+                      <div className="tool-row">
+                        <button type="button" className="btn btn-small" onClick={openCapture}>
+                          <Plus size={14} aria-hidden="true" />
+                          Add term
+                          <kbd>Ctrl+E</kbd>
+                        </button>
+                        <button type="button" className="btn btn-small" onClick={openLookup}>
+                          <Search size={14} aria-hidden="true" />
+                          Search memory
+                          <kbd>Ctrl+K</kbd>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </Section>
@@ -415,19 +522,23 @@ export function Editor({ projectId }: { projectId: string }) {
                   </summary>
                   <dl>
                     <dt>Ctrl+Enter</dt>
-                    <dd>Confirm and go to the next open segment</dd>
+                    <dd>Confirm, fill repetitions and go to the next open segment</dd>
                     <dt>Alt+↓ / Alt+↑</dt>
                     <dd>Next / previous segment</dd>
-                    <dt>Ctrl+Shift+1 to 9</dt>
-                    <dd>Insert result 1 to 9 (memory match replaces, term inserts at the caret)</dd>
+                    <dt>Ctrl+1 to 9</dt>
+                    <dd>Insert result 1 to 9 (a memory match replaces the target, a term goes in at the caret)</dd>
+                    <dt>Ctrl+↓ / Ctrl+↑, Ctrl+Space</dt>
+                    <dd>Move through the results, insert the highlighted one</dd>
                     <dt>Ctrl+Insert</dt>
                     <dd>Copy source to target</dd>
                     <dt>F9</dt>
                     <dd>Insert the next missing tag</dd>
-                    <dt>Ctrl+Shift+E</dt>
+                    <dt>Ctrl+E</dt>
                     <dd>Add a term from the selections</dd>
+                    <dt>Ctrl+K or F3</dt>
+                    <dd>Search the memory for the selection</dd>
                   </dl>
-                  <p className="help">The desktop app uses Ctrl+1 to 9 like memoQ; browsers reserve those for tabs.</p>
+                  <p className="help">These follow Trados, memoQ and Phrase where they agree. Editable in the full product.</p>
                 </details>
               </>
             )}
@@ -435,6 +546,97 @@ export function Editor({ projectId }: { projectId: string }) {
         </div>
       )}
     </div>
+  );
+}
+
+function unitMeta(u: TmUnit): string {
+  return u.docSegment ? `This document, segment ${u.docSegment}` : `Memory, ${u.project}, ${u.by}, ${fmtDate(u.at)}`;
+}
+
+function SegmentStatusCell({ s }: { s: Segment }) {
+  const warnings = s.warnings ?? [];
+  return (
+    <span className="seg-status" title={[STATUS_TEXT[s.status], ...warnings.map((x) => x.text)].join("\n")}>
+      {s.status === "confirmed" ? <Check size={16} aria-label="Confirmed" /> : s.status === "draft" ? <PencilLine size={15} aria-label="Draft" /> : <CircleDashed size={15} aria-label="Not translated" />}
+      {warnings.length > 0 && (
+        <span className="seg-warn">
+          <AlertTriangle size={13} aria-hidden="true" />
+          <span className="sr-only">{plural(warnings.length, "warning", "warnings")}</span>
+          <span aria-hidden="true">{warnings.length}</span>
+        </span>
+      )}
+      {s.origin?.kind === "tm" && <span className="seg-origin">{s.origin.score}%</span>}
+      {s.origin?.kind === "repetition" && (
+        <span className="seg-origin">
+          <Repeat2 size={13} aria-label="Repetition" />
+        </span>
+      )}
+    </span>
+  );
+}
+
+function MatchBody({ m, source, target }: { m: TmMatch; source: string; target: string }) {
+  return (
+    <>
+      <span className={`result-score${m.score === 100 ? " is-exact" : ""}`}>{m.score}%</span>
+      <span className="result-body">
+        <span className="result-source" lang={source}>
+          {m.diff.map((d, k) => (
+            <span key={k}>
+              {d.space && " "}
+              {d.changed ? <mark>{d.text}</mark> : d.text}
+            </span>
+          ))}
+        </span>
+        <span className="result-target" lang={target}>
+          <RunsView runs={m.unit.target} />
+        </span>
+        <span className="result-meta">{unitMeta(m.unit)}</span>
+      </span>
+    </>
+  );
+}
+
+function TermBody({ h, source, target }: { h: TermHit; source: string; target: string }) {
+  return (
+    <>
+      <span className="result-score result-term">
+        <Tag size={13} aria-hidden="true" />
+        <span className="sr-only">Term</span>
+      </span>
+      <span className="result-body">
+        <span className="result-source">
+          <InLang code={source}>{h.term.text}</InLang>
+        </span>
+        <span className="result-target">
+          {h.targets.map((t, k) => (
+            <span key={t.text}>
+              {k > 0 && ", "}
+              <span className={t.status === "forbidden" ? "term-forbidden" : undefined}>
+                <InLang code={target}>{t.text}</InLang>
+              </span>
+              {t.status !== "approved" && (
+                <>
+                  {" "}
+                  <StatusBadge status={t.status} />
+                </>
+              )}
+            </span>
+          ))}
+        </span>
+        <span className="result-meta">{h.termbase.name}</span>
+      </span>
+    </>
+  );
+}
+
+function Highlight({ text, start, end }: { text: string; start: number; end: number }) {
+  return (
+    <>
+      {text.slice(0, start)}
+      <mark>{text.slice(start, end)}</mark>
+      {text.slice(end)}
+    </>
   );
 }
 

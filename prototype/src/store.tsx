@@ -4,7 +4,18 @@ import {
   type Commit, type Entry, type InfoType, type LangCode, type Location, type Project, type SetupMode, type Termbase,
 } from "./data";
 import { applyMerge, type Change, type Decision } from "./merge";
-import { normalize, segmentText, wordCount, type Run, type Segment, type SegmentStatus } from "./editor/model";
+import { confirmedShare, normalize, segmentText, sourceKey, type Run, type Segment, type SegmentStatus } from "./editor/model";
+
+function withSegments(state: State, projectId: string, f: (segments: Segment[]) => Segment[]): State {
+  return {
+    ...state,
+    projects: state.projects.map((p) => {
+      if (p.id !== projectId || !p.segments) return p;
+      const segments = f(p.segments);
+      return { ...p, segments, progress: confirmedShare(segments) };
+    }),
+  };
+}
 
 export interface State {
   termbases: Termbase[];
@@ -13,6 +24,10 @@ export interface State {
   baseSnapshots: Record<string, Entry>;
   branchedAt: Record<string, string>;
   gitWords: boolean;
+  /** Editor: put the best memory match into an empty segment when it opens (Trados does this by default). */
+  autoInsert: boolean;
+  /** Editor: confirming fills identical segments further on (auto-propagation). */
+  autoPropagate: boolean;
   toast: { id: number; text: string } | null;
 }
 
@@ -47,6 +62,9 @@ type Action =
   | { type: "setField"; entryId: string; field: string; value: string; now: string }
   | { type: "setTermField"; entryId: string; langCode: LangCode; termIndex: number; field: string; value: string; now: string }
   | { type: "setGitWords"; value: boolean }
+  | { type: "setEditorOption"; option: "autoInsert" | "autoPropagate"; value: boolean }
+  | { type: "confirm"; projectId: string; segmentId: string; warnings: { kind: string; text: string }[] }
+  | { type: "ignoreIssue"; projectId: string; segmentId: string; text: string }
   | { type: "setTarget"; projectId: string; segmentId: string; target: Run[]; status: SegmentStatus; origin?: Segment["origin"] }
   | { type: "addTerm"; input: NewTermInput; id: string; now: string }
   | { type: "toast"; text: string }
@@ -59,6 +77,8 @@ const initial: State = {
   baseSnapshots: BASE_SNAPSHOTS,
   branchedAt: BRANCHED_AT,
   gitWords: false,
+  autoInsert: true,
+  autoPropagate: true,
   toast: null,
 };
 
@@ -165,20 +185,46 @@ function reducer(state: State, action: Action): State {
     }
     case "setGitWords":
       return { ...state, gitWords: action.value };
-    case "setTarget": {
-      return {
-        ...state,
-        projects: state.projects.map((p) => {
-          if (p.id !== action.projectId || !p.segments) return p;
-          const segments = p.segments.map((sg) =>
-            sg.id === action.segmentId ? { ...sg, target: normalize(action.target), status: action.status, origin: action.origin ?? sg.origin } : sg,
-          );
-          const total = segments.reduce((n, sg) => n + wordCount(sg.source), 0) || 1;
-          const done = segments.filter((sg) => sg.status === "confirmed").reduce((n, sg) => n + wordCount(sg.source), 0);
-          return { ...p, segments, progress: done / total };
-        }),
-      };
-    }
+    case "setEditorOption":
+      return { ...state, [action.option]: action.value };
+    case "setTarget":
+      return withSegments(state, action.projectId, (segments) =>
+        segments.map((sg) =>
+          sg.id === action.segmentId
+            ? {
+                ...sg,
+                target: normalize(action.target),
+                status: action.status,
+                origin: action.status === "new" ? undefined : (action.origin ?? sg.origin),
+                // Saved warnings belong to the confirmed text; an edit makes them stale.
+                warnings: action.status === "confirmed" ? sg.warnings : undefined,
+              }
+            : sg,
+        ),
+      );
+    case "confirm":
+      return withSegments(state, action.projectId, (segments) => {
+        const done = segments.find((sg) => sg.id === action.segmentId)!;
+        const key = sourceKey(done.source);
+        const ignored = new Set(done.ignored ?? []);
+        return segments.map((sg) => {
+          if (sg.id === done.id) return { ...sg, status: "confirmed" as const, warnings: action.warnings.filter((w) => !ignored.has(w.text)) };
+          // Auto-propagation fills identical segments that are not confirmed yet;
+          // confirmed ones are left alone, as in Trados' default.
+          if (state.autoPropagate && sg.status !== "confirmed" && sourceKey(sg.source) === key) {
+            return { ...sg, target: done.target, status: "confirmed" as const, origin: { kind: "repetition" as const, from: done.id }, warnings: undefined };
+          }
+          return sg;
+        });
+      });
+    case "ignoreIssue":
+      return withSegments(state, action.projectId, (segments) =>
+        segments.map((sg) =>
+          sg.id === action.segmentId
+            ? { ...sg, ignored: [...(sg.ignored ?? []), action.text], warnings: sg.warnings?.filter((w) => w.text !== action.text) }
+            : sg,
+        ),
+      );
     case "addTerm": {
       const { input, id, now } = action;
       const p = state.projects.find((x) => x.id === input.projectId)!;

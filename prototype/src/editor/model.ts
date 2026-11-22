@@ -19,7 +19,22 @@ export interface Segment {
   target: Run[];
   status: SegmentStatus;
   /** Where the current target came from, if it was inserted. */
-  origin?: { kind: "tm"; score: number } | { kind: "copy" };
+  origin?: { kind: "tm"; score: number; inserted: string } | { kind: "copy" } | { kind: "repetition"; from: string };
+  /** Check results saved when the segment was confirmed (as memoQ and Phrase do). */
+  warnings?: { kind: string; text: string }[];
+  /** Warnings the translator marked as false alarms. */
+  ignored?: string[];
+}
+
+/** Share of source words in confirmed segments, 0 to 1. */
+export function confirmedShare(segments: Segment[]): number {
+  const total = segments.reduce((n, sg) => n + wordCount(sg.source), 0) || 1;
+  return segments.filter((sg) => sg.status === "confirmed").reduce((n, sg) => n + wordCount(sg.source), 0) / total;
+}
+
+/** Two segments are repetitions when text and tags are identical. */
+export function sourceKey(runs: Run[]): string {
+  return JSON.stringify(normalize(runs).map((r) => (typeof r === "string" ? r.trim().replace(/\s+/g, " ") : tagKey(r))));
 }
 
 export const isTag = (r: Run): r is TagRun => typeof r !== "string";
@@ -124,6 +139,10 @@ export const HOFMANN_SEGMENTS: Segment[] = [
   { id: "s21", source: [{ kind: "open", id: "7", label: "b" }, "§ 6 Schlussbestimmungen", { kind: "close", id: "7", label: "b" }], target: [], status: "new" },
   { id: "s22", source: ["Änderungen und Ergänzungen dieses Vertrages bedürfen der Schriftform."], target: [], status: "new" },
   { id: "s23", source: ["Sollte eine Bestimmung dieses Vertrages unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt."], target: [], status: "new" },
+  { id: "s24", source: ["Ort, Datum"], target: [], status: "new" },
+  { id: "s25", source: ["Unterschrift Vermieter"], target: [], status: "new" },
+  { id: "s26", source: ["Ort, Datum"], target: [], status: "new" },
+  { id: "s27", source: ["Unterschrift Mieter"], target: [], status: "new" },
 ];
 
 export interface TmUnit {
@@ -132,6 +151,8 @@ export interface TmUnit {
   project: string;
   by: string;
   at: string;
+  /** Set for segments confirmed earlier in the open document. */
+  docSegment?: number;
 }
 
 /** Translation memory "Kanzlei Weber (DE-EN)". Synthetic. */

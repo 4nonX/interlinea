@@ -13,24 +13,94 @@ export function Settings() {
         <h2 id="s-words" className="panel-title">
           Terminology wording
         </h2>
-        <p className="help">Project termbases work like branches of a master. Choose how the interface names this. The behaviour is the same either way.</p>
+        <p className="help">
+          Project termbases work like branches of a master. Choose how the
+          interface names this. The behaviour is the same either way.
+        </p>
         <fieldset className="field">
           <legend className="sr-only">Wording</legend>
           <label className="choice">
-            <input type="radio" name="words" checked={!state.gitWords} onChange={() => dispatch({ type: "setGitWords", value: false })} />
+            <input
+              type="radio"
+              name="words"
+              checked={!state.gitWords}
+              onChange={() => dispatch({ type: "setGitWords", value: false })}
+            />
             <span className="choice-body">
               <span className="choice-title">Plain words</span>
-              <span className="choice-desc">Project termbase, review and merge, update from master, history.</span>
+              <span className="choice-desc">
+                Project termbase, review and merge, update from master, history.
+              </span>
             </span>
           </label>
           <label className="choice">
-            <input type="radio" name="words" checked={state.gitWords} onChange={() => dispatch({ type: "setGitWords", value: true })} />
+            <input
+              type="radio"
+              name="words"
+              checked={state.gitWords}
+              onChange={() => dispatch({ type: "setGitWords", value: true })}
+            />
             <span className="choice-body">
               <span className="choice-title">Git terms</span>
-              <span className="choice-desc">Branch, diff and merge, pull, log, ours and theirs.</span>
+              <span className="choice-desc">
+                Branch, diff and merge, pull, log, ours and theirs.
+              </span>
             </span>
           </label>
         </fieldset>
+      </section>
+
+      <section className="panel" aria-labelledby="s-editor">
+        <h2 id="s-editor" className="panel-title">
+          Editor
+        </h2>
+        <div className="field">
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={state.autoInsert}
+              onChange={(e) =>
+                dispatch({
+                  type: "setEditorOption",
+                  option: "autoInsert",
+                  value: e.target.checked,
+                })
+              }
+            />
+            <span className="choice-body">
+              <span className="choice-title">
+                Insert the best memory match when a segment opens
+              </span>
+              <span className="choice-desc">
+                Only into empty segments. The match percentage stays next to the
+                segment until you confirm.
+              </span>
+            </span>
+          </label>
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={state.autoPropagate}
+              onChange={(e) =>
+                dispatch({
+                  type: "setEditorOption",
+                  option: "autoPropagate",
+                  value: e.target.checked,
+                })
+              }
+            />
+            <span className="choice-body">
+              <span className="choice-title">
+                Fill repetitions when you confirm
+              </span>
+              <span className="choice-desc">
+                Other segments with the same text and tags get the same
+                translation and are confirmed. Segments you already confirmed
+                are left alone.
+              </span>
+            </span>
+          </label>
+        </div>
       </section>
 
       <section className="panel" aria-labelledby="s-servers">
@@ -42,7 +112,9 @@ export function Settings() {
             <Cloud size={18} aria-hidden="true" />
             <div>
               <div className="cell-title">{SERVER}</div>
-              <div className="cell-sub">Connected as Dan. Sample server in this prototype.</div>
+              <div className="cell-sub">
+                Connected as Dan. Sample server in this prototype.
+              </div>
             </div>
             <span className="status status-approved">Connected</span>
           </li>

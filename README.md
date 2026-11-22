@@ -119,10 +119,12 @@ npm run dev
 Sample documents and a deep link per sample (`#/new/sample/0` to `4`) show
 language detection, including the fallback for files without readable text.
 Creating a project opens it in the editor (`#/editor/p-hofmann` for the
-sample lease): segments with tags, memory matches with differences marked,
-recognised terms, checks for terms, tags and numbers, and adding a term while
-translating, which then shows up in the merge review. The shortcuts are listed
-in the editor's side panel. Settings switches between plain wording and git
+sample lease). It follows the conventions Trados Studio, memoQ and Phrase share:
+the best match goes into an empty segment when it opens, Ctrl+Enter confirms
+and fills repetitions, Ctrl+1 to 9 insert numbered results, checks run again on
+confirm and stay on the segment as warnings until fixed or ignored, Ctrl+K
+searches the memory, and F9 inserts the next tag. Terms added while
+translating show up in the merge review. The editor options are in Settings. Settings switches between plain wording and git
 terms. `PRODUCT.md` and
 `DESIGN.md` describe the product and the visual system.
 
