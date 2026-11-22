@@ -1,6 +1,6 @@
 // Command mksample writes the sample lease used by the prototype.
 //
-//	go run ./filter/docx/docxtest/mksample prototype/public/samples/Mietvertrag_Hofmann_2026.docx
+//	go run ./filter/docx/docxtest/mksample prototype/samples/Mietvertrag_Hofmann_2026.docx
 package main
 
 import (

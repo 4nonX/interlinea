@@ -44,8 +44,8 @@ wasm:
 
 # The sample lease the prototype opens.
 sample:
-	go run ./filter/docx/docxtest/mksample prototype/public/samples/Mietvertrag_Hofmann_2026.docx
-	go run ./cmd/interlinea extract -lang de-DE -json prototype/public/samples/Mietvertrag_Hofmann_2026.docx > prototype/src/editor/hofmann.json
+	go run ./filter/docx/docxtest/mksample prototype/samples/Mietvertrag_Hofmann_2026.docx
+	go run ./cmd/interlinea extract -lang de-DE -json prototype/samples/Mietvertrag_Hofmann_2026.docx > prototype/src/editor/hofmann.json
 
 clean:
 	rm -rf $(BIN) $(WASM_DIR)

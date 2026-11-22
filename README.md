@@ -151,7 +151,7 @@ in the browser as WebAssembly: the units keep their formatting as tags, and
 "Save translated document" writes the .docx with the original layout.
 
 Creating a project opens it in the editor (`#/editor/p-hofmann` for the
-sample lease, a real Word file in `public/samples`). It follows the
+sample lease, a real Word file in `prototype/samples`). It follows the
 conventions Trados Studio, memoQ and Phrase share: the best match goes into
 an empty segment when it opens, Ctrl+Enter confirms and fills repetitions,
 Ctrl+1 to 9 insert numbered results, checks run again on confirm and stay on

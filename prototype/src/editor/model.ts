@@ -2,6 +2,7 @@
 // model as the Go core's content package.
 
 import hofmann from "./hofmann.json";
+import hofmannDocx from "../../samples/Mietvertrag_Hofmann_2026.docx?inline";
 
 export interface TagRun {
   kind: "open" | "close" | "standalone";
@@ -165,7 +166,8 @@ export function segmentText(text: string): string[] {
   return out;
 }
 
-// The sample lease is a real Word document (public/samples). Its units come
+// The sample lease is a real Word document (prototype/samples), bundled into
+// the page as a data URL so the prototype needs no file hosting. Its units come
 // from the core's Word filter (make sample regenerates hofmann.json), so the
 // editor, the preview and "Save translated document" all work on the file.
 const SAMPLE = hofmann as { units: { id: string; block: string; source: CoreRun[] }[]; blocks: Block[] };
@@ -189,7 +191,7 @@ const SAMPLE_WORK: Record<string, { target: Run[]; status: SegmentStatus }> = {
 };
 
 export const HOFMANN_BLOCKS: Block[] = SAMPLE.blocks;
-export const HOFMANN_FILE = "samples/Mietvertrag_Hofmann_2026.docx";
+export const HOFMANN_FILE: string = hofmannDocx;
 
 export const HOFMANN_SEGMENTS: Segment[] = SAMPLE.units.map((u) => ({
   id: u.id,
