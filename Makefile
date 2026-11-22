@@ -3,7 +3,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 BIN     := bin
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: all build test race vet fmt-check lint bench cross clean
+.PHONY: all build test race vet fmt-check lint bench cross wasm sample clean
 
 all: lint test build
 
@@ -35,5 +35,17 @@ cross:
 			-o $(BIN)/interlinea-$$os-$$arch$$ext ./cmd/interlinea || exit 1; \
 	done
 
+# The core's file filters for the browser prototype.
+WASM_DIR := prototype/public/core
+wasm:
+	mkdir -p $(WASM_DIR)
+	GOOS=js GOARCH=wasm go build -trimpath -ldflags "-s -w" -o $(WASM_DIR)/interlinea.wasm ./cmd/interlinea-wasm
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" $(WASM_DIR)/
+
+# The sample lease the prototype opens.
+sample:
+	go run ./filter/docx/docxtest/mksample prototype/public/samples/Mietvertrag_Hofmann_2026.docx
+	go run ./cmd/interlinea extract -lang de-DE -json prototype/public/samples/Mietvertrag_Hofmann_2026.docx > prototype/src/editor/hofmann.json
+
 clean:
-	rm -rf $(BIN)
+	rm -rf $(BIN) $(WASM_DIR)

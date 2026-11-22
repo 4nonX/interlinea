@@ -192,6 +192,16 @@ func (d *document) addParagraph(p *part, n *node, start, end, index int, ctx wal
 	if !hasText(c) {
 		return nil // nothing to translate; the paragraph is copied as it is
 	}
+	for _, r := range pa.prefix {
+		if r.Tag.Kind != content.TagClose {
+			block.Lead = append(block.Lead, r.Tag.Type)
+		}
+	}
+	for _, r := range pa.suffix {
+		if r.Tag.Kind == content.TagStandalone {
+			block.Trail = append(block.Trail, r.Tag.Type)
+		}
+	}
 	for _, pc := range d.splitParagraph(c) {
 		if pc.unit < 0 {
 			pa.pieces = append(pa.pieces, pc)

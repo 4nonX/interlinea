@@ -140,7 +140,13 @@ func TestBlocks(t *testing.T) {
 	if b := byID["footnotes/p2"]; b.Part != filter.PartFootnote || b.Note != "2" {
 		t.Errorf("footnote block = %+v", b)
 	}
-	if b := byID["footer1/p1"]; b.Part != filter.PartFooter {
+	if b := byID["document/p6"]; len(b.Trail) != 1 || b.Trail[0] != "footnote" {
+		t.Errorf("footnote mark at the paragraph end = %+v", b.Trail)
+	}
+	if b := byID["footnotes/p1"]; len(b.Lead) != 1 || b.Lead[0] != "note-mark" {
+		t.Errorf("footnote number at the start = %+v", b.Lead)
+	}
+	if b := byID["footer1/p1"]; b.Part != filter.PartFooter || len(b.Trail) != 1 || b.Trail[0] != "field" {
 		t.Errorf("footer block = %+v", b)
 	}
 }

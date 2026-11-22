@@ -44,6 +44,11 @@ type Block struct {
 	Cell  *Cell  `json:"cell,omitempty"`
 	// Note is the footnote or endnote number for blocks in those parts.
 	Note string `json:"note,omitempty"`
+	// Lead and Trail list the types of tags kept at the paragraph edges,
+	// outside the units (a footnote mark at the end, a link around the
+	// whole paragraph), so previews can show them.
+	Lead  []string `json:"lead,omitempty"`
+	Trail []string `json:"trail,omitempty"`
 }
 
 // Unit is one translatable segment. Tag IDs are local to the unit; tag
