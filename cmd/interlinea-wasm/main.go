@@ -3,8 +3,10 @@
 // Command interlinea-wasm exposes the core's file filters to the browser
 // prototype. It registers a global object interlineaCore with:
 //
-//	extract(bytes: Uint8Array, lang: string) -> {ok: true, value: string (JSON extraction)} | {ok: false, error}
-//	merge(bytes: Uint8Array, lang: string, target: string, translations: string (JSON)) -> {ok: true, value: Uint8Array} | {ok: false, error}
+//	extract(bytes: Uint8Array, lang: string, options?: string) -> {ok: true, value: string (JSON extraction)} | {ok: false, error}
+//	merge(bytes: Uint8Array, lang: string, target: string, translations: string (JSON), options?: string) -> {ok: true, value: Uint8Array} | {ok: false, error}
+//
+// options is JSON: {"keepRevisions": true}.
 //
 // Build: make wasm
 package main
@@ -35,20 +37,36 @@ func bytesArg(v js.Value) ([]byte, error) {
 	return b, nil
 }
 
+func options(args []js.Value, i int) (docx.Options, error) {
+	var o struct {
+		KeepRevisions bool `json:"keepRevisions"`
+	}
+	if len(args) > i && args[i].Type() == js.TypeString && args[i].String() != "" {
+		if err := json.Unmarshal([]byte(args[i].String()), &o); err != nil {
+			return docx.Options{}, fmt.Errorf("options: %w", err)
+		}
+	}
+	return docx.Options{KeepRevisions: o.KeepRevisions}, nil
+}
+
 func extract(_ js.Value, args []js.Value) (out any) {
 	defer func() {
 		if r := recover(); r != nil {
 			out = result(nil, fmt.Errorf("internal error: %v", r))
 		}
 	}()
-	if len(args) != 2 {
-		return result(nil, fmt.Errorf("extract(bytes, lang)"))
+	if len(args) < 2 {
+		return result(nil, fmt.Errorf("extract(bytes, lang, options)"))
+	}
+	opts, err := options(args, 2)
+	if err != nil {
+		return result(nil, err)
 	}
 	data, err := bytesArg(args[0])
 	if err != nil {
 		return result(nil, err)
 	}
-	ex, err := docx.Extract(data, args[1].String())
+	ex, err := docx.Extract(data, args[1].String(), opts)
 	if err != nil {
 		return result(nil, err)
 	}
@@ -62,8 +80,12 @@ func merge(_ js.Value, args []js.Value) (out any) {
 			out = result(nil, fmt.Errorf("internal error: %v", r))
 		}
 	}()
-	if len(args) != 4 {
-		return result(nil, fmt.Errorf("merge(bytes, lang, target, translations)"))
+	if len(args) < 4 {
+		return result(nil, fmt.Errorf("merge(bytes, lang, target, translations, options)"))
+	}
+	opts, err := options(args, 4)
+	if err != nil {
+		return result(nil, err)
 	}
 	data, err := bytesArg(args[0])
 	if err != nil {
@@ -73,7 +95,7 @@ func merge(_ js.Value, args []js.Value) (out any) {
 	if err := json.Unmarshal([]byte(args[3].String()), &raw); err != nil {
 		return result(nil, fmt.Errorf("translations: %w", err))
 	}
-	out2, err := docx.Merge(data, args[1].String(), args[2].String(), filter.Translations(raw))
+	out2, err := docx.Merge(data, args[1].String(), args[2].String(), filter.Translations(raw), opts)
 	if err != nil {
 		return result(nil, err)
 	}

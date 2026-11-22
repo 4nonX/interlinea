@@ -35,7 +35,7 @@ func TestExtractAndMerge(t *testing.T) {
 		t.Fatalf("merge: %d %q %q", code, out, errOut)
 	}
 	data, _ := os.ReadFile(dst)
-	got, err := docx.Extract(data, "en-GB")
+	got, err := docx.Extract(data, "en-GB", docx.Options{})
 	if err != nil || got.Units[0].Source.Plain() != "Residential lease agreement" {
 		t.Fatalf("merged document: %v %v", err, got)
 	}

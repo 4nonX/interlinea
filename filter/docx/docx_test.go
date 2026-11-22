@@ -17,7 +17,7 @@ import (
 
 func units(t *testing.T, data []byte, lang string) map[string]filter.Unit {
 	t.Helper()
-	ex, err := docx.Extract(data, lang)
+	ex, err := docx.Extract(data, lang, docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestExtractSample(t *testing.T) {
 }
 
 func TestBlocks(t *testing.T) {
-	ex, err := docx.Extract(Hofmann(), "de-DE")
+	ex, err := docx.Extract(Hofmann(), "de-DE", docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestBlocks(t *testing.T) {
 
 func TestMergeWithoutTranslationsKeepsText(t *testing.T) {
 	src := Hofmann()
-	out, err := docx.Merge(src, "de-DE", "de-DE", nil)
+	out, err := docx.Merge(src, "de-DE", "de-DE", nil, docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestMergeTranslation(t *testing.T) {
 		"footer1/p1/s1":   mustParse(t, `[{"text":"Page "},{"tag":{"kind":"standalone","id":"1"}},{"text":" of"}]`),
 		"document/p25/s1": content.Text("Place, date"),
 	}
-	out, err := docx.Merge(src, "de-DE", "en-GB", tr)
+	out, err := docx.Merge(src, "de-DE", "en-GB", tr, docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestMergeDamagedTags(t *testing.T) {
 		"document/p20/s1": content.Text("The right to reduce the rent remains unaffected."),
 		"document/p23/s1": mustParse(t, `[{"text":"The statutes cited can be found at "},{"tag":{"kind":"open","id":"1"}},{"text":"the site"}]`),
 	}
-	out, err := docx.Merge(Hofmann(), "de-DE", "en-GB", tr)
+	out, err := docx.Merge(Hofmann(), "de-DE", "en-GB", tr, docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestMergeDamagedTags(t *testing.T) {
 
 func TestSentenceBreakInsideTagsIsNotUsed(t *testing.T) {
 	data := Document(Parts{Body: P("", R("Erster Satz. "), B("Zweiter Satz. Dritter"), R(" Satz. Vierter Satz.")), Lang: "de-DE"})
-	ex, err := docx.Extract(data, "de-DE")
+	ex, err := docx.Extract(data, "de-DE", docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestSentenceBreakInsideTagsIsNotUsed(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 	// Merging back keeps the spaces between sentences.
-	out, err := docx.Merge(data, "de-DE", "en-GB", filter.Translations{ex.Units[0].ID: content.Text("First sentence.")})
+	out, err := docx.Merge(data, "de-DE", "en-GB", filter.Translations{ex.Units[0].ID: content.Text("First sentence.")}, docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +292,7 @@ func TestEdgesAndTrackedChanges(t *testing.T) {
 		`<w:p>` + R("Page ") + Field("PAGE", "3") + R(" of the file.") + `</w:p>` +
 		`<w:p>` + R("Tab") + Tab() + R("stop and ") + `<w:r><w:t>soft</w:t><w:softHyphen/><w:t>hyphen</w:t></w:r>` + R(".") + `</w:p>`
 	data := Document(Parts{Body: body, Links: map[string]string{"rIdL": "https://example.org"}})
-	ex, err := docx.Extract(data, "en-GB")
+	ex, err := docx.Extract(data, "en-GB", docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestEdgesAndTrackedChanges(t *testing.T) {
 	for _, u := range ex.Units {
 		tr[u.ID] = u.Source
 	}
-	out, err := docx.Merge(data, "en-GB", "en-GB", tr)
+	out, err := docx.Merge(data, "en-GB", "en-GB", tr, docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestSetLanguageAttribute(t *testing.T) {
 		P("", `<w:r><w:rPr/><w:t>Leer.</w:t></w:r>`) +
 		P("", RP(`<w:i/><w:rPrChange w:id="6" w:author="A"><w:rPr/></w:rPrChange>`, "Kursiv."))
 	data := Document(Parts{Body: body})
-	ex, err := docx.Extract(data, "de-DE")
+	ex, err := docx.Extract(data, "de-DE", docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestSetLanguageAttribute(t *testing.T) {
 		"ja-JP": {`<w:lang w:val="de-DE" w:eastAsia="ja-JP"/>`, `<w:lang w:eastAsia="ja-JP"/>`},
 		"ar-SA": {`<w:lang w:val="de-DE" w:eastAsia="zh-CN" w:bidi="ar-SA"/>`},
 	} {
-		out, err := docx.Merge(data, "de-DE", lang, tr)
+		out, err := docx.Merge(data, "de-DE", lang, tr, docx.Options{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -357,22 +357,22 @@ func TestSetLanguageAttribute(t *testing.T) {
 }
 
 func TestNotADocx(t *testing.T) {
-	if _, err := docx.Extract([]byte("plain text"), "en"); !errors.Is(err, docx.ErrNotDocx) {
+	if _, err := docx.Extract([]byte("plain text"), "en", docx.Options{}); !errors.Is(err, docx.ErrNotDocx) {
 		t.Errorf("err = %v, want ErrNotDocx", err)
 	}
 	empty := Build(map[string]string{"hello.txt": "hi"})
-	if _, err := docx.Extract(empty, "en"); !errors.Is(err, docx.ErrNotDocx) {
+	if _, err := docx.Extract(empty, "en", docx.Options{}); !errors.Is(err, docx.ErrNotDocx) {
 		t.Errorf("zip without document: err = %v", err)
 	}
 }
 
 func TestMergeIsDeterministic(t *testing.T) {
 	tr := filter.Translations{"document/p1/s1": content.Text("Lease")}
-	a, err := docx.Merge(Hofmann(), "de-DE", "en-GB", tr)
+	a, err := docx.Merge(Hofmann(), "de-DE", "en-GB", tr, docx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := docx.Merge(Hofmann(), "de-DE", "en-GB", tr)
+	b, _ := docx.Merge(Hofmann(), "de-DE", "en-GB", tr, docx.Options{})
 	if !bytes.Equal(a, b) {
 		t.Error("same input gave different output")
 	}

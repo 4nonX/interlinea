@@ -11,6 +11,9 @@ import (
 
 const ns = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`
 
+// bodyNS adds the namespaces drawings in the body use.
+const bodyNS = ns + ` xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" mc:Ignorable="w14"`
+
 // Build zips the given files in a fixed order with a fixed time, so the
 // same input always gives the same bytes. [Content_Types].xml comes first.
 func Build(files map[string]string) []byte {
@@ -54,6 +57,12 @@ type Parts struct {
 	Footer    string
 	Links     map[string]string // relationship ID to external URL
 	Lang      string            // document default language
+	Comments  []string          // paragraphs of each comment, IDs from 0
+	// Extra adds files; Rels adds document relationships and Types
+	// content type overrides (both raw XML elements).
+	Extra map[string]string
+	Rels  []string
+	Types []string
 }
 
 // Document builds a .docx from parts with a small style sheet: Normal,
@@ -111,6 +120,23 @@ func Document(p Parts) []byte {
 		ct = append(ct, `<Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>`)
 		rels = append(rels, `<Relationship Id="rIdFootnotes" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/>`)
 	}
+	if len(p.Comments) > 0 {
+		var b strings.Builder
+		b.WriteString(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:comments ` + ns + `>`)
+		for i, c := range p.Comments {
+			b.WriteString(`<w:comment w:id="` + itoa(i) + `" w:author="Dan" w:date="2026-11-16T08:00:00Z" w:initials="D">` + c + `</w:comment>`)
+		}
+		b.WriteString(`</w:comments>`)
+		files["word/comments.xml"] = b.String()
+		ct = append(ct, `<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>`)
+		rels = append(rels, `<Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>`)
+	}
+	for name, body := range p.Extra {
+		files[name] = body
+	}
+	rels = append(rels, p.Rels...)
+	ct = append(ct, p.Types...)
 	linkIDs := make([]string, 0, len(p.Links))
 	for id := range p.Links {
 		linkIDs = append(linkIDs, id)
@@ -120,11 +146,11 @@ func Document(p Parts) []byte {
 		rels = append(rels, `<Relationship Id="`+id+`" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="`+p.Links[id]+`" TargetMode="External"/>`)
 	}
 	files["word/document.xml"] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document ` + ns + `><w:body>` + p.Body + sect + `</w:body></w:document>`
+<w:document ` + bodyNS + `><w:body>` + p.Body + sect + `</w:body></w:document>`
 	files["word/_rels/document.xml.rels"] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` + strings.Join(rels, "") + `</Relationships>`
 	files["[Content_Types].xml"] = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>` + strings.Join(ct, "") + `</Types>`
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>` + strings.Join(ct, "") + `</Types>`
 	return Build(files)
 }
 
@@ -153,6 +179,7 @@ func styles(lang string) string {
 <w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="0"/><w:jc w:val="center"/></w:pPr><w:rPr><w:sz w:val="18"/></w:rPr></w:style>
 <w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont"><w:name w:val="Default Paragraph Font"/><w:uiPriority w:val="1"/><w:semiHidden/></w:style>
 <w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>
+<w:style w:type="character" w:styleId="Strong"><w:name w:val="Strong"/><w:rPr><w:b/><w:bCs/></w:rPr></w:style>
 <w:style w:type="character" w:styleId="Hyperlink"><w:name w:val="Hyperlink"/><w:rPr><w:color w:val="0563C1"/><w:u w:val="single"/></w:rPr></w:style>
 <w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>
 <w:style w:type="table" w:styleId="TableGrid"><w:name w:val="Table Grid"/><w:basedOn w:val="TableNormal"/><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/><w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/></w:tblBorders></w:tblPr></w:style>

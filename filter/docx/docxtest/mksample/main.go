@@ -1,6 +1,9 @@
-// Command mksample writes the sample lease used by the prototype.
+// Command mksample writes the sample documents: the lease the prototype
+// opens and, with -features, the document that exercises text boxes,
+// content controls, tracked changes, comments, charts and SmartArt.
 //
 //	go run ./filter/docx/docxtest/mksample prototype/samples/Mietvertrag_Hofmann_2026.docx
+//	go run ./filter/docx/docxtest/mksample -features features.docx
 package main
 
 import (
@@ -11,11 +14,16 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: mksample out.docx")
+	args := os.Args[1:]
+	data := docxtest.Hofmann
+	if len(args) == 2 && args[0] == "-features" {
+		data, args = docxtest.Features, args[1:]
+	}
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "usage: mksample [-features] out.docx")
 		os.Exit(2)
 	}
-	if err := os.WriteFile(os.Args[1], docxtest.Hofmann(), 0o644); err != nil {
+	if err := os.WriteFile(args[0], data(), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

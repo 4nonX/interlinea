@@ -18,9 +18,11 @@ func runExtract(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlags("extract", "file.docx", stderr)
 	lang := fs.String("lang", "en", "source language of the document (BCP 47)")
 	asJSON := fs.Bool("json", false, "print units and blocks as JSON")
+	keep := fs.Bool("keep-revisions", false, "keep tracked changes as tags instead of accepting them")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	opts := docx.Options{KeepRevisions: *keep}
 	if fs.NArg() != 1 {
 		return usageErr("expected one .docx file")
 	}
@@ -31,7 +33,7 @@ func runExtract(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	ex, err := docx.Extract(data, *lang)
+	ex, err := docx.Extract(data, *lang, opts)
 	if err != nil {
 		return err
 	}
@@ -43,6 +45,9 @@ func runExtract(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	for _, u := range ex.Units {
 		fmt.Fprintf(stdout, "%s\t%s\n", u.ID, u.Source)
 	}
+	for _, w := range ex.Warnings {
+		fmt.Fprintf(stderr, "note: %s\n", w)
+	}
 	return nil
 }
 
@@ -52,9 +57,11 @@ func runMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	lang := fs.String("lang", "en", "source language of the document (as used for extract)")
 	target := fs.String("target", "", "target language written to the translated text (BCP 47)")
 	outName := fs.String("o", "", "output file (required)")
+	keep := fs.Bool("keep-revisions", false, "as used for extract")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	opts := docx.Options{KeepRevisions: *keep}
 	if fs.NArg() != 2 {
 		return usageErr("expected a .docx file and a translations file")
 	}
@@ -81,7 +88,7 @@ func runMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", fs.Arg(1), err)
 	}
-	out, err := docx.Merge(data, *lang, *target, tr)
+	out, err := docx.Merge(data, *lang, *target, tr, opts)
 	if err != nil {
 		return err
 	}

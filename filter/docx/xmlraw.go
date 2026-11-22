@@ -21,11 +21,19 @@ type node struct {
 	start  []byte // raw start tag; the whole element when self-closing
 	end    []byte // raw end tag; empty when self-closing
 	raw    []byte // all bytes of the node
+	off    int    // byte offset of the node in its part
 	text   string // decoded character data (text nodes only)
 	kids   []*node
 }
 
 func (n *node) isText() bool { return n.local == "" }
+
+// span is a byte range [start, end) of a part.
+type span [2]int
+
+func (n *node) whole() span    { return span{n.off, n.off + len(n.raw)} }
+func (n *node) startTag() span { return span{n.off, n.off + len(n.start)} }
+func (n *node) endTag() span   { return span{n.off + len(n.raw) - len(n.end), n.off + len(n.raw)} }
 
 func (n *node) child(local string) *node {
 	for _, k := range n.kids {
@@ -88,7 +96,7 @@ func build(data []byte, toks []token, i int) (*node, int, error) {
 	if !ok {
 		return nil, i, fmt.Errorf("expected start element at byte %d", toks[i].start)
 	}
-	n := &node{prefix: st.Name.Space, local: st.Name.Local, attrs: st.Attr, start: data[toks[i].start:toks[i].end]}
+	n := &node{prefix: st.Name.Space, local: st.Name.Local, attrs: st.Attr, start: data[toks[i].start:toks[i].end], off: toks[i].start}
 	begin := toks[i].start
 	i++
 	for i < len(toks) {
@@ -108,10 +116,10 @@ func build(data []byte, toks []token, i int) (*node, int, error) {
 			n.kids = append(n.kids, k)
 			i = next
 		case xml.CharData:
-			n.kids = append(n.kids, &node{raw: data[toks[i].start:toks[i].end], text: string(t)})
+			n.kids = append(n.kids, &node{raw: data[toks[i].start:toks[i].end], text: string(t), off: toks[i].start})
 			i++
 		default: // comments, processing instructions
-			n.kids = append(n.kids, &node{raw: data[toks[i].start:toks[i].end]})
+			n.kids = append(n.kids, &node{raw: data[toks[i].start:toks[i].end], off: toks[i].start})
 			i++
 		}
 	}

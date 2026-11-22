@@ -65,12 +65,14 @@ func (k *TagKind) UnmarshalText(b []byte) error {
 }
 
 // Tag is an inline element. ID pairs open and close tags inside a segment.
-// Type is a format-neutral hint ("bold", "link", "lb"). Native holds the
-// original markup so the file can be rebuilt exactly.
+// Type is a format-neutral hint ("bold", "link", "lb"). Desc describes the
+// tag for people ("Colour #C00000, Bold"). Native holds the original markup
+// so the file can be rebuilt exactly.
 type Tag struct {
 	Kind   TagKind `json:"kind"`
 	ID     string  `json:"id"`
 	Type   string  `json:"type,omitempty"`
+	Desc   string  `json:"desc,omitempty"`
 	Native string  `json:"native,omitempty"`
 }
 

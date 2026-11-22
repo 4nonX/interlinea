@@ -21,6 +21,7 @@
             "kind": "open",
             "id": "1",
             "type": "bold",
+            "desc": "Bold",
             "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
           }
         },
@@ -31,7 +32,8 @@
           "tag": {
             "kind": "close",
             "id": "1",
-            "type": "bold"
+            "type": "bold",
+            "desc": "Bold"
           }
         },
         {
@@ -42,6 +44,7 @@
             "kind": "open",
             "id": "2",
             "type": "bold",
+            "desc": "Bold",
             "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
           }
         },
@@ -52,7 +55,8 @@
           "tag": {
             "kind": "close",
             "id": "2",
-            "type": "bold"
+            "type": "bold",
+            "desc": "Bold"
           }
         },
         {
@@ -135,6 +139,7 @@
             "kind": "open",
             "id": "1",
             "type": "bold",
+            "desc": "Bold",
             "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
           }
         },
@@ -145,7 +150,8 @@
           "tag": {
             "kind": "close",
             "id": "1",
-            "type": "bold"
+            "type": "bold",
+            "desc": "Bold"
           }
         },
         {
@@ -156,6 +162,7 @@
             "kind": "open",
             "id": "2",
             "type": "bold",
+            "desc": "Bold",
             "native": "\u003cw:rPr\u003e\u003cw:b/\u003e\u003cw:bCs/\u003e\u003c/w:rPr\u003e"
           }
         },
@@ -166,7 +173,8 @@
           "tag": {
             "kind": "close",
             "id": "2",
-            "type": "bold"
+            "type": "bold",
+            "desc": "Bold"
           }
         },
         {
@@ -303,6 +311,7 @@
             "kind": "open",
             "id": "1",
             "type": "italic",
+            "desc": "Italic",
             "native": "\u003cw:rPr\u003e\u003cw:i/\u003e\u003cw:iCs/\u003e\u003c/w:rPr\u003e"
           }
         },
@@ -313,7 +322,8 @@
           "tag": {
             "kind": "close",
             "id": "1",
-            "type": "italic"
+            "type": "italic",
+            "desc": "Italic"
           }
         },
         {
@@ -333,6 +343,7 @@
             "kind": "standalone",
             "id": "1",
             "type": "footnote",
+            "desc": "Footnote reference",
             "native": "\u003cw:r\u003e\u003cw:rPr\u003e\u003cw:rStyle w:val=\"FootnoteReference\"/\u003e\u003c/w:rPr\u003e\u003cw:footnoteReference w:id=\"2\"/\u003e\u003c/w:r\u003e"
           }
         },
@@ -389,6 +400,7 @@
             "kind": "open",
             "id": "1",
             "type": "link",
+            "desc": "Link",
             "native": "\u003cw:hyperlink r:id=\"rIdLink1\" w:history=\"1\"\u003e\u003cw:rPr\u003e\u003cw:rStyle w:val=\"Hyperlink\"/\u003e\u003c/w:rPr\u003e"
           }
         },
@@ -399,7 +411,9 @@
           "tag": {
             "kind": "close",
             "id": "1",
-            "type": "link"
+            "type": "link",
+            "desc": "Link",
+            "native": "\u003c/w:hyperlink\u003e"
           }
         },
         {
@@ -482,6 +496,7 @@
             "kind": "standalone",
             "id": "1",
             "type": "field",
+            "desc": "Field PAGE",
             "native": "\u003cw:r\u003e\u003cw:fldChar w:fldCharType=\"begin\"/\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:instrText xml:space=\"preserve\"\u003e PAGE \u003c/w:instrText\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:fldChar w:fldCharType=\"separate\"/\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:t xml:space=\"preserve\"\u003e1\u003c/w:t\u003e\u003c/w:r\u003e\u003cw:r\u003e\u003cw:fldChar w:fldCharType=\"end\"/\u003e\u003c/w:r\u003e"
           }
         },

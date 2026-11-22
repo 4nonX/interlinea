@@ -26,11 +26,11 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
-	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/segment"
 )
@@ -46,10 +46,19 @@ var ErrNotDocx = errors.New("docx: not a Word document")
 // maxPartSize guards against decompression bombs (256 MiB per part).
 const maxPartSize = 256 << 20
 
+// Options change how documents are read and written.
+type Options struct {
+	// KeepRevisions keeps tracked changes in rewritten paragraphs: tracked
+	// insertions become tag pairs around their translation and tracked
+	// deletions placeholders. By default they are accepted (inserted text
+	// stays, deleted text goes), as in most CAT tools.
+	KeepRevisions bool
+}
+
 // Extract returns the translatable units of a .docx file. lang is the
 // source language (a BCP 47 tag); it selects the sentence rules.
-func Extract(data []byte, lang string) (*filter.Extraction, error) {
-	d, err := parse(data, lang)
+func Extract(data []byte, lang string, opts Options) (*filter.Extraction, error) {
+	d, err := parse(data, lang, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -57,10 +66,10 @@ func Extract(data []byte, lang string) (*filter.Extraction, error) {
 }
 
 // Merge returns a copy of the .docx file with the units replaced by their
-// translations. lang must be the source language used for Extract, so the
-// units are found again; targetLang is written to the rewritten runs.
-func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte, error) {
-	d, err := parse(data, lang)
+// translations. lang and opts must be those used for Extract, so the units
+// are found again; targetLang is written to the rewritten text.
+func Merge(data []byte, lang, targetLang string, tr filter.Translations, opts Options) ([]byte, error) {
+	d, err := parse(data, lang, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -71,40 +80,55 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 		}
 		changed[p.file] = p.render(d, tr, targetLang)
 	}
+	if err := d.updateChartData(changed, tr); err != nil {
+		return nil, err
+	}
 	return rewriteZip(d.zr, changed)
 }
 
 type document struct {
 	zr     *zip.Reader
+	opts   Options
 	styles map[string]styleInfo
 	seg    *segment.Segmenter
 	parts  []*part
 	ext    filter.Extraction
+	sigs   map[string]*para // source signature -> first paragraph with it
+	labels []labelRef
+}
+
+// labelRef points at a chart label unit, for updating the chart's data.
+type labelRef struct {
+	part *part
+	unit int
 }
 
 type part struct {
 	file  string
 	kind  filter.Part
 	data  []byte
-	w     string // prefix bound to the main namespace
+	cache bool // a cached copy of other content: only mirrors
 	paras []*para
 }
 
-func (p *part) hasUnits() bool {
-	for _, pa := range p.paras {
-		if pa.hasUnits() {
-			return true
-		}
-	}
-	return false
+type partRef struct {
+	name  string
+	kind  filter.Part
+	cache bool
 }
 
-func parse(data []byte, lang string) (*document, error) {
+var (
+	chartName   = regexp.MustCompile(`^word/charts/chart\d*\.xml$`)
+	diagramData = regexp.MustCompile(`^word/diagrams/data\d*\.xml$`)
+	diagramDraw = regexp.MustCompile(`^word/diagrams/drawing\d*\.xml$`)
+)
+
+func parse(data []byte, lang string, opts Options) (*document, error) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrNotDocx, err)
 	}
-	d := &document{zr: zr, seg: segment.New(nil, lang)}
+	d := &document{zr: zr, opts: opts, seg: segment.New(nil, lang), sigs: map[string]*para{}}
 	main, err := mainPart(zr)
 	if err != nil {
 		return nil, err
@@ -112,36 +136,44 @@ func parse(data []byte, lang string) (*document, error) {
 	if b, err := readFile(zr, path.Join(path.Dir(main), "styles.xml")); err == nil {
 		d.styles = parseStyles(b)
 	}
-	files := []struct {
-		name string
-		kind filter.Part
-	}{{main, filter.PartBody}}
+	files := []partRef{{main, filter.PartBody, false}}
 	rels, _ := readRels(zr, main)
-	var notes, heads, foots []string
-	var endnotes []string
+	groups := map[filter.Part][]string{}
 	for _, r := range rels {
-		switch {
-		case strings.HasSuffix(r.typ, "/footnotes"):
-			notes = append(notes, r.target)
-		case strings.HasSuffix(r.typ, "/endnotes"):
-			endnotes = append(endnotes, r.target)
-		case strings.HasSuffix(r.typ, "/header"):
-			heads = append(heads, r.target)
-		case strings.HasSuffix(r.typ, "/footer"):
-			foots = append(foots, r.target)
+		for _, g := range []struct {
+			suffix string
+			kind   filter.Part
+		}{{"/footnotes", filter.PartFootnote}, {"/endnotes", filter.PartEndnote}, {"/comments", filter.PartComment}, {"/header", filter.PartHeader}, {"/footer", filter.PartFooter}} {
+			if strings.HasSuffix(r.typ, g.suffix) {
+				groups[g.kind] = append(groups[g.kind], r.target)
+			}
 		}
 	}
-	for _, group := range []struct {
-		names []string
-		kind  filter.Part
-	}{{notes, filter.PartFootnote}, {endnotes, filter.PartEndnote}, {heads, filter.PartHeader}, {foots, filter.PartFooter}} {
-		sort.Slice(group.names, func(i, j int) bool { return naturalLess(group.names[i], group.names[j]) })
-		for _, n := range group.names {
-			files = append(files, struct {
-				name string
-				kind filter.Part
-			}{n, group.kind})
+	var charts, diagrams, drawings []string
+	for _, f := range zr.File {
+		switch {
+		case chartName.MatchString(f.Name):
+			charts = append(charts, f.Name)
+		case diagramData.MatchString(f.Name):
+			diagrams = append(diagrams, f.Name)
+		case diagramDraw.MatchString(f.Name):
+			drawings = append(drawings, f.Name)
 		}
+	}
+	groups[filter.PartChart] = charts
+	groups[filter.PartDiagram] = diagrams
+	for _, kind := range []filter.Part{filter.PartFootnote, filter.PartEndnote, filter.PartComment, filter.PartHeader, filter.PartFooter, filter.PartChart, filter.PartDiagram} {
+		names := groups[kind]
+		sort.Slice(names, func(i, j int) bool { return naturalLess(names[i], names[j]) })
+		for _, n := range names {
+			files = append(files, partRef{n, kind, false})
+		}
+	}
+	// SmartArt keeps a drawing of the diagram as a cache; it is rewritten
+	// with the translations of the diagram's data.
+	sort.Slice(drawings, func(i, j int) bool { return naturalLess(drawings[i], drawings[j]) })
+	for _, n := range drawings {
+		files = append(files, partRef{n, filter.PartDiagram, true})
 	}
 	for _, f := range files {
 		b, err := readFile(zr, f.name)
@@ -149,13 +181,31 @@ func parse(data []byte, lang string) (*document, error) {
 			if f.kind == filter.PartBody {
 				return nil, err
 			}
-			continue // a broken optional part is left as it is
+			continue // a missing optional part is left as it is
 		}
-		p, err := d.parsePart(f.name, f.kind, b)
+		p, err := d.parsePart(f.name, f.kind, b, f.cache)
 		if err != nil {
-			return nil, fmt.Errorf("docx: %s: %w", f.name, err)
+			if f.kind == filter.PartBody {
+				return nil, fmt.Errorf("docx: %s: %w", f.name, err)
+			}
+			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%s could not be read and is kept unchanged: %v", f.name, err))
+			continue
 		}
 		d.parts = append(d.parts, p)
+	}
+	d.resolveMirrors()
+	revised := 0
+	for _, b := range d.ext.Blocks {
+		if b.Revisions {
+			revised++
+		}
+	}
+	if revised > 0 {
+		if opts.KeepRevisions {
+			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%d paragraphs contain tracked changes. They are kept as tags: keep the insertion tags around the translation of the inserted text.", revised))
+		} else {
+			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%d paragraphs contain tracked changes. Translated paragraphs keep them accepted: inserted text stays, deleted text is removed.", revised))
+		}
 	}
 	return d, nil
 }
@@ -289,6 +339,7 @@ func trailingNumber(s string) (int, string) {
 
 // styleInfo is what the filter needs from styles.xml.
 type styleInfo struct {
+	typ      string
 	name     string
 	basedOn  string
 	outline  int // 1-based heading level, 0 if none
@@ -313,10 +364,7 @@ func parseStyles(b []byte) map[string]styleInfo {
 	}
 	out := map[string]styleInfo{}
 	for _, s := range x.Styles {
-		if s.Type != "" && s.Type != "paragraph" {
-			continue
-		}
-		si := styleInfo{name: s.Name.Val, basedOn: s.BasedOn.Val, numbered: s.PPr.NumPr != nil}
+		si := styleInfo{typ: s.Type, name: s.Name.Val, basedOn: s.BasedOn.Val, numbered: s.PPr.NumPr != nil}
 		if s.PPr.Outline != nil {
 			if n, err := strconv.Atoi(s.PPr.Outline.Val); err == nil && n < 9 {
 				si.outline = n + 1
@@ -362,17 +410,12 @@ func (d *document) heading(styleID string) (level int, name string, numbered boo
 	return level, name, numbered
 }
 
+// styleName returns the display name of a style ID, or "".
+func (d *document) styleName(id string) string {
+	return d.styles[id].name
+}
+
 // shortName turns "word/footnotes.xml" into "footnotes" for readable IDs.
 func shortName(file string) string {
 	return strings.TrimSuffix(path.Base(file), path.Ext(file))
-}
-
-// unitTag looks up the source tag for a tag in a translation by kind and ID.
-func unitTag(src content.Content, t content.Tag) (content.Tag, bool) {
-	for _, r := range src {
-		if r.IsTag() && r.Tag.ID == t.ID && r.Tag.Kind == t.Kind {
-			return *r.Tag, true
-		}
-	}
-	return content.Tag{}, false
 }

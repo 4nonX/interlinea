@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -12,10 +13,21 @@ import (
 	"github.com/4nonX/interlinea/filter"
 )
 
-// para is one paragraph that may contain units, with its byte range in the
-// part and the pieces it is rebuilt from.
+// dialect is the markup a paragraph is written in.
+type dialect uint8
+
+const (
+	wml   dialect = iota // WordprocessingML <w:p>: body, notes, headers, text boxes
+	dml                  // DrawingML <a:p>: charts, SmartArt
+	label                // a chart's cached category or series name <c:v>
+)
+
+// para is one paragraph (or chart label) that may contain units, with its
+// byte range in the part and the pieces it is rebuilt from.
 type para struct {
-	start, end int    // byte range of the w:p element
+	dialect    dialect
+	ns         string // prefix of the paragraph's namespace ("w", "a")
+	start, end int
 	open       []byte // raw start tag
 	close      []byte // raw end tag
 	ppr        []byte // raw paragraph properties, if any
@@ -24,13 +36,23 @@ type para struct {
 	// to translators (a footnote number, an anchor, a link around everything).
 	prefix, suffix content.Content
 	pieces         []piece
+	// ranges holds, for placeholders, the byte ranges their markup comes
+	// from, so text inside them (a text box in a drawing) can be rewritten.
+	ranges map[string][]span
+	// mirror marks a copy of other content (the fallback copy of a text box,
+	// SmartArt's cached drawing): it gets no units of its own but the
+	// translations of the paragraph with the same source.
+	mirror bool
+	sig    string
 }
 
-// piece is either a unit (by index into the extraction) or the whitespace
-// and tags between units.
+// piece is a unit (by index into the extraction) or the whitespace and tags
+// between units.
 type piece struct {
-	unit int // -1 for a gap
+	unit int // -1 for a gap; -2 for a mirror unit not matched (yet)
 	gap  content.Content
+	src  content.Content   // the unit's source with this paragraph's markup
+	ids  map[string]string // unit tag ID -> paragraph tag ID
 }
 
 func (p *para) hasUnits() bool {
@@ -48,130 +70,191 @@ type walkCtx struct {
 	table      int
 	row, col   int
 	note       string
+	skip       bool
 }
 
-func (d *document) parsePart(file string, kind filter.Part, data []byte) (*part, error) {
+type frame struct {
+	space, local string
+	fallback     bool
+	textbox      bool
+	strCache     bool
+}
+
+const (
+	nsDML   = "http://schemas.openxmlformats.org/drawingml/2006/main"
+	nsChart = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+	nsMC    = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+)
+
+func (d *document) parsePart(file string, kind filter.Part, data []byte, cache bool) (*part, error) {
 	toks, err := tokenize(data)
 	if err != nil {
 		return nil, err
 	}
-	p := &part{file: file, kind: kind, data: data}
-	// Find the prefix bound to the main namespace on the root element.
-	for _, t := range toks {
-		if st, ok := t.tok.(xml.StartElement); ok {
-			for _, a := range st.Attr {
-				if a.Name.Space == "xmlns" && a.Value == nsMain {
-					p.w = a.Name.Local
-				}
-			}
-			break
-		}
-	}
-	if p.w == "" {
-		return p, nil // not a WordprocessingML part; nothing to extract
-	}
+	p := &part{file: file, kind: kind, data: data, cache: cache}
+	// Prefixes are looked up on every start tag, since drawings declare
+	// their namespaces locally.
+	prefixes := map[string]string{}
 	ctx := walkCtx{table: -1}
-	var noteSkip bool
-	paraIndex := 0
-	for i := 0; i < len(toks); {
+	var stack []frame
+	paraIndex, labelIndex := 0, 0
+	for i := 0; i < len(toks); i++ {
 		switch t := toks[i].tok.(type) {
 		case xml.StartElement:
-			if t.Name.Space != p.w {
-				i++
-				continue
+			for _, a := range t.Attr {
+				if a.Name.Space == "xmlns" {
+					prefixes[a.Value] = a.Name.Local
+				}
 			}
-			switch t.Name.Local {
-			case "p":
-				n, next, err := build(data, toks, i)
+			f := frame{space: t.Name.Space, local: t.Name.Local}
+			if n := len(stack); n > 0 {
+				f.fallback, f.textbox, f.strCache = stack[n-1].fallback, stack[n-1].textbox, stack[n-1].strCache
+			}
+			w, a, c, mc := prefixes[nsMain], prefixes[nsDML], prefixes[nsChart], prefixes[nsMC]
+			switch {
+			case mc != "" && t.Name.Space == mc && t.Name.Local == "Fallback":
+				f.fallback = true
+			case w != "" && t.Name.Space == w && t.Name.Local == "txbxContent":
+				f.textbox = true
+			case c != "" && t.Name.Space == c && t.Name.Local == "strCache":
+				f.strCache = true
+			}
+			if w != "" && t.Name.Space == w {
+				switch t.Name.Local {
+				case "tbl":
+					ctx.tableDepth++
+					if ctx.tableDepth == 1 {
+						ctx.table++
+						ctx.row = -1
+					}
+				case "tr":
+					if ctx.tableDepth == 1 {
+						ctx.row++
+						ctx.col = -1
+					}
+				case "tc":
+					if ctx.tableDepth == 1 {
+						ctx.col++
+					}
+				case "footnote", "endnote", "comment":
+					ctx.note, ctx.skip = "", false
+					for _, at := range t.Attr {
+						switch at.Name.Local {
+						case "id":
+							ctx.note = at.Value
+						case "type":
+							// separators and continuation notices are layout, not text
+							ctx.skip = at.Value != "normal"
+						}
+					}
+				}
+			}
+			isW := w != "" && t.Name.Space == w && t.Name.Local == "p"
+			isA := a != "" && t.Name.Space == a && t.Name.Local == "p"
+			isLabel := c != "" && t.Name.Space == c && t.Name.Local == "v" && f.strCache
+			if (isW || isA || isLabel) && !ctx.skip {
+				n, _, err := build(data, toks, i)
 				if err != nil {
 					return nil, err
 				}
-				if !noteSkip {
-					paraIndex++
-					if err := d.addParagraph(p, n, toks[i].start, toks[next-1].end, paraIndex, ctx); err != nil {
+				mirror := f.fallback || cache
+				dia, prefix := wml, w
+				if isA {
+					dia, prefix = dml, a
+				}
+				switch {
+				case isLabel:
+					if !mirror {
+						labelIndex++
+						d.addLabel(p, n, fmt.Sprintf("%s/v%d", shortName(file), labelIndex))
+					}
+				default:
+					id := ""
+					if !mirror {
+						paraIndex++
+						id = fmt.Sprintf("%s/p%d", shortName(file), paraIndex)
+					}
+					if err := d.addParagraph(p, n, id, dia, prefix, ctx, f.textbox, mirror); err != nil {
 						return nil, err
 					}
 				}
-				i = next
-				continue
-			case "tbl":
-				ctx.tableDepth++
-				if ctx.tableDepth == 1 {
-					ctx.table++
-					ctx.row = -1
-				}
-			case "tr":
-				if ctx.tableDepth == 1 {
-					ctx.row++
-					ctx.col = -1
-				}
-			case "tc":
-				if ctx.tableDepth == 1 {
-					ctx.col++
-				}
-			case "footnote", "endnote":
-				ctx.note = ""
-				noteSkip = false
-				for _, a := range t.Attr {
-					switch a.Name.Local {
-					case "id":
-						ctx.note = a.Value
-					case "type":
-						// separator and continuation notice notes are layout, not text
-						noteSkip = a.Value != "normal"
-					}
-				}
 			}
-			// A self-closing element produces its end token right after.
+			stack = append(stack, f)
 		case xml.EndElement:
-			if t.Name.Space == p.w {
+			if n := len(stack); n > 0 {
+				stack = stack[:n-1]
+			}
+			if w := prefixes[nsMain]; w != "" && t.Name.Space == w {
 				switch t.Name.Local {
 				case "tbl":
 					ctx.tableDepth--
-				case "footnote", "endnote":
-					ctx.note = ""
-					noteSkip = false
+				case "footnote", "endnote", "comment":
+					ctx.note, ctx.skip = "", false
 				}
 			}
 		}
-		i++
 	}
 	return p, nil
 }
 
-func (d *document) addParagraph(p *part, n *node, start, end, index int, ctx walkCtx) error {
-	pa := &para{start: start, end: end, open: n.start, close: n.end}
+// addLabel adds a chart's cached category or series name as a unit.
+func (d *document) addLabel(p *part, n *node, id string) {
+	text := n.innerText()
+	if strings.TrimSpace(text) == "" || len(n.end) == 0 {
+		return
+	}
+	if _, err := strconv.ParseFloat(strings.TrimSpace(text), 64); err == nil {
+		return // a number stored as text
+	}
+	block := filter.Block{ID: id, Part: p.kind, File: p.file, Style: "label"}
+	src := content.Text(text)
+	pa := &para{dialect: label, start: n.off, end: n.off + len(n.raw), open: n.start, close: n.end}
+	pa.pieces = []piece{{unit: len(d.ext.Units), src: src, ids: map[string]string{}}}
+	d.ext.Units = append(d.ext.Units, filter.Unit{ID: id + "/s1", Block: id, Source: src})
+	d.ext.Blocks = append(d.ext.Blocks, block)
+	d.labels = append(d.labels, labelRef{part: p, unit: len(d.ext.Units) - 1})
+	p.paras = append(p.paras, pa)
+}
+
+func (d *document) addParagraph(p *part, n *node, id string, dia dialect, prefix string, ctx walkCtx, textbox, mirror bool) error {
 	if len(n.end) == 0 {
 		return nil // <w:p/>: empty paragraph
 	}
-	block := filter.Block{
-		ID:   fmt.Sprintf("%s/p%d", shortName(p.file), index),
-		Part: p.kind,
-		File: p.file,
+	pa := &para{dialect: dia, ns: prefix, start: n.off, end: n.off + len(n.raw), open: n.start, close: n.end, mirror: mirror}
+	block := filter.Block{ID: id, Part: p.kind, File: p.file}
+	if textbox {
+		block.Frame = "textbox"
 	}
 	if ctx.tableDepth > 0 {
 		block.Cell = &filter.Cell{Table: ctx.table, Row: ctx.row, Col: ctx.col}
 	}
-	if p.kind == filter.PartFootnote || p.kind == filter.PartEndnote {
+	switch p.kind {
+	case filter.PartFootnote, filter.PartEndnote, filter.PartComment:
 		block.Note = ctx.note
 	}
-	if ppr := n.child("pPr"); ppr != nil && ppr.prefix == p.w {
+	if ppr := n.child("pPr"); ppr != nil && ppr.prefix == prefix {
 		pa.ppr = ppr.raw
-		if s := ppr.child("pStyle"); s != nil {
-			block.Style, _ = s.attr("val")
-		}
-		if o := ppr.child("outlineLvl"); o != nil {
-			if v, _ := o.attr("val"); v != "" {
-				if lvl, err := strconv.Atoi(v); err == nil && lvl < 9 {
-					block.Heading = lvl + 1
+		if dia == dml {
+			if v, ok := ppr.attr("algn"); ok {
+				block.Align = map[string]string{"ctr": "center", "r": "right", "just": "both", "l": "left"}[v]
+			}
+		} else {
+			if s := ppr.child("pStyle"); s != nil {
+				block.Style, _ = s.attr("val")
+			}
+			if o := ppr.child("outlineLvl"); o != nil {
+				if v, _ := o.attr("val"); v != "" {
+					if lvl, err := strconv.Atoi(v); err == nil && lvl < 9 {
+						block.Heading = lvl + 1
+					}
 				}
 			}
-		}
-		if ppr.child("numPr") != nil {
-			block.List = true
-		}
-		if jc := ppr.child("jc"); jc != nil {
-			block.Align, _ = jc.attr("val")
+			if ppr.child("numPr") != nil {
+				block.List = true
+			}
+			if jc := ppr.child("jc"); jc != nil {
+				block.Align, _ = jc.attr("val")
+			}
 		}
 	}
 	if block.Style != "" {
@@ -183,15 +266,20 @@ func (d *document) addParagraph(p *part, n *node, start, end, index int, ctx wal
 		block.List = block.List || (numbered && lvl == 0)
 	}
 
-	ip := &itemParser{w: p.w}
-	ip.walk(n.kids, nil, true)
-	ip.flushField()
-	c, base := ip.toContent()
-	pa.base = base
+	ip := &itemParser{w: prefix, keepRevisions: d.opts.KeepRevisions}
+	if dia == dml {
+		ip.dmlItems(n)
+	} else {
+		ip.walk(n.kids, nil, true)
+		ip.flushField()
+	}
+	c, base, ranges := toContent(ip.items, dia == dml, d.styleName)
+	pa.base, pa.ranges = base, ranges
 	c, pa.prefix, pa.suffix = stripEdges(c)
 	if !hasText(c) {
 		return nil // nothing to translate; the paragraph is copied as it is
 	}
+	block.Revisions = ip.revisions
 	for _, r := range pa.prefix {
 		if r.Tag.Kind != content.TagClose {
 			block.Lead = append(block.Lead, r.Tag.Type)
@@ -202,32 +290,68 @@ func (d *document) addParagraph(p *part, n *node, start, end, index int, ctx wal
 			block.Trail = append(block.Trail, r.Tag.Type)
 		}
 	}
+	var sig []string
+	n2 := 0
 	for _, pc := range d.splitParagraph(c) {
 		if pc.unit < 0 {
 			pa.pieces = append(pa.pieces, pc)
 			continue
 		}
-		u := filter.Unit{
-			ID:     fmt.Sprintf("%s/s%d", block.ID, len(unitPieces(pa.pieces))+1),
-			Block:  block.ID,
-			Source: renumber(pc.gap),
+		src, ids := renumber(pc.gap)
+		sig = append(sig, src.String())
+		if mirror {
+			pa.pieces = append(pa.pieces, piece{unit: -2, src: src, ids: ids})
+			continue
 		}
-		pa.pieces = append(pa.pieces, piece{unit: len(d.ext.Units)})
-		d.ext.Units = append(d.ext.Units, u)
+		n2++
+		pa.pieces = append(pa.pieces, piece{unit: len(d.ext.Units), src: src, ids: ids})
+		d.ext.Units = append(d.ext.Units, filter.Unit{ID: fmt.Sprintf("%s/s%d", block.ID, n2), Block: block.ID, Source: src})
 	}
-	d.ext.Blocks = append(d.ext.Blocks, block)
+	pa.sig = strings.Join(sig, "\x00")
+	if !mirror {
+		d.ext.Blocks = append(d.ext.Blocks, block)
+		if _, seen := d.sigs[pa.sig]; !seen {
+			d.sigs[pa.sig] = pa
+		}
+	}
 	p.paras = append(p.paras, pa)
 	return nil
 }
 
-func unitPieces(ps []piece) []piece {
-	var out []piece
-	for _, p := range ps {
-		if p.unit >= 0 {
-			out = append(out, p)
+// resolveMirrors gives mirror paragraphs the units of the paragraph with
+// the same source.
+func (d *document) resolveMirrors() {
+	for _, p := range d.parts {
+		for _, pa := range p.paras {
+			if !pa.mirror {
+				continue
+			}
+			twin, ok := d.sigs[pa.sig]
+			if !ok {
+				continue // left as it is
+			}
+			var units []int
+			for _, pc := range twin.pieces {
+				if pc.unit >= 0 {
+					units = append(units, pc.unit)
+				}
+			}
+			k := 0
+			for i := range pa.pieces {
+				if pa.pieces[i].unit == -2 && k < len(units) {
+					pa.pieces[i].unit = units[k]
+					k++
+				}
+			}
 		}
 	}
-	return out
+}
+
+// wrapper is markup around a stretch of text that must stay around its
+// translation: a link, a content control, a tracked insertion.
+type wrapper struct {
+	typ, desc   string
+	open, close string
 }
 
 // item is a stretch of text with one set of run properties, or a
@@ -236,55 +360,130 @@ type item struct {
 	text   string
 	rpr    []byte
 	isText bool
-	tag    content.Tag // standalone placeholder: Type and Native set
-	link   *node       // enclosing hyperlink, if any
+	tag    content.Tag // standalone placeholder: Type, Desc and Native set
+	ranges []span
+	wraps  []*wrapper // enclosing wrappers, outermost first
 }
 
 type itemParser struct {
-	w     string
-	items []item
+	w             string
+	items         []item
+	keepRevisions bool
+	revisions     bool
 	// field collects the runs of a complex field (begin to end) so the whole
 	// field, code and result, travels as one placeholder.
 	field      bytes.Buffer
+	fieldSpans []span
 	fieldDepth int
-	fieldLink  *node
+	fieldWraps []*wrapper
 }
 
-func (ip *itemParser) placeholder(typ string, native []byte, link *node) {
-	ip.items = append(ip.items, item{tag: content.Tag{Kind: content.TagStandalone, Type: typ, Native: string(native)}, link: link})
+var instrRe = regexp.MustCompile(`<[a-zA-Z0-9]*:?instrText[^>]*>([^<]*)<`)
+
+func placeholderDesc(typ, native string) string {
+	switch typ {
+	case "tab":
+		return "Tab"
+	case "lb":
+		return "Line break"
+	case "pagebreak":
+		return "Page break"
+	case "columnbreak":
+		return "Column break"
+	case "field":
+		var code []string
+		for _, m := range instrRe.FindAllStringSubmatch(native, -1) {
+			code = append(code, m[1])
+		}
+		if c := strings.Fields(strings.Join(code, "")); len(c) > 0 {
+			return "Field " + c[0]
+		}
+		if i := strings.Index(native, `instr="`); i >= 0 {
+			if f := strings.Fields(native[i+7:]); len(f) > 0 {
+				return "Field " + strings.Trim(f[0], `"`)
+			}
+		}
+		return "Field"
+	case "footnote":
+		return "Footnote reference"
+	case "note-mark":
+		return "Note number"
+	case "image":
+		return "Image or drawing"
+	case "symbol":
+		return "Symbol"
+	case "anchor":
+		return "Bookmark or comment range"
+	case "comment":
+		return "Comment mark"
+	case "control":
+		return "Content control"
+	case "math":
+		return "Equation"
+	case "deletion":
+		return "Tracked deletion"
+	case "end":
+		return "Paragraph end"
+	}
+	return "Inline code"
 }
 
-func (ip *itemParser) text(s string, rpr []byte, link *node) {
+func (ip *itemParser) placeholder(typ string, native []byte, ranges []span, wraps []*wrapper) {
+	n := string(native)
+	ip.items = append(ip.items, item{tag: content.Tag{Kind: content.TagStandalone, Type: typ, Desc: placeholderDesc(typ, n), Native: n}, ranges: ranges, wraps: wraps})
+}
+
+func (ip *itemParser) text(s string, rpr []byte, wraps []*wrapper) {
 	if s == "" {
 		return
 	}
 	if n := len(ip.items); n > 0 {
 		last := &ip.items[n-1]
-		if last.isText && last.link == link && bytes.Equal(last.rpr, rpr) {
+		if last.isText && sameWraps(last.wraps, wraps) && bytes.Equal(last.rpr, rpr) {
 			last.text += s
 			return
 		}
 	}
-	ip.items = append(ip.items, item{text: s, rpr: rpr, isText: true, link: link})
+	ip.items = append(ip.items, item{text: s, rpr: rpr, isText: true, wraps: wraps})
+}
+
+func sameWraps(a, b []*wrapper) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func withWrap(ws []*wrapper, w *wrapper) []*wrapper {
+	out := make([]*wrapper, len(ws), len(ws)+1)
+	copy(out, ws)
+	return append(out, w)
 }
 
 func (ip *itemParser) flushField() {
 	if ip.field.Len() == 0 {
 		return
 	}
-	ip.placeholder("field", bytes.Clone(ip.field.Bytes()), ip.fieldLink)
+	ip.placeholder("field", bytes.Clone(ip.field.Bytes()), ip.fieldSpans, ip.fieldWraps)
 	ip.field.Reset()
+	ip.fieldSpans = nil
 	ip.fieldDepth = 0
-	ip.fieldLink = nil
+	ip.fieldWraps = nil
 }
 
-func (ip *itemParser) walk(kids []*node, link *node, top bool) {
+func (ip *itemParser) walk(kids []*node, wraps []*wrapper, top bool) {
 	for _, k := range kids {
 		if k.isText() {
 			continue // whitespace between elements carries no meaning here
 		}
 		if ip.fieldDepth > 0 {
 			ip.field.Write(k.raw)
+			ip.fieldSpans = append(ip.fieldSpans, k.whole())
 			b, e := countFieldChars(k)
 			ip.fieldDepth += b - e
 			if ip.fieldDepth <= 0 {
@@ -293,31 +492,50 @@ func (ip *itemParser) walk(kids []*node, link *node, top bool) {
 			continue
 		}
 		if k.prefix != ip.w {
-			ip.placeholder(otherType(k), k.raw, link)
+			ip.placeholder(otherType(k), k.raw, []span{k.whole()}, wraps)
 			continue
 		}
 		switch k.local {
 		case "pPr":
 			if !top {
-				ip.placeholder("inline", k.raw, link)
+				ip.placeholder("inline", k.raw, []span{k.whole()}, wraps)
 			}
 		case "r":
-			ip.run(k, link)
+			ip.run(k, wraps)
 		case "hyperlink":
-			ip.walk(k.kids, k, false)
-		case "ins", "smartTag", "customXml", "moveTo", "dir", "bdo":
-			ip.walk(k.kids, link, false)
-		case "del", "moveFrom", "proofErr":
-			// deleted text and spelling marks are dropped
+			ip.walk(k.kids, withWrap(wraps, &wrapper{typ: "link", desc: "Link", open: string(k.start), close: string(k.end)}), false)
+		case "sdt":
+			c := k.child("sdtContent")
+			if c == nil || len(c.end) == 0 {
+				ip.placeholder("control", k.raw, []span{k.whole()}, wraps)
+				continue
+			}
+			// The control's properties stay with its start; its content is text.
+			open := string(k.raw[:c.off-k.off+len(c.start)])
+			ip.walk(c.kids, withWrap(wraps, &wrapper{typ: "control", desc: "Content control", open: open, close: string(c.end) + string(k.end)}), false)
+		case "ins", "moveTo":
+			ip.revisions = true
+			if ip.keepRevisions {
+				ip.walk(k.kids, withWrap(wraps, &wrapper{typ: "insertion", desc: "Tracked insertion", open: string(k.start), close: string(k.end)}), false)
+			} else {
+				ip.walk(k.kids, wraps, false)
+			}
+		case "del", "moveFrom":
+			ip.revisions = true
+			if ip.keepRevisions {
+				ip.placeholder("deletion", k.raw, []span{k.whole()}, wraps)
+			}
+		case "smartTag", "customXml", "dir", "bdo":
+			ip.walk(k.kids, wraps, false)
+		case "proofErr":
+			// spelling marks are dropped
 		case "bookmarkStart", "bookmarkEnd", "commentRangeStart", "commentRangeEnd",
 			"permStart", "permEnd", "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd":
-			ip.placeholder("anchor", k.raw, link)
+			ip.placeholder("anchor", k.raw, []span{k.whole()}, wraps)
 		case "fldSimple":
-			ip.placeholder("field", k.raw, link)
-		case "sdt":
-			ip.placeholder("control", k.raw, link)
+			ip.placeholder("field", k.raw, []span{k.whole()}, wraps)
 		default:
-			ip.placeholder("inline", k.raw, link)
+			ip.placeholder("inline", k.raw, []span{k.whole()}, wraps)
 		}
 	}
 }
@@ -350,11 +568,12 @@ func countFieldChars(n *node) (begins, ends int) {
 	return begins, ends
 }
 
-func (ip *itemParser) run(r *node, link *node) {
+func (ip *itemParser) run(r *node, wraps []*wrapper) {
 	if b, e := countFieldChars(r); b > 0 || e > 0 || r.child("instrText") != nil {
 		if b > 0 {
-			ip.fieldLink = link
+			ip.fieldWraps = wraps
 			ip.field.Write(r.raw)
+			ip.fieldSpans = append(ip.fieldSpans, r.whole())
 			ip.fieldDepth = b - e
 			if ip.fieldDepth <= 0 {
 				ip.flushField()
@@ -362,113 +581,130 @@ func (ip *itemParser) run(r *node, link *node) {
 			return
 		}
 		// The end of a field that began in an earlier paragraph.
-		ip.placeholder("field", r.raw, link)
+		ip.placeholder("field", r.raw, []span{r.whole()}, wraps)
 		return
 	}
 	var rpr []byte
+	var rprSpan []span
 	if p := r.child("rPr"); p != nil {
 		rpr = p.raw
+		rprSpan = []span{p.whole()}
 	}
-	wrap := func(inner []byte) []byte {
+	wrap := func(c *node) ([]byte, []span) {
 		var b bytes.Buffer
 		b.Write(r.start)
 		b.Write(rpr)
-		b.Write(inner)
+		b.Write(c.raw)
 		b.Write(r.end)
-		return b.Bytes()
+		spans := append([]span{r.startTag()}, rprSpan...)
+		spans = append(spans, c.whole(), r.endTag())
+		return b.Bytes(), spans
 	}
 	for _, c := range r.kids {
 		if c.isText() || c.local == "rPr" {
 			continue
 		}
 		if c.prefix != ip.w {
-			ip.placeholder(otherType(c), wrap(c.raw), link)
+			nat, sp := wrap(c)
+			ip.placeholder(otherType(c), nat, sp, wraps)
 			continue
 		}
+		typ := ""
 		switch c.local {
 		case "t":
-			ip.text(c.innerText(), rpr, link)
+			ip.text(c.innerText(), rpr, wraps)
 		case "noBreakHyphen":
-			ip.text("‑", rpr, link)
+			ip.text("‑", rpr, wraps)
 		case "softHyphen":
-			ip.text("­", rpr, link)
+			ip.text("­", rpr, wraps)
 		case "tab", "ptab":
-			ip.placeholder("tab", wrap(c.raw), link)
+			typ = "tab"
 		case "br":
-			typ := "lb"
+			typ = "lb"
 			if v, _ := c.attr("type"); v == "page" || v == "column" {
 				typ = v + "break"
 			}
-			ip.placeholder(typ, wrap(c.raw), link)
 		case "cr":
-			ip.placeholder("lb", wrap(c.raw), link)
+			typ = "lb"
 		case "footnoteReference", "endnoteReference":
-			ip.placeholder("footnote", wrap(c.raw), link)
-		case "footnoteRef", "endnoteRef":
-			ip.placeholder("note-mark", wrap(c.raw), link)
+			typ = "footnote"
+		case "footnoteRef", "endnoteRef", "annotationRef":
+			typ = "note-mark"
 		case "drawing", "pict", "object":
-			ip.placeholder("image", wrap(c.raw), link)
+			typ = "image"
 		case "sym":
-			ip.placeholder("symbol", wrap(c.raw), link)
-		case "commentReference", "annotationRef":
-			ip.placeholder("comment", wrap(c.raw), link)
+			typ = "symbol"
+		case "commentReference":
+			typ = "comment"
 		case "delText", "lastRenderedPageBreak":
 			// not part of the visible text
 		default:
-			ip.placeholder("inline", wrap(c.raw), link)
+			typ = "inline"
+		}
+		if typ != "" {
+			nat, sp := wrap(c)
+			ip.placeholder(typ, nat, sp, wraps)
 		}
 	}
 }
 
-// rprKey normalizes run properties for comparison: the language and
-// proofing marks do not count as a formatting change.
-func rprKey(rpr []byte) string {
-	if len(rpr) == 0 {
-		return ""
-	}
-	n, err := parseFragment(rpr)
-	if err != nil {
-		return string(rpr)
-	}
-	var b strings.Builder
-	for _, k := range n.kids {
+// dmlItems reads a DrawingML paragraph (charts, SmartArt).
+func (ip *itemParser) dmlItems(p *node) {
+	for _, k := range p.kids {
 		if k.isText() {
 			continue
 		}
-		switch k.local {
-		case "lang", "noProof", "rPrChange":
+		if k.prefix != ip.w {
+			ip.placeholder(otherType(k), k.raw, []span{k.whole()}, nil)
 			continue
 		}
-		b.Write(k.raw)
+		switch k.local {
+		case "pPr":
+		case "r":
+			var rpr []byte
+			if p := k.child("rPr"); p != nil {
+				rpr = p.raw
+			}
+			if t := k.child("t"); t != nil {
+				ip.text(t.innerText(), rpr, nil)
+			}
+		case "br":
+			ip.placeholder("lb", k.raw, []span{k.whole()}, nil)
+		case "fld":
+			nat := string(k.raw)
+			desc := "Field"
+			if v, ok := k.attr("type"); ok {
+				desc = "Field " + v
+			}
+			ip.items = append(ip.items, item{tag: content.Tag{Kind: content.TagStandalone, Type: "field", Desc: desc, Native: nat}, ranges: []span{k.whole()}})
+		case "endParaRPr":
+			ip.placeholder("end", k.raw, []span{k.whole()}, nil)
+		default:
+			ip.placeholder("inline", k.raw, []span{k.whole()}, nil)
+		}
 	}
-	return b.String()
 }
 
-// toContent turns the items into tagged content. It returns the run
-// properties most of the text uses; text with other properties is wrapped
-// in paired tags whose native code is the run properties to restore.
-func (ip *itemParser) toContent() (content.Content, []byte) {
+// toContent turns items into tagged content. It returns the run properties
+// most of the text uses, and the byte ranges of placeholder markup by tag ID.
+func toContent(items []item, isDML bool, styleName func(string) string) (content.Content, []byte, map[string][]span) {
 	counts := map[string]int{}
 	rprOf := map[string][]byte{}
-	keyOf := make([]string, len(ip.items))
-	best, bestN := "", -1
-	for i, it := range ip.items {
+	keyOf := make([]string, len(items))
+	for i, it := range items {
 		if !it.isText {
 			continue
 		}
-		k := rprKey(it.rpr)
+		k := propKey(it.rpr, isDML)
 		keyOf[i] = k
 		counts[k] += len([]rune(it.text))
 		if _, ok := rprOf[k]; !ok {
 			rprOf[k] = it.rpr
 		}
 	}
-	// Deterministic choice: most characters, then first seen.
-	for i, it := range ip.items {
-		if !it.isText {
-			continue
-		}
-		if counts[keyOf[i]] > bestN {
+	best, bestN := "", -1
+	for i, it := range items {
+		if it.isText && counts[keyOf[i]] > bestN {
 			best, bestN = keyOf[i], counts[keyOf[i]]
 		}
 	}
@@ -476,156 +712,100 @@ func (ip *itemParser) toContent() (content.Content, []byte) {
 
 	// Text inside a link usually has one character style (Hyperlink). That
 	// style travels with the link tag instead of adding a second tag pair.
-	linkKey := map[*node]string{}
-	linkRPr := map[*node][]byte{}
-	mixed := map[*node]bool{}
-	for i, it := range ip.items {
-		if !it.isText || it.link == nil {
+	linkKey := map[*wrapper]string{}
+	linkRPr := map[*wrapper][]byte{}
+	mixed := map[*wrapper]bool{}
+	for i, it := range items {
+		if !it.isText || len(it.wraps) == 0 {
 			continue
 		}
-		if k, ok := linkKey[it.link]; ok && k != keyOf[i] {
-			mixed[it.link] = true
+		l := it.wraps[len(it.wraps)-1]
+		if l.typ != "link" {
+			continue
 		}
-		if _, ok := linkKey[it.link]; !ok {
-			linkKey[it.link], linkRPr[it.link] = keyOf[i], it.rpr
+		if k, ok := linkKey[l]; ok && k != keyOf[i] {
+			mixed[l] = true
 		}
-	}
-	for l := range mixed {
-		delete(linkKey, l)
-		delete(linkRPr, l)
+		if _, ok := linkKey[l]; !ok {
+			linkKey[l], linkRPr[l] = keyOf[i], it.rpr
+		}
 	}
 
 	var c content.Content
+	ranges := map[string][]span{}
 	next := 0
 	newID := func() string { next++; return strconv.Itoa(next) }
-	var curLink *node
-	linkID, fmtID, fmtKey := "", "", best
-	// spanBase is the formatting text has without a tag: the paragraph's,
-	// or the link's own when the link carries it.
-	spanBase := best
+
+	type open struct {
+		w       *wrapper
+		id      string
+		baseKey string
+		baseRPr []byte
+	}
+	var opened []open
+	fmtID, fmtKey, fmtType, fmtDesc := "", best, "", ""
+	spanBase := func() (string, []byte) {
+		if n := len(opened); n > 0 {
+			return opened[n-1].baseKey, opened[n-1].baseRPr
+		}
+		return best, base
+	}
 	closeFmt := func() {
 		if fmtID != "" {
-			c = c.AppendTag(content.Tag{Kind: content.TagClose, ID: fmtID})
+			c = c.AppendTag(content.Tag{Kind: content.TagClose, ID: fmtID, Type: fmtType, Desc: fmtDesc})
 			fmtID = ""
 		}
-		fmtKey = spanBase
+		fmtKey, _ = spanBase()
 	}
-	setLink := func(l *node) {
-		if l == curLink {
+	setWraps := func(ws []*wrapper) {
+		k := 0
+		for k < len(opened) && k < len(ws) && opened[k].w == ws[k] {
+			k++
+		}
+		if k == len(opened) && k == len(ws) {
 			return
 		}
 		closeFmt()
-		if curLink != nil {
-			c = c.AppendTag(content.Tag{Kind: content.TagClose, ID: linkID, Type: "link"})
+		for len(opened) > k {
+			o := opened[len(opened)-1]
+			c = c.AppendTag(content.Tag{Kind: content.TagClose, ID: o.id, Type: o.w.typ, Desc: o.w.desc, Native: o.w.close})
+			opened = opened[:len(opened)-1]
 		}
-		curLink, linkID, spanBase = l, "", best
-		if l != nil {
-			linkID = newID()
-			native := string(l.start)
-			if k, ok := linkKey[l]; ok && k != best {
-				native += string(linkRPr[l])
-				spanBase = k
+		for _, w := range ws[k:] {
+			bk, br := spanBase()
+			o := open{w: w, id: newID(), baseKey: bk, baseRPr: br}
+			native := w.open
+			if lk, ok := linkKey[w]; ok && !mixed[w] && lk != bk {
+				native += string(linkRPr[w])
+				o.baseKey, o.baseRPr = lk, linkRPr[w]
 			}
-			c = c.AppendTag(content.Tag{Kind: content.TagOpen, ID: linkID, Type: "link", Native: native})
+			opened = append(opened, o)
+			c = c.AppendTag(content.Tag{Kind: content.TagOpen, ID: o.id, Type: w.typ, Desc: w.desc, Native: native})
 		}
-		fmtKey = spanBase
+		fmtKey, _ = spanBase()
 	}
-	for i, it := range ip.items {
-		setLink(it.link)
+	for i, it := range items {
+		setWraps(it.wraps)
 		if !it.isText {
 			t := it.tag
 			t.ID = newID()
+			ranges[t.ID] = it.ranges
 			c = c.AppendTag(t)
 			continue
 		}
 		if k := keyOf[i]; k != fmtKey {
 			closeFmt()
-			if k != spanBase {
+			if bk, br := spanBase(); k != bk {
 				fmtID, fmtKey = newID(), k
-				c = c.AppendTag(content.Tag{Kind: content.TagOpen, ID: fmtID, Type: formatType(base, it.rpr), Native: string(it.rpr)})
+				fmtType, fmtDesc = describe(br, it.rpr, isDML, styleName)
+				c = c.AppendTag(content.Tag{Kind: content.TagOpen, ID: fmtID, Type: fmtType, Desc: fmtDesc, Native: string(it.rpr)})
 			}
 		}
 		c = c.Append(it.text)
 	}
-	setLink(nil)
+	setWraps(nil)
 	closeFmt()
-	// Close tags carry the same type as their open tags.
-	types := map[string]string{}
-	for _, r := range c {
-		if r.IsTag() && r.Tag.Kind == content.TagOpen {
-			types[r.Tag.ID] = r.Tag.Type
-		}
-	}
-	for i := range c {
-		if c[i].IsTag() && c[i].Tag.Kind == content.TagClose {
-			c[i].Tag.Type = types[c[i].Tag.ID]
-		}
-	}
-	return c, base
-}
-
-// formatType names the difference between two run properties for display.
-func formatType(base, rpr []byte) string {
-	set := func(b []byte) map[string]string {
-		out := map[string]string{}
-		if len(b) == 0 {
-			return out
-		}
-		n, err := parseFragment(b)
-		if err != nil {
-			return out
-		}
-		for _, k := range n.kids {
-			if k.isText() || k.local == "lang" || k.local == "noProof" {
-				continue
-			}
-			v, _ := k.attr("val")
-			out[k.local] = v
-		}
-		return out
-	}
-	a, b := set(base), set(rpr)
-	var added []string
-	for k, v := range b {
-		if av, ok := a[k]; !ok || av != v {
-			added = append(added, k+"="+v)
-		}
-	}
-	for k := range a {
-		if _, ok := b[k]; !ok {
-			return "format"
-		}
-	}
-	only := func(names ...string) bool {
-		if len(added) == 0 {
-			return false
-		}
-		for _, x := range added {
-			ok := false
-			for _, n := range names {
-				if x == n {
-					ok = true
-				}
-			}
-			if !ok {
-				return false
-			}
-		}
-		return true
-	}
-	switch {
-	case only("b=", "bCs=", "b=1", "b=true", "bCs=1", "bCs=true"):
-		return "bold"
-	case only("i=", "iCs=", "i=1", "i=true", "iCs=1", "iCs=true"):
-		return "italic"
-	case len(added) == 1 && strings.HasPrefix(added[0], "u=") && added[0] != "u=none":
-		return "underline"
-	case only("vertAlign=superscript"):
-		return "superscript"
-	case only("vertAlign=subscript"):
-		return "subscript"
-	}
-	return "format"
+	return c, base, ranges
 }
 
 // stripEdges moves tags at the paragraph edges out of the translatable
@@ -672,8 +852,6 @@ func hasText(c content.Content) bool {
 // break inside a pair of tags is not used, so tags never cross units.
 func (d *document) splitParagraph(c content.Content) []piece {
 	breaks := d.seg.Breaks(c.Plain())
-	// Depth of open pairs at each break: opens before the break minus closes
-	// at or before it (close tags at a break end the previous unit).
 	var ok []int
 	for _, b := range breaks {
 		depth, pos := 0, 0
@@ -715,7 +893,7 @@ func appendGap(ps []piece, g content.Content) []piece {
 	if len(g) == 0 {
 		return ps
 	}
-	if n := len(ps); n > 0 && ps[n-1].unit < 0 {
+	if n := len(ps); n > 0 && ps[n-1].unit == -1 {
 		ps[n-1].gap = append(ps[n-1].gap, g...).Normalize()
 		return ps
 	}
@@ -793,9 +971,11 @@ func trimSpace(c content.Content) (lead, mid, trail content.Content) {
 	return lead, mid, trail
 }
 
-// renumber gives the tags of a unit IDs from 1 in order of appearance.
-func renumber(c content.Content) content.Content {
+// renumber gives the tags of a unit IDs from 1 in order of appearance and
+// returns the map from the new IDs to the paragraph's.
+func renumber(c content.Content) (content.Content, map[string]string) {
 	ids := map[string]string{}
+	back := map[string]string{}
 	out := c.Clone()
 	for i := range out {
 		if !out[i].IsTag() {
@@ -806,8 +986,9 @@ func renumber(c content.Content) content.Content {
 		if !ok {
 			id = strconv.Itoa(len(ids) + 1)
 			ids[t.ID] = id
+			back[id] = t.ID
 		}
 		t.ID = id
 	}
-	return out
+	return out, back
 }

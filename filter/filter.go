@@ -15,6 +15,9 @@ const (
 	PartEndnote  Part = "endnote"
 	PartHeader   Part = "header"
 	PartFooter   Part = "footer"
+	PartComment  Part = "comment"
+	PartChart    Part = "chart"
+	PartDiagram  Part = "diagram"
 )
 
 // Cell locates a block inside a table: the table's number in its part (from
@@ -42,8 +45,12 @@ type Block struct {
 	// Align is the paragraph alignment as written in the file ("center", "right", "both").
 	Align string `json:"align,omitempty"`
 	Cell  *Cell  `json:"cell,omitempty"`
-	// Note is the footnote or endnote number for blocks in those parts.
+	// Note is the footnote, endnote or comment number for blocks in those parts.
 	Note string `json:"note,omitempty"`
+	// Frame is "textbox" for text in a text box or shape.
+	Frame string `json:"frame,omitempty"`
+	// Revisions is true when the paragraph contains tracked changes.
+	Revisions bool `json:"revisions,omitempty"`
 	// Lead and Trail list the types of tags kept at the paragraph edges,
 	// outside the units (a footnote mark at the end, a link around the
 	// whole paragraph), so previews can show them.
@@ -63,6 +70,9 @@ type Unit struct {
 type Extraction struct {
 	Units  []Unit  `json:"units"`
 	Blocks []Block `json:"blocks"`
+	// Warnings tell the user about things the filter changes or cannot
+	// translate (tracked changes that will be accepted, for example).
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Translations maps unit IDs to target content. Units without an entry keep
