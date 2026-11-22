@@ -8,3 +8,8 @@ Thumbs.db
 /.idea/
 go.work
 go.work.sum
+
+# Third-party agent skills: restored from skills-lock.json with
+#   npx skills experimental_install
+/.claude/skills/
+/.agents/

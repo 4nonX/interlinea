@@ -104,6 +104,17 @@ that match by primary language only (`de-AT` for `de-DE`).
   open a database spend about 0.8 s at start-up compiling the embedded SQLite;
   a long-running process (the future desktop app or server) pays this once.
 
+## Design skills
+
+UI and UX work on the desktop and browser clients uses three agent skills,
+pinned by commit in `skills-lock.json`: `frontend-design` (anthropics/skills),
+`impeccable` (pbakaus/impeccable) and `design-taste-frontend`
+(Leonxlnx/taste-skill). They are not committed (about 42 MB); restore them with
+
+```
+npx skills experimental_install
+```
+
 ## License
 
 Not chosen yet.
