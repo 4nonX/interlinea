@@ -1,0 +1,109 @@
+# Interlinea
+
+An open-source translation workspace: CAT editor, terminology, translation
+memory and project workflow in one tool, translation first.
+
+This repository holds the Go core. The native desktop client (Qt 6), the
+server mode and the browser client will build on it.
+
+## Status
+
+Milestone 1: core foundation.
+
+| Package | What it does |
+|---|---|
+| `content` | Segment model: text interleaved with inline tags (open, close, standalone), JSON encoding, slicing at segment boundaries |
+| `langtag` | BCP 47 normalization and matching (`de_de` to `de-DE`, primary-language matches) |
+| `segment` | SRX 2.0 parser and segmenter, built-in rules for German, English, CJK and a generic fallback |
+| `fuzzy` | Weighted token edit distance and match percentages, aware of tags, case and punctuation |
+| `tmx` | Streaming TMX 1.4b reader and writer (UTF-8, UTF-16, ISO-8859-1, Windows-1252), inline markup mapped to tags |
+| `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export |
+| `tm/sqlitetm` | Persistent backend: any number of memories in one SQLite file, term index for fuzzy candidates, FTS5 trigram index for concordance |
+| `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
+| `cmd/interlinea` | Command-line interface to all of the above |
+
+The SQLite driver is pure Go (SQLite compiled to WebAssembly), so builds need
+no C compiler on any platform.
+
+## Build
+
+Requires Go 1.24 or newer. No C compiler is needed.
+
+```
+go build -o bin/ ./cmd/...
+go test ./...
+```
+
+Install the command line tool directly:
+
+```
+go install github.com/4nonX/interlinea/cmd/interlinea@latest
+```
+
+With `make`:
+
+```
+make all      # gofmt check, vet, tests, build
+make race     # tests with the race detector
+make bench    # benchmarks
+make cross    # binaries for Linux, macOS and Windows (amd64, arm64)
+```
+
+## Command line
+
+Stored translation memories:
+
+```
+interlinea tm create -name Mietrecht -src de-DE -tgt en-GB
+interlinea tm import -name Mietrecht memory.tmx
+interlinea tm import -name Mietrecht -overwrite -primary other.tmx
+interlinea tm list
+interlinea tm lookup -name Mietrecht "Der Mieter haftet für Schäden."
+interlinea tm concordance -name Mietrecht -target "leased property"
+interlinea tm export -name Mietrecht -o mietrecht.tmx
+interlinea tm delete -name Mietrecht -yes
+```
+
+Memories live in `Interlinea/memories.db` in the user configuration directory
+(`%AppData%` on Windows, `~/Library/Application Support` on macOS,
+`~/.config` on Linux). `-db` or the `INTERLINEA_DB` environment variable
+selects another file.
+
+Other commands:
+
+```
+interlinea segment -lang de-DE contract.txt
+interlinea segment -lang en -srx my-rules.srx -json notes.txt
+interlinea tmx-info memory.tmx
+interlinea lookup -tmx memory.tmx -tgt en-GB "Der Mieter haftet für Schäden."
+interlinea lookup -tmx memory.tmx -tgt en-GB -min 60 -n 10 -json "..."
+interlinea concordance -tmx memory.tmx -tgt en-GB Mietsache
+interlinea concordance -tmx memory.tmx -tgt en-GB -target "leased property"
+interlinea score "Der Mieter haftet." "Der Vermieter haftet."
+```
+
+`segment` treats blank lines as paragraph boundaries and prints one segment
+per line. `lookup` and `concordance` load the TMX file into memory; `-src`
+overrides the header's source language and `-primary` also accepts variants
+that match by primary language only (`de-AT` for `de-DE`).
+
+## Notes on behaviour
+
+- Match scores: 100 means identical text and identical tag structure (tag IDs
+  may differ). Case-only and punctuation differences cost little, a changed
+  word costs a full token, tags count half.
+- SRX rules use Go's RE2 engine: Unicode classes work, look-around and
+  back-references do not and are reported as errors when a rule file is loaded.
+- TMX `<sub>` content inside native codes is kept as part of the native code,
+  not as separately translatable text.
+- Import policy: by default an identical source/target pair is updated rather
+  than duplicated, and a different translation of the same source is kept as
+  a second unit. `-overwrite` replaces the most recent translation instead.
+- Performance (measured on a 2-core Linux VM): importing 50,000 units takes
+  about 22 s, a fuzzy lookup against 10,000 units about 20 ms. Commands that
+  open a database spend about 0.8 s at start-up compiling the embedded SQLite;
+  a long-running process (the future desktop app or server) pays this once.
+
+## License
+
+Not chosen yet.
