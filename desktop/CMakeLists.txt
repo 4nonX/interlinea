@@ -99,7 +99,7 @@ if(INTERLINEA_BUILD_CORE)
 endif()
 
 enable_testing()
-foreach(name apiclient eventfeed secretstore providersignin connections ui projects)
+foreach(name apiclient eventfeed secretstore providersignin connections ui projects endtoend)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_app Qt6::Test)

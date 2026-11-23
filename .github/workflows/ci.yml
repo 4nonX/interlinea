@@ -137,3 +137,11 @@ jobs:
         run: cmake --build build/desktop --config Release --parallel
       - name: tests
         run: ctest --test-dir build/desktop -C Release --output-on-failure
+      - name: the whole app against a team server
+        if: runner.os == 'Linux'
+        run: |
+          go build -o bin/interlinea-server ./cmd/interlinea-server
+          INTERLINEA_ADMIN_USER=anna INTERLINEA_ADMIN_PASSWORD='a long enough password' bin/interlinea-server -addr 127.0.0.1:18080 -data "$RUNNER_TEMP/team" &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/healthz && break; sleep 1; done
+          INTERLINEA_TEAM_SERVER=http://127.0.0.1:18080 INTERLINEA_TEAM_USER=anna INTERLINEA_TEAM_PASSWORD='a long enough password' \
+            ctest --test-dir build/desktop -C Release -R endtoend --output-on-failure
