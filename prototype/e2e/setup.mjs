@@ -417,10 +417,8 @@ export default () =>
       await click("button", "Continue to review");
       await waitFor("!!document.querySelector('.analysis')");
       await click("summary", "Checks and context matches");
-      await sleep(200);
       check(
-        (await evaluate("document.getElementById('dict-en-GB')?.value")) ===
-          "en_GB",
+        await waitFor("document.getElementById('dict-en-GB')?.value === 'en_GB'"),
         "the dictionary for English is chosen by itself",
       );
       await click("button", "Add a rule");

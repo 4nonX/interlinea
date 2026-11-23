@@ -127,7 +127,7 @@ export default () =>
       const doc2 = await send("DOM.getDocument", { depth: -1, pierce: true });
       const fin = await send("DOM.querySelector", { nodeId: doc2.root.nodeId, selector: "input[aria-label='Files to add']" });
       await send("DOM.setFileInputFiles", { nodeId: fin.nodeId, files: [join(dir, "Hinweise.txt")] });
-      check(await waitFor("document.querySelector('main').innerText.includes('Hinweise.txt')", 15000), "the added file is listed");
+      check(await waitFor("[...document.querySelectorAll('.server-file')].some(li => li.textContent.includes('Hinweise.txt'))", 15000), "the added file is listed");
       let sp = await api("GET", `/api/projects/${p.id}`, admin);
       check(sp.settings.files.some((f) => f.name === "Hinweise.txt"), "the file is on the server");
       const hs = await api("GET", `/api/projects/${p.id}/segments?file=Hinweise.txt&lang=${lang}`, admin);
