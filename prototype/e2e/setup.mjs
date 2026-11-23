@@ -467,7 +467,9 @@ export default () =>
         "[...document.querySelectorAll('.issue')].map(i => i.textContent).join(' | ')",
       );
       check(
-        qaText.includes("“payz” is not in the dictionary. Perhaps pay, pays.") &&
+        qaText.includes(
+          "“payz” is not in the dictionary. Perhaps pay, pays.",
+        ) &&
           qaText.includes("Write it out in full.") &&
           qaText.includes("at most 30 are allowed") &&
           (await evaluate(

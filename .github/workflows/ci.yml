@@ -55,11 +55,11 @@ jobs:
         with:
           go-version-file: go.mod
       - name: vet
-        run: go vet -tags postgres ./term/termdb ./tm/tmdb ./project/projectdb ./internal/pgdriver
+        run: go vet -tags postgres ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb ./internal/pgdriver
       - name: termbases, memories and projects on PostgreSQL
-        run: go test -tags postgres -count=1 -v -run 'TestRunsOnPostgres' ./term/termdb ./tm/tmdb ./project/projectdb && go test -tags postgres -count=1 ./term/termdb ./tm/tmdb ./project/projectdb
+        run: go test -tags postgres -count=1 -v -run 'TestRunsOnPostgres' ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb && go test -tags postgres -count=1 ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb
       - name: race
-        run: go test -tags postgres -race -count=1 ./term/termdb ./tm/tmdb ./project/projectdb
+        run: go test -tags postgres -race -count=1 ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb
 
   prototype:
     runs-on: ubuntu-latest
