@@ -33,6 +33,8 @@ var commands = []command{
 	{"package", "Trados project packages: info, extract, return package", runPackage},
 	{"term", "termbase files: info, convert (TBX, MultiTerm, CSV, Excel), duplicates", runTerm},
 	{"termbase", "manage stored termbases (create, import, export, search, edit history, ...)", runTermbase},
+	{"qa", "check translations in bilingual files: tags, numbers, terms, spelling, ...", runQA},
+	{"spell", "check spelling with a Hunspell dictionary and suggest corrections", runSpell},
 	{"version", "print the version", runVersion},
 }
 

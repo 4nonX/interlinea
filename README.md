@@ -27,6 +27,8 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
 | `filter/sdlpackage` | Trados project packages (.sdlppx): languages and bilingual files; return packages (.sdlrpx) with the translated files |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
+| `qa` | Quality checks as in Trados, memoQ and Xbench: empty and untranslated segments, tags (missing, extra, nesting), numbers read with each language's separators, end punctuation, spacing (double, leading and trailing, before punctuation, French no-break spaces), brackets, repeated words, capitalization, length limits and ratio, consistency across segments, terminology, spelling, rules of your own (regular expressions); reports in HTML, CSV and JSON |
+| `spell` | Hunspell spelling in Go: reads LibreOffice, Firefox and system dictionaries (.aff/.dic, .oxt extensions), affixes, compounds, all flag types and character sets, suggestions in Hunspell's order |
 | `cmd/interlinea` | Command-line interface to all of the above |
 | `cmd/interlinea-wasm` | The filters, memories and termbase formats compiled to WebAssembly for the browser prototype |
 
@@ -141,6 +143,23 @@ interlinea package return -o "Mietvertrag Hofmann.sdlrpx" "Mietvertrag Hofmann.s
 a plain string or the run array `extract -json` prints) or to a plain string,
 which also sets the state to translated.
 
+Quality checks and spelling (exit code 1 when errors are found, so a script
+or CI job can stop):
+
+```
+interlinea qa -checks                                    # what is checked, on or off by default
+interlinea qa -dict ~/dictionaries/de_DE_frami.oxt -termbase Mietrecht \
+    -rules our-rules.json -format html -o qa.html Mietvertrag.docx.sdlxliff
+interlinea qa -disable capitalization -enable length-ratio,inconsistent-source work/*.sdlxliff
+interlinea spell -dict /usr/share/hunspell/de_DE "Kaution Mietvertrg"
+```
+
+`our-rules.json` is a list of rules: `{"name": "Euro sign", "source": "EUR",
+"target": "€", "mode": "must"}`; `mode` is `must`, `must-not` or `count` (the
+translation matches `target` as often as the source matches `source`), with
+an optional `severity` (`error` or `warning`) and `message`. `-words` names a
+file of words that are always right (one per line).
+
 Termbase files:
 
 ```
@@ -242,6 +261,27 @@ that match by primary language only (`de-AT` for `de-DE`).
   about 22 s, a fuzzy lookup against 10,000 units about 20 ms. Commands that
   open a database spend about 0.8 s at start-up compiling the embedded SQLite;
   a long-running process (the future desktop app or server) pays this once.
+
+- Spelling: the `spell` package follows Hunspell 1.7.2. On 6,000 generated
+  words per language (dictionary words with endings, compounds, typing
+  errors, capitalizations) it agrees with Hunspell on every word for English
+  (US and GB), French, Spanish, Italian and Brazilian Portuguese; it differs on
+  3 of 10,000 German words, 2 of 6,000 Dutch and 2 of 6,000 Korean words, and
+  on 30 of 6,000 Hungarian words, where Hunspell has rules of its own for
+  Hungarian compounds and hyphenation that are not implemented. Its first
+  suggestion is Hunspell's first in 95 to 97 of 100 misspellings for English,
+  German, Spanish and Italian and 86 for French; the lists differ more often
+  in order and length. A suggestion takes about 0.1 s for German (Hunspell
+  itself takes longer). Of Hunspell's own test suite 171 of 182 cases pass;
+  the rest are suggestion lists from Hunspell's development version, the
+  Hungarian rules and morphological analysis, which `spell` does not do.
+  PHONE rules (en_GB) are applied in the simplified form of spylls, not with
+  every option of Hunspell's phonetic code. To repeat the comparison, see the
+  comments of `spell/diff_test.go` and `spell/conformance_test.go`.
+- QA: the number check reads numbers with the separators of each language
+  (1.250,00 in German is 1,250.00 in English; de-CH writes 1'250.50), so a
+  number copied unchanged into the wrong format is reported. Numbers written
+  as words are not compared.
 
 ## Prototype
 

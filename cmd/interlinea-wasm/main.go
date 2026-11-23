@@ -8,8 +8,9 @@
 //
 // options is JSON: {"keepRevisions": true}.
 //
-// plus translation memory (tm*, see tm.go) and termbase (term*, see
-// term.go) functions.
+// plus translation memory (tm*, see tm.go), termbase (term*, see
+// term.go), XLIFF, package, spelling and QA (spell*, qa*, see qa.go)
+// functions.
 //
 // Build: make wasm
 package main
@@ -111,7 +112,7 @@ func main() {
 	api := map[string]any{
 		"extract": js.FuncOf(extract),
 		"merge":   js.FuncOf(merge),
-		"version": "3",
+		"version": "4",
 	}
 	for k, v := range tmFuncs() {
 		api[k] = v
@@ -123,6 +124,9 @@ func main() {
 		api[k] = v
 	}
 	for k, v := range packageFuncs() {
+		api[k] = v
+	}
+	for k, v := range qaFuncs() {
 		api[k] = v
 	}
 	js.Global().Set("interlineaCore", api)
