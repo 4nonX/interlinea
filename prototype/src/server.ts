@@ -30,7 +30,14 @@ export interface ServerInfo {
 /** Where a server is and who is signed in to it. */
 export interface Connection {
   url: string;
+  /**
+   * The sign-in's token, for a server at another address. The web app the
+   * server serves itself signs in with a cookie its scripts can't read
+   * instead, and the token is empty.
+   */
   token: string;
+  /** Signed in with the server's cookie. */
+  cookie?: boolean;
   user: ServerUser;
   /** When the sign-in ends. */
   expiresAt: string;
@@ -70,6 +77,9 @@ async function request(
   init: RequestInit & { token?: string; version?: number } = {},
 ): Promise<Response> {
   const headers = new Headers(init.headers);
+  // The server takes its cookie only from requests with this header,
+  // which another site's page can't send.
+  headers.set("X-Interlinea", "1");
   if (init.token) headers.set("Authorization", `Bearer ${init.token}`);
   if (init.version !== undefined) headers.set("If-Match", String(init.version));
   if (init.body !== undefined && typeof init.body === "string")
@@ -112,21 +122,41 @@ export async function serverInfo(url: string): Promise<ServerInfo> {
 }
 
 interface SigninResult {
-  token: string;
+  /** Missing when the sign-in is the server's cookie. */
+  token?: string;
   expiresAt: string;
   user: ServerUser;
 }
 
 const DEVICE = `Interlinea in ${navigator.userAgent.includes("Firefox") ? "Firefox" : navigator.userAgent.includes("Edg/") ? "Edge" : navigator.userAgent.includes("Chrome") ? "Chrome" : navigator.userAgent.includes("Safari") ? "Safari" : "a browser"}`;
 
+/**
+ * Whether the app came from the server at url: then it signs in with the
+ * server's cookie, which scripts can't read, and keeps no token.
+ */
+export function servedBy(url: string): boolean {
+  try {
+    return new URL(url).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** The headers of a sign-in: the cookie is asked for when the app came from the server. */
+function signinHeaders(url: string): Record<string, string> {
+  return servedBy(url) ? { "X-Interlinea-Session": "cookie" } : {};
+}
+
 function connection(url: string, r: SigninResult): Connection {
-  return { url, token: r.token, user: r.user, expiresAt: r.expiresAt };
+  const cookie = !r.token;
+  return { url, token: r.token ?? "", cookie: cookie || undefined, user: r.user, expiresAt: r.expiresAt };
 }
 
 export async function signInWithPassword(url: string, username: string, password: string): Promise<Connection> {
   const r = await json<SigninResult>(
     await request(url, "/api/auth/password", {
       method: "POST",
+      headers: signinHeaders(url),
       body: JSON.stringify({ username, password, device: DEVICE }),
     }),
   );
@@ -138,7 +168,7 @@ export async function setUpServer(
   a: { setupToken: string; username: string; name: string; email: string; password: string },
 ): Promise<Connection> {
   const r = await json<SigninResult>(
-    await request(url, "/api/setup", { method: "POST", body: JSON.stringify({ ...a, device: DEVICE }) }),
+    await request(url, "/api/setup", { method: "POST", headers: signinHeaders(url), body: JSON.stringify({ ...a, device: DEVICE }) }),
   );
   return connection(url, r);
 }
@@ -156,7 +186,7 @@ export async function providerSignInURL(url: string, returnTo: string): Promise<
 
 export async function exchangeCode(url: string, code: string): Promise<Connection> {
   const r = await json<SigninResult>(
-    await request(url, "/api/auth/exchange", { method: "POST", body: JSON.stringify({ code }) }),
+    await request(url, "/api/auth/exchange", { method: "POST", headers: signinHeaders(url), body: JSON.stringify({ code }) }),
   );
   return connection(url, r);
 }
@@ -496,7 +526,7 @@ export function client(conn: Connection) {
     ownTokens: () => get<(SignIn & { current: boolean })[]>("/api/me/tokens"),
     revokeOwnToken: (id: number) => send<void>("DELETE", `/api/me/tokens/${id}`),
     changePassword: (current: string, next: string) =>
-      send<{ token: string; expiresAt: string; user: ServerUser }>("PUT", "/api/me/password", { current, new: next }),
+      send<{ token?: string; expiresAt: string; user: ServerUser }>("PUT", "/api/me/password", { current, new: next }),
     linkOwnIdentity: (returnTo: string) => send<{ url: string }>("POST", "/api/me/identities", { return: returnTo }),
     // Memories on the server.
     memories: () => get<(CatalogMemory & { createdAt: string; role: Role })[]>("/api/memories"),
@@ -604,7 +634,8 @@ export function follow(conn: Connection, on: (e: FeedEvent) => void, onState?: (
     while (!stopped) {
       ctrl = new AbortController();
       try {
-        const headers: Record<string, string> = { Authorization: `Bearer ${conn.token}` };
+        const headers: Record<string, string> = { "X-Interlinea": "1" };
+        if (conn.token) headers.Authorization = `Bearer ${conn.token}`;
         if (last) headers["Last-Event-ID"] = last;
         const res = await fetch(`${conn.url}/api/events`, { headers, signal: ctrl.signal });
         if (res.status === 401) {

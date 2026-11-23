@@ -31,6 +31,11 @@ export default () =>
       await setValue("input[autocomplete=current-password]", ADMIN_PASSWORD);
       await click("button", "Sign in");
       check(await waitFor("document.querySelector('main').innerText.includes('Signed in as anna')"), "signed in");
+      {
+        const kept = JSON.parse((await evaluate("localStorage.getItem('interlinea.server')")) ?? "null");
+        check(kept?.cookie === true && !kept.token, "the browser keeps no token: the server's cookie signs in");
+        check(!(await evaluate("document.cookie")).includes("interlinea_session"), "and the page's scripts can't read the cookie");
+      }
       check(await waitFor("document.querySelector('main').innerText.includes('Connected')"), "the live feed is connected");
 
       // Accounts: Anna makes Ben's account and gives and takes a role.
@@ -366,6 +371,8 @@ export default () =>
         "new Promise(r => { const q = indexedDB.open('interlinea-prototype', 1); q.onsuccess = () => { const g = q.result.transaction('kv').objectStore('kv').get('state'); g.onsuccess = () => r(JSON.stringify((g.result?.state?.projects ?? []).map(p => p.id))); g.onerror = () => r('error'); }; q.onerror = () => r('error'); })",
       );
       check(!local.includes("srv-"), "server projects are not saved in the browser: " + local);
+      const evaKept = JSON.parse((await evaluate("localStorage.getItem('interlinea.server')")) ?? "null");
+      check(evaKept?.cookie === true && !evaKept.token, "a provider sign-in keeps no token in the browser either");
     },
     { teamServer: true },
   );

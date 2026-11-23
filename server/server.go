@@ -223,7 +223,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.Add("Vary", "Origin")
 			if r.Method == http.MethodOptions {
 				h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
-				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID")
+				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Last-Event-ID, If-Match, X-Interlinea, X-Interlinea-Session")
 				h.Set("Access-Control-Max-Age", "600")
 				w.WriteHeader(http.StatusNoContent)
 				return

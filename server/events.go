@@ -479,7 +479,7 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request, me session) {
 				// Grants may have changed: decide again. A revoked
 				// sign-in or disabled account ends the stream.
 				vis.forget()
-				u, t, err := s.cfg.Auth.Authenticate(ctx, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+				u, t, err := s.cfg.Auth.Authenticate(ctx, me.secret)
 				if err != nil || t.ID != me.Token.ID {
 					write("signedOut", "", map[string]string{"message": "The sign-in has ended."})
 					return false

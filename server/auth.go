@@ -26,6 +26,65 @@ import (
 type session struct {
 	User  authdb.User
 	Token authdb.Token
+	// Cookie is true when the request signed in with the web app's
+	// cookie rather than an Authorization header.
+	Cookie bool
+	secret string
+}
+
+// The web app, served by the server itself, signs in with a cookie the
+// page's scripts cannot read, so a script injected into the page cannot
+// take the sign-in away. Apps ask for it with the X-Interlinea-Session:
+// cookie header on a sign-in; every request signed in with the cookie
+// must carry the X-Interlinea header, which another site's page cannot
+// send without the server's permission (and SameSite=Strict keeps the
+// browser from sending the cookie from another site at all).
+const (
+	sessionCookie = "interlinea_session"
+	cookieHeader  = "X-Interlinea"
+	askCookie     = "X-Interlinea-Session"
+)
+
+// wantsCookie reports whether a sign-in asks for the cookie.
+func wantsCookie(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get(askCookie), "cookie")
+}
+
+// secure reports whether the browser reached the server over HTTPS.
+func (s *Server) secure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return s.cfg.TrustProxy && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request, secret string, expires time.Time) {
+	maxAge := int(time.Until(expires).Seconds())
+	if secret == "" || maxAge < 1 {
+		maxAge = -1
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    secret,
+		Path:     "/api/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   s.secure(r),
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// credentials is the sign-in a request carries: the Authorization
+// header's token, or the cookie.
+func credentials(r *http.Request) (secret string, cookie bool) {
+	if h := r.Header.Get("Authorization"); h != "" {
+		t, _ := strings.CutPrefix(h, "Bearer ")
+		return strings.TrimSpace(t), false
+	}
+	if c, err := r.Cookie(sessionCookie); err == nil {
+		return c.Value, true
+	}
+	return "", false
 }
 
 // by is how changes are signed in the stores' change logs.
@@ -58,14 +117,21 @@ func (s *Server) admin(h handler) http.HandlerFunc {
 }
 
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (session, bool) {
-	secret, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok || strings.TrimSpace(secret) == "" {
+	secret, cookie := credentials(r)
+	if secret == "" {
 		w.Header().Set("WWW-Authenticate", `Bearer realm="interlinea"`)
 		writeError(w, http.StatusUnauthorized, "signIn", "Sign in first.")
 		return session{}, false
 	}
-	u, t, err := s.cfg.Auth.Authenticate(r.Context(), strings.TrimSpace(secret))
+	if cookie && r.Header.Get(cookieHeader) == "" {
+		forbidden(w, "A request signed in with the web app's cookie must carry the X-Interlinea header.")
+		return session{}, false
+	}
+	u, t, err := s.cfg.Auth.Authenticate(r.Context(), secret)
 	if errors.Is(err, authdb.ErrToken) {
+		if cookie {
+			s.setSessionCookie(w, r, "", time.Time{})
+		}
 		w.Header().Set("WWW-Authenticate", `Bearer realm="interlinea", error="invalid_token"`)
 		writeError(w, http.StatusUnauthorized, "signIn", "The sign-in has ended. Sign in again.")
 		return session{}, false
@@ -74,7 +140,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request) (session, 
 		s.fail(w, r, err)
 		return session{}, false
 	}
-	return session{User: u, Token: t}, true
+	return session{User: u, Token: t, Cookie: cookie, secret: secret}, true
 }
 
 // randomCode is a secret for a sign-in flow or exchange.
@@ -115,17 +181,23 @@ func deviceName(s string) string {
 // signinResult is the answer to a sign-in.
 type signinResult struct {
 	// Token goes into the Authorization header of every request. It is
-	// shown once.
-	Token     string      `json:"token"`
+	// shown once, and not at all to a sign-in that asked for the cookie.
+	Token     string      `json:"token,omitempty"`
 	ExpiresAt time.Time   `json:"expiresAt"`
 	User      authdb.User `json:"user"`
 }
 
-func (s *Server) issue(w http.ResponseWriter, r *http.Request, u authdb.User, device string) {
+// issue signs u in: with a token in the answer, or with the cookie when
+// cookie is true.
+func (s *Server) issue(w http.ResponseWriter, r *http.Request, u authdb.User, device string, cookie bool) {
 	secret, t, err := s.cfg.Auth.IssueToken(r.Context(), u.ID, deviceName(device), s.cfg.TokenTTL)
 	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	if cookie {
+		s.setSessionCookie(w, r, secret, t.ExpiresAt)
+		secret = ""
 	}
 	writeJSON(w, http.StatusOK, signinResult{Token: secret, ExpiresAt: t.ExpiresAt, User: u})
 }
@@ -202,7 +274,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.cfg.Log.Info("first administrator made", "username", u.Username, "from", ip)
-	s.issue(w, r, u, req.Device)
+	s.issue(w, r, u, req.Device, wantsCookie(r))
 }
 
 type passwordSignin struct {
@@ -245,13 +317,16 @@ func (s *Server) signinPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.signinUser.reset(userKey)
-	s.issue(w, r, u, req.Device)
+	s.issue(w, r, u, req.Device, wantsCookie(r))
 }
 
 func (s *Server) signout(w http.ResponseWriter, r *http.Request, me session) {
 	if err := s.cfg.Auth.RevokeToken(r.Context(), me.User.ID, me.Token.ID); err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	if me.Cookie {
+		s.setSessionCookie(w, r, "", time.Time{})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -536,7 +611,7 @@ func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 		forbidden(w, "This account is disabled. Ask an administrator.")
 		return
 	}
-	s.issue(w, r, u, device)
+	s.issue(w, r, u, device, wantsCookie(r))
 }
 
 type meResult struct {
@@ -606,7 +681,7 @@ func (s *Server) changeOwnPassword(w http.ResponseWriter, r *http.Request, me se
 		s.fail(w, r, err)
 		return
 	}
-	s.issue(w, r, u, me.Token.Name)
+	s.issue(w, r, u, me.Token.Name, me.Cookie || wantsCookie(r))
 }
 
 func (s *Server) ownTokens(w http.ResponseWriter, r *http.Request, me session) {
