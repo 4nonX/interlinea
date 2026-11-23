@@ -450,8 +450,17 @@ export function client(conn: Connection) {
       get<StoredSegment[]>(`${p(id)}/segments?${q({ file, lang })}`),
     saveSegment: (id: number, file: string, lang: string, segment: string, target: CoreRun[], status: string, version: number) =>
       send<StoredSegment>("PUT", `${p(id)}/segments?${q({ file, lang, segment })}`, { target, status }, version),
-    memoryTMX: async (id: number, name: string) =>
-      new Uint8Array(await (await call(`${p(id)}/memories/${encodeURIComponent(name)}/export`)).arrayBuffer()),
+    /** The units of a memory the project uses that match its segments in a language, as TMX. */
+    memoryExtract: async (id: number, name: string, lang: string) =>
+      new Uint8Array(
+        await (await call(`${p(id)}/memories/${encodeURIComponent(name)}/extract?${q({ lang })}`)).arrayBuffer(),
+      ),
+    projectConcordance: (id: number, lang: string, query: string, inTarget: boolean, limit: number) =>
+      send<{ memory: string; unit: { source: CoreRun[]; target: CoreRun[]; createdBy?: string; createdAt?: string; attributes?: Record<string, string> } }[]>(
+        "POST",
+        `${p(id)}/concordance`,
+        { lang, query, inTarget, limit },
+      ),
     terminology: (id: number) => get<ProjectTermbase[]>(`${p(id)}/terminology`),
     assignments: (id: number) => get<Assignment[]>(`${p(id)}/assignments`),
     myAssignments: () => get<Assignment[]>("/api/me/assignments"),

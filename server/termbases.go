@@ -13,6 +13,7 @@ import (
 
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/project"
+	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/term"
 	"github.com/4nonX/interlinea/term/termdb"
 )
@@ -67,11 +68,16 @@ func (s *Server) termbaseRoutes() {
 // (managers manage it, editors and assigned people edit it, readers read
 // it), whichever is more.
 func (s *Server) termbaseRole(ctx context.Context, me session, name string) (authdb.Role, error) {
+	return s.termbaseRoleIn(ctx, me, name, func() ([]projectdb.Summary, error) { return s.cfg.Projects.List(ctx) })
+}
+
+// termbaseRoleIn is termbaseRole with the projects to look in.
+func (s *Server) termbaseRoleIn(ctx context.Context, me session, name string, projects func() ([]projectdb.Summary, error)) (authdb.Role, error) {
 	role, err := s.cfg.Auth.RoleOn(ctx, me.User, authdb.KindTermbase, name)
 	if err != nil || role == authdb.RoleManage {
 		return role, err
 	}
-	ps, err := s.cfg.Projects.List(ctx)
+	ps, err := projects()
 	if err != nil {
 		return role, err
 	}

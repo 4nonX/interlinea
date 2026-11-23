@@ -103,6 +103,30 @@ type feed struct {
 	running bool
 	done    chan struct{}
 	wg      sync.WaitGroup
+
+	listMu sync.Mutex
+	list   []projectdb.Summary
+	listAt time.Time
+}
+
+// projectsTTL is how long the feed's list of projects is used before it
+// is read again: every subscriber's visibility checks share it.
+const projectsTTL = 2 * time.Second
+
+// projects lists the projects for visibility checks, from a list shared by
+// all subscribers and read again at most every projectsTTL.
+func (f *feed) projects(ctx context.Context) ([]projectdb.Summary, error) {
+	f.listMu.Lock()
+	defer f.listMu.Unlock()
+	if f.list != nil && f.s.cfg.Now().Sub(f.listAt) < projectsTTL {
+		return f.list, nil
+	}
+	ps, err := f.s.cfg.Projects.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	f.list, f.listAt = ps, f.s.cfg.Now()
+	return ps, nil
 }
 
 func newFeed(s *Server) *feed {
@@ -337,7 +361,7 @@ func (v *visibility) termbase(ctx context.Context, name string) (bool, error) {
 	if c, ok := v.termbases[key]; ok && now.Sub(c.at) < visibilityTTL {
 		return c.ok, nil
 	}
-	r, err := v.s.termbaseRole(ctx, v.me, name)
+	r, err := v.s.termbaseRoleIn(ctx, v.me, name, func() ([]projectdb.Summary, error) { return v.s.feed.projects(ctx) })
 	if err != nil {
 		return false, err
 	}
@@ -355,7 +379,7 @@ func (v *visibility) termbase(ctx context.Context, name string) (bool, error) {
 // viaProject reports whether the person sees a project that uses
 // something.
 func (v *visibility) viaProject(ctx context.Context, uses func(projectdb.Summary) bool) (bool, error) {
-	ps, err := v.s.cfg.Projects.List(ctx)
+	ps, err := v.s.feed.projects(ctx)
 	if err != nil {
 		return false, err
 	}

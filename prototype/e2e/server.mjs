@@ -243,6 +243,18 @@ export default () =>
       const kept = (await api("GET", `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}`, admin)).find((x) => x.id === segs[1].id);
       check(JSON.stringify(kept.target).includes("Anna was first") && kept.changedBy === "anna", "the server keeps the translation saved first");
 
+      // The memory search asks the server: Ben's confirmed translation was
+      // not in what the browser loaded, but is found.
+      await key("k", "KeyK", 75, 2);
+      await evaluate(
+        "(() => { const el = document.getElementById('lookup-q'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Tenancy'); el.dispatchEvent(new Event('input', { bubbles: true })); })()",
+      );
+      check(
+        await waitFor("[...document.querySelectorAll('.lookup-list li')].some(li => li.textContent.includes('Tenancy agreement'))", 10000),
+        "the memory search runs on the server",
+      );
+      await key("Escape", "Escape", 27);
+
       // Anna translates segment 4 elsewhere: it shows here without reloading.
       const s4 = segs[3];
       await api(

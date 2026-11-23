@@ -410,9 +410,11 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
             projectId: m.memory.endsWith(`(${lang})`) && m.memory.startsWith(s.name) ? id : undefined,
           };
           memories.push(tm);
+          // Only the units that match the project's segments come: matches
+          // and the analysis need no more; concordance asks the server.
           if (m.lookup || m.concordance) {
             try {
-              openRemoteMemory(c, tm, await api.memoryTMX(p.id, m.memory));
+              openRemoteMemory(c, tm, await api.memoryExtract(p.id, m.memory, lang));
             } catch {
               openRemoteMemory(c, tm, null);
             }
@@ -766,15 +768,15 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
             // Others' confirmed translations: load the memory again.
             for (const p of st.projects) {
               if (!p.remote) continue;
-              const used = Object.values(p.memories)
-                .flat()
-                .some((m) => m.memory === remoteMemoryName(e.memory) && (m.lookup || m.concordance));
-              if (!used) continue;
+              const lang = Object.entries(p.memories).find(([, ms]) =>
+                ms.some((m) => m.memory === remoteMemoryName(e.memory) && (m.lookup || m.concordance)),
+              )?.[0];
+              if (!lang) continue;
               later(`mem|${e.memory}`, 2000, () => {
                 const c = core();
                 const tm = latest.current.memories.find((m) => m.name === remoteMemoryName(e.memory));
                 if (!c || !tm) return;
-                void api.memoryTMX(p.remote!.id, e.memory).then((b) => openRemoteMemory(c, tm, b), () => undefined);
+                void api.memoryExtract(p.remote!.id, e.memory, lang).then((b) => openRemoteMemory(c, tm, b), () => undefined);
               });
             }
             return;
@@ -899,4 +901,56 @@ export function usePresence(project: Project | undefined, fileId: string, lang: 
     return () => void api.leave(n).catch(() => undefined);
   }, [api, n]);
   return present;
+}
+
+/**
+ * Concordance in a server project's memories, asked of the server (the
+ * browser has only the units that match the project's segments). Null
+ * for a project on this computer.
+ */
+export function useServerConcordance(
+  project: Project | undefined,
+  lang: LangCode,
+  text: string,
+  limit: number,
+): { memory: string; unit: { source: Segment["source"]; target: Segment["target"]; createdBy?: string; createdAt?: string; attributes?: Record<string, string> }; side: "source" | "target" }[] | null {
+  const { api } = useRemote();
+  const n = project?.remote?.id;
+  const [hits, setHits] = useState<ReturnType<typeof useServerConcordance>>(null);
+  useEffect(() => {
+    if (!api || !n) {
+      setHits(null);
+      return;
+    }
+    const q = text.trim();
+    if (q.length < 2) {
+      setHits([]);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      void Promise.all([api.projectConcordance(n, lang, q, false, limit), api.projectConcordance(n, lang, q, true, limit)]).then(
+        ([src, tgt]) => {
+          if (!live) return;
+          const both = [
+            ...src.map((h) => ({ ...h, side: "source" as const })),
+            ...tgt.map((h) => ({ ...h, side: "target" as const })),
+          ];
+          setHits(
+            both.slice(0, limit).map((h) => ({
+              memory: remoteMemoryName(h.memory),
+              side: h.side,
+              unit: { ...h.unit, source: coreToRuns(h.unit.source ?? []), target: coreToRuns(h.unit.target ?? []) },
+            })),
+          );
+        },
+        () => live && setHits([]),
+      );
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [api, n, lang, text, limit]);
+  return n ? hits ?? [] : null;
 }

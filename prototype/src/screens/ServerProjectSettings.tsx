@@ -65,7 +65,12 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
   const [problems, setProblems] = useState<Problem[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [changed, setChanged] = useState(false);
+  const [changed, setChangedState] = useState(false);
+  const unsaved = useRef(false);
+  const setChanged = (v: boolean) => {
+    unsaved.current = v;
+    setChangedState(v);
+  };
   const setDraft = (f: (d: Draft) => Draft) => {
     setChanged(true);
     setDraftState(f);
@@ -77,11 +82,13 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
   useEffect(() => {
     void api.catalog().then(setCat, (e) => setError(errorText(e)));
   }, [api, project.version]);
-  // Someone saved the settings: start again from theirs.
+  // The project changed on the server (a file, someone's save): start
+  // again from it, unless changes here are not saved yet; saving those
+  // then meets the newer version and says so.
   useEffect(() => {
+    if (unsaved.current) return;
     setDraftState(draftOf(project.settings));
     setCreated([]);
-    setChanged(false);
     setProblems([]);
   }, [project.version, project.settings]);
 
@@ -135,7 +142,12 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
       } else if (t.mode === "layered" && termbase && t.masters.join("\n") !== s.terminology.masters.join("\n")) {
         await api.setUpstreams(termbase, t.masters);
       }
-      const base = coreSettings(draft);
+      // Files are added and removed on their own; the settings keep the
+      // project's current ones.
+      const base = coreSettings({
+        ...draft,
+        files: s.files.map((f) => ({ name: f.name, role: f.role, targetLang: f.targetLang || undefined })),
+      });
       const settings = {
         ...base,
         terminology: { ...base.terminology, termbase, location: "server", autoUpdate: false },
@@ -144,12 +156,16 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
       notify("Saved the project's settings on the server");
       setCreated([]);
       setChanged(false);
+      setDraftState(draftOf(settings));
       await r.open(project.id).catch(() => undefined);
       await onSaved();
     } catch (e) {
       if (e instanceof ApiError && e.problems.length) setProblems(e.problems);
-      else setError(e instanceof ApiError && e.code === "conflict" ? "Someone else saved the settings in the meantime. They are loaded again; make your change once more." : errorText(e));
-      if (e instanceof ApiError && e.code === "conflict") await onSaved();
+      else setError(e instanceof ApiError && e.code === "conflict" ? "The project changed on the server in the meantime. It is loaded again; make your change once more." : errorText(e));
+      if (e instanceof ApiError && e.code === "conflict") {
+        setChanged(false);
+        await onSaved();
+      }
     } finally {
       setSaving(false);
     }

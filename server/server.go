@@ -95,9 +95,8 @@ type Server struct {
 	signinIP   *limiter
 	signinUser *limiter
 
-	mu        sync.Mutex
-	flows     map[string]pendingFlow
-	exchanges map[string]pendingExchange
+	// mu makes setting up the first administrator one at a time.
+	mu sync.Mutex
 
 	feed *feed
 }
@@ -125,8 +124,6 @@ func New(cfg Config) (*Server, error) {
 		origins:    map[string]bool{},
 		signinIP:   newLimiter(20, time.Minute, cfg.Now),
 		signinUser: newLimiter(10, 15*time.Minute, cfg.Now),
-		flows:      map[string]pendingFlow{},
-		exchanges:  map[string]pendingExchange{},
 	}
 	if cfg.PublicURL != "" {
 		u, err := url.Parse(strings.TrimRight(cfg.PublicURL, "/"))

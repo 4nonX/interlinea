@@ -289,6 +289,18 @@ func TestProjectAccessAndWork(t *testing.T) {
 	if !strings.Contains(string(tmx.body), "The tenant pays the rent.") {
 		t.Fatalf("memory for the project %s", tmx.body)
 	}
+	// Or only what matches the project's segments.
+	m, _ := te.st.Memories.Memory(ctx, "Weber DE-EN")
+	if _, err := m.Add(ctx, tmUnit("Ganz etwas anderes ohne jeden Bezug.", "Something else entirely."), 0); err != nil {
+		t.Fatal(err)
+	}
+	ex := te.call("GET", base+"/memories/Weber%20DE-EN/extract?lang=en-gb", te.ben, nil, 200, nil)
+	if !strings.Contains(string(ex.body), "The tenant pays the rent.") || strings.Contains(string(ex.body), "Something else") || ex.header.Get("Interlinea-Units") != "1" {
+		t.Fatalf("extract %s %v", ex.body, ex.header)
+	}
+	if r := te.do("GET", base+"/memories/Weber%20DE-EN/extract?lang=fr-FR", te.ben, nil); r.status != 404 {
+		t.Fatalf("extract for a language that doesn't use it: %d", r.status)
+	}
 	if r := te.do("GET", base+"/memories/Elsewhere/export", te.ben, nil); r.status != 404 {
 		t.Fatalf("a memory the project doesn't use: %d", r.status)
 	}

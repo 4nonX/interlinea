@@ -57,6 +57,7 @@ type InvalidError struct{ Field, Message string }
 func (e *InvalidError) Error() string { return "authdb: " + e.Field + ": " + e.Message }
 
 const (
+	// timeLayout reads stored times; they are written by stamp.
 	timeLayout  = time.RFC3339Nano
 	writeLock   = 7341
 	migrateLock = 7342
@@ -241,9 +242,25 @@ const schema = `
 		author  TEXT NOT NULL
 	);`
 
+// schemaV2 keeps sign-ins through a provider while they are under way,
+// and the one-time codes they end with, so that every server instance
+// behind a load balancer can finish them.
+const schemaV2 = `
+	CREATE TABLE signin_flows (
+		state   TEXT PRIMARY KEY,
+		data    TEXT NOT NULL,
+		expires TEXT NOT NULL
+	);
+	CREATE TABLE signin_codes (
+		hash    TEXT PRIMARY KEY,
+		user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		device  TEXT NOT NULL,
+		expires TEXT NOT NULL
+	);`
+
 var (
-	migrations   = []string{fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT")}
-	pgMigrations = []string{fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY")}
+	migrations   = []string{fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT"), schemaV2}
+	pgMigrations = []string{fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"), schemaV2}
 )
 
 // Kinds of change in the change log.
@@ -260,6 +277,10 @@ const (
 )
 
 func noNUL(s string) string { return strings.ReplaceAll(s, "\x00", "") }
+
+// stamp writes a time at a fixed width in UTC, so the database compares
+// stored times as text in time order (expiry checks do).
+func stamp(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000000000Z") }
 
 func parseTime(s string) time.Time {
 	t, err := time.Parse(timeLayout, s)
@@ -295,7 +316,7 @@ func (d *DB) write(ctx context.Context, fn func(tx *sqlstore.Tx, now time.Time) 
 
 func logChange(ctx context.Context, tx *sqlstore.Tx, kind string, userID int64, detail, by string, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO changes(kind, user_id, detail, at, author) VALUES (?, ?, ?, ?, ?)`,
-		kind, userID, noNUL(detail), now.Format(timeLayout), noNUL(by))
+		kind, userID, noNUL(detail), stamp(now), noNUL(by))
 	if err != nil {
 		return fmt.Errorf("authdb: change log: %w", err)
 	}
@@ -489,7 +510,7 @@ func (d *DB) CreateUser(ctx context.Context, n NewUser, by string) (User, error)
 		}
 		var id int64
 		err := tx.QueryRowContext(ctx, `INSERT INTO users(username, name, email, password_hash, admin, disabled, created_at, version)
-			VALUES (?, ?, ?, ?, ?, 0, ?, 1) RETURNING id`, username, name, email, hash, boolInt(n.Admin), now.Format(timeLayout)).Scan(&id)
+			VALUES (?, ?, ?, ?, ?, 0, ?, 1) RETURNING id`, username, name, email, hash, boolInt(n.Admin), stamp(now)).Scan(&id)
 		if err != nil {
 			if d.d.IsUnique(err) {
 				return ErrExists
@@ -839,7 +860,7 @@ func (d *DB) IssueToken(ctx context.Context, userID int64, name string, ttl time
 		if u.Disabled {
 			return ErrDisabled
 		}
-		at, exp := now.Format(timeLayout), now.Add(ttl).Format(timeLayout)
+		at, exp := stamp(now), stamp(now.Add(ttl))
 		var id int64
 		if err := tx.QueryRowContext(ctx, `INSERT INTO tokens(user_id, hash, name, created_at, last_used, expires_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
 			userID, tokenHash(secret), name, at, at, exp).Scan(&id); err != nil {
@@ -881,7 +902,7 @@ func (d *DB) Authenticate(ctx context.Context, secret string) (User, Token, erro
 	}
 	if now.Sub(t.LastUsed) >= touchEvery {
 		if err := d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
-			_, err := tx.ExecContext(ctx, `UPDATE tokens SET last_used = ? WHERE id = ?`, now.Format(timeLayout), t.ID)
+			_, err := tx.ExecContext(ctx, `UPDATE tokens SET last_used = ? WHERE id = ?`, stamp(now), t.ID)
 			return err
 		}); err != nil {
 			return User{}, Token{}, err
@@ -894,7 +915,7 @@ func (d *DB) Authenticate(ctx context.Context, secret string) (User, Token, erro
 // Tokens returns a user's current sign-ins, newest first.
 func (d *DB) Tokens(ctx context.Context, userID int64) ([]Token, error) {
 	rows, err := d.sql.QueryContext(ctx, `SELECT id, user_id, name, created_at, last_used, expires_at FROM tokens WHERE user_id = ? AND expires_at > ? ORDER BY id DESC`,
-		userID, d.now().Format(timeLayout))
+		userID, stamp(d.now()))
 	if err != nil {
 		return nil, err
 	}
@@ -942,14 +963,112 @@ func (d *DB) RevokeTokens(ctx context.Context, userID int64, by string) error {
 func (d *DB) PurgeExpired(ctx context.Context) (int, error) {
 	var n int64
 	err := d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
-		res, err := tx.ExecContext(ctx, `DELETE FROM tokens WHERE expires_at <= ?`, now.Format(timeLayout))
+		res, err := tx.ExecContext(ctx, `DELETE FROM tokens WHERE expires_at <= ?`, stamp(now))
 		if err != nil {
 			return err
 		}
-		n, err = res.RowsAffected()
+		if n, err = res.RowsAffected(); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM signin_flows WHERE expires <= ?`, stamp(now)); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM signin_codes WHERE expires <= ?`, stamp(now))
 		return err
 	})
 	return int(n), err
+}
+
+// SetClock sets the store's clock (default time.Now): tests, and servers
+// that keep their own.
+func (d *DB) SetClock(now func() time.Time) { d.now = now }
+
+// ErrTooMany refuses a new sign-in while too many are under way.
+var ErrTooMany = errors.New("authdb: too many sign-ins under way")
+
+// MaxFlows bounds the provider sign-ins under way, so starting them can't
+// fill the database.
+const MaxFlows = 10000
+
+// SaveFlow keeps a provider sign-in under way by its state until expires.
+func (d *DB) SaveFlow(ctx context.Context, state string, data []byte, expires time.Time) error {
+	if state == "" {
+		return &InvalidError{"state", "A sign-in needs its state."}
+	}
+	return d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM signin_flows WHERE expires <= ?`, stamp(now)); err != nil {
+			return err
+		}
+		var n int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM signin_flows`).Scan(&n); err != nil {
+			return err
+		}
+		if n >= MaxFlows {
+			return ErrTooMany
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO signin_flows(state, data, expires) VALUES (?, ?, ?)`, state, string(data), stamp(expires))
+		if d.d.IsUnique(err) {
+			return ErrExists
+		}
+		return err
+	})
+}
+
+// TakeFlow returns a sign-in under way and forgets it: each is finished
+// once. ErrNotFound if there is none, or it expired.
+func (d *DB) TakeFlow(ctx context.Context, state string) ([]byte, error) {
+	var data string
+	err := d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
+		var exp string
+		err := tx.QueryRowContext(ctx, `SELECT data, expires FROM signin_flows WHERE state = ?`, state).Scan(&data, &exp)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM signin_flows WHERE state = ?`, state); err != nil {
+			return err
+		}
+		if !parseTime(exp).After(now) {
+			return ErrNotFound
+		}
+		return nil
+	})
+	return []byte(data), err
+}
+
+// SaveCode keeps the one-time code a provider sign-in ends with, which the
+// app exchanges for a token. Only its hash is stored.
+func (d *DB) SaveCode(ctx context.Context, code string, userID int64, device string, expires time.Time) error {
+	return d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO signin_codes(hash, user_id, device, expires) VALUES (?, ?, ?, ?)`, tokenHash(code), userID, noNUL(device), stamp(expires))
+		return err
+	})
+}
+
+// TakeCode returns whom a one-time code signs in and forgets it.
+// ErrNotFound if it doesn't exist, was used, or expired.
+func (d *DB) TakeCode(ctx context.Context, code string) (userID int64, device string, err error) {
+	err = d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
+		var exp string
+		h := tokenHash(code)
+		err := tx.QueryRowContext(ctx, `SELECT user_id, device, expires FROM signin_codes WHERE hash = ?`, h).Scan(&userID, &device, &exp)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM signin_codes WHERE hash = ?`, h); err != nil {
+			return err
+		}
+		if !parseTime(exp).After(now) {
+			return ErrNotFound
+		}
+		return nil
+	})
+	return userID, device, err
 }
 
 func checkGrant(g Grant) (Grant, error) {

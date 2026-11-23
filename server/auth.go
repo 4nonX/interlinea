@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
@@ -267,21 +268,16 @@ const (
 	exchangeTTL = 2 * time.Minute
 )
 
+// pendingFlow is a sign-in through the provider under way, kept in the
+// accounts store so any server instance can finish it.
 type pendingFlow struct {
-	flow    oidc.Flow
-	expires time.Time
-	// back is where the browser goes afterwards.
-	back   *url.URL
-	device string
-	// linkTo is the account to link the identity to; 0 to sign in.
-	linkTo   int64
-	linkedBy string
-}
-
-type pendingExchange struct {
-	userID  int64
-	device  string
-	expires time.Time
+	Flow oidc.Flow `json:"flow"`
+	// Back is where the browser goes afterwards.
+	Back   string `json:"back"`
+	Device string `json:"device"`
+	// LinkTo is the account to link the identity to; 0 to sign in.
+	LinkTo   int64  `json:"linkTo,omitempty"`
+	LinkedBy string `json:"linkedBy,omitempty"`
 }
 
 // returnURL checks where a provider sign-in may send the browser back
@@ -306,24 +302,6 @@ func (s *Server) returnURL(raw string) (*url.URL, bool) {
 	return nil, false
 }
 
-// sweep drops expired flows and exchanges. Callers hold mu.
-func (s *Server) sweep(now time.Time) {
-	for k, f := range s.flows {
-		if now.After(f.expires) {
-			delete(s.flows, k)
-		}
-	}
-	for k, e := range s.exchanges {
-		if now.After(e.expires) {
-			delete(s.exchanges, k)
-		}
-	}
-}
-
-// maxPending bounds the sign-ins under way, so starting flows can't fill
-// the server's memory.
-const maxPending = 10000
-
 func (s *Server) startFlow(w http.ResponseWriter, r *http.Request, back, device string, linkTo int64, linkedBy string) {
 	if s.cfg.OIDC == nil {
 		writeError(w, http.StatusNotFound, "notFound", "This server has no identity provider to sign in with.")
@@ -339,16 +317,19 @@ func (s *Server) startFlow(w http.ResponseWriter, r *http.Request, back, device 
 		s.fail(w, r, err)
 		return
 	}
-	s.mu.Lock()
-	now := s.cfg.Now()
-	s.sweep(now)
-	if len(s.flows) >= maxPending {
-		s.mu.Unlock()
-		tooMany(w, time.Minute)
+	data, err := json.Marshal(pendingFlow{Flow: f, Back: u.String(), Device: device, LinkTo: linkTo, LinkedBy: linkedBy})
+	if err != nil {
+		s.fail(w, r, err)
 		return
 	}
-	s.flows[f.State] = pendingFlow{flow: f, expires: now.Add(flowTTL), back: u, device: device, linkTo: linkTo, linkedBy: linkedBy}
-	s.mu.Unlock()
+	switch err := s.cfg.Auth.SaveFlow(r.Context(), f.State, data, s.cfg.Now().Add(flowTTL)); {
+	case errors.Is(err, authdb.ErrTooMany):
+		tooMany(w, time.Minute)
+		return
+	case err != nil:
+		s.fail(w, r, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"url": f.URL})
 }
 
@@ -391,13 +372,26 @@ func deadEnd(w http.ResponseWriter, msg string) {
 func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	state := q.Get("state")
-	s.mu.Lock()
-	now := s.cfg.Now()
-	s.sweep(now)
-	f, ok := s.flows[state]
-	delete(s.flows, state)
-	s.mu.Unlock()
-	if s.cfg.OIDC == nil || state == "" || !ok {
+	if s.cfg.OIDC == nil || state == "" {
+		deadEnd(w, "This sign-in has expired or was already used.")
+		return
+	}
+	data, err := s.cfg.Auth.TakeFlow(r.Context(), state)
+	if errors.Is(err, authdb.ErrNotFound) {
+		deadEnd(w, "This sign-in has expired or was already used.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	var f pendingFlow
+	if err := json.Unmarshal(data, &f); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	backTo, err := url.Parse(f.Back)
+	if err != nil {
 		deadEnd(w, "This sign-in has expired or was already used.")
 		return
 	}
@@ -406,28 +400,28 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 		if msg == "" {
 			msg = e
 		}
-		back(w, r, f.back, "interlinea-error", "The identity provider refused the sign-in: "+msg)
+		back(w, r, backTo, "interlinea-error", "The identity provider refused the sign-in: "+msg)
 		return
 	}
-	claims, err := s.cfg.OIDC.Provider.Finish(r.Context(), f.flow, state, q.Get("code"))
+	claims, err := s.cfg.OIDC.Provider.Finish(r.Context(), f.Flow, state, q.Get("code"))
 	if err != nil {
 		s.cfg.Log.Warn("provider sign-in failed", "err", err)
-		back(w, r, f.back, "interlinea-error", "The sign-in with the identity provider could not be checked.")
+		back(w, r, backTo, "interlinea-error", "The sign-in with the identity provider could not be checked.")
 		return
 	}
 	ctx := r.Context()
-	if f.linkTo != 0 {
-		if err := s.cfg.Auth.LinkIdentity(ctx, f.linkTo, claims.Issuer, claims.Subject, f.linkedBy); err != nil {
+	if f.LinkTo != 0 {
+		if err := s.cfg.Auth.LinkIdentity(ctx, f.LinkTo, claims.Issuer, claims.Subject, f.LinkedBy); err != nil {
 			var inv *authdb.InvalidError
 			if errors.As(err, &inv) {
-				back(w, r, f.back, "interlinea-error", inv.Message)
+				back(w, r, backTo, "interlinea-error", inv.Message)
 				return
 			}
 			s.cfg.Log.Error("linking an identity failed", "err", err)
-			back(w, r, f.back, "interlinea-error", "The identity could not be linked.")
+			back(w, r, backTo, "interlinea-error", "The identity could not be linked.")
 			return
 		}
-		back(w, r, f.back, "interlinea-linked", s.cfg.OIDC.Name)
+		back(w, r, backTo, "interlinea-linked", s.cfg.OIDC.Name)
 		return
 	}
 	u, err := s.cfg.Auth.UserByIdentity(ctx, claims.Issuer, claims.Subject)
@@ -436,25 +430,26 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case errors.Is(err, authdb.ErrNotFound):
-		back(w, r, f.back, "interlinea-error", "No account on this server is linked to this sign-in. Ask an administrator to link it, or sign in with your password and link it yourself.")
+		back(w, r, backTo, "interlinea-error", "No account on this server is linked to this sign-in. Ask an administrator to link it, or sign in with your password and link it yourself.")
 		return
 	case err != nil:
 		s.cfg.Log.Error("provider sign-in failed", "err", err)
-		back(w, r, f.back, "interlinea-error", "The server could not sign you in. The error is in its log.")
+		back(w, r, backTo, "interlinea-error", "The server could not sign you in. The error is in its log.")
 		return
 	case u.Disabled:
-		back(w, r, f.back, "interlinea-error", "This account is disabled. Ask an administrator.")
+		back(w, r, backTo, "interlinea-error", "This account is disabled. Ask an administrator.")
 		return
 	}
 	code, err := randomCode()
+	if err == nil {
+		err = s.cfg.Auth.SaveCode(ctx, code, u.ID, f.Device, s.cfg.Now().Add(exchangeTTL))
+	}
 	if err != nil {
-		back(w, r, f.back, "interlinea-error", "The server could not sign you in.")
+		s.cfg.Log.Error("provider sign-in failed", "err", err)
+		back(w, r, backTo, "interlinea-error", "The server could not sign you in.")
 		return
 	}
-	s.mu.Lock()
-	s.exchanges[code] = pendingExchange{userID: u.ID, device: f.device, expires: now.Add(exchangeTTL)}
-	s.mu.Unlock()
-	back(w, r, f.back, "interlinea-code", code)
+	back(w, r, backTo, "interlinea-code", code)
 }
 
 // createFromClaims makes an account for a person the provider signed in.
@@ -519,17 +514,20 @@ func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req, maxBody) {
 		return
 	}
-	s.mu.Lock()
-	now := s.cfg.Now()
-	s.sweep(now)
-	e, ok := s.exchanges[req.Code]
-	delete(s.exchanges, req.Code)
-	s.mu.Unlock()
-	if !ok || req.Code == "" {
+	if req.Code == "" {
 		writeError(w, http.StatusUnauthorized, "signIn", "The sign-in has expired or was already used. Sign in again.")
 		return
 	}
-	u, err := s.cfg.Auth.User(r.Context(), e.userID)
+	userID, device, err := s.cfg.Auth.TakeCode(r.Context(), req.Code)
+	if errors.Is(err, authdb.ErrNotFound) {
+		writeError(w, http.StatusUnauthorized, "signIn", "The sign-in has expired or was already used. Sign in again.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	u, err := s.cfg.Auth.User(r.Context(), userID)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -538,7 +536,7 @@ func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 		forbidden(w, "This account is disabled. Ask an administrator.")
 		return
 	}
-	s.issue(w, r, u, e.device)
+	s.issue(w, r, u, device)
 }
 
 type meResult struct {

@@ -617,3 +617,59 @@ func TestRenameResource(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSigninFlowsAndCodes(t *testing.T) {
+	db, key, clk := openTemp(t)
+	u := mustUser(t, db, NewUser{Username: "eva", Password: "a long password"})
+	now := clk.now()
+	if err := db.SaveFlow(ctx, "st-1", []byte(`{"a":1}`), now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveFlow(ctx, "st-1", []byte(`{}`), now.Add(time.Minute)); !errors.Is(err, ErrExists) {
+		t.Fatalf("same state twice: %v", err)
+	}
+	if err := db.SaveFlow(ctx, "", nil, now); invalidField(err) != "state" {
+		t.Fatalf("no state: %v", err)
+	}
+	// Another instance (the same database, opened again) finishes it, once.
+	other := reopen(t, key, clk)
+	got, err := other.TakeFlow(ctx, "st-1")
+	if err != nil || string(got) != `{"a":1}` {
+		t.Fatalf("taken %q, %v", got, err)
+	}
+	if _, err := other.TakeFlow(ctx, "st-1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("taken twice: %v", err)
+	}
+	// Expired flows and codes don't count.
+	if err := db.SaveFlow(ctx, "st-2", []byte(`{}`), now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveCode(ctx, "code-1", u.ID, "Laptop", now.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SaveCode(ctx, "code-2", u.ID, "Phone", now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	clk.add(time.Minute)
+	if _, err := db.TakeFlow(ctx, "st-2"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expired flow: %v", err)
+	}
+	if _, _, err := db.TakeCode(ctx, "code-2"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expired code: %v", err)
+	}
+	id, dev, err := other.TakeCode(ctx, "code-1")
+	if err != nil || id != u.ID || dev != "Laptop" {
+		t.Fatalf("code %d %q %v", id, dev, err)
+	}
+	if _, _, err := db.TakeCode(ctx, "code-1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("code used twice: %v", err)
+	}
+	// The hash is stored, not the code.
+	var stored string
+	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM signin_codes WHERE hash = 'code-1'`).Scan(&stored); err != nil || stored != "0" {
+		t.Fatalf("plain code stored: %s %v", stored, err)
+	}
+	if _, err := db.PurgeExpired(ctx); err != nil {
+		t.Fatal(err)
+	}
+}

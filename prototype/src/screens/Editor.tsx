@@ -53,6 +53,7 @@ import {
 } from "../editor/analysis";
 import {
   concordanceAll,
+  fromMem,
   openRefs,
   persistMemory,
   storeConfirmed,
@@ -90,7 +91,7 @@ import {
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
-import { usePresence } from "../remote";
+import { usePresence, useServerConcordance } from "../remote";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -420,16 +421,24 @@ export function Editor({
       .filter((h) => h.targets.some((t) => t.status !== "forbidden"))
       .map((h) => ({ kind: "term" as const, h })),
   ];
+  // A server project's concordance runs on the server.
+  const serverHits = useServerConcordance(project, target, lookupText ?? "", 8);
   const concordanceHits = useMemo(() => {
     if (!lookupText || lookupText.trim().length < 2 || !c) return [];
     const q = lookupText.trim().toLocaleLowerCase();
-    return concordanceAll(c, refs.concordance, lookupText, 8).map((h) => {
+    const found = serverHits
+      ? serverHits.flatMap((h) => {
+          const ref = refs.concordance.find((r) => r.name === h.memory);
+          return ref ? [{ unit: fromMem({ ...h.unit, source: runsToCore(h.unit.source), target: runsToCore(h.unit.target) }, ref), side: h.side }] : [];
+        })
+      : concordanceAll(c, refs.concordance, lookupText, 8);
+    return found.map((h) => {
       const text = plain(h.side === "source" ? h.unit.source : h.unit.target);
       const at = text.toLocaleLowerCase().indexOf(q);
       return { ...h, start: Math.max(0, at), end: at >= 0 ? at + q.length : 0 };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lookupText, refs.concordance, c, memVersion]);
+  }, [lookupText, refs.concordance, c, memVersion, serverHits]);
 
   // Track a selection made in the active source text, for "Add term" and concordance.
   useEffect(() => {

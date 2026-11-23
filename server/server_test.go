@@ -78,6 +78,8 @@ func openStores(t *testing.T) Stores {
 func newEnv(t *testing.T, configure ...func(*Config)) *env {
 	t.Helper()
 	e := &env{t: t, st: openStores(t), now: time.Date(2026, 11, 23, 9, 0, 0, 0, time.UTC)}
+	// The accounts store decides expiry on the server's clock.
+	e.st.Auth.SetClock(e.clock)
 	e.hs = httptest.NewUnstartedServer(nil)
 	cfg := Config{Stores: e.st, PublicURL: "https://il.example", Version: "test", Now: e.clock, EventPoll: 20 * time.Millisecond}
 	for _, c := range configure {

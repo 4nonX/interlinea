@@ -37,6 +37,7 @@ func (s *Server) projectRoutes() {
 	s.handle("POST /api/projects/{id}/lookup", s.signedIn(s.projectLookup))
 	s.handle("POST /api/projects/{id}/concordance", s.signedIn(s.projectConcordance))
 	s.handle("GET /api/projects/{id}/memories/{name}/export", s.signedIn(s.projectMemoryExport))
+	s.handle("GET /api/projects/{id}/memories/{name}/extract", s.signedIn(s.projectMemoryExtract))
 	s.handle("GET /api/projects/{id}/terminology", s.signedIn(s.projectTerminology))
 	s.handle("POST /api/projects/{id}/terms", s.signedIn(s.addProjectTerm))
 	s.handle("GET /api/projects/{id}/assignments", s.signedIn(s.projectAssignments))
@@ -954,6 +955,84 @@ func (s *Server) projectMemoryExport(w http.ResponseWriter, r *http.Request, me 
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": m.Info().Name + ".tmx"}))
 	if err := tm.ExportTMX(r.Context(), m, w, "Interlinea server "+s.cfg.Version); err != nil {
 		s.cfg.Log.Error("TMX export failed", "memory", m.Info().Name, "err", err)
+	}
+}
+
+// Extracts take what the editor can show: matches from 50%, a few per
+// segment.
+const (
+	extractMinScore = 50
+	extractPerSeg   = 6
+)
+
+// projectMemoryExtract sends, as TMX, the units of a memory the project
+// looks up in that match its segments in a language: what the apps need
+// to show matches and analyse the project, without the rest of a large
+// memory. Concordance searches go to the server.
+func (s *Server) projectMemoryExtract(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	name, lang := r.PathValue("name"), canonicalTarget(p, r.URL.Query().Get("lang"))
+	used := false
+	for _, m := range p.Settings.Memories[lang] {
+		if strings.EqualFold(m.Memory, name) && (m.Lookup || m.Concordance) {
+			used = true
+		}
+	}
+	if !used {
+		writeError(w, http.StatusNotFound, "notFound", "The project doesn't look up in this memory for this language.")
+		return
+	}
+	ctx := r.Context()
+	m, err := s.cfg.Memories.Memory(ctx, name)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	out, err := tm.NewInMemory(m.Info())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	seen := map[int64]bool{}
+	for _, f := range p.Settings.Files {
+		if f.Role != project.Translatable || (f.TargetLang != "" && !strings.EqualFold(f.TargetLang, lang)) {
+			continue
+		}
+		segs, err := s.cfg.Projects.Segments(ctx, p.ID, f.Name, lang)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		for _, sg := range segs {
+			if strings.TrimSpace(sg.Source.Plain()) == "" {
+				continue
+			}
+			ms, err := m.Lookup(ctx, sg.Source, tm.LookupOptions{MinScore: extractMinScore, Limit: extractPerSeg})
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			for _, x := range ms {
+				if seen[x.Unit.ID] {
+					continue
+				}
+				seen[x.Unit.ID] = true
+				u := x.Unit
+				u.ID = 0
+				if _, err := out.Add(ctx, u, tm.KeepBoth); err != nil {
+					s.fail(w, r, err)
+					return
+				}
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/x-tmx+xml; charset=utf-8")
+	w.Header().Set("Interlinea-Units", strconv.Itoa(len(seen)))
+	if err := tm.ExportTMX(ctx, out, w, "Interlinea server "+s.cfg.Version); err != nil {
+		s.cfg.Log.Error("TMX extract failed", "memory", name, "err", err)
 	}
 }
 
