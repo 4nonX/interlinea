@@ -467,7 +467,7 @@ export default () =>
         "[...document.querySelectorAll('.issue')].map(i => i.textContent).join(' | ')",
       );
       check(
-        qaText.includes("“payz” is not in the dictionary. Perhaps pays") &&
+        qaText.includes("“payz” is not in the dictionary. Perhaps pay, pays.") &&
           qaText.includes("Write it out in full.") &&
           qaText.includes("at most 30 are allowed") &&
           (await evaluate(
@@ -479,7 +479,9 @@ export default () =>
         !qaText.includes("“tenant”") && !qaText.includes("“monthly”"),
         "words in the dictionary pass",
       );
-      await click("button", "Add to the project's words");
+      await evaluate(
+        "document.querySelector(\"button[aria-label^='Add payz to the project']\").click()",
+      );
       check(
         await waitFor(
           "![...document.querySelectorAll('.issue')].some(i => i.textContent.includes('payz'))",
