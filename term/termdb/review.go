@@ -303,7 +303,7 @@ func (t *Termbase) SetReviewRules(ctx context.Context, r ReviewRules, by string)
 	}
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.BeginTx(ctx, nil)
+	tx, err := t.db.sql.begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func (t *Termbase) versionAt(ctx context.Context, q querier, entryID string, ver
 		t.id, entryID, version).Scan(&js)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A deleted entry keeps its last state in deleted.
-		err = q.QueryRowContext(ctx, `SELECT entry_json FROM deleted WHERE termbase_id = ? AND entry_id = ? ORDER BY rowid DESC LIMIT 1`, t.id, entryID).Scan(&js)
+		err = q.QueryRowContext(ctx, `SELECT entry_json FROM deleted WHERE termbase_id = ? AND entry_id = ? ORDER BY `+t.db.d.deletedOrder()+` DESC LIMIT 1`, t.id, entryID).Scan(&js)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return term.Entry{}, ErrNotFound
@@ -346,7 +346,7 @@ func (t *Termbase) versionAt(ctx context.Context, q querier, entryID string, ver
 func (t *Termbase) OpenMergeRequest(ctx context.Context, master, title, by string, deadline time.Time) (*MergeRequest, error) {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.BeginTx(ctx, nil)
+	tx, err := t.db.sql.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -372,13 +372,9 @@ func (t *Termbase) OpenMergeRequest(ctx context.Context, master, title, by strin
 	if !deadline.IsZero() {
 		dl = deadline.UTC().Format(timeLayout)
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO merge_requests(project_id, target_id, title, created_at, created_by, deadline) VALUES (?, ?, ?, ?, ?, ?)`,
-		t.id, m.id, strings.TrimSpace(title), now.Format(timeLayout), by, dl)
-	if err != nil {
-		return nil, err
-	}
-	reqID, err := res.LastInsertId()
-	if err != nil {
+	var reqID int64
+	if err := tx.QueryRowContext(ctx, `INSERT INTO merge_requests(project_id, target_id, title, created_at, created_by, deadline) VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+		t.id, m.id, strings.TrimSpace(title), now.Format(timeLayout), by, dl).Scan(&reqID); err != nil {
 		return nil, err
 	}
 	// Entries in an open request already, and the last decision per
@@ -441,7 +437,7 @@ func (t *Termbase) OpenMergeRequest(ctx context.Context, master, title, by strin
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	rows, err = tx.QueryContext(ctx, `SELECT base_entry, base_version, by, at FROM project_removals WHERE project_id = ? AND base_termbase = ? ORDER BY at`, t.id, m.id)
+	rows, err = tx.QueryContext(ctx, `SELECT base_entry, base_version, author, at FROM project_removals WHERE project_id = ? AND base_termbase = ? ORDER BY at`, t.id, m.id)
 	if err != nil {
 		return nil, err
 	}
@@ -906,7 +902,7 @@ func (mr *MergeRequest) Decide(ctx context.Context, f Filter, d Decision, by str
 	}
 	mr.db.wmu.Lock()
 	defer mr.db.wmu.Unlock()
-	tx, err := mr.db.sql.BeginTx(ctx, nil)
+	tx, err := mr.db.sql.begin(ctx)
 	if err != nil {
 		return DecideResult{}, err
 	}
@@ -966,7 +962,7 @@ func (mr *MergeRequest) Decide(ctx context.Context, f Filter, d Decision, by str
 
 // apply merges an approved item into the master and brings the project's
 // copy in step with the result.
-func (mr *MergeRequest) apply(ctx context.Context, tx *sql.Tx, it *Item, edited *term.Entry, by string, now time.Time) error {
+func (mr *MergeRequest) apply(ctx context.Context, tx *wtx, it *Item, edited *term.Entry, by string, now time.Time) error {
 	p, m := mr.project(), mr.target()
 	mdef, err := m.definition(ctx, tx)
 	if err != nil {
@@ -1087,7 +1083,7 @@ func sameContent(a, b term.Entry) bool {
 
 // applyRules decides, when a request opens, the items the master's rules
 // say need no review.
-func (mr *MergeRequest) applyRules(ctx context.Context, tx *sql.Tx, now time.Time) error {
+func (mr *MergeRequest) applyRules(ctx context.Context, tx *wtx, now time.Time) error {
 	rules, err := mr.target().reviewRules(ctx, tx)
 	if err != nil {
 		return err
@@ -1174,7 +1170,7 @@ func onlyFields(cs []term.Change, fields []string) bool {
 func (mr *MergeRequest) Close(ctx context.Context, by string) error {
 	mr.db.wmu.Lock()
 	defer mr.db.wmu.Unlock()
-	tx, err := mr.db.sql.BeginTx(ctx, nil)
+	tx, err := mr.db.sql.begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -1204,7 +1200,7 @@ func (mr *MergeRequest) Close(ctx context.Context, by string) error {
 func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) error {
 	mr.db.wmu.Lock()
 	defer mr.db.wmu.Unlock()
-	tx, err := mr.db.sql.BeginTx(ctx, nil)
+	tx, err := mr.db.sql.begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -1275,7 +1271,7 @@ func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) err
 // Revert sets an entry back to an earlier version, as a new version.
 func (t *Termbase) Revert(ctx context.Context, entryID string, toVersion int, by string) (Stored, error) {
 	var out Stored
-	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		cur, _, err := t.get(ctx, tx, entryID)
 		if err != nil {
 			return err

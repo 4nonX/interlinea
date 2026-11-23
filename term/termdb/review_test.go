@@ -2,10 +2,12 @@ package termdb
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/4nonX/interlinea/internal/sqlitedb"
 	"github.com/4nonX/interlinea/term"
 )
 
@@ -456,5 +458,64 @@ func TestReviewRules(t *testing.T) {
 	rules, _ := m.ReviewRules(ctx)
 	if len(rules.Trusted) != 1 {
 		t.Fatalf("rules: %+v", rules)
+	}
+}
+
+// A database at schema version 2 (columns named "by", masters as JSON)
+// moves to version 3 without losing anything.
+func TestMigrateToVersion3(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v2.db")
+	sdb, err := sqlitedb.Open(path, "termdb", migrations[:2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	stmts := []string{
+		`INSERT INTO termbases(id, name, definition_json, created_at, kind) VALUES (1, 'Recht', '{"name":"Recht","languages":["de-DE"]}', '2026-11-23T09:00:00Z', 'master')`,
+		`INSERT INTO termbases(id, name, definition_json, created_at, kind, upstreams_json) VALUES (2, 'Projekt', '{"name":"Projekt","languages":["de-DE"]}', '2026-11-23T09:00:00Z', 'project', '[1]')`,
+		`INSERT INTO entries(id, termbase_id, entry_id, version, entry_json, created_at, changed_at) VALUES (1, 1, 'c1', 1, '{"id":"c1","languages":[{"lang":"de-DE","terms":[{"text":"Kaution"}]}]}', '2026-11-23T09:00:00Z', '2026-11-23T09:00:00Z')`,
+		`INSERT INTO versions(entry_row, version, at, by, summary, entry_json) VALUES (1, 1, '2026-11-23T09:00:00Z', 'eva', 'Created', '{}')`,
+		`INSERT INTO changes(termbase_id, termbase, entry_id, version, kind, at, by, summary) VALUES (1, 'Recht', 'c1', 1, 'created', '2026-11-23T09:00:00Z', 'eva', 'Created')`,
+	}
+	for _, s := range stmts {
+		if _, err := sdb.Exec(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sdb.Close()
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	p, err := db.Termbase(ctx, "projekt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, _ := p.Info(ctx)
+	if strings.Join(info.Upstreams, ",") != "Recht" {
+		t.Fatalf("upstreams: %+v", info)
+	}
+	m, _ := db.Termbase(ctx, "Recht")
+	h, err := m.History(ctx, "c1")
+	if err != nil || h[0].By != "eva" {
+		t.Fatalf("history: %+v %v", h, err)
+	}
+	cs, _, _ := db.Changes(ctx, ChangeQuery{})
+	if len(cs) != 1 || cs[0].By != "eva" {
+		t.Fatalf("changes: %+v", cs)
+	}
+}
+
+func TestRebind(t *testing.T) {
+	got := postgresDialect.rebind(`SELECT a FROM t WHERE x = ? AND y = '?' AND z IN (?, lower(?))`)
+	if got != `SELECT a FROM t WHERE x = $1 AND y = '?' AND z IN ($2, lower($3))` {
+		t.Fatal(got)
+	}
+	if sqliteDialect.rebind("x = ?") != "x = ?" {
+		t.Fatal("sqlite rebound")
+	}
+	cond, arg := postgresDialect.searchCondition(`50% of_x`)
+	if cond != `search_body ILIKE ? ESCAPE '\'` || arg != `%50\% of\_x%` {
+		t.Fatal(cond, arg)
 	}
 }

@@ -42,17 +42,17 @@ func (d *DB) Changes(ctx context.Context, q ChangeQuery) (changes []Change, more
 	if q.Limit > 10000 {
 		q.Limit = 10000
 	}
-	query := `SELECT seq, termbase, entry_id, version, kind, at, by, summary FROM changes WHERE seq > ?`
+	query := `SELECT seq, termbase, entry_id, version, kind, at, author, summary FROM changes WHERE seq > ?`
 	args := []any{q.Since}
 	if len(q.Termbases) > 0 {
 		var ph []string
 		for _, n := range q.Termbases {
-			ph = append(ph, "?")
+			ph = append(ph, "lower(?)")
 			args = append(args, strings.TrimSpace(n))
 		}
 		// By the termbase's current name, or the name it had in the
 		// change (renamed or deleted termbases).
-		query += ` AND (termbase_id IN (SELECT id FROM termbases WHERE name IN (` + strings.Join(ph, ",") + `)) OR termbase COLLATE NOCASE IN (` + strings.Join(ph, ",") + `))`
+		query += ` AND (termbase_id IN (SELECT id FROM termbases WHERE lower(name) IN (` + strings.Join(ph, ",") + `)) OR lower(termbase) IN (` + strings.Join(ph, ",") + `))`
 		args = append(args, args[1:]...)
 	}
 	query += ` ORDER BY seq LIMIT ?`

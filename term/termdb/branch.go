@@ -3,7 +3,6 @@ package termdb
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -97,57 +96,63 @@ func (t *Termbase) Info(ctx context.Context) (Info, error) {
 
 func (t *Termbase) info(ctx context.Context, q querier) (Info, error) {
 	var info Info
-	var ups string
-	err := q.QueryRowContext(ctx, `SELECT name, kind, upstreams_json FROM termbases WHERE id = ?`, t.id).Scan(&info.Name, &info.Kind, &ups)
+	err := q.QueryRowContext(ctx, `SELECT name, kind FROM termbases WHERE id = ?`, t.id).Scan(&info.Name, &info.Kind)
 	if errors.Is(err, sql.ErrNoRows) {
 		return info, ErrNotFound
 	}
 	if err != nil {
 		return info, err
 	}
-	ids, err := upstreamIDs(ups)
+	ups, err := upstreamsOf(ctx, q, t.db, t.id)
 	if err != nil {
 		return info, err
 	}
-	for _, id := range ids {
-		var name string
-		if err := q.QueryRowContext(ctx, `SELECT name FROM termbases WHERE id = ?`, id).Scan(&name); err != nil {
-			return info, fmt.Errorf("termdb: upstream %d of %s: %w", id, info.Name, err)
-		}
-		info.Upstreams = append(info.Upstreams, name)
+	for _, u := range ups {
+		info.Upstreams = append(info.Upstreams, u.name)
 	}
 	return info, nil
 }
 
-func upstreamIDs(js string) ([]int64, error) {
-	var ids []int64
-	if err := json.Unmarshal([]byte(js), &ids); err != nil {
-		return nil, fmt.Errorf("termdb: read upstreams: %w", err)
+// upstreamsOf lists a project's masters in priority order.
+func upstreamsOf(ctx context.Context, q querier, db *DB, projectID int64) ([]*Termbase, error) {
+	rows, err := q.QueryContext(ctx, `SELECT m.id, m.name FROM termbase_upstreams u JOIN termbases m ON m.id = u.master_id WHERE u.project_id = ? ORDER BY u.position`, projectID)
+	if err != nil {
+		return nil, err
 	}
-	return ids, nil
+	defer rows.Close()
+	var out []*Termbase
+	for rows.Next() {
+		u := &Termbase{db: db}
+		if err := rows.Scan(&u.id, &u.name); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }
 
 func (t *Termbase) upstreams(ctx context.Context, q querier) ([]*Termbase, error) {
-	var kind, ups string
-	if err := q.QueryRowContext(ctx, `SELECT kind, upstreams_json FROM termbases WHERE id = ?`, t.id).Scan(&kind, &ups); err != nil {
+	var kind string
+	if err := q.QueryRowContext(ctx, `SELECT kind FROM termbases WHERE id = ?`, t.id).Scan(&kind); err != nil {
 		return nil, err
 	}
 	if kind != kindProject {
 		return nil, ErrNotProject
 	}
-	ids, err := upstreamIDs(ups)
-	if err != nil {
-		return nil, err
+	return upstreamsOf(ctx, q, t.db, t.id)
+}
+
+// setUpstreams replaces a project's masters.
+func setUpstreams(ctx context.Context, tx *wtx, projectID int64, masters []int64) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM termbase_upstreams WHERE project_id = ?`, projectID); err != nil {
+		return err
 	}
-	var out []*Termbase
-	for _, id := range ids {
-		u := &Termbase{db: t.db, id: id}
-		if err := q.QueryRowContext(ctx, `SELECT name FROM termbases WHERE id = ?`, id).Scan(&u.name); err != nil {
-			return nil, err
+	for i, m := range masters {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO termbase_upstreams(project_id, master_id, position) VALUES (?, ?, ?)`, projectID, m, i); err != nil {
+			return err
 		}
-		out = append(out, u)
 	}
-	return out, nil
+	return nil
 }
 
 // SetUpstreams changes the masters a project is layered over.
@@ -157,7 +162,7 @@ func (t *Termbase) SetUpstreams(ctx context.Context, names []string, by string) 
 	}
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.BeginTx(ctx, nil)
+	tx, err := t.db.sql.begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -169,7 +174,7 @@ func (t *Termbase) SetUpstreams(ctx context.Context, names []string, by string) 
 	for _, n := range names {
 		var id int64
 		var kind string
-		err := tx.QueryRowContext(ctx, `SELECT id, kind FROM termbases WHERE name = ?`, strings.TrimSpace(n)).Scan(&id, &kind)
+		err := tx.QueryRowContext(ctx, `SELECT id, kind FROM termbases WHERE lower(name) = lower(?)`, strings.TrimSpace(n)).Scan(&id, &kind)
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("termdb: master %q: %w", n, ErrNotFound)
 		}
@@ -181,8 +186,7 @@ func (t *Termbase) SetUpstreams(ctx context.Context, names []string, by string) 
 		}
 		ids = append(ids, id)
 	}
-	js, _ := json.Marshal(ids)
-	if _, err := tx.ExecContext(ctx, `UPDATE termbases SET upstreams_json = ? WHERE id = ?`, string(js), t.id); err != nil {
+	if err := setUpstreams(ctx, tx, t.id, ids); err != nil {
 		return err
 	}
 	if err := logChange(ctx, tx, t.id, "", "", 0, ChangeTermbaseChanged, by, "Layered over "+strings.Join(names, ", "), t.db.now()); err != nil {
@@ -234,7 +238,7 @@ func setBase(ctx context.Context, tx execer, projectID int64, entryID string, pr
 func (t *Termbase) Override(ctx context.Context, master, entryID, by string) (Stored, error) {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.BeginTx(ctx, nil)
+	tx, err := t.db.sql.begin(ctx)
 	if err != nil {
 		return Stored{}, err
 	}
@@ -293,7 +297,7 @@ func (t *Termbase) Override(ctx context.Context, master, entryID, by string) (St
 func (t *Termbase) RemoveFromProject(ctx context.Context, master, entryID, by string) error {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.BeginTx(ctx, nil)
+	tx, err := t.db.sql.begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -329,8 +333,8 @@ func (t *Termbase) RemoveFromProject(ctx context.Context, master, entryID, by st
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO project_removals(project_id, base_termbase, base_entry, base_version, at, by) VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT (project_id, base_termbase, base_entry) DO UPDATE SET base_version = excluded.base_version, at = excluded.at, by = excluded.by`,
+	if _, err := tx.ExecContext(ctx, `INSERT INTO project_removals(project_id, base_termbase, base_entry, base_version, at, author) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT (project_id, base_termbase, base_entry) DO UPDATE SET base_version = excluded.base_version, at = excluded.at, author = excluded.author`,
 		t.id, m.id, src.ID, src.Version, now.Format(timeLayout), by); err != nil {
 		return err
 	}
@@ -349,7 +353,7 @@ type Removal struct {
 
 // Removals lists the master entries the project has removed.
 func (t *Termbase) Removals(ctx context.Context) ([]Removal, error) {
-	rows, err := t.db.sql.QueryContext(ctx, `SELECT tb.name, r.base_entry, r.base_version, r.at, r.by FROM project_removals r JOIN termbases tb ON tb.id = r.base_termbase WHERE r.project_id = ? ORDER BY r.at`, t.id)
+	rows, err := t.db.sql.QueryContext(ctx, `SELECT tb.name, r.base_entry, r.base_version, r.at, r.author FROM project_removals r JOIN termbases tb ON tb.id = r.base_termbase WHERE r.project_id = ? ORDER BY r.at`, t.id)
 	if err != nil {
 		return nil, err
 	}
@@ -467,5 +471,3 @@ func (t *Termbase) AddLayeredTo(ctx context.Context, x *term.Index) error {
 	flush()
 	return nil
 }
-
-func rollback(tx *sql.Tx) { _ = tx.Rollback() }

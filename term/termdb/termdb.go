@@ -67,7 +67,7 @@ type execer interface {
 // as the change itself, so the log never misses or invents one. An empty
 // tbName is the termbase's current name.
 func logChange(ctx context.Context, tx execer, tbID int64, tbName, entryID string, version int, kind, by, summary string, now time.Time) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO changes(termbase_id, termbase, entry_id, version, kind, at, by, summary)
+	_, err := tx.ExecContext(ctx, `INSERT INTO changes(termbase_id, termbase, entry_id, version, kind, at, author, summary)
 		VALUES (?, COALESCE(NULLIF(?, ''), (SELECT name FROM termbases WHERE id = ?), ''), ?, ?, ?, ?, ?, ?)`,
 		tbID, tbName, tbID, entryID, version, kind, now.Format(timeLayout), by, summary)
 	if err != nil {
@@ -206,13 +206,31 @@ var migrations = []string{
 		filter_json TEXT NOT NULL,
 		PRIMARY KEY (request_id, reviewer)
 	);`,
+
+	// Version 3: the same schema as on PostgreSQL. "by" is a reserved
+	// word there, so the columns are called author; a project's masters
+	// move from a JSON list to a table.
+	`ALTER TABLE versions RENAME COLUMN by TO author;
+	ALTER TABLE deleted RENAME COLUMN by TO author;
+	ALTER TABLE changes RENAME COLUMN by TO author;
+	ALTER TABLE project_removals RENAME COLUMN by TO author;
+	CREATE TABLE termbase_upstreams (
+		project_id INTEGER NOT NULL REFERENCES termbases(id) ON DELETE CASCADE,
+		master_id  INTEGER NOT NULL REFERENCES termbases(id),
+		position   INTEGER NOT NULL,
+		PRIMARY KEY (project_id, master_id)
+	);
+	INSERT INTO termbase_upstreams(project_id, master_id, position)
+		SELECT t.id, u.value, u.key FROM termbases t, json_each(t.upstreams_json) u;
+	ALTER TABLE termbases DROP COLUMN upstreams_json;`,
 }
 
 // DB is an open database file. It is safe for concurrent use; writes are
 // serialized inside the process, and SQLite's busy timeout handles other
 // processes.
 type DB struct {
-	sql *sql.DB
+	sql *wdb
+	d   dialect
 	wmu sync.Mutex
 	now func() time.Time
 }
@@ -224,7 +242,11 @@ func Open(path string) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DB{sql: sdb, now: func() time.Time { return time.Now().UTC() }}, nil
+	return newDB(sdb, sqliteDialect), nil
+}
+
+func newDB(sdb *sql.DB, d dialect) *DB {
+	return &DB{sql: &wdb{DB: sdb, d: d}, d: d, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // Close closes the database.
@@ -333,31 +355,31 @@ func (d *DB) create(ctx context.Context, def term.Definition, kind string, upstr
 	if err != nil {
 		return nil, err
 	}
-	ups, err := json.Marshal(upstreams)
-	if err != nil {
-		return nil, err
-	}
-	if upstreams == nil {
-		ups = []byte("[]")
-	}
 	d.wmu.Lock()
 	defer d.wmu.Unlock()
-	tx, err := d.sql.BeginTx(ctx, nil)
+	tx, err := d.sql.begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer sqlitedb.Rollback(tx)
+	defer rollback(tx)
 	now := d.now()
-	res, err := tx.ExecContext(ctx, `INSERT INTO termbases(name, definition_json, created_at, kind, upstreams_json) VALUES (?, ?, ?, ?, ?)`,
-		def.Name, string(js), now.Format(timeLayout), kind, string(ups))
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM termbases WHERE lower(name) = lower(?)`, def.Name).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if exists > 0 {
+		return nil, ErrExists
+	}
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO termbases(name, definition_json, created_at, kind) VALUES (?, ?, ?, ?) RETURNING id`,
+		def.Name, string(js), now.Format(timeLayout), kind).Scan(&id)
 	if err != nil {
-		if sqlitedb.IsUnique(err) {
+		if d.d.isUnique(err) {
 			return nil, ErrExists
 		}
 		return nil, fmt.Errorf("termdb: create termbase: %w", err)
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
+	if err := setUpstreams(ctx, tx, id, upstreams); err != nil {
 		return nil, err
 	}
 	if err := logChange(ctx, tx, id, def.Name, "", 0, ChangeTermbaseCreated, by, "Created the termbase", now); err != nil {
@@ -372,7 +394,7 @@ func (d *DB) create(ctx context.Context, def term.Definition, kind string, upstr
 // Termbase returns the termbase with the given name (case-insensitive).
 func (d *DB) Termbase(ctx context.Context, name string) (*Termbase, error) {
 	t := &Termbase{db: d}
-	err := d.sql.QueryRowContext(ctx, `SELECT id, name FROM termbases WHERE name = ?`, strings.TrimSpace(name)).Scan(&t.id, &t.name)
+	err := d.sql.QueryRowContext(ctx, `SELECT id, name FROM termbases WHERE lower(name) = lower(?)`, strings.TrimSpace(name)).Scan(&t.id, &t.name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -388,7 +410,7 @@ func (d *DB) List(ctx context.Context) ([]Summary, error) {
 		SELECT t.definition_json, t.created_at,
 		       (SELECT COUNT(*) FROM entries e WHERE e.termbase_id = t.id),
 		       (SELECT COUNT(*) FROM terms x WHERE x.termbase_id = t.id)
-		FROM termbases t ORDER BY t.name COLLATE NOCASE`)
+		FROM termbases t ORDER BY lower(t.name)`)
 	if err != nil {
 		return nil, err
 	}
@@ -419,26 +441,26 @@ func (d *DB) Delete(ctx context.Context, name string) error {
 func (d *DB) DeleteBy(ctx context.Context, name, by string) error {
 	d.wmu.Lock()
 	defer d.wmu.Unlock()
-	tx, err := d.sql.BeginTx(ctx, nil)
+	tx, err := d.sql.begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer sqlitedb.Rollback(tx)
+	defer rollback(tx)
 	var id int64
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM termbases WHERE name = ?`, strings.TrimSpace(name)).Scan(&id); errors.Is(err, sql.ErrNoRows) {
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM termbases WHERE lower(name) = lower(?)`, strings.TrimSpace(name)).Scan(&id); errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM entries_fts WHERE rowid IN (SELECT id FROM entries WHERE termbase_id = ?)`, id); err != nil {
-		return err
-	}
 	var dependents int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM termbases t, json_each(t.upstreams_json) u WHERE u.value = ?`, id).Scan(&dependents); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM termbase_upstreams WHERE master_id = ?`, id).Scan(&dependents); err != nil {
 		return err
 	}
 	if dependents > 0 {
 		return fmt.Errorf("%w: %d project termbases are layered over it", ErrInUse, dependents)
+	}
+	if err := d.d.dropSearch(ctx, tx, `termbase_id = ?`, id); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM termbases WHERE id = ?`, id); err != nil {
 		return err
@@ -478,13 +500,20 @@ func (t *Termbase) definition(ctx context.Context, q querier) (term.Definition, 
 	return def, nil
 }
 
-func writeDefinition(ctx context.Context, tx *sql.Tx, id int64, def term.Definition) error {
+func writeDefinition(ctx context.Context, tx *wtx, id int64, def term.Definition) error {
 	js, err := json.Marshal(def)
 	if err != nil {
 		return err
 	}
+	var clash int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM termbases WHERE lower(name) = lower(?) AND id <> ?`, def.Name, id).Scan(&clash); err != nil {
+		return err
+	}
+	if clash > 0 {
+		return ErrExists
+	}
 	_, err = tx.ExecContext(ctx, `UPDATE termbases SET definition_json = ?, name = ? WHERE id = ?`, string(js), def.Name, id)
-	if sqlitedb.IsUnique(err) {
+	if tx.d.isUnique(err) {
 		return ErrExists
 	}
 	return err
@@ -497,7 +526,7 @@ func (t *Termbase) Rename(ctx context.Context, name string) error {
 
 // RenameBy is Rename, recording who renamed the termbase.
 func (t *Termbase) RenameBy(ctx context.Context, name, by string) error {
-	return t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	return t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		def.Name = strings.TrimSpace(name)
 		if def.Name == "" {
 			return errors.New("termdb: a termbase needs a name")
@@ -517,7 +546,7 @@ func (t *Termbase) SetDefinition(ctx context.Context, def term.Definition) error
 
 // SetDefinitionBy is SetDefinition, recording who changed it.
 func (t *Termbase) SetDefinitionBy(ctx context.Context, def term.Definition, by string) error {
-	return t.write(ctx, by, func(tx *sql.Tx, cur *term.Definition) error {
+	return t.write(ctx, by, func(tx *wtx, cur *term.Definition) error {
 		def.Name = cur.Name
 		clean, err := cleanDefinition(def)
 		if err != nil {
@@ -592,14 +621,14 @@ func (t *Termbase) usage(ctx context.Context, q querier) (usage, error) {
 
 // write runs fn on the definition inside a write transaction and stores
 // the result; by is who made a change to the definition.
-func (t *Termbase) write(ctx context.Context, by string, fn func(tx *sql.Tx, def *term.Definition) error) error {
+func (t *Termbase) write(ctx context.Context, by string, fn func(tx *wtx, def *term.Definition) error) error {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.BeginTx(ctx, nil)
+	tx, err := t.db.sql.begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer sqlitedb.Rollback(tx)
+	defer rollback(tx)
 	def, err := t.definition(ctx, tx)
 	if err != nil {
 		return err
@@ -625,7 +654,7 @@ func (t *Termbase) write(ctx context.Context, by string, fn func(tx *sql.Tx, def
 func (t *Termbase) RemoveLanguage(ctx context.Context, lang, by string) (int, error) {
 	lang = term.NormalizeLang(lang)
 	changed := 0
-	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		var keep []string
 		for _, l := range def.Languages {
 			if !strings.EqualFold(l, lang) {
@@ -672,7 +701,7 @@ func (t *Termbase) RemoveLanguage(ctx context.Context, lang, by string) (int, er
 // entries changed.
 func (t *Termbase) RemoveField(ctx context.Context, name, by string) (int, error) {
 	changed := 0
-	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		var keep []term.Field
 		for _, f := range def.Fields {
 			if !strings.EqualFold(f.Name, name) {
@@ -807,7 +836,7 @@ func addDefinitionFor(def *term.Definition, e term.Entry) bool {
 // its definition.
 func (t *Termbase) Add(ctx context.Context, e term.Entry, by, summary string) (Stored, error) {
 	var out Stored
-	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		p, err := prepare(e, *def)
 		if err != nil {
 			return err
@@ -819,7 +848,7 @@ func (t *Termbase) Add(ctx context.Context, e term.Entry, by, summary string) (S
 	return out, err
 }
 
-func (t *Termbase) freeID(ctx context.Context, tx *sql.Tx, want string) (string, error) {
+func (t *Termbase) freeID(ctx context.Context, tx *wtx, want string) (string, error) {
 	want = strings.TrimSpace(want)
 	if want != "" {
 		var n int
@@ -850,7 +879,7 @@ func (t *Termbase) freeID(ctx context.Context, tx *sql.Tx, want string) (string,
 	}
 }
 
-func (t *Termbase) insert(ctx context.Context, tx *sql.Tx, e term.Entry, by, summary string, now time.Time) (Stored, error) {
+func (t *Termbase) insert(ctx context.Context, tx *wtx, e term.Entry, by, summary string, now time.Time) (Stored, error) {
 	id, err := t.freeID(ctx, tx, e.ID)
 	if err != nil {
 		return Stored{}, err
@@ -864,14 +893,11 @@ func (t *Termbase) insert(ctx context.Context, tx *sql.Tx, e term.Entry, by, sum
 	if err != nil {
 		return Stored{}, err
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO entries(termbase_id, entry_id, version, entry_json, created_at, created_by, changed_at, changed_by) VALUES (?, ?, 1, ?, ?, ?, ?, ?)`,
-		t.id, e.ID, string(js), e.CreatedAt.Format(timeLayout), e.CreatedBy, now.Format(timeLayout), by)
+	var row int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO entries(termbase_id, entry_id, version, entry_json, created_at, created_by, changed_at, changed_by) VALUES (?, ?, 1, ?, ?, ?, ?, ?) RETURNING id`,
+		t.id, e.ID, string(js), e.CreatedAt.Format(timeLayout), e.CreatedBy, now.Format(timeLayout), by).Scan(&row)
 	if err != nil {
 		return Stored{}, fmt.Errorf("termdb: add entry: %w", err)
-	}
-	row, err := res.LastInsertId()
-	if err != nil {
-		return Stored{}, err
 	}
 	if err := t.index(ctx, tx, row, e); err != nil {
 		return Stored{}, err
@@ -879,7 +905,7 @@ func (t *Termbase) insert(ctx context.Context, tx *sql.Tx, e term.Entry, by, sum
 	if summary == "" {
 		summary = "Created"
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, by, summary, entry_json) VALUES (?, 1, ?, ?, ?, ?)`, row, now.Format(timeLayout), by, summary, string(js)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, author, summary, entry_json) VALUES (?, 1, ?, ?, ?, ?)`, row, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return Stored{}, err
 	}
 	if err := logChange(ctx, tx, t.id, "", e.ID, 1, ChangeCreated, by, summary, now); err != nil {
@@ -912,11 +938,8 @@ func body(e term.Entry) string {
 	return b.String()
 }
 
-func (t *Termbase) index(ctx context.Context, tx *sql.Tx, row int64, e term.Entry) error {
+func (t *Termbase) index(ctx context.Context, tx *wtx, row int64, e term.Entry) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM terms WHERE entry_row = ?`, row); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM entries_fts WHERE rowid = ?`, row); err != nil {
 		return err
 	}
 	for _, l := range e.Languages {
@@ -927,8 +950,7 @@ func (t *Termbase) index(ctx context.Context, tx *sql.Tx, row int64, e term.Entr
 			}
 		}
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO entries_fts(rowid, body) VALUES (?, ?)`, row, body(e))
-	return err
+	return tx.d.setSearch(ctx, tx, row, body(e))
 }
 
 // Get returns an entry by its ID.
@@ -958,7 +980,7 @@ func (t *Termbase) get(ctx context.Context, q querier, id string) (Stored, int64
 // the entry changed since, ErrConflict is returned and nothing is written.
 func (t *Termbase) Update(ctx context.Context, e term.Entry, version int, by, summary string) (Stored, error) {
 	var out Stored
-	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		p, err := prepare(e, *def)
 		if err != nil {
 			return err
@@ -970,7 +992,7 @@ func (t *Termbase) Update(ctx context.Context, e term.Entry, version int, by, su
 	return out, err
 }
 
-func (t *Termbase) update(ctx context.Context, tx *sql.Tx, e term.Entry, version int, by, summary string, now time.Time) (Stored, error) {
+func (t *Termbase) update(ctx context.Context, tx *wtx, e term.Entry, version int, by, summary string, now time.Time) (Stored, error) {
 	cur, row, err := t.get(ctx, tx, e.ID)
 	if err != nil {
 		return Stored{}, err
@@ -985,8 +1007,16 @@ func (t *Termbase) update(ctx context.Context, tx *sql.Tx, e term.Entry, version
 		return Stored{}, err
 	}
 	next := version + 1
-	if _, err := tx.ExecContext(ctx, `UPDATE entries SET version = ?, entry_json = ?, changed_at = ?, changed_by = ? WHERE id = ?`, next, string(js), now.Format(timeLayout), by, row); err != nil {
+	// The version check is part of the update itself, so two writers
+	// that both read version n cannot both write n+1.
+	res, err := tx.ExecContext(ctx, `UPDATE entries SET version = ?, entry_json = ?, changed_at = ?, changed_by = ? WHERE id = ? AND version = ?`, next, string(js), now.Format(timeLayout), by, row, version)
+	if err != nil {
 		return Stored{}, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return Stored{}, err
+	} else if n != 1 {
+		return Stored{}, ErrConflict
 	}
 	if err := t.index(ctx, tx, row, e); err != nil {
 		return Stored{}, err
@@ -994,7 +1024,7 @@ func (t *Termbase) update(ctx context.Context, tx *sql.Tx, e term.Entry, version
 	if summary == "" {
 		summary = "Changed"
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, by, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, row, next, now.Format(timeLayout), by, summary, string(js)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, author, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, row, next, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return Stored{}, err
 	}
 	if err := logChange(ctx, tx, t.id, "", e.ID, next, ChangeChanged, by, summary, now); err != nil {
@@ -1006,7 +1036,7 @@ func (t *Termbase) update(ctx context.Context, tx *sql.Tx, e term.Entry, version
 // DeleteEntry deletes an entry. The deletion and the entry's last state
 // are kept (see Deleted).
 func (t *Termbase) DeleteEntry(ctx context.Context, id, by, summary string) error {
-	return t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	return t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		s, _, err := t.get(ctx, tx, id)
 		if err != nil {
 			return err
@@ -1015,7 +1045,7 @@ func (t *Termbase) DeleteEntry(ctx context.Context, id, by, summary string) erro
 	})
 }
 
-func (t *Termbase) deleteEntry(ctx context.Context, tx *sql.Tx, s Stored, by, summary string, now time.Time) error {
+func (t *Termbase) deleteEntry(ctx context.Context, tx *wtx, s Stored, by, summary string, now time.Time) error {
 	js, err := json.Marshal(s.Entry)
 	if err != nil {
 		return err
@@ -1023,10 +1053,10 @@ func (t *Termbase) deleteEntry(ctx context.Context, tx *sql.Tx, s Stored, by, su
 	if summary == "" {
 		summary = "Deleted"
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO deleted(termbase_id, entry_id, at, by, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, t.id, s.ID, now.Format(timeLayout), by, summary, string(js)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO deleted(termbase_id, entry_id, at, author, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, t.id, s.ID, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM entries_fts WHERE rowid = (SELECT id FROM entries WHERE termbase_id = ? AND entry_id = ?)`, t.id, s.ID); err != nil {
+	if err := tx.d.dropSearch(ctx, tx, `termbase_id = ? AND entry_id = ?`, t.id, s.ID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM entries WHERE termbase_id = ? AND entry_id = ?`, t.id, s.ID); err != nil {
@@ -1037,7 +1067,7 @@ func (t *Termbase) deleteEntry(ctx context.Context, tx *sql.Tx, s Stored, by, su
 
 // Deleted lists deleted entries, most recent first.
 func (t *Termbase) Deleted(ctx context.Context) ([]Deletion, error) {
-	rows, err := t.db.sql.QueryContext(ctx, `SELECT entry_id, at, by, summary, entry_json FROM deleted WHERE termbase_id = ? ORDER BY at DESC, rowid DESC`, t.id)
+	rows, err := t.db.sql.QueryContext(ctx, `SELECT entry_id, at, author, summary, entry_json FROM deleted WHERE termbase_id = ? ORDER BY at DESC, `+t.db.d.deletedOrder()+` DESC`, t.id)
 	if err != nil {
 		return nil, err
 	}
@@ -1064,7 +1094,7 @@ func (t *Termbase) History(ctx context.Context, id string) ([]Version, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := t.db.sql.QueryContext(ctx, `SELECT version, at, by, summary, entry_json FROM versions WHERE entry_row = ? ORDER BY version`, row)
+	rows, err := t.db.sql.QueryContext(ctx, `SELECT version, at, author, summary, entry_json FROM versions WHERE entry_row = ? ORDER BY version`, row)
 	if err != nil {
 		return nil, err
 	}
@@ -1148,8 +1178,8 @@ func (t *Termbase) Search(ctx context.Context, q Query) ([]Stored, int, error) {
 	var candidates []Stored
 	var err error
 	if len([]rune(text)) >= 3 {
-		phrase := `"` + strings.ReplaceAll(text, `"`, `""`) + `"`
-		candidates, err = t.entries(ctx, t.db.sql, `id IN (SELECT rowid FROM entries_fts WHERE entries_fts MATCH ?)`, phrase)
+		cond, arg := t.db.d.searchCondition(text)
+		candidates, err = t.entries(ctx, t.db.sql, cond, arg)
 	} else {
 		candidates, err = t.entries(ctx, t.db.sql, "")
 	}
@@ -1237,11 +1267,11 @@ func (t *Termbase) Plan(ctx context.Context, tb *term.Termbase, p term.Policy) (
 	var actions []term.Action
 	var rep ImportReport
 	err := func() error {
-		tx, err := t.db.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		tx, err := t.db.sql.beginRead(ctx)
 		if err != nil {
 			return err
 		}
-		defer sqlitedb.Rollback(tx)
+		defer rollback(tx)
 		def, err := t.definition(ctx, tx)
 		if err != nil {
 			return err
@@ -1313,7 +1343,7 @@ func (t *Termbase) plan(ctx context.Context, q querier, def *term.Definition, tb
 // entries' history.
 func (t *Termbase) Import(ctx context.Context, tb *term.Termbase, p term.Policy, by, source string) (ImportReport, error) {
 	var rep ImportReport
-	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		actions, r, _, err := t.plan(ctx, tx, def, tb, p)
 		if err != nil {
 			return err
@@ -1367,7 +1397,7 @@ func (t *Termbase) Import(ctx context.Context, tb *term.Termbase, p term.Policy,
 // others are deleted. The history of the kept entry records the merge.
 func (t *Termbase) Merge(ctx context.Context, keepID string, others []string, by string) (Stored, error) {
 	var out Stored
-	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
 		keep, _, err := t.get(ctx, tx, keepID)
 		if err != nil {
 			return err
