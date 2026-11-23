@@ -18,3 +18,7 @@ go.work.sum
 node_modules/
 /prototype/dist/
 /prototype/public/core/
+
+# Desktop app
+/build/
+/desktop/build/

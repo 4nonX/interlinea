@@ -71,6 +71,24 @@ make wasm     # the core for the browser prototype (prototype/public/core)
 make sample   # regenerate the sample Word document and its extraction
 ```
 
+## Desktop app
+
+`desktop/` is the native app: Qt 6 Widgets, C++20. It works on its own,
+with its core (`interlinea-core`) keeping the person's work in SQLite files
+in the app's data folder, and connects to team servers. Sign-ins to team
+servers are kept in the system's keychain. See [docs/desktop.md](docs/desktop.md)
+for the plan and its stages.
+
+```
+cmake -S desktop -B build/desktop      # needs Qt 6.4 or later and Go
+cmake --build build/desktop
+ctest --test-dir build/desktop         # starts the core; QT_QPA_PLATFORM=offscreen is set
+```
+
+The build puts `interlinea-core` next to the app, where the app starts it.
+`INTERLINEA_CORE` and `INTERLINEA_DATA` point the app at another core or
+data folder.
+
 ## Team server
 
 `interlinea-server` keeps projects, memories, termbases and accounts for a

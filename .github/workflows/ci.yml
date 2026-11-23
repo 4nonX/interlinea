@@ -112,3 +112,28 @@ jobs:
         run: npm run e2e
         env:
           INTERLINEA_SERVER: ${{ github.workspace }}/bin/interlinea-server
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libsecret-1-dev ninja-build
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          cache: true
+      - name: configure
+        run: cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release
+      - name: build (the app, its core and the tests)
+        run: cmake --build build/desktop --config Release --parallel
+      - name: tests
+        run: ctest --test-dir build/desktop -C Release --output-on-failure

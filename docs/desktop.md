@@ -55,6 +55,8 @@ platforms.
 
 ## Stages
 
+Done: 1 and 2.
+
 1. **Core.** `cmd/interlinea-core`: the server code in local mode (one
    account, loopback only, Host check against DNS rebinding, a handshake on
    standard output, shutdown with the app). File routes: extract and merge
