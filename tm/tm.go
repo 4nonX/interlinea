@@ -35,6 +35,9 @@ type Unit struct {
 	UsageCount int
 	Attributes []Attribute
 	Notes      []string
+	// Version counts the unit's saved revisions in backends that keep
+	// them (1 when first stored); 0 where the backend does not.
+	Version int
 }
 
 // Info describes a memory.

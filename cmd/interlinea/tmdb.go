@@ -14,7 +14,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/tm"
-	"github.com/4nonX/interlinea/tm/sqlitetm"
+	"github.com/4nonX/interlinea/tm/tmdb"
 )
 
 // defaultDBPath returns the database used when -db is not given:
@@ -68,18 +68,18 @@ func dbFlag(fs *flag.FlagSet) *string {
 	return fs.String("db", defaultDBPath(), "database file")
 }
 
-func openMemory(ctx context.Context, dbPath, name string) (*sqlitetm.DB, *sqlitetm.Memory, error) {
+func openMemory(ctx context.Context, dbPath, name string) (*tmdb.DB, *tmdb.Memory, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, nil, usageErr("-name is required")
 	}
-	db, err := sqlitetm.Open(dbPath)
+	db, err := tmdb.Open(dbPath)
 	if err != nil {
 		return nil, nil, err
 	}
 	m, err := db.Memory(ctx, name)
 	if err != nil {
 		db.Close()
-		if errors.Is(err, sqlitetm.ErrNotFound) {
+		if errors.Is(err, tmdb.ErrNotFound) {
 			return nil, nil, fmt.Errorf("no memory named %q in %s", name, dbPath)
 		}
 		return nil, nil, err
@@ -99,7 +99,7 @@ func runTMCreate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if fs.NArg() != 0 {
 		return usageErr("unexpected arguments: %v", fs.Args())
 	}
-	db, err := sqlitetm.Open(*dbPath)
+	db, err := tmdb.Open(*dbPath)
 	if err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func runTMList(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
-	db, err := sqlitetm.Open(*dbPath)
+	db, err := tmdb.Open(*dbPath)
 	if err != nil {
 		return err
 	}
@@ -170,14 +170,14 @@ func runTMDelete(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if strings.TrimSpace(*name) == "" {
 		return usageErr("-name is required")
 	}
-	db, err := sqlitetm.Open(*dbPath)
+	db, err := tmdb.Open(*dbPath)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 	ctx := context.Background()
 	m, err := db.Memory(ctx, *name)
-	if errors.Is(err, sqlitetm.ErrNotFound) {
+	if errors.Is(err, tmdb.ErrNotFound) {
 		return fmt.Errorf("no memory named %q in %s", *name, *dbPath)
 	}
 	if err != nil {

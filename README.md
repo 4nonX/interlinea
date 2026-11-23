@@ -18,7 +18,7 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `fuzzy` | Weighted token edit distance and match percentages, aware of tags, case and punctuation |
 | `tmx` | Streaming TMX 1.4b reader and writer (UTF-8, UTF-16, ISO-8859-1, Windows-1252), inline markup mapped to tags |
 | `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export |
-| `tm/sqlitetm` | Persistent backend: any number of memories in one SQLite file, term index for fuzzy candidates, FTS5 trigram index for concordance |
+| `tm/tmdb` | Persistent backend: any number of memories in a SQLite file (desktop) or PostgreSQL (server); term index for fuzzy candidates, trigram index for concordance, unit versions that refuse stale edits, change log for syncing |
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
 | `term/termdb` | Persistent termbases: any number in one SQLite file, every version of every entry, edits on stale copies refused, term index for lookups, FTS5 trigram search, imports in one transaction |
 | `internal/sqlitedb` | Opens the SQLite stores with shared settings (WAL, busy timeout) and migrates their schema |

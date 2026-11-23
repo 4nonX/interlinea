@@ -1,4 +1,4 @@
-package sqlitetm
+package tmdb
 
 import (
 	"context"
@@ -18,8 +18,14 @@ import (
 
 var ctx = context.Background()
 
+// openTemp opens an empty database: a new SQLite file, or, with the
+// postgres build tag and INTERLINEA_TEST_POSTGRES set, a new PostgreSQL
+// schema. The key it returns reopens the same database.
 func openTemp(t testing.TB) (*DB, string) {
 	t.Helper()
+	if pgDSN() != "" {
+		return openPG(t)
+	}
 	path := filepath.Join(t.TempDir(), "sub", "memories.db")
 	db, err := Open(path)
 	if err != nil {
@@ -27,6 +33,26 @@ func openTemp(t testing.TB) (*DB, string) {
 	}
 	t.Cleanup(func() { db.Close() })
 	return db, path
+}
+
+func reopen(t testing.TB, key string) *DB {
+	t.Helper()
+	if isPG(key) {
+		return reopenPG(t, key)
+	}
+	db, err := Open(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func sqliteOnly(t *testing.T) {
+	t.Helper()
+	if pgDSN() != "" {
+		t.Skip("tests the SQLite file")
+	}
 }
 
 func TestConformance(t *testing.T) {
@@ -77,11 +103,7 @@ func TestPersistenceAndManagement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	db2, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db2.Close()
+	db2 := reopen(t, path)
 	m2, err := db2.Memory(ctx, "Verträge")
 	if err != nil {
 		t.Fatal(err)
@@ -119,6 +141,9 @@ func TestPersistenceAndManagement(t *testing.T) {
 	if err := db2.sql.QueryRow(`SELECT count(*) FROM units`).Scan(&orphans); err != nil || orphans != 0 {
 		t.Fatalf("units left after delete: %d %v", orphans, err)
 	}
+	if isPG(path) {
+		return
+	}
 	var ftsRows int
 	if err := db2.sql.QueryRow(`SELECT count(*) FROM units_fts WHERE units_fts MATCH '"mieter"'`).Scan(&ftsRows); err != nil || ftsRows != 0 {
 		t.Fatalf("search index not cleaned: %d %v", ftsRows, err)
@@ -126,6 +151,7 @@ func TestPersistenceAndManagement(t *testing.T) {
 }
 
 func TestNewerSchemaRejected(t *testing.T) {
+	sqliteOnly(t)
 	db, path := openTemp(t)
 	if _, err := db.sql.Exec(`PRAGMA user_version = 99`); err != nil {
 		t.Fatal(err)
@@ -227,6 +253,7 @@ func BenchmarkLookup10k(b *testing.B) {
 }
 
 func TestOpenPathWithSpecialCharacters(t *testing.T) {
+	sqliteOnly(t)
 	// Windows forbids "?" in file names; elsewhere it must survive the URI.
 	name := "Mein TM #1 %20 & Co.db"
 	if runtime.GOOS != "windows" {

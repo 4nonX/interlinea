@@ -55,11 +55,11 @@ jobs:
         with:
           go-version-file: go.mod
       - name: vet
-        run: go vet -tags postgres ./term/termdb ./internal/pgdriver
-      - name: termbases on PostgreSQL
-        run: go test -tags postgres -count=1 ./term/termdb
+        run: go vet -tags postgres ./term/termdb ./tm/tmdb ./internal/pgdriver
+      - name: termbases and memories on PostgreSQL
+        run: go test -tags postgres -count=1 -v -run 'TestRunsOnPostgres' ./term/termdb ./tm/tmdb && go test -tags postgres -count=1 ./term/termdb ./tm/tmdb
       - name: race
-        run: go test -tags postgres -race -count=1 ./term/termdb
+        run: go test -tags postgres -race -count=1 ./term/termdb ./tm/tmdb
 
   prototype:
     runs-on: ubuntu-latest

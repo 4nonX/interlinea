@@ -22,7 +22,7 @@ import (
 // Open opens or creates the database at path in WAL mode and applies the
 // migrations it has not seen yet. migrations[i] brings the schema from
 // version i to i+1; the version is kept in PRAGMA user_version. what names
-// the store in error messages ("sqlitetm", "termdb").
+// the store in error messages ("tmdb", "termdb").
 func Open(path, what string, migrations []string) (*sql.DB, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("%s: empty database path", what)
