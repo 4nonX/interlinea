@@ -282,6 +282,7 @@ type best struct {
 	score   int
 	memory  string
 	context bool
+	match   tm.Match
 }
 
 // Analyze analyses the files against the memories (none for a plain word
@@ -451,9 +452,53 @@ func pick(ms []scoredMatch, segs []Segment, i int, rule ContextRule) best {
 				continue
 			}
 		}
-		return best{score: 100, memory: m.memory, context: true}
+		return best{score: 100, memory: m.memory, context: true, match: m.Match}
 	}
-	return best{score: ms[0].Score, memory: ms[0].memory}
+	return best{score: ms[0].Score, memory: ms[0].memory, match: ms[0].Match}
+}
+
+// Best is a segment's best memory match, chosen as the analysis chooses it.
+type Best struct {
+	Match tm.Match
+	// Memory is the name of the memory the match comes from.
+	Memory string
+	// Context reports a context match: a 100% match whose neighbouring
+	// segments match too, under the rule.
+	Context bool
+}
+
+// BestMatch looks segs[i] up in every memory and returns its best match
+// of at least min percent: a context match first, then the highest score
+// (the first memory wins a tie). ok is false when no memory has one.
+func BestMatch(ctx context.Context, segs []Segment, i int, memories []tm.Memory, min int, rule ContextRule) (b Best, ok bool, err error) {
+	if i < 0 || i >= len(segs) {
+		return Best{}, false, fmt.Errorf("analysis: segment %d of %d", i, len(segs))
+	}
+	if rule == "" {
+		rule = ContextPrevious
+	}
+	if rule != ContextPrevious && rule != ContextBoth {
+		return Best{}, false, fmt.Errorf("analysis: context rule must be %q or %q", ContextPrevious, ContextBoth)
+	}
+	if min <= 0 {
+		min = 50
+	}
+	var all []scoredMatch
+	for _, m := range memories {
+		ms, err := m.Lookup(ctx, segs[i].Source, tm.LookupOptions{MinScore: min, Limit: 10})
+		if err != nil {
+			return Best{}, false, fmt.Errorf("analysis: %s: %w", m.Info().Name, err)
+		}
+		for _, x := range ms {
+			all = append(all, scoredMatch{Match: x, memory: m.Info().Name})
+		}
+	}
+	if len(all) == 0 {
+		return Best{}, false, nil
+	}
+	sort.SliceStable(all, func(a, b int) bool { return all[a].Score > all[b].Score })
+	p := pick(all, segs, i, rule)
+	return Best{Match: p.match, Memory: p.memory, Context: p.context}, true, nil
 }
 
 // rowsInOrder lists every band in report order, empty ones included, so
