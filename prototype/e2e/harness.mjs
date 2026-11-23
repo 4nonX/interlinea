@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const fixtures = join(here, "fixtures");
+export const samples = join(here, "..", "samples");
 const dist = join(here, "..", "dist");
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -94,10 +95,22 @@ export async function start() {
   let failed = 0;
   let passed = 0;
 
+  // A protocol call that gets no answer in 30 seconds fails the test
+  // instead of hanging it.
   const send = (method, params = {}) =>
     new Promise((res, rej) => {
       const i = ++id;
-      pending.set(i, { res, rej });
+      const timer = setTimeout(() => {
+        pending.delete(i);
+        rej(new Error(`${method} got no answer in 30 s`));
+      }, 30000);
+      pending.set(i, {
+        res: (v) => {
+          clearTimeout(timer);
+          res(v);
+        },
+        rej,
+      });
       ws.send(JSON.stringify({ id: i, method, params }));
     });
   const evaluate = async (expr) => {
@@ -131,6 +144,7 @@ export async function start() {
     }
   };
   const setFile = async (sel, path) => {
+    if (!existsSync(path)) throw new Error(`no such file: ${path}`);
     const doc = await send("DOM.getDocument", { depth: -1, pierce: true });
     const q = await send("DOM.querySelector", {
       nodeId: doc.root.nodeId,
@@ -248,6 +262,7 @@ export async function start() {
     errors,
     downloads,
     fixtures,
+    samples,
     finish,
   };
 }

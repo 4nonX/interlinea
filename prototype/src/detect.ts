@@ -110,7 +110,12 @@ export async function readText(file: File): Promise<string | null> {
  */
 export async function readDocument(file: File): Promise<PendingDoc> {
   if (/\.docx$/i.test(file.name)) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch (e) {
+      return { file: file.name, words: 0, text: null, error: `The file could not be read (${e instanceof Error ? e.message : String(e)}). Check that it still exists and is not open elsewhere.` };
+    }
     try {
       // Sentence rules barely matter for detection; the units are extracted
       // again with the confirmed source language when the project is created.
@@ -121,6 +126,10 @@ export async function readDocument(file: File): Promise<PendingDoc> {
       return { file: file.name, words: 0, text: null, error: e instanceof Error ? e.message : String(e) };
     }
   }
-  const text = await readText(file);
-  return { file: file.name, words: text ? countWords(text) : 0, text };
+  try {
+    const text = await readText(file);
+    return { file: file.name, words: text ? countWords(text) : 0, text };
+  } catch (e) {
+    return { file: file.name, words: 0, text: null, error: `The file could not be read (${e instanceof Error ? e.message : String(e)}). Check that it still exists and is not open elsewhere.` };
+  }
 }

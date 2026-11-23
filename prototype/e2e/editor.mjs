@@ -14,6 +14,7 @@ export default () =>
       open,
       errors,
       fixtures,
+      samples,
     }) => {
       await open("/projects", { wait: 0 });
       await sleep(800);
@@ -547,9 +548,7 @@ export default () =>
         });
         await send("DOM.setFileInputFiles", {
           nodeId: q.nodeId,
-          files: [
-            "/home/claude/interlinea/prototype/samples/Mietvertrag_Hofmann_2026.docx",
-          ],
+          files: [`${samples}/Mietvertrag_Hofmann_2026.docx`],
         });
       }
       for (
