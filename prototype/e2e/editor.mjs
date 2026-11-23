@@ -16,9 +16,16 @@ export default () =>
       errors,
       fixtures,
       samples,
+      waitFor,
     }) => {
       await open("/projects", { wait: 0 });
-      await sleep(800);
+      check(
+        await waitFor(
+          "[...document.querySelectorAll('button')].some(b => b.textContent.includes('Kaufvertrag_Mueller_Entwurf.docx'))",
+          15000,
+        ),
+        "projects page ready",
+      );
 
       // New project from the German sample.
       await click("button", "Kaufvertrag_Mueller_Entwurf.docx");
