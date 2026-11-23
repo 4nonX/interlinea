@@ -27,6 +27,7 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
 | `filter/sdlpackage` | Trados project packages (.sdlppx): languages and bilingual files; return packages (.sdlrpx) with the translated files |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
+| `analysis` | Word counts and analysis against memories as in Trados and memoQ: locked, context matches (101%, segment before or before and after), repetitions within and across files, 100%, fuzzy bands, new; segments, words, characters, tags and placeables per file and in total; weighted word counts for quotes; reports in HTML, CSV and JSON |
 | `qa` | Quality checks as in Trados, memoQ and Xbench: empty and untranslated segments, tags (missing, extra, nesting), numbers read with each language's separators, end punctuation, spacing (double, leading and trailing, before punctuation, French no-break spaces), brackets, repeated words, capitalization, length limits and ratio, consistency across segments, terminology, spelling, rules of your own (regular expressions); reports in HTML, CSV and JSON |
 | `spell` | Hunspell spelling in Go: reads LibreOffice, Firefox and system dictionaries (.aff/.dic, .oxt extensions), affixes, compounds, all flag types and character sets, suggestions in Hunspell's order |
 | `cmd/interlinea` | Command-line interface to all of the above |
@@ -142,6 +143,23 @@ interlinea package return -o "Mietvertrag Hofmann.sdlrpx" "Mietvertrag Hofmann.s
 `updates.json` maps segment IDs to `{"target": ..., "state": ...}` (target as
 a plain string or the run array `extract -json` prints) or to a plain string,
 which also sets the state to translated.
+
+Analysis and word count (the basis for quotes):
+
+```
+interlinea analyze -src de-DE Mietvertrag.docx                          # word count only
+interlinea analyze -src de-DE -tgt en-GB -tmx client.tmx -tm Mietrecht \
+    -weights context=0,repetition=10,cross-file=10,100=30,95=60,85=60,75=100 \
+    -format html -o analysis.html Mietvertrag.docx Anlage.docx
+interlinea analyze -context both work/*.sdlxliff                       # memoQ's context rule
+```
+
+Bands are `locked`, `context`, `repetition`, `cross-file`, `100`, `95`,
+`85`, `75`, `50` and `new`. A band without a weight counts fully, except
+locked segments (0). Context matches need memory units that record their
+neighbouring segments, as memoQ's TMX does (`x-context-pre`,
+`x-context-post`); Trados stores a hash of the context that other tools
+cannot read, so Trados memories give 100% matches instead.
 
 Quality checks and spelling (exit code 1 when errors are found, so a script
 or CI job can stop):
