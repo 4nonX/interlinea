@@ -3,6 +3,7 @@
 
 #include <QSignalSpy>
 #include <QTcpServer>
+#include <QTcpSocket>
 #include <QTest>
 
 // Waits for a reply's result.
@@ -98,14 +99,16 @@ private slots:
 
     void offline()
     {
-        // A port that was free a moment ago: nothing listens there.
-        quint16 port = 0;
-        {
-            QTcpServer probe;
-            QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
-            port = probe.serverPort();
-        }
-        ApiClient gone(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(port)), QString());
+        // A server that hangs up without answering.
+        QTcpServer rude;
+        QVERIFY(rude.listen(QHostAddress::LocalHost, 0));
+        connect(&rude, &QTcpServer::newConnection, &rude, [&rude] {
+            while (QTcpSocket *s = rude.nextPendingConnection()) {
+                s->close();
+                s->deleteLater();
+            }
+        });
+        ApiClient gone(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(rude.serverPort())), QString());
         const ApiResult r = wait(gone.get(QStringLiteral("/api/server")));
         QVERIFY2(r.error.offline(), qPrintable(QStringLiteral("%1 (%2): %3").arg(r.error.code).arg(r.status).arg(r.error.message)));
         QVERIFY(!r.error.message.isEmpty());

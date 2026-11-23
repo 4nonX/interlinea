@@ -67,7 +67,7 @@ public:
     ApiClient(const QUrl &base, const QString &token, QObject *parent = nullptr);
 
     QUrl base() const { return m_base; }
-    void setBase(const QUrl &base) { m_base = base; }
+    void setBase(const QUrl &base);
     QString token() const { return m_token; }
     void setToken(const QString &token) { m_token = token; }
     QNetworkAccessManager *network() const { return m_net; }

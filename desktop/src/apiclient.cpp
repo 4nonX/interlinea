@@ -2,7 +2,9 @@
 
 #include <QBuffer>
 #include <QCoreApplication>
+#include <QHostAddress>
 #include <QNetworkAccessManager>
+#include <QNetworkProxy>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QRegularExpression>
@@ -73,6 +75,18 @@ ApiClient::ApiClient(const QUrl &base, const QString &token, QObject *parent)
     // Redirects are the API's own business (provider sign-in); requests
     // don't follow them.
     m_net->setRedirectPolicy(QNetworkRequest::ManualRedirectPolicy);
+    setBase(base);
+}
+
+void ApiClient::setBase(const QUrl &base)
+{
+    m_base = base;
+    // The core on this computer is never reached through a proxy.
+    const QHostAddress host(base.host());
+    if (base.host() == QLatin1String("localhost") || host.isLoopback())
+        m_net->setProxy(QNetworkProxy::NoProxy);
+    else
+        m_net->setProxy(QNetworkProxy::DefaultProxy);
 }
 
 QString ApiClient::seg(const QString &s)
