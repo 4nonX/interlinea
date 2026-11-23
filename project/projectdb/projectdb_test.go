@@ -178,8 +178,12 @@ func TestCreateRefusesBadInput(t *testing.T) {
 		"extra target":            func(f []NewFile) { f[3].Segments["fr-FR"] = segs("x") },
 		"reference with segments": func(f []NewFile) { f[2].Segments = map[string][]project.Segment{"en-GB": segs("x")} },
 		"duplicate segment":       func(f []NewFile) { f[1].Segments["en-GB"] = append(segs("a"), segs("b")...) },
-		"segment without ID":      func(f []NewFile) { f[1].Segments["en-GB"] = []project.Segment{{Source: content.Text("a"), Status: project.StatusNew}} },
-		"unknown status":          func(f []NewFile) { f[1].Segments["en-GB"] = []project.Segment{{ID: "a", Source: content.Text("a"), Status: "done"}} },
+		"segment without ID": func(f []NewFile) {
+			f[1].Segments["en-GB"] = []project.Segment{{Source: content.Text("a"), Status: project.StatusNew}}
+		},
+		"unknown status": func(f []NewFile) {
+			f[1].Segments["en-GB"] = []project.Segment{{ID: "a", Source: content.Text("a"), Status: "done"}}
+		},
 	}
 	for name, change := range cases {
 		fs := files()
