@@ -173,3 +173,8 @@ func TestForgedFileRefused(t *testing.T) {
 		t.Fatalf("forged added file: %d %s", r.status, r.body)
 	}
 }
+
+// checkFile prepares a file sent with its segments, into en-GB.
+func checkFile(f fileUpload, sourceLang string) error {
+	return prepareFile(&f, sourceLang, []string{"en-GB"})
+}

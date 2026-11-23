@@ -86,6 +86,41 @@
         },
         "type": "object"
       },
+      "AnalysisRequest": {
+        "properties": {
+          "lang": {
+            "description": "Lang is the target language; empty for all.",
+            "type": "string"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Weights are the share of the full rate charged per band, in percent; with them the report has weighted words.",
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "BilingualInfo": {
+        "properties": {
+          "format": {
+            "description": "Format is xliff-1.2, xliff-2, sdlxliff or mqxliff.",
+            "type": "string"
+          },
+          "sourceLang": {
+            "type": "string"
+          },
+          "targetLang": {
+            "type": "string"
+          },
+          "translated": {
+            "description": "Translated counts the segments the file has translations for.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "CatalogMemory": {
         "properties": {
           "name": {
@@ -220,20 +255,28 @@
         "type": "object"
       },
       "FileUpload": {
-        "description": "fileUpload is a file as the apps send it: the original bytes (base64 in JSON) and, for a file to translate, its segments per target language as the app's filters read them.",
+        "description": "fileUpload is a file as the apps send it: the original bytes (base64 in JSON) and, for a file to translate, its segments per target language as the app's filters read them. fileUpload is a file sent to a project.",
         "properties": {
           "data": {
+            "description": "Data is the file's bytes.",
             "format": "byte",
             "type": "string"
           },
           "format": {
+            "description": "Format is docx, xliff or txt for a file to translate (the server takes it from the name when it is left out), the extension for a reference file.",
             "type": "string"
           },
           "name": {
+            "description": "Name is the file's name, with the folder it came from if any.",
             "type": "string"
           },
           "role": {
-            "$ref": "#/components/schemas/project.Role"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/project.Role"
+              }
+            ],
+            "description": "Role is translatable, reference, or package for a Trados project package, whose bilingual files the project gets."
           },
           "segments": {
             "additionalProperties": {
@@ -242,9 +285,11 @@
               },
               "type": "array"
             },
+            "description": "Segments are a translatable file's segments per target language, as the app read them; left out, the server makes them.",
             "type": "object"
           },
           "targetLang": {
+            "description": "TargetLang is a bilingual file's target language; the server reads it from the file when it is left out.",
             "type": "string"
           }
         },
@@ -271,6 +316,63 @@
           },
           "username": {
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Inspection": {
+        "description": "inspection is what the server finds in a document before a project is made from it.",
+        "properties": {
+          "bilingual": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BilingualInfo"
+              }
+            ],
+            "description": "Bilingual is set for an XLIFF file: its variant and languages."
+          },
+          "detection": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/langdetect.Detection"
+              }
+            ],
+            "description": "Detection guesses the source language from the text."
+          },
+          "format": {
+            "description": "Format is docx, xliff, package (a Trados project package), txt, or other for a file that is not translated (a reference file).",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "package": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PackageInfo"
+              }
+            ],
+            "description": "Package describes a Trados project package and its files."
+          },
+          "problem": {
+            "description": "Problem says why a file that looks translatable can't be read.",
+            "type": "string"
+          },
+          "segments": {
+            "type": "integer"
+          },
+          "translatable": {
+            "description": "Translatable is false for other files and files that can't be read.",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "words": {
+            "type": "integer"
           }
         },
         "type": "object"
@@ -435,6 +537,53 @@
         },
         "type": "object"
       },
+      "PackageFile": {
+        "properties": {
+          "lang": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "segments": {
+            "type": "integer"
+          },
+          "words": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PackageInfo": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/PackageFile"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "other": {
+            "description": "Other counts the package's other entries (memories, termbases), which stay in it.",
+            "type": "integer"
+          },
+          "sourceLang": {
+            "type": "string"
+          },
+          "targetLangs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "PasswordSignin": {
         "properties": {
           "device": {
@@ -498,13 +647,39 @@
         },
         "type": "object"
       },
-      "SegmentSave": {
+      "QaRequest": {
         "properties": {
-          "status": {
-            "$ref": "#/components/schemas/project.Status"
+          "file": {
+            "type": "string"
           },
-          "target": {
-            "$ref": "#/components/schemas/content.Content"
+          "lang": {
+            "type": "string"
+          },
+          "segments": {
+            "description": "Segments are the segments to check, by ID; empty for all.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "targets": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/content.Content"
+            },
+            "description": "Targets check translations not saved yet, by segment ID.",
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "RecognizeRequest": {
+        "properties": {
+          "lang": {
+            "description": "Lang is the target language the entries' translations are for.",
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
           }
         },
         "type": "object"
@@ -564,6 +739,74 @@
           },
           "user": {
             "$ref": "#/components/schemas/authdb.User"
+          }
+        },
+        "type": "object"
+      },
+      "SpellRequest": {
+        "properties": {
+          "words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "SpellResult": {
+        "properties": {
+          "correct": {
+            "description": "Correct says, for each word, whether it is spelled right.",
+            "items": {
+              "type": "boolean"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "TermHit": {
+        "description": "termHit is a term found in a text, with its place in UTF-16 code units as well, for apps whose strings count those.",
+        "properties": {
+          "end": {
+            "type": "integer"
+          },
+          "end16": {
+            "type": "integer"
+          },
+          "entryId": {
+            "type": "string"
+          },
+          "exact": {
+            "description": "Exact is set when the text has the term as written (case aside).",
+            "type": "boolean"
+          },
+          "source": {
+            "description": "Source is the label the entry was added with.",
+            "type": "string"
+          },
+          "start": {
+            "description": "Start and End are byte offsets into the text.",
+            "type": "integer"
+          },
+          "start16": {
+            "type": "integer"
+          },
+          "targets": {
+            "description": "Targets are the entry's terms in the target language, approved first.",
+            "items": {
+              "$ref": "#/components/schemas/term.Term"
+            },
+            "type": "array"
+          },
+          "term": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/term.Term"
+              }
+            ],
+            "description": "Term is the source-language term that matched."
           }
         },
         "type": "object"
@@ -783,6 +1026,186 @@
         },
         "type": "object"
       },
+      "analysis.Band": {
+        "description": "Band is a row of the analysis.",
+        "enum": [
+          "100",
+          "50",
+          "75",
+          "85",
+          "95",
+          "context",
+          "cross-file",
+          "locked",
+          "new",
+          "repetition"
+        ],
+        "type": "string"
+      },
+      "analysis.ContextRule": {
+        "description": "ContextRule says which neighbours make a 100% match a context match: the segment before (Trados) or the segments before and after (memoQ).",
+        "enum": [
+          "both",
+          "previous"
+        ],
+        "type": "string"
+      },
+      "analysis.Counts": {
+        "description": "Counts are the amounts of a band, a file or a project.",
+        "properties": {
+          "characters": {
+            "description": "Characters are counted without spaces.",
+            "type": "integer"
+          },
+          "placeables": {
+            "description": "Placeables are numbers, which translators usually copy unchanged.",
+            "type": "integer"
+          },
+          "segments": {
+            "type": "integer"
+          },
+          "tags": {
+            "type": "integer"
+          },
+          "words": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "analysis.FileReport": {
+        "description": "FileReport is the analysis of one file.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/analysis.Row"
+            },
+            "type": "array"
+          },
+          "total": {
+            "$ref": "#/components/schemas/analysis.Counts"
+          },
+          "weighted": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "analysis.Report": {
+        "description": "Report is the analysis of a project.",
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/analysis.ContextRule"
+          },
+          "created": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/analysis.FileReport"
+            },
+            "type": "array"
+          },
+          "memories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/analysis.Row"
+            },
+            "type": "array"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/analysis.SegmentResult"
+            },
+            "type": "array"
+          },
+          "sourceLang": {
+            "type": "string"
+          },
+          "targetLang": {
+            "type": "string"
+          },
+          "total": {
+            "$ref": "#/components/schemas/analysis.Counts"
+          },
+          "weighted": {
+            "type": "number"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "analysis.Row": {
+        "description": "Row is the counts of one band.",
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/analysis.Band"
+          },
+          "characters": {
+            "description": "Characters are counted without spaces.",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "placeables": {
+            "description": "Placeables are numbers, which translators usually copy unchanged.",
+            "type": "integer"
+          },
+          "segments": {
+            "type": "integer"
+          },
+          "tags": {
+            "type": "integer"
+          },
+          "weighted": {
+            "description": "Weighted is Words times the band's weight, with Options.Weights.",
+            "type": "number"
+          },
+          "words": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "analysis.SegmentResult": {
+        "description": "SegmentResult says how a segment was counted.",
+        "properties": {
+          "band": {
+            "$ref": "#/components/schemas/analysis.Band"
+          },
+          "counted": {
+            "$ref": "#/components/schemas/analysis.Counts"
+          },
+          "file": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "memory": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "authdb.Grant": {
         "description": "Grant gives a user a role on a resource.",
         "properties": {
@@ -949,12 +1372,93 @@
         },
         "type": "object"
       },
+      "langdetect.Detection": {
+        "description": "Detection is a guess at a text's language.",
+        "properties": {
+          "alternatives": {
+            "description": "Alternatives are the runners-up, best first.",
+            "items": {
+              "$ref": "#/components/schemas/langdetect.Guess"
+            },
+            "type": "array"
+          },
+          "basis": {
+            "description": "Basis is the amount of text the guess rests on, in Unit.",
+            "type": "integer"
+          },
+          "confidence": {
+            "description": "Confidence is from 0 to 1; below Confident the person confirms.",
+            "type": "number"
+          },
+          "lang": {
+            "description": "Lang is the best guess (a BCP 47 tag), empty when the text gives no usable evidence.",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/langdetect.Reason"
+          },
+          "unit": {
+            "description": "Unit is \"words\", or \"characters\" for scripts written without spaces.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "langdetect.Guess": {
+        "description": "Guess is another language the text may be in.",
+        "properties": {
+          "confidence": {
+            "type": "number"
+          },
+          "lang": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "langdetect.Reason": {
+        "description": "Reason says why there is a guess or none.",
+        "enum": [
+          "empty",
+          "mixed",
+          "ok",
+          "short"
+        ],
+        "type": "string"
+      },
       "project.Analysis": {
         "description": "Analysis is how the project's analysis counts.",
         "properties": {
           "context": {
             "description": "Context is the context match rule: \"previous\" (Trados) or \"both\" (memoQ).",
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "project.Edit": {
+        "description": "Edit is what saving a segment changes.",
+        "properties": {
+          "ignored": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/project.Origin"
+          },
+          "status": {
+            "$ref": "#/components/schemas/project.Status"
+          },
+          "target": {
+            "$ref": "#/components/schemas/content.Content"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/project.Warning"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -966,11 +1470,33 @@
             "description": "Name is the file name, with the folder it came from if any (\"contracts/lease.docx\"). Names are unique in a project, ignoring case.",
             "type": "string"
           },
+          "package": {
+            "description": "Package is the file's path in the project's Trados package, for a file that came from one (\"en-GB/Vertrag.docx.sdlxliff\").",
+            "type": "string"
+          },
           "role": {
             "$ref": "#/components/schemas/project.Role"
           },
           "targetLang": {
             "description": "TargetLang is set for a bilingual file (XLIFF, a file of a Trados package): it is translated into this language only. Empty for a monolingual file, which is translated into every target language.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "project.FileState": {
+        "description": "FileState is a segment's state in its bilingual file.",
+        "properties": {
+          "match": {
+            "description": "Match is the match percentage the file records.",
+            "type": "integer"
+          },
+          "state": {
+            "description": "State is \"new\", \"draft\", \"translated\", \"reviewed\", \"final\" or \"rejected\".",
+            "type": "string"
+          },
+          "target": {
+            "description": "Target is the translation in the file, as content JSON.",
             "type": "string"
           }
         },
@@ -1006,6 +1532,34 @@
           "update": {
             "description": "Update stores confirmed translations in it.",
             "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "project.Origin": {
+        "description": "Origin is where a translation came from.",
+        "properties": {
+          "context": {
+            "type": "boolean"
+          },
+          "from": {
+            "description": "From is the segment a repetition was taken from.",
+            "type": "string"
+          },
+          "inserted": {
+            "description": "Inserted is the translation as inserted, as content JSON, to see whether it was edited.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind is \"tm\" (a memory match), \"mt\", \"copy\" (the source) or \"repetition\" (the translation of an equal segment).",
+            "type": "string"
+          },
+          "memory": {
+            "type": "string"
+          },
+          "score": {
+            "description": "Score is a memory match's score; Memory its memory; Context marks a context match.",
+            "type": "integer"
           }
         },
         "type": "object"
@@ -1091,6 +1645,7 @@
       "project.Role": {
         "description": "Role says what a file is for.",
         "enum": [
+          "package",
           "reference",
           "translatable"
         ],
@@ -1099,11 +1654,49 @@
       "project.Segment": {
         "description": "Segment is a segment of a file in one target language.",
         "properties": {
+          "block": {
+            "description": "Block is the paragraph of the original document the segment is in.",
+            "type": "string"
+          },
+          "file": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/project.FileState"
+              }
+            ],
+            "description": "File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change."
+          },
           "id": {
             "type": "string"
           },
+          "ignored": {
+            "description": "Ignored are the warnings marked as false alarms, by kind and text.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "locked": {
             "type": "boolean"
+          },
+          "maxLength": {
+            "description": "MaxLength is the longest the translation may be, in characters.",
+            "type": "integer"
+          },
+          "notes": {
+            "description": "Notes are a bilingual file's comments on the segment.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "origin": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/project.Origin"
+              }
+            ],
+            "description": "Origin is where the translation came from when it was inserted."
           },
           "source": {
             "$ref": "#/components/schemas/content.Content"
@@ -1113,6 +1706,13 @@
           },
           "target": {
             "$ref": "#/components/schemas/content.Content"
+          },
+          "warnings": {
+            "description": "Warnings are the checks' results saved when it was confirmed.",
+            "items": {
+              "$ref": "#/components/schemas/project.Warning"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -1286,6 +1886,18 @@
         },
         "type": "object"
       },
+      "project.Warning": {
+        "description": "Warning is a check's result on a segment.",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "projectdb.Assignment": {
         "description": "Assignment gives a person part of a project: a target language of a file, all of a file's languages, or all files, and within one file a range of segments.",
         "properties": {
@@ -1383,6 +1995,38 @@
         },
         "type": "object"
       },
+      "projectdb.Dictionary": {
+        "description": "Dictionary is a spelling dictionary (Hunspell .aff and .dic files) the projects' quality checks spell with.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "lang": {
+            "description": "Lang is the language it spells (a BCP 47 tag).",
+            "type": "string"
+          },
+          "locales": {
+            "description": "Locales are the languages its archive declared for it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "Name identifies it (\"de_DE_frami\").",
+            "type": "string"
+          },
+          "words": {
+            "description": "Words counts its words.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "projectdb.Presence": {
         "description": "Presence marks who has a segment open.",
         "properties": {
@@ -1416,6 +2060,10 @@
       "projectdb.StoredSegment": {
         "description": "StoredSegment is a segment with its version.",
         "properties": {
+          "block": {
+            "description": "Block is the paragraph of the original document the segment is in.",
+            "type": "string"
+          },
           "changedAt": {
             "format": "date-time",
             "type": "string"
@@ -1423,11 +2071,45 @@
           "changedBy": {
             "type": "string"
           },
+          "file": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/project.FileState"
+              }
+            ],
+            "description": "File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change."
+          },
           "id": {
             "type": "string"
           },
+          "ignored": {
+            "description": "Ignored are the warnings marked as false alarms, by kind and text.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "locked": {
             "type": "boolean"
+          },
+          "maxLength": {
+            "description": "MaxLength is the longest the translation may be, in characters.",
+            "type": "integer"
+          },
+          "notes": {
+            "description": "Notes are a bilingual file's comments on the segment.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "origin": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/project.Origin"
+              }
+            ],
+            "description": "Origin is where the translation came from when it was inserted."
           },
           "source": {
             "$ref": "#/components/schemas/content.Content"
@@ -1440,6 +2122,13 @@
           },
           "version": {
             "type": "integer"
+          },
+          "warnings": {
+            "description": "Warnings are the checks' results saved when it was confirmed.",
+            "items": {
+              "$ref": "#/components/schemas/project.Warning"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -1509,6 +2198,38 @@
           "translate"
         ],
         "type": "string"
+      },
+      "qa.Issue": {
+        "description": "Issue is a problem found in a segment.",
+        "properties": {
+          "found": {
+            "description": "Found is the text the issue is about, as it appears in the translation; Suggestions are replacements (spelling).",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/qa.Kind"
+          },
+          "message": {
+            "type": "string"
+          },
+          "rule": {
+            "description": "Rule names the user rule that found the issue.",
+            "type": "string"
+          },
+          "segment": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/qa.Severity"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
       },
       "qa.Kind": {
         "description": "Kind names a check.",
@@ -2361,7 +3082,7 @@
     }
   },
   "info": {
-    "description": "The API of the Interlinea team server: accounts and roles, projects and their files, segments and work, translation memories, termbases and the review of their changes, and a live feed of changes. Requests and answers are JSON (UTF-8), except file uploads and downloads, which say their type. Every answer that is not a success has an Error body with a stable code. Writes to things that have a version (projects, segments, entries, units, accounts, templates) carry the version they were made from, in If-Match or ?version=; a write made from an older version is refused with 409 conflict, and the app reloads. Sign in with a password (/api/auth/password), through the identity provider (/api/auth/oidc/start), or as the first administrator (/api/setup). The answer's token goes in \"Authorization: Bearer <token>\". The web app the server serves itself asks for a cookie instead (X-Interlinea-Session: cookie on the sign-in): it is HttpOnly and SameSite=Strict, and every request it signs in must carry the X-Interlinea header. Roles on projects, memories and termbases are read < suggest < edit < approve < manage, given per resource or for all of a kind; administrators may do everything.",
+    "description": "The API of the Interlinea team server: accounts and roles, projects and their files, segments and work, translation memories, termbases and the review of their changes, and a live feed of changes. Requests and answers are JSON (UTF-8), except file uploads and downloads, which say their type. Every answer that is not a success has an Error body with a stable code. Writes to things that have a version (projects, segments, entries, units, accounts, templates) carry the version they were made from, in If-Match or ?version=; a write made from an older version is refused with 409 conflict, and the app reloads. Sign in with a password (/api/auth/password), through the identity provider (/api/auth/oidc/start), or as the first administrator (/api/setup). The answer's token goes in \"Authorization: Bearer <token>\". The web app the server serves itself asks for a cookie instead (X-Interlinea-Session: cookie on the sign-in): it is HttpOnly and SameSite=Strict, and every request it signs in must carry the X-Interlinea header. Roles on projects, memories and termbases are read < suggest < edit < approve < manage, given per resource or for all of a kind; administrators may do everything. The desktop app's core, interlinea-core, serves the same API on the person's own computer, for them alone: on the loopback interface, with one account and a token it hands the app when it starts.",
     "license": {
       "name": "See the repository's licence"
     },
@@ -2637,6 +3358,251 @@
         ]
       }
     },
+    "/api/dictionaries": {
+      "get": {
+        "description": "Access: signed in.",
+        "operationId": "listDictionaries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/projectdb.Dictionary"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Lists the spelling dictionaries installed on the server.",
+        "tags": [
+          "Files, checks and spelling"
+        ]
+      },
+      "post": {
+        "description": "Access: those who make projects (manage on all projects) and administrators.",
+        "operationId": "installDictionaries",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file's bytes.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/projectdb.Dictionary"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Installs the Hunspell dictionaries in a LibreOffice extension (.oxt) or ZIP file (the request body), replacing those of the same names, and lists them.",
+        "tags": [
+          "Files, checks and spelling"
+        ]
+      }
+    },
+    "/api/dictionaries/{name}": {
+      "delete": {
+        "description": "One a project or template spells with is not removed; the answer names them.\n\nAccess: those who make projects and administrators.",
+        "operationId": "deleteDictionary",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Removes a spelling dictionary.",
+        "tags": [
+          "Files, checks and spelling"
+        ]
+      }
+    },
+    "/api/dictionaries/{name}/check": {
+      "post": {
+        "description": "Access: signed in.",
+        "operationId": "spellCheck",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpellRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpellResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Checks the spelling of words with a dictionary.",
+        "tags": [
+          "Files, checks and spelling"
+        ]
+      }
+    },
+    "/api/dictionaries/{name}/suggest": {
+      "get": {
+        "description": "Access: signed in.",
+        "operationId": "spellSuggest",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "word",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Suggests corrections for a word (?word=), at most ?max= (5).",
+        "tags": [
+          "Files, checks and spelling"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
         "description": "Reconnect with Last-Event-ID (or ?since=) to get what was missed. A \"signedOut\" event ends the stream when the sign-in ends.\n\nAccess: signed in; each event is sent only to those who may see it.",
@@ -2684,6 +3650,61 @@
         "summary": "Streams the live feed: the changes the person may see in projects, memories, termbases and their account, and presence in projects, as text/event-stream.",
         "tags": [
           "Live feed"
+        ]
+      }
+    },
+    "/api/files/inspect": {
+      "post": {
+        "description": "Nothing is kept.\n\nAccess: signed in.",
+        "operationId": "inspectFile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file's bytes.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inspection"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Reads a document (the request body, named by ?name=) and says what it is: its format, words and segments, the source language it seems to be in, and for bilingual files and Trados packages their languages and files.",
+        "tags": [
+          "Files, checks and spelling"
         ]
       }
     },
@@ -4776,6 +5797,67 @@
         ]
       }
     },
+    "/api/projects/{id}/analysis": {
+      "post": {
+        "description": "Access: read on the project, or work in it.",
+        "operationId": "projectAnalysis",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/analysis.Report"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Analyses a project's files against the memories it looks up in: words by match band, repetitions, and with weights the weighted words, for each target language.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/api/projects/{id}/assignments": {
       "get": {
         "description": "Access: read on the project, or work in it.",
@@ -5362,6 +6444,69 @@
         ]
       }
     },
+    "/api/projects/{id}/files/translated": {
+      "get": {
+        "description": "Segments not translated yet keep their source text.\n\nAccess: read on the project, or work in it.",
+        "operationId": "projectTranslatedFile",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Sends a file of the project (?name=) with the translations of a target language (?lang=): a Word document in the target language, a bilingual file with its translations and states, or a text.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/api/projects/{id}/lookup": {
       "post": {
         "description": "Access: read on the project, or work in it.",
@@ -5797,6 +6942,244 @@
         ]
       }
     },
+    "/api/projects/{id}/qa": {
+      "post": {
+        "description": "Access: read on the project, or work in it.",
+        "operationId": "projectQA",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/qa.Issue"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Runs the project's quality checks on a file's segments in a target language (or some of them), with translations not saved yet if given, and lists the issues found.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/qa/report": {
+      "get": {
+        "description": "Access: read on the project, or work in it.",
+        "operationId": "projectQAReport",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Writes the quality report of a file in a target language (?file=&lang=) as HTML, CSV or JSON (?format=, html by default).",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/recognize": {
+      "post": {
+        "description": "Access: read on the project, or work in it.",
+        "operationId": "projectRecognize",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecognizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TermHit"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Finds the terms of the project's termbases in a source text, with their translations into a target language, as the editor shows them for a segment.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/return-package": {
+      "get": {
+        "description": "Access: read on the project, or work in it.",
+        "operationId": "projectReturnPackage",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Sends the Trados return package (.sdlrpx) of a project made from a Trados package: the package's bilingual files with the project's translations and states.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/api/projects/{id}/segments": {
       "get": {
         "description": "Access: read on the project, or work in it.",
@@ -5916,7 +7299,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SegmentSave"
+                "$ref": "#/components/schemas/project.Edit"
               }
             }
           },
@@ -6152,6 +7535,54 @@
         "summary": "Adds a term found while translating where the project's setup puts new terms: its own termbase, or the master in Direct mode.",
         "tags": [
           "Projects"
+        ]
+      }
+    },
+    "/api/qa/kinds": {
+      "get": {
+        "description": "Access: signed in.",
+        "operationId": "qaKinds",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "properties": {
+                      "default": {
+                        "type": "boolean"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "$ref": "#/components/schemas/qa.Kind"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Lists the quality checks, which of them run by default, and what each finds.",
+        "tags": [
+          "Files, checks and spelling"
         ]
       }
     },
@@ -8857,6 +10288,9 @@
     },
     {
       "name": "Projects"
+    },
+    {
+      "name": "Files, checks and spelling"
     },
     {
       "name": "Memories"

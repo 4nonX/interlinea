@@ -204,16 +204,60 @@ const schemaV2 = `
 	CREATE UNIQUE INDEX presence_by_user ON presence (project_id, user_id);
 	CREATE INDEX presence_by_file ON presence (project_id, file, target_lang);`
 
+// Version 3: what the file says about a segment (its paragraph, notes,
+// length limit, state in a bilingual file) and what the work left on it
+// (where the translation came from, saved warnings), as JSON.
+const schemaV3 = `ALTER TABLE segments ADD COLUMN extra_json TEXT NOT NULL DEFAULT '{}';`
+
+// Version 4: spelling dictionaries (Hunspell files) for the projects'
+// quality checks.
+const schemaV4 = `
+	CREATE TABLE dictionaries (
+		name        TEXT PRIMARY KEY,
+		lang        TEXT NOT NULL,
+		locales     TEXT NOT NULL,
+		words       INTEGER NOT NULL,
+		aff         %[1]s NOT NULL,
+		dic         %[1]s NOT NULL,
+		created_at  TEXT NOT NULL,
+		created_by  TEXT NOT NULL
+	);`
+
 var (
 	migrations = []string{
 		fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT", "BLOB"),
 		fmt.Sprintf(schemaV2, "INTEGER PRIMARY KEY AUTOINCREMENT"),
+		schemaV3,
+		fmt.Sprintf(schemaV4, "BLOB"),
 	}
 	pgMigrations = []string{
 		fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "BYTEA"),
 		fmt.Sprintf(schemaV2, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"),
+		schemaV3,
+		fmt.Sprintf(schemaV4, "BYTEA"),
 	}
 )
+
+// segmentExtra is the part of a segment kept in extra_json.
+type segmentExtra struct {
+	Block     string             `json:"block,omitempty"`
+	MaxLength int                `json:"maxLength,omitempty"`
+	Notes     []string           `json:"notes,omitempty"`
+	File      *project.FileState `json:"file,omitempty"`
+	Origin    *project.Origin    `json:"origin,omitempty"`
+	Warnings  []project.Warning  `json:"warnings,omitempty"`
+	Ignored   []string           `json:"ignored,omitempty"`
+}
+
+func extraJSON(s project.Segment) (string, error) {
+	b, err := json.Marshal(segmentExtra{Block: s.Block, MaxLength: s.MaxLength, Notes: s.Notes, File: s.File, Origin: s.Origin, Warnings: s.Warnings, Ignored: s.Ignored})
+	return noNUL(string(b)), err
+}
+
+func (x segmentExtra) apply(s *project.Segment) {
+	s.Block, s.MaxLength, s.Notes, s.File = x.Block, x.MaxLength, x.Notes, x.File
+	s.Origin, s.Warnings, s.Ignored = x.Origin, x.Warnings, x.Ignored
+}
 
 // noNUL keeps NUL out of text columns, which PostgreSQL refuses.
 func noNUL(s string) string { return strings.ReplaceAll(s, "\x00", "") }
@@ -463,8 +507,8 @@ func insertFile(ctx context.Context, tx *sqlstore.Tx, projectID int64, position 
 }
 
 func insertSegments(ctx context.Context, tx *sqlstore.Tx, fileID int64, target string, segs []project.Segment, by string, now time.Time) error {
-	st, err := tx.PrepareContext(ctx, `INSERT INTO segments(file_id, target_lang, position, seg_id, source_json, target_json, status, locked, version, changed_at, changed_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`)
+	st, err := tx.PrepareContext(ctx, `INSERT INTO segments(file_id, target_lang, position, seg_id, source_json, target_json, status, locked, version, changed_at, changed_by, extra_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -479,7 +523,11 @@ func insertSegments(ctx context.Context, tx *sqlstore.Tx, fileID int64, target s
 		if err != nil {
 			return err
 		}
-		if _, err := st.ExecContext(ctx, fileID, target, i, sg.ID, string(src), string(tgt), string(sg.Status), boolInt(sg.Locked), at, noNUL(by)); err != nil {
+		extra, err := extraJSON(sg)
+		if err != nil {
+			return err
+		}
+		if _, err := st.ExecContext(ctx, fileID, target, i, sg.ID, string(src), string(tgt), string(sg.Status), boolInt(sg.Locked), at, noNUL(by), extra); err != nil {
 			return fmt.Errorf("projectdb: segment %s: %w", sg.ID, err)
 		}
 	}
@@ -868,7 +916,7 @@ type StoredSegment struct {
 func querySegments(ctx context.Context, q interface {
 	QueryContext(ctx context.Context, q string, args ...any) (*sql.Rows, error)
 }, fileID int64, target string) ([]StoredSegment, error) {
-	rows, err := q.QueryContext(ctx, `SELECT seg_id, source_json, target_json, status, locked, version, changed_at, changed_by
+	rows, err := q.QueryContext(ctx, `SELECT seg_id, source_json, target_json, status, locked, version, changed_at, changed_by, extra_json
 		FROM segments WHERE file_id = ? AND target_lang = ? ORDER BY position`, fileID, target)
 	if err != nil {
 		return nil, err
@@ -877,11 +925,16 @@ func querySegments(ctx context.Context, q interface {
 	var out []StoredSegment
 	for rows.Next() {
 		var s StoredSegment
-		var src, tgt, status, changed string
+		var src, tgt, status, changed, extra string
 		var locked int
-		if err := rows.Scan(&s.ID, &src, &tgt, &status, &locked, &s.Version, &changed, &s.ChangedBy); err != nil {
+		if err := rows.Scan(&s.ID, &src, &tgt, &status, &locked, &s.Version, &changed, &s.ChangedBy, &extra); err != nil {
 			return nil, err
 		}
+		var x segmentExtra
+		if err := json.Unmarshal([]byte(extra), &x); err != nil {
+			return nil, fmt.Errorf("projectdb: segment %s: %w", s.ID, err)
+		}
+		x.apply(&s.Segment)
 		if err := json.Unmarshal([]byte(src), &s.Source); err != nil {
 			return nil, fmt.Errorf("projectdb: segment %s source: %w", s.ID, err)
 		}
@@ -904,8 +957,16 @@ func (d *DB) Segments(ctx context.Context, projectID int64, file, target string)
 }
 
 // SaveSegment stores a segment's translation and status, as edited from
-// version.
+// version, with no origin or saved warnings.
 func (d *DB) SaveSegment(ctx context.Context, projectID int64, file, target, segID string, tgt content.Content, status project.Status, version int, by string) (StoredSegment, error) {
+	return d.SaveEdit(ctx, projectID, file, target, segID, project.Edit{Target: tgt, Status: status}, version, by)
+}
+
+// SaveEdit stores a segment's translation, status, origin, saved warnings
+// and ignored warnings, as edited from version. What the file says about
+// the segment stays.
+func (d *DB) SaveEdit(ctx context.Context, projectID int64, file, target, segID string, e project.Edit, version int, by string) (StoredSegment, error) {
+	tgt, status := e.Target, e.Status
 	switch status {
 	case project.StatusNew, project.StatusDraft, project.StatusConfirmed:
 	default:
@@ -923,7 +984,8 @@ func (d *DB) SaveSegment(ctx context.Context, projectID int64, file, target, seg
 			return err
 		}
 		var locked, ver int
-		err = tx.QueryRowContext(ctx, `SELECT locked, version FROM segments WHERE file_id = ? AND target_lang = ? AND seg_id = ?`, fid, target, segID).Scan(&locked, &ver)
+		var extra string
+		err = tx.QueryRowContext(ctx, `SELECT locked, version, extra_json FROM segments WHERE file_id = ? AND target_lang = ? AND seg_id = ?`, fid, target, segID).Scan(&locked, &ver, &extra)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -940,9 +1002,18 @@ func (d *DB) SaveSegment(ctx context.Context, projectID int64, file, target, seg
 		if err != nil {
 			return err
 		}
-		res, err := tx.ExecContext(ctx, `UPDATE segments SET target_json = ?, status = ?, version = version + 1, changed_at = ?, changed_by = ?
+		var x segmentExtra
+		if err := json.Unmarshal([]byte(extra), &x); err != nil {
+			return fmt.Errorf("projectdb: segment %s: %w", segID, err)
+		}
+		x.Origin, x.Warnings, x.Ignored = e.Origin, e.Warnings, e.Ignored
+		xs, err := json.Marshal(x)
+		if err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, `UPDATE segments SET target_json = ?, status = ?, extra_json = ?, version = version + 1, changed_at = ?, changed_by = ?
 			WHERE file_id = ? AND target_lang = ? AND seg_id = ? AND version = ?`,
-			string(js), string(status), now.Format(timeLayout), noNUL(by), fid, target, segID, version)
+			string(js), string(status), noNUL(string(xs)), now.Format(timeLayout), noNUL(by), fid, target, segID, version)
 		if err != nil {
 			return err
 		}
@@ -1010,7 +1081,21 @@ func (d *DB) ApplyTranslations(ctx context.Context, projectID int64, target stri
 				return err
 			} else if k == 1 {
 				var ver int
-				if err := tx.QueryRowContext(ctx, `SELECT version FROM segments WHERE file_id = ? AND target_lang = ? AND seg_id = ?`, fid, target, t.ID).Scan(&ver); err != nil {
+				var extra string
+				if err := tx.QueryRowContext(ctx, `SELECT version, extra_json FROM segments WHERE file_id = ? AND target_lang = ? AND seg_id = ?`, fid, target, t.ID).Scan(&ver, &extra); err != nil {
+					return err
+				}
+				// The segment remembers the match it was filled with.
+				var x segmentExtra
+				if err := json.Unmarshal([]byte(extra), &x); err != nil {
+					return fmt.Errorf("projectdb: segment %s: %w", t.ID, err)
+				}
+				x.Origin = &project.Origin{Kind: "tm", Score: t.Score, Memory: t.Memory, Context: t.Context, Inserted: string(js)}
+				xs, err := json.Marshal(x)
+				if err != nil {
+					return err
+				}
+				if _, err := tx.ExecContext(ctx, `UPDATE segments SET extra_json = ? WHERE file_id = ? AND target_lang = ? AND seg_id = ?`, noNUL(string(xs)), fid, target, t.ID); err != nil {
 					return err
 				}
 				if err := logChange(ctx, tx, change{projectID: projectID, project: cur.Settings.Name, kind: ChangeSegment, file: t.File, target: target, segment: t.ID, version: ver}, by, now); err != nil {

@@ -28,6 +28,9 @@ const (
 	// Reference files (style guides, earlier versions, PDFs of the
 	// layout) travel with the project for the translators to read.
 	Reference Role = "reference"
+	// Package is the Trados project package (.sdlppx) the project's
+	// bilingual files came from, kept to write the return package.
+	Package Role = "package"
 )
 
 // File is a file of the project.
@@ -41,6 +44,9 @@ type File struct {
 	// package): it is translated into this language only. Empty for a
 	// monolingual file, which is translated into every target language.
 	TargetLang string `json:"targetLang,omitempty"`
+	// Package is the file's path in the project's Trados package, for a
+	// file that came from one ("en-GB/Vertrag.docx.sdlxliff").
+	Package string `json:"package,omitempty"`
 }
 
 // MemorySetting is how a project uses one translation memory for one
@@ -241,7 +247,12 @@ func Validate(s Settings, cat Catalog) []Problem {
 	}
 
 	names := map[string]bool{}
-	translatable := 0
+	translatable, packages := 0, 0
+	for _, f := range s.Files {
+		if f.Role == Package {
+			packages++
+		}
+	}
 	for i, f := range s.Files {
 		field := fmt.Sprintf("files[%d]", i)
 		name := strings.TrimSpace(f.Name)
@@ -262,8 +273,23 @@ func Validate(s Settings, cat Catalog) []Problem {
 			if f.TargetLang != "" {
 				add(field+".targetLang", "A reference file is not translated, so it has no target language.")
 			}
+		case Package:
+			if f.TargetLang != "" {
+				add(field+".targetLang", "A Trados package is not translated itself, so it has no target language.")
+			}
+			if packages > 1 {
+				add(field+".role", "A project holds the files of one Trados package, so it can be returned as one return package.")
+			}
 		default:
-			add(field+".role", "%s must be a file to translate or a reference file.", name)
+			add(field+".role", "%s must be a file to translate, a reference file or a Trados package.", name)
+		}
+		if f.Package != "" {
+			switch {
+			case f.Role != Translatable || f.TargetLang == "":
+				add(field+".package", "%s is from a Trados package, so it is a bilingual file to translate.", name)
+			case packages == 0:
+				add(field+".package", "%s is from a Trados package, which is not in the project.", name)
+			}
 		}
 		if f.Role == Translatable && f.TargetLang != "" {
 			n, err := langtag.Normalize(f.TargetLang)

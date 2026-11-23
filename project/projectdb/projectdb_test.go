@@ -540,3 +540,88 @@ func TestNULInNames(t *testing.T) {
 		t.Fatalf("authors %+v", cs)
 	}
 }
+
+// What the file says about a segment stays through saving; what the work
+// left on it is replaced by each save; pre-translation records its match.
+func TestSegmentDetails(t *testing.T) {
+	db, key := openTemp(t)
+	fs := files()
+	brief := segs("Die Miete ist fällig.", "Kanzlei Weber")
+	brief[0].Block, brief[0].MaxLength, brief[0].Notes = "u1", 40, []string{"Keep it short."}
+	brief[0].File = &project.FileState{State: "reviewed", Target: `[{"text":"The rent is due."}]`, Match: 100}
+	brief[0].Target, brief[0].Status = content.Text("The rent is due."), project.StatusConfirmed
+	fs[3].Segments["en-GB"] = brief
+	p, err := db.Create(ctx, settings("P"), fs, cat, "anna")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := reopen(t, key).Segments(ctx, p.ID, "return.sdlxliff", "en-GB")
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := got[0]
+	if g.Block != "u1" || g.MaxLength != 40 || len(g.Notes) != 1 || g.File == nil || g.File.State != "reviewed" || g.File.Match != 100 {
+		t.Fatalf("details %+v", g)
+	}
+	e := project.Edit{Target: content.Text("Rent is due."), Status: project.StatusConfirmed,
+		Origin:   &project.Origin{Kind: "tm", Score: 87, Memory: "Weber DE-EN", Inserted: `[{"text":"The rent is due."}]`},
+		Warnings: []project.Warning{{Kind: "length", Text: "Longer than the source."}}, Ignored: []string{"length:Longer than the source."}}
+	s, err := db.SaveEdit(ctx, p.ID, "return.sdlxliff", "en-GB", g.ID, e, g.Version, "ben")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Block != "u1" || s.File == nil || s.Origin == nil || s.Origin.Score != 87 || len(s.Warnings) != 1 || len(s.Ignored) != 1 || s.Target.Plain() != "Rent is due." {
+		t.Fatalf("saved %+v", s)
+	}
+	// A plain save clears the origin and warnings, not the file's details.
+	s, err = db.SaveSegment(ctx, p.ID, "return.sdlxliff", "en-GB", g.ID, content.Text("Rent due."), project.StatusDraft, s.Version, "ben")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Origin != nil || s.Warnings != nil || s.Block != "u1" || s.MaxLength != 40 {
+		t.Fatalf("plain save %+v", s)
+	}
+	if n, err := db.ApplyTranslations(ctx, p.ID, "en-GB", []project.Translation{{File: "Mietvertrag.docx", ID: "s2", Target: content.Text("The tenant pays the rent."), Score: 95, Memory: "Weber DE-EN", Status: project.StatusDraft}}, "pre"); err != nil || n != 1 {
+		t.Fatalf("applied %d %v", n, err)
+	}
+	en, _ := db.Segments(ctx, p.ID, "Mietvertrag.docx", "en-GB")
+	if o := en[1].Origin; o == nil || o.Kind != "tm" || o.Score != 95 || o.Memory != "Weber DE-EN" || o.Inserted != `[{"text":"The tenant pays the rent."}]` {
+		t.Fatalf("origin %+v", en[1].Origin)
+	}
+}
+
+func TestDictionaries(t *testing.T) {
+	db, key := openTemp(t)
+	if ds, err := db.Dictionaries(ctx); err != nil || len(ds) != 0 {
+		t.Fatalf("none yet: %v %v", ds, err)
+	}
+	x, err := db.SaveDictionary(ctx, Dictionary{Name: "de_DE_frami", Lang: "de-DE", Locales: []string{"de-DE", "de-AT"}, Words: 2}, []byte("SET UTF-8\n"), []byte("2\nMiete\nMieter\n"), "anna")
+	if err != nil || x.CreatedBy != "anna" {
+		t.Fatalf("saved %+v %v", x, err)
+	}
+	if _, err := db.SaveDictionary(ctx, Dictionary{Name: " "}, nil, nil, "anna"); err == nil {
+		t.Fatal("a dictionary without a name")
+	}
+	db2 := reopen(t, key)
+	ds, err := db2.Dictionaries(ctx)
+	if err != nil || len(ds) != 1 || ds[0].Lang != "de-DE" || len(ds[0].Locales) != 2 || ds[0].Words != 2 {
+		t.Fatalf("listed %+v %v", ds, err)
+	}
+	got, aff, dic, err := db2.DictionaryFiles(ctx, "DE_de_FRAMI")
+	if err != nil || got.Name != "de_DE_frami" || string(aff) != "SET UTF-8\n" || !strings.Contains(string(dic), "Mieter") {
+		t.Fatalf("files %+v %q %q %v", got, aff, dic, err)
+	}
+	// Saving again replaces it.
+	if _, err := db2.SaveDictionary(ctx, Dictionary{Name: "de_DE_frami", Lang: "de-DE", Words: 3}, []byte("SET UTF-8\n"), []byte("3\nMiete\nMieter\nKaution\n"), "ben"); err != nil {
+		t.Fatal(err)
+	}
+	if ds, _ := db2.Dictionaries(ctx); len(ds) != 1 || ds[0].Words != 3 || ds[0].CreatedBy != "ben" {
+		t.Fatalf("replaced %+v", ds)
+	}
+	if err := db2.DeleteDictionary(ctx, "de_de_frami"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db2.DeleteDictionary(ctx, "de_DE_frami"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted twice: %v", err)
+	}
+}

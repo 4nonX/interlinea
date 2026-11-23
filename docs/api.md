@@ -10,6 +10,8 @@ Sign in with a password (/api/auth/password), through the identity provider (/ap
 
 Roles on projects, memories and termbases are read < suggest < edit < approve < manage, given per resource or for all of a kind; administrators may do everything.
 
+The desktop app's core, interlinea-core, serves the same API on the person's own computer, for them alone: on the loopback interface, with one account and a token it hands the app when it starts.
+
 The same description is served as OpenAPI 3.1 at `/api/openapi.json` (and kept in `server/openapi.json`).
 
 Every route may also answer with an [Error](#error): 422 for a request with problems, 429 when there are too many sign-in attempts, 500 when the server failed.
@@ -20,6 +22,7 @@ Every route may also answer with an [Error](#error): 422 for a request with prob
 - [The signed-in person](#the-signed-in-person)
 - [Accounts and roles](#accounts-and-roles)
 - [Projects](#projects)
+- [Files, checks and spelling](#files-checks-and-spelling)
 - [Memories](#memories)
 - [Termbases](#termbases)
 - [Merge requests](#merge-requests)
@@ -413,6 +416,17 @@ Access: manage on the project.
 - Answer: 204 No Content
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `POST /api/projects/{id}/analysis`
+
+Analyses a project's files against the memories it looks up in: words by match band, repetitions, and with weights the weighted words, for each target language.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path)
+- Body: [AnalysisRequest](#analysisrequest)
+- Answer: 200 OK: list of [analysis.Report](#analysisreport)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `GET /api/projects/{id}/assignments`
 
 Lists the work given out in a project.
@@ -513,6 +527,18 @@ Access: read on the project, or work in it.
 - Answer: 200 OK: `application/octet-stream`
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `GET /api/projects/{id}/files/translated`
+
+Sends a file of the project (?name=) with the translations of a target language (?lang=): a Word document in the target language, a bilingual file with its translations and states, or a text.
+
+Segments not translated yet keep their source text.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path), `name` (query), `lang` (query)
+- Answer: 200 OK: `application/octet-stream`
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `POST /api/projects/{id}/lookup`
 
 Finds matches for a segment in the memories the project looks up in for the language.
@@ -590,6 +616,48 @@ Access: manage on the project.
 - Answer: 200 OK: list of {`filled`: integer, `lang`: string}
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `POST /api/projects/{id}/qa`
+
+Runs the project's quality checks on a file's segments in a target language (or some of them), with translations not saved yet if given, and lists the issues found.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path)
+- Body: [QaRequest](#qarequest)
+- Answer: 200 OK: list of [qa.Issue](#qaissue)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `GET /api/projects/{id}/qa/report`
+
+Writes the quality report of a file in a target language (?file=&lang=) as HTML, CSV or JSON (?format=, html by default).
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path), `lang` (query), `file` (query), `format` (query)
+- Answer: 200 OK: `application/octet-stream`
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `POST /api/projects/{id}/recognize`
+
+Finds the terms of the project's termbases in a source text, with their translations into a target language, as the editor shows them for a segment.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path)
+- Body: [RecognizeRequest](#recognizerequest)
+- Answer: 200 OK: list of [TermHit](#termhit)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `GET /api/projects/{id}/return-package`
+
+Sends the Trados return package (.sdlrpx) of a project made from a Trados package: the package's bilingual files with the project's translations and states.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path)
+- Answer: 200 OK: `application/octet-stream`
+- Errors: 401, 403, 404 (see [Error](#error))
+
 ### `GET /api/projects/{id}/segments`
 
 Returns a file's segments in a target language (?file=&lang=), with their versions.
@@ -609,7 +677,7 @@ Editors of the project may save any segment; translators and reviewers those ass
 Access: edit on the project, or the segment's assignee.
 
 - Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `If-Match` or `?version=`
-- Body: [SegmentSave](#segmentsave)
+- Body: [project.Edit](#projectedit)
 - Answer: 200 OK: [projectdb.StoredSegment](#projectdbstoredsegment)
 - Errors: 401, 403, 404, 409, 428, 422 (see [Error](#error))
 
@@ -680,6 +748,82 @@ Access: those who make projects and administrators.
 - Parameters: `name` (query)
 - Answer: 204 No Content
 - Errors: 401, 403, 422 (see [Error](#error))
+
+## Files, checks and spelling
+
+### `GET /api/dictionaries`
+
+Lists the spelling dictionaries installed on the server.
+
+Access: signed in.
+
+- Answer: 200 OK: list of [projectdb.Dictionary](#projectdbdictionary)
+- Errors: 401, 403 (see [Error](#error))
+
+### `POST /api/dictionaries`
+
+Installs the Hunspell dictionaries in a LibreOffice extension (.oxt) or ZIP file (the request body), replacing those of the same names, and lists them.
+
+Access: those who make projects (manage on all projects) and administrators.
+
+- Body: the file's bytes
+- Answer: 200 OK: list of [projectdb.Dictionary](#projectdbdictionary)
+- Errors: 401, 403, 422 (see [Error](#error))
+
+### `DELETE /api/dictionaries/{name}`
+
+Removes a spelling dictionary.
+
+One a project or template spells with is not removed; the answer names them.
+
+Access: those who make projects and administrators.
+
+- Parameters: `name` (path)
+- Answer: 204 No Content
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `POST /api/dictionaries/{name}/check`
+
+Checks the spelling of words with a dictionary.
+
+Access: signed in.
+
+- Parameters: `name` (path)
+- Body: [SpellRequest](#spellrequest)
+- Answer: 200 OK: [SpellResult](#spellresult)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `GET /api/dictionaries/{name}/suggest`
+
+Suggests corrections for a word (?word=), at most ?max= (5).
+
+Access: signed in.
+
+- Parameters: `name` (path), `max` (query), `word` (query)
+- Answer: 200 OK: list of string
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `POST /api/files/inspect`
+
+Reads a document (the request body, named by ?name=) and says what it is: its format, words and segments, the source language it seems to be in, and for bilingual files and Trados packages their languages and files.
+
+Nothing is kept.
+
+Access: signed in.
+
+- Parameters: `name` (query)
+- Body: the file's bytes
+- Answer: 200 OK: [Inspection](#inspection)
+- Errors: 401, 403, 422 (see [Error](#error))
+
+### `GET /api/qa/kinds`
+
+Lists the quality checks, which of them run by default, and what each finds.
+
+Access: signed in.
+
+- Answer: 200 OK: list of {`default`: boolean, `description`: string, `kind`: [qa.Kind](#qakind), `name`: string}
+- Errors: 401, 403 (see [Error](#error))
 
 ## Memories
 
@@ -1311,6 +1455,22 @@ access is what someone may do in a project.
 | `assigned` | boolean | Assigned is set when they have work in the project, which lets them see it without a grant. |
 | `role` | [authdb.Role](#authdbrole) |  |
 
+### AnalysisRequest
+
+| Field | Type | Description |
+|---|---|---|
+| `lang` | string | Lang is the target language; empty for all. |
+| `weights` | map of number | Weights are the share of the full rate charged per band, in percent; with them the report has weighted words. |
+
+### BilingualInfo
+
+| Field | Type | Description |
+|---|---|---|
+| `format` | string | Format is xliff-1.2, xliff-2, sdlxliff or mqxliff. |
+| `sourceLang` | string |  |
+| `targetLang` | string |  |
+| `translated` | integer | Translated counts the segments the file has translations for. |
+
 ### CatalogMemory
 
 | Field | Type | Description |
@@ -1375,16 +1535,16 @@ apiError is the body of every error answer.
 
 ### FileUpload
 
-fileUpload is a file as the apps send it: the original bytes (base64 in JSON) and, for a file to translate, its segments per target language as the app's filters read them.
+fileUpload is a file as the apps send it: the original bytes (base64 in JSON) and, for a file to translate, its segments per target language as the app's filters read them. fileUpload is a file sent to a project.
 
 | Field | Type | Description |
 |---|---|---|
-| `data` | string (byte) |  |
-| `format` | string |  |
-| `name` | string |  |
-| `role` | [project.Role](#projectrole) |  |
-| `segments` | map of list of [project.Segment](#projectsegment) |  |
-| `targetLang` | string |  |
+| `data` | string (byte) | Data is the file's bytes. |
+| `format` | string | Format is docx, xliff or txt for a file to translate (the server takes it from the name when it is left out), the extension for a reference file. |
+| `name` | string | Name is the file's name, with the folder it came from if any. |
+| `role` | [project.Role](#projectrole) | Role is translatable, reference, or package for a Trados project package, whose bilingual files the project gets. |
+| `segments` | map of list of [project.Segment](#projectsegment) | Segments are a translatable file's segments per target language, as the app read them; left out, the server makes them. |
+| `targetLang` | string | TargetLang is a bilingual file's target language; the server reads it from the file when it is left out. |
 
 ### GrantView
 
@@ -1398,6 +1558,23 @@ grantView is a grant with the person's name, for lists.
 | `role` | [authdb.Role](#authdbrole) |  |
 | `userId` | integer |  |
 | `username` | string |  |
+
+### Inspection
+
+inspection is what the server finds in a document before a project is made from it.
+
+| Field | Type | Description |
+|---|---|---|
+| `bilingual` | [BilingualInfo](#bilingualinfo) | Bilingual is set for an XLIFF file: its variant and languages. |
+| `detection` | [langdetect.Detection](#langdetectdetection) | Detection guesses the source language from the text. |
+| `format` | string | Format is docx, xliff, package (a Trados project package), txt, or other for a file that is not translated (a reference file). |
+| `name` | string |  |
+| `package` | [PackageInfo](#packageinfo) | Package describes a Trados project package and its files. |
+| `problem` | string | Problem says why a file that looks translatable can't be read. |
+| `segments` | integer |  |
+| `translatable` | boolean | Translatable is false for other files and files that can't be read. |
+| `warnings` | list of string |  |
+| `words` | integer |  |
 
 ### ItemQuery
 
@@ -1477,6 +1654,26 @@ grantView is a grant with the person's name, for lists.
 | `device` | string |  |
 | `return` | string | Return is where the browser goes afterwards. |
 
+### PackageFile
+
+| Field | Type | Description |
+|---|---|---|
+| `lang` | string |  |
+| `path` | string |  |
+| `problem` | string |  |
+| `segments` | integer |  |
+| `words` | integer |  |
+
+### PackageInfo
+
+| Field | Type | Description |
+|---|---|---|
+| `files` | list of [PackageFile](#packagefile) |  |
+| `name` | string |  |
+| `other` | integer | Other counts the package's other entries (memories, termbases), which stay in it. |
+| `sourceLang` | string |  |
+| `targetLangs` | list of string |  |
+
 ### PasswordSignin
 
 | Field | Type | Description |
@@ -1508,12 +1705,21 @@ person is what everyone signed in may see of an account, to choose whom work goe
 | `settings` | [project.Settings](#projectsettings) |  |
 | `version` | integer | Version counts the changes to the settings and the files. |
 
-### SegmentSave
+### QaRequest
 
 | Field | Type | Description |
 |---|---|---|
-| `status` | [project.Status](#projectstatus) |  |
-| `target` | [content.Content](#contentcontent) |  |
+| `file` | string |  |
+| `lang` | string |  |
+| `segments` | list of string | Segments are the segments to check, by ID; empty for all. |
+| `targets` | map of [content.Content](#contentcontent) | Targets check translations not saved yet, by segment ID. |
+
+### RecognizeRequest
+
+| Field | Type | Description |
+|---|---|---|
+| `lang` | string | Lang is the target language the entries' translations are for. |
+| `text` | string |  |
 
 ### ServerInfo
 
@@ -1544,6 +1750,34 @@ signinResult is the answer to a sign-in.
 | `expiresAt` | string (date-time) |  |
 | `token` | string | Token goes into the Authorization header of every request. It is shown once, and not at all to a sign-in that asked for the cookie. |
 | `user` | [authdb.User](#authdbuser) |  |
+
+### SpellRequest
+
+| Field | Type | Description |
+|---|---|---|
+| `words` | list of string |  |
+
+### SpellResult
+
+| Field | Type | Description |
+|---|---|---|
+| `correct` | list of boolean | Correct says, for each word, whether it is spelled right. |
+
+### TermHit
+
+termHit is a term found in a text, with its place in UTF-16 code units as well, for apps whose strings count those.
+
+| Field | Type | Description |
+|---|---|---|
+| `end` | integer |  |
+| `end16` | integer |  |
+| `entryId` | string |  |
+| `exact` | boolean | Exact is set when the text has the term as written (case aside). |
+| `source` | string | Source is the label the entry was added with. |
+| `start` | integer | Start and End are byte offsets into the text. |
+| `start16` | integer |  |
+| `targets` | list of [term.Term](#termterm) | Targets are the entry's terms in the target language, approved first. |
+| `term` | [term.Term](#termterm) | Term is the source-language term that matched. |
 
 ### TermbaseDetail
 
@@ -1620,6 +1854,87 @@ unitView is a memory unit as the API shows it.
 | `disabled` | boolean or null |  |
 | `email` | string or null |  |
 | `name` | string or null |  |
+
+### analysis.Band
+
+Band is a row of the analysis.
+
+One of `100`, `50`, `75`, `85`, `95`, `context`, `cross-file`, `locked`, `new`, `repetition`.
+
+### analysis.ContextRule
+
+ContextRule says which neighbours make a 100% match a context match: the segment before (Trados) or the segments before and after (memoQ).
+
+One of `both`, `previous`.
+
+### analysis.Counts
+
+Counts are the amounts of a band, a file or a project.
+
+| Field | Type | Description |
+|---|---|---|
+| `characters` | integer | Characters are counted without spaces. |
+| `placeables` | integer | Placeables are numbers, which translators usually copy unchanged. |
+| `segments` | integer |  |
+| `tags` | integer |  |
+| `words` | integer |  |
+
+### analysis.FileReport
+
+FileReport is the analysis of one file.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string |  |
+| `rows` | list of [analysis.Row](#analysisrow) |  |
+| `total` | [analysis.Counts](#analysiscounts) |  |
+| `weighted` | number |  |
+
+### analysis.Report
+
+Report is the analysis of a project.
+
+| Field | Type | Description |
+|---|---|---|
+| `context` | [analysis.ContextRule](#analysiscontextrule) |  |
+| `created` | string (date-time) |  |
+| `files` | list of [analysis.FileReport](#analysisfilereport) |  |
+| `memories` | list of string |  |
+| `rows` | list of [analysis.Row](#analysisrow) |  |
+| `segments` | list of [analysis.SegmentResult](#analysissegmentresult) |  |
+| `sourceLang` | string |  |
+| `targetLang` | string |  |
+| `total` | [analysis.Counts](#analysiscounts) |  |
+| `weighted` | number |  |
+| `weights` | map of number |  |
+
+### analysis.Row
+
+Row is the counts of one band.
+
+| Field | Type | Description |
+|---|---|---|
+| `band` | [analysis.Band](#analysisband) |  |
+| `characters` | integer | Characters are counted without spaces. |
+| `name` | string |  |
+| `placeables` | integer | Placeables are numbers, which translators usually copy unchanged. |
+| `segments` | integer |  |
+| `tags` | integer |  |
+| `weighted` | number | Weighted is Words times the band's weight, with Options.Weights. |
+| `words` | integer |  |
+
+### analysis.SegmentResult
+
+SegmentResult says how a segment was counted.
+
+| Field | Type | Description |
+|---|---|---|
+| `band` | [analysis.Band](#analysisband) |  |
+| `counted` | [analysis.Counts](#analysiscounts) |  |
+| `file` | string |  |
+| `id` | string |  |
+| `memory` | string |  |
+| `score` | integer |  |
 
 ### authdb.Grant
 
@@ -1710,6 +2025,34 @@ Tag is an inline element. ID pairs open and close tags inside a segment. Type is
 | `native` | string |  |
 | `type` | string |  |
 
+### langdetect.Detection
+
+Detection is a guess at a text's language.
+
+| Field | Type | Description |
+|---|---|---|
+| `alternatives` | list of [langdetect.Guess](#langdetectguess) | Alternatives are the runners-up, best first. |
+| `basis` | integer | Basis is the amount of text the guess rests on, in Unit. |
+| `confidence` | number | Confidence is from 0 to 1; below Confident the person confirms. |
+| `lang` | string | Lang is the best guess (a BCP 47 tag), empty when the text gives no usable evidence. |
+| `reason` | [langdetect.Reason](#langdetectreason) |  |
+| `unit` | string | Unit is "words", or "characters" for scripts written without spaces. |
+
+### langdetect.Guess
+
+Guess is another language the text may be in.
+
+| Field | Type | Description |
+|---|---|---|
+| `confidence` | number |  |
+| `lang` | string |  |
+
+### langdetect.Reason
+
+Reason says why there is a guess or none.
+
+One of `empty`, `mixed`, `ok`, `short`.
+
 ### project.Analysis
 
 Analysis is how the project's analysis counts.
@@ -1718,6 +2061,18 @@ Analysis is how the project's analysis counts.
 |---|---|---|
 | `context` | string | Context is the context match rule: "previous" (Trados) or "both" (memoQ). |
 
+### project.Edit
+
+Edit is what saving a segment changes.
+
+| Field | Type | Description |
+|---|---|---|
+| `ignored` | list of string |  |
+| `origin` | [project.Origin](#projectorigin) |  |
+| `status` | [project.Status](#projectstatus) |  |
+| `target` | [content.Content](#contentcontent) |  |
+| `warnings` | list of [project.Warning](#projectwarning) |  |
+
 ### project.File
 
 File is a file of the project.
@@ -1725,8 +2080,19 @@ File is a file of the project.
 | Field | Type | Description |
 |---|---|---|
 | `name` | string | Name is the file name, with the folder it came from if any ("contracts/lease.docx"). Names are unique in a project, ignoring case. |
+| `package` | string | Package is the file's path in the project's Trados package, for a file that came from one ("en-GB/Vertrag.docx.sdlxliff"). |
 | `role` | [project.Role](#projectrole) |  |
 | `targetLang` | string | TargetLang is set for a bilingual file (XLIFF, a file of a Trados package): it is translated into this language only. Empty for a monolingual file, which is translated into every target language. |
+
+### project.FileState
+
+FileState is a segment's state in its bilingual file.
+
+| Field | Type | Description |
+|---|---|---|
+| `match` | integer | Match is the match percentage the file records. |
+| `state` | string | State is "new", "draft", "translated", "reviewed", "final" or "rejected". |
+| `target` | string | Target is the translation in the file, as content JSON. |
 
 ### project.Location
 
@@ -1745,6 +2111,19 @@ MemorySetting is how a project uses one translation memory for one target langua
 | `memory` | string | Memory is the memory's name. |
 | `penalty` | integer | Penalty lowers its match scores by this many points (0 to 100). |
 | `update` | boolean | Update stores confirmed translations in it. |
+
+### project.Origin
+
+Origin is where a translation came from.
+
+| Field | Type | Description |
+|---|---|---|
+| `context` | boolean |  |
+| `from` | string | From is the segment a repetition was taken from. |
+| `inserted` | string | Inserted is the translation as inserted, as content JSON, to see whether it was edited. |
+| `kind` | string | Kind is "tm" (a memory match), "mt", "copy" (the source) or "repetition" (the translation of an equal segment). |
+| `memory` | string |  |
+| `score` | integer | Score is a memory match's score; Memory its memory; Context marks a context match. |
 
 ### project.Prepare
 
@@ -1783,7 +2162,7 @@ QA is which quality checks run while translating, as qa.Options switches them: a
 
 Role says what a file is for.
 
-One of `reference`, `translatable`.
+One of `package`, `reference`, `translatable`.
 
 ### project.Segment
 
@@ -1791,11 +2170,18 @@ Segment is a segment of a file in one target language.
 
 | Field | Type | Description |
 |---|---|---|
+| `block` | string | Block is the paragraph of the original document the segment is in. |
+| `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
+| `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |
 | `locked` | boolean |  |
+| `maxLength` | integer | MaxLength is the longest the translation may be, in characters. |
+| `notes` | list of string | Notes are a bilingual file's comments on the segment. |
+| `origin` | [project.Origin](#projectorigin) | Origin is where the translation came from when it was inserted. |
 | `source` | [content.Content](#contentcontent) |  |
 | `status` | [project.Status](#projectstatus) |  |
 | `target` | [content.Content](#contentcontent) |  |
+| `warnings` | list of [project.Warning](#projectwarning) | Warnings are the checks' results saved when it was confirmed. |
 
 ### project.Settings
 
@@ -1861,6 +2247,15 @@ Terminology is the project's termbase setup.
 | `termbase` | string | Termbase is the project termbase's ID once it exists (Layered, Own); empty until it is made, and in Direct mode. |
 | `writeTo` | string | WriteTo is the master new terms go into in Direct mode. |
 
+### project.Warning
+
+Warning is a check's result on a segment.
+
+| Field | Type | Description |
+|---|---|---|
+| `kind` | string |  |
+| `text` | string |  |
+
 ### projectdb.Assignment
 
 Assignment gives a person part of a project: a target language of a file, all of a file's languages, or all files, and within one file a range of segments.
@@ -1899,6 +2294,19 @@ Change is one entry of the change log. For template changes Project is the templ
 | `targetLang` | string |  |
 | `version` | integer |  |
 
+### projectdb.Dictionary
+
+Dictionary is a spelling dictionary (Hunspell .aff and .dic files) the projects' quality checks spell with.
+
+| Field | Type | Description |
+|---|---|---|
+| `createdAt` | string (date-time) |  |
+| `createdBy` | string |  |
+| `lang` | string | Lang is the language it spells (a BCP 47 tag). |
+| `locales` | list of string | Locales are the languages its archive declared for it. |
+| `name` | string | Name identifies it ("de_DE_frami"). |
+| `words` | integer | Words counts its words. |
+
 ### projectdb.Presence
 
 Presence marks who has a segment open.
@@ -1919,14 +2327,21 @@ StoredSegment is a segment with its version.
 
 | Field | Type | Description |
 |---|---|---|
+| `block` | string | Block is the paragraph of the original document the segment is in. |
 | `changedAt` | string (date-time) |  |
 | `changedBy` | string |  |
+| `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
+| `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |
 | `locked` | boolean |  |
+| `maxLength` | integer | MaxLength is the longest the translation may be, in characters. |
+| `notes` | list of string | Notes are a bilingual file's comments on the segment. |
+| `origin` | [project.Origin](#projectorigin) | Origin is where the translation came from when it was inserted. |
 | `source` | [content.Content](#contentcontent) |  |
 | `status` | [project.Status](#projectstatus) |  |
 | `target` | [content.Content](#contentcontent) |  |
 | `version` | integer |  |
+| `warnings` | list of [project.Warning](#projectwarning) | Warnings are the checks' results saved when it was confirmed. |
 
 ### projectdb.StoredTemplate
 
@@ -1954,6 +2369,20 @@ StoredTemplate is a template with its version.
 Task is what an assignment asks of someone.
 
 One of `review`, `translate`.
+
+### qa.Issue
+
+Issue is a problem found in a segment.
+
+| Field | Type | Description |
+|---|---|---|
+| `found` | string | Found is the text the issue is about, as it appears in the translation; Suggestions are replacements (spelling). |
+| `kind` | [qa.Kind](#qakind) |  |
+| `message` | string |  |
+| `rule` | string | Rule names the user rule that found the issue. |
+| `segment` | string |  |
+| `severity` | [qa.Severity](#qaseverity) |  |
+| `suggestions` | list of string |  |
 
 ### qa.Kind
 

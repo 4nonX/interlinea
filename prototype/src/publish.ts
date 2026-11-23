@@ -108,6 +108,12 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
       autoUpdate: false,
     },
   } as CoreSettings;
+  // The server spells with its own dictionaries: a language whose
+  // dictionary is only in this browser is not spell-checked there.
+  const serverDicts = new Set((await api.dictionaries()).map((d) => fold(d.name)));
+  const qa = (settings as { qa?: { dictionaries?: Record<string, string> } }).qa;
+  if (qa?.dictionaries)
+    qa.dictionaries = Object.fromEntries(Object.entries(qa.dictionaries).filter(([, n]) => serverDicts.has(fold(n))));
 
   const files: FileUpload[] = p.files.map(uploadOf);
 

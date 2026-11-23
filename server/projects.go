@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/filter/sdlpackage"
 	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/term"
@@ -23,6 +25,7 @@ import (
 
 func (s *Server) projectRoutes() {
 	s.handle("GET /api/catalog", s.signedIn(s.catalogView))
+	s.handle("POST /api/files/inspect", s.signedIn(s.inspectFile))
 	s.handle("GET /api/projects", s.signedIn(s.listProjects))
 	s.handle("POST /api/projects", s.signedIn(s.createProject))
 	s.handle("GET /api/projects/{id}", s.signedIn(s.getProject))
@@ -31,6 +34,8 @@ func (s *Server) projectRoutes() {
 	s.handle("POST /api/projects/{id}/files", s.signedIn(s.addProjectFile))
 	s.handle("DELETE /api/projects/{id}/files", s.signedIn(s.removeProjectFile))
 	s.handle("GET /api/projects/{id}/files/content", s.signedIn(s.projectFileContent))
+	s.handle("GET /api/projects/{id}/files/translated", s.signedIn(s.projectTranslatedFile))
+	s.handle("GET /api/projects/{id}/return-package", s.signedIn(s.projectReturnPackage))
 	s.handle("GET /api/projects/{id}/segments", s.signedIn(s.projectSegments))
 	s.handle("PUT /api/projects/{id}/segments", s.signedIn(s.saveProjectSegment))
 	s.handle("POST /api/projects/{id}/pretranslate", s.signedIn(s.pretranslateProject))
@@ -69,6 +74,14 @@ func (s *Server) catalog(ctx context.Context) (project.Catalog, error) {
 	}
 	for _, t := range tbs {
 		cat.Termbases[t.Name] = t.Languages
+	}
+	ds, err := s.cfg.Projects.Dictionaries(ctx)
+	if err != nil {
+		return cat, err
+	}
+	cat.Dictionaries = map[string]string{}
+	for _, d := range ds {
+		cat.Dictionaries[d.Name] = d.Lang
 	}
 	return cat, nil
 }
@@ -250,17 +263,31 @@ func (s *Server) listProjects(w http.ResponseWriter, r *http.Request, me session
 // fileUpload is a file as the apps send it: the original bytes (base64
 // in JSON) and, for a file to translate, its segments per target
 // language as the app's filters read them.
+// fileUpload is a file sent to a project.
 type fileUpload struct {
-	Name       string                       `json:"name"`
-	Role       project.Role                 `json:"role"`
-	TargetLang string                       `json:"targetLang,omitempty"`
-	Format     string                       `json:"format"`
-	Data       []byte                       `json:"data"`
-	Segments   map[string][]project.Segment `json:"segments,omitempty"`
+	// Name is the file's name, with the folder it came from if any.
+	Name string `json:"name"`
+	// Role is translatable, reference, or package for a Trados project
+	// package, whose bilingual files the project gets.
+	Role project.Role `json:"role"`
+	// TargetLang is a bilingual file's target language; the server reads
+	// it from the file when it is left out.
+	TargetLang string `json:"targetLang,omitempty"`
+	// Format is docx, xliff or txt for a file to translate (the server
+	// takes it from the name when it is left out), the extension for a
+	// reference file.
+	Format string `json:"format"`
+	// Data is the file's bytes.
+	Data []byte `json:"data"`
+	// Segments are a translatable file's segments per target language, as
+	// the app read them; left out, the server makes them.
+	Segments map[string][]project.Segment `json:"segments,omitempty"`
+	// Package is set by the server on the files of a Trados package.
+	Package string `json:"-"`
 }
 
 func (f fileUpload) newFile() projectdb.NewFile {
-	return projectdb.NewFile{File: project.File{Name: f.Name, Role: f.Role, TargetLang: f.TargetLang}, Format: f.Format, Data: f.Data, Segments: f.Segments}
+	return projectdb.NewFile{File: project.File{Name: f.Name, Role: f.Role, TargetLang: f.TargetLang, Package: f.Package}, Format: f.Format, Data: f.Data, Segments: f.Segments}
 }
 
 type createProjectRequest struct {
@@ -342,12 +369,13 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me sessio
 		cat.Termbases[name] = langs
 		set.Terminology.Termbase = name
 	}
-	files := make([]projectdb.NewFile, len(req.Files))
-	for i, f := range req.Files {
-		if err := checkFile(f, set.SourceLang); err != nil {
-			s.fail(w, r, err)
-			return
-		}
+	uploads, err := prepareFiles(req.Files, set.SourceLang, set.TargetLangs)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	files := make([]projectdb.NewFile, len(uploads))
+	for i, f := range uploads {
 		files[i] = f.newFile()
 	}
 	set.Files = nil
@@ -491,6 +519,7 @@ func (s *Server) updateProjectSettings(w http.ResponseWriter, r *http.Request, m
 	if !readJSON(w, r, &set, maxBody) {
 		return
 	}
+	set.Files = keepPackages(p.Settings.Files, set.Files)
 	cat, err := s.catalog(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
@@ -551,7 +580,11 @@ func (s *Server) addProjectFile(w http.ResponseWriter, r *http.Request, me sessi
 	if !readJSON(w, r, &f, maxFileBody) {
 		return
 	}
-	if err := checkFile(f, p.Settings.SourceLang); err != nil {
+	if f.Role == project.Package {
+		invalid(w, "role", "A Trados package starts a project of its own: make a new project from it.")
+		return
+	}
+	if err := prepareFile(&f, p.Settings.SourceLang, p.Settings.TargetLangs); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -598,6 +631,137 @@ func (s *Server) removeProjectFile(w http.ResponseWriter, r *http.Request, me se
 	writeJSON(w, http.StatusOK, projectView{Project: got, Access: a})
 }
 
+// projectTranslatedFile sends a file of the project (?name=) with the
+// translations of a target language (?lang=): a Word document in the
+// target language, a bilingual file with its translations and states, or
+// a text. Segments not translated yet keep their source text.
+//
+// Access: read on the project, or work in it.
+func (s *Server) projectTranslatedFile(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	f, err := s.cfg.Projects.File(r.Context(), p.ID, q.Get("name"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if f.Role != project.Translatable {
+		invalid(w, "name", f.Name+" is not a file to translate.")
+		return
+	}
+	lang := canonicalTarget(p, q.Get("lang"))
+	if f.TargetLang != "" {
+		lang = f.TargetLang
+	}
+	segs, err := s.cfg.Projects.Segments(r.Context(), p.ID, f.Name, lang)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	plain := make([]project.Segment, len(segs))
+	for i, sg := range segs {
+		plain[i] = sg.Segment
+	}
+	format := formatOf(f.Name)
+	data, err := translatedFile(format, f.Data, p.Settings.SourceLang, lang, plain)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "badFile", fmt.Sprintf("%s could not be written in %s: %v", f.Name, lang, err))
+		return
+	}
+	ct := contentTypes[format]
+	if format == "txt" && (bytes.HasPrefix(data, []byte{0xFF, 0xFE}) || bytes.HasPrefix(data, []byte{0xFE, 0xFF})) {
+		ct = "text/plain; charset=utf-16"
+	}
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": translatedName(f.Name, format, lang)}))
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
+}
+
+// projectReturnPackage sends the Trados return package (.sdlrpx) of a
+// project made from a Trados package: the package's bilingual files with
+// the project's translations and states.
+//
+// Access: read on the project, or work in it.
+func (s *Server) projectReturnPackage(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	var pkgName string
+	for _, f := range p.Settings.Files {
+		if f.Role == project.Package {
+			pkgName = f.Name
+		}
+	}
+	if pkgName == "" {
+		writeError(w, http.StatusNotFound, "notFound", "The project was not made from a Trados package.")
+		return
+	}
+	pkg, err := s.cfg.Projects.File(ctx, p.ID, pkgName)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	translated := map[string][]byte{}
+	for _, f := range p.Settings.Files {
+		if f.Package == "" {
+			continue
+		}
+		stored, err := s.cfg.Projects.File(ctx, p.ID, f.Name)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		segs, err := s.cfg.Projects.Segments(ctx, p.ID, f.Name, f.TargetLang)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		plain := make([]project.Segment, len(segs))
+		for i, sg := range segs {
+			plain[i] = sg.Segment
+		}
+		data, err := translatedFile("xliff", stored.Data, p.Settings.SourceLang, f.TargetLang, plain)
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "badFile", fmt.Sprintf("%s could not be written: %v", f.Name, err))
+			return
+		}
+		translated[f.Package] = data
+	}
+	out, err := sdlpackage.Return(pkg.Data, translated)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, "badFile", fmt.Sprintf("The return package could not be written: %v", err))
+		return
+	}
+	name := strings.TrimSuffix(path.Base(pkgName), path.Ext(pkgName)) + ".sdlrpx"
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	w.Header().Set("Content-Length", strconv.Itoa(len(out)))
+	w.Write(out)
+}
+
+// keepPackages keeps the Trados package paths of a project's files in
+// settings sent without them (apps that don't know them).
+func keepPackages(cur, sent []project.File) []project.File {
+	pkg := map[string]string{}
+	for _, f := range cur {
+		pkg[strings.ToLower(f.Name)] = f.Package
+	}
+	out := make([]project.File, len(sent))
+	for i, f := range sent {
+		if f.Package == "" {
+			f.Package = pkg[strings.ToLower(f.Name)]
+		}
+		out[i] = f
+	}
+	return out
+}
+
 // contentTypes are the types of the formats the apps store.
 var contentTypes = map[string]string{
 	"docx":     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -605,6 +769,7 @@ var contentTypes = map[string]string{
 	"sdlxliff": "application/xliff+xml",
 	"pdf":      "application/pdf",
 	"txt":      "text/plain; charset=utf-8",
+	"sdlppx":   "application/octet-stream",
 }
 
 // projectFileContent sends a project file (?name=) as it was uploaded.
@@ -648,11 +813,6 @@ func (s *Server) projectSegments(w http.ResponseWriter, r *http.Request, me sess
 	writeJSON(w, http.StatusOK, nonNil(segs))
 }
 
-type segmentSave struct {
-	Target content.Content `json:"target"`
-	Status project.Status  `json:"status"`
-}
-
 // saveProjectSegment saves a translation. Editors of the project may
 // save any segment; translators and reviewers those assigned to them. A
 // confirmed translation goes into the memories the project updates.
@@ -669,7 +829,7 @@ func (s *Server) saveProjectSegment(w http.ResponseWriter, r *http.Request, me s
 	if !ok {
 		return
 	}
-	var req segmentSave
+	var req project.Edit
 	if !readJSON(w, r, &req, maxBody) {
 		return
 	}
@@ -685,7 +845,7 @@ func (s *Server) saveProjectSegment(w http.ResponseWriter, r *http.Request, me s
 			return
 		}
 	}
-	got, err := s.cfg.Projects.SaveSegment(ctx, p.ID, file, lang, seg, req.Target, req.Status, v, me.by())
+	got, err := s.cfg.Projects.SaveEdit(ctx, p.ID, file, lang, seg, req, v, me.by())
 	if err != nil {
 		s.fail(w, r, err)
 		return

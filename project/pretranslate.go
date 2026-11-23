@@ -26,6 +26,71 @@ type Segment struct {
 	Target content.Content `json:"target"`
 	Status Status          `json:"status"`
 	Locked bool            `json:"locked,omitempty"`
+
+	// What the file says about the segment.
+
+	// Block is the paragraph of the original document the segment is in.
+	Block string `json:"block,omitempty"`
+	// MaxLength is the longest the translation may be, in characters.
+	MaxLength int `json:"maxLength,omitempty"`
+	// Notes are a bilingual file's comments on the segment.
+	Notes []string `json:"notes,omitempty"`
+	// File is the segment's state and translation in a bilingual file,
+	// so writing the file back keeps a reviewer's approval of a
+	// translation that did not change.
+	File *FileState `json:"file,omitempty"`
+
+	// What the translator's work left on it.
+
+	// Origin is where the translation came from when it was inserted.
+	Origin *Origin `json:"origin,omitempty"`
+	// Warnings are the checks' results saved when it was confirmed.
+	Warnings []Warning `json:"warnings,omitempty"`
+	// Ignored are the warnings marked as false alarms, by kind and text.
+	Ignored []string `json:"ignored,omitempty"`
+}
+
+// FileState is a segment's state in its bilingual file.
+type FileState struct {
+	// State is "new", "draft", "translated", "reviewed", "final" or
+	// "rejected".
+	State string `json:"state"`
+	// Target is the translation in the file, as content JSON.
+	Target string `json:"target"`
+	// Match is the match percentage the file records.
+	Match int `json:"match,omitempty"`
+}
+
+// Origin is where a translation came from.
+type Origin struct {
+	// Kind is "tm" (a memory match), "mt", "copy" (the source) or
+	// "repetition" (the translation of an equal segment).
+	Kind string `json:"kind"`
+	// Score is a memory match's score; Memory its memory; Context marks
+	// a context match.
+	Score   int    `json:"score,omitempty"`
+	Memory  string `json:"memory,omitempty"`
+	Context bool   `json:"context,omitempty"`
+	// Inserted is the translation as inserted, as content JSON, to see
+	// whether it was edited.
+	Inserted string `json:"inserted,omitempty"`
+	// From is the segment a repetition was taken from.
+	From string `json:"from,omitempty"`
+}
+
+// Warning is a check's result on a segment.
+type Warning struct {
+	Kind string `json:"kind"`
+	Text string `json:"text"`
+}
+
+// Edit is what saving a segment changes.
+type Edit struct {
+	Target   content.Content `json:"target"`
+	Status   Status          `json:"status"`
+	Origin   *Origin         `json:"origin,omitempty"`
+	Warnings []Warning       `json:"warnings,omitempty"`
+	Ignored  []string        `json:"ignored,omitempty"`
 }
 
 // FileSegments are a file's segments in one target language, in order.

@@ -36,6 +36,9 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `auth/oidc` | OpenID Connect sign-in (Entra ID, Google, Keycloak and others): discovery, authorization code with PKCE, ID token checks (RS256, PS256, ES256 against the provider's keys, issuer, audience, expiry, nonce) |
 | `server` | The team server's HTTP API: sign-in with passwords or an identity provider, accounts and roles, projects with their files, segments, assignments and presence, memories, termbases with their review workflow, a live feed of changes |
 | `cmd/interlinea-server` | The team server: SQLite files or PostgreSQL, the web app at `/`, TLS or a reverse proxy |
+| `cmd/interlinea-core` | The desktop app's core: the same API on the person's own computer, on the loopback interface, with one account and a token handed to the app at start ([docs/desktop.md](docs/desktop.md)) |
+| `langdetect` | Guesses a document's language: scripts by their share of the letters, Latin-script languages by function words; says when the text is too short or mixed to tell |
+| `cmd/interlinea-apidoc` | Writes the API reference (`server/openapi.json`, `docs/api.md`) from the server's source |
 | `cmd/interlinea` | Command-line interface to all of the above |
 | `cmd/interlinea-wasm` | The filters, memories, termbase formats, QA, analysis, project validation and pre-translation compiled to WebAssembly for the browser prototype |
 

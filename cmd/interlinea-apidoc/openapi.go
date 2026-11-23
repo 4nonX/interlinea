@@ -31,7 +31,11 @@ signs in must carry the X-Interlinea header.
 
 Roles on projects, memories and termbases are read < suggest < edit <
 approve < manage, given per resource or for all of a kind; administrators
-may do everything.`
+may do everything.
+
+The desktop app's core, interlinea-core, serves the same API on the
+person's own computer, for them alone: on the loopback interface, with one
+account and a token it hands the app when it starts.`
 
 // tagOf groups routes by their first path segment after /api/.
 func tagOf(path string) string {
@@ -54,11 +58,13 @@ func tagOf(path string) string {
 		return "Termbases"
 	case "merge-requests":
 		return "Merge requests"
+	case "files", "qa", "dictionaries":
+		return "Files, checks and spelling"
 	}
 	return "Other"
 }
 
-var tagOrder = []string{"Signing in", "The signed-in person", "Accounts and roles", "Projects", "Memories", "Termbases", "Merge requests", "Live feed", "Other"}
+var tagOrder = []string{"Signing in", "The signed-in person", "Accounts and roles", "Projects", "Files, checks and spelling", "Memories", "Termbases", "Merge requests", "Live feed", "Other"}
 
 var pathParam = regexp.MustCompile(`\{(\w+)\}`)
 

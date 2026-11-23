@@ -248,19 +248,19 @@ func TestProjectAccessAndWork(t *testing.T) {
 
 	// Ben translates his segments, not Carl's.
 	var saved projectdb.StoredSegment
-	te.call("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Lease."), Status: project.StatusConfirmed}, 200, &saved)
+	te.call("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 1), te.ben, project.Edit{Target: content.Text("Lease."), Status: project.StatusConfirmed}, 200, &saved)
 	if saved.Version != 2 || saved.ChangedBy != "ben" {
 		t.Fatalf("saved %+v", saved)
 	}
-	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s3", 1), te.ben, segmentSave{Target: content.Text("Deposit."), Status: project.StatusDraft}); r.status != 403 {
+	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s3", 1), te.ben, project.Edit{Target: content.Text("Deposit."), Status: project.StatusDraft}); r.status != 403 {
 		t.Fatalf("Ben saves Carl's segment: %d", r.status)
 	}
-	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Tenancy."), Status: project.StatusDraft}); r.status != 409 || r.err().Code != "conflict" {
+	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 1), te.ben, project.Edit{Target: content.Text("Tenancy."), Status: project.StatusDraft}); r.status != 409 || r.err().Code != "conflict" {
 		t.Fatalf("stale save: %d %s", r.status, r.body)
 	}
 	// The reviewer corrects any English segment.
-	te.call("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 2), te.dora, segmentSave{Target: content.Text("Tenancy agreement."), Status: project.StatusConfirmed}, 200, nil)
-	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "fr-FR", "s1", 1), te.dora, segmentSave{Target: content.Text("Bail."), Status: project.StatusDraft}); r.status != 403 {
+	te.call("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 2), te.dora, project.Edit{Target: content.Text("Tenancy agreement."), Status: project.StatusConfirmed}, 200, nil)
+	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "fr-FR", "s1", 1), te.dora, project.Edit{Target: content.Text("Bail."), Status: project.StatusDraft}); r.status != 403 {
 		t.Fatalf("the English reviewer saves French: %d", r.status)
 	}
 	// Confirmed translations went into the project memory, not the master
@@ -368,7 +368,7 @@ func TestProjectSettingsFilesAndPretranslation(t *testing.T) {
 	}
 	// Editors save, but don't change settings.
 	te.call("PUT", "/api/grants", te.pm, authdb.Grant{UserID: te.carlID, Kind: authdb.KindProject, Resource: fmt.Sprint(p.ID), Role: authdb.RoleEdit}, 204, nil)
-	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "fr-FR", "s1", 1), te.carl, segmentSave{Target: content.Text("Bail."), Status: project.StatusDraft}, 200, nil)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "fr-FR", "s1", 1), te.carl, project.Edit{Target: content.Text("Bail."), Status: project.StatusDraft}, 200, nil)
 	set := p.Settings
 	set.Due = "2026-12-04T16:00:00Z"
 	if r := te.do("PUT", base+"/settings?version=1", te.carl, set); r.status != 403 {

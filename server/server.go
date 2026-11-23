@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -83,6 +84,11 @@ type Config struct {
 	Now func() time.Time
 	// EventPoll is how often the live feed looks for changes (default 1s).
 	EventPoll time.Duration
+	// Hosts, if set, are the only Host headers answered ("127.0.0.1:4711"):
+	// the desktop app's core listens on the loopback interface, and a web
+	// page that points a name of its own at that address (DNS rebinding)
+	// must not reach it.
+	Hosts []string
 }
 
 // Server handles the API.
@@ -99,6 +105,9 @@ type Server struct {
 	mu sync.Mutex
 
 	feed *feed
+
+	dicts dictionaries
+	terms termIndexes
 }
 
 // New makes a server.
@@ -117,6 +126,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.EventPoll <= 0 {
 		cfg.EventPoll = time.Second
+	}
+	for i, h := range cfg.Hosts {
+		cfg.Hosts[i] = strings.ToLower(h)
 	}
 	s := &Server{
 		cfg:        cfg,
@@ -195,6 +207,7 @@ func (s *Server) routes() {
 
 	s.projectRoutes()
 	s.memoryRoutes()
+	s.qaRoutes()
 	s.termbaseRoutes()
 	s.handle("GET /api/events", s.signedIn(s.events))
 
@@ -215,6 +228,10 @@ func (s *Server) handle(pattern string, h http.HandlerFunc) { s.mux.HandleFunc(p
 // ServeHTTP answers a request.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h := w.Header()
+	if len(s.cfg.Hosts) > 0 && !slices.Contains(s.cfg.Hosts, strings.ToLower(r.Host)) {
+		writeError(w, http.StatusMisdirectedRequest, "forbidden", "This address is not served here.")
+		return
+	}
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "no-referrer")
 	if strings.HasPrefix(r.URL.Path, "/api/") {

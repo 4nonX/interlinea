@@ -27,6 +27,16 @@ export interface ServerInfo {
   setup: boolean;
 }
 
+/** A spelling dictionary installed on the server. */
+export interface ServerDictionary {
+  name: string;
+  lang: string;
+  locales: string[];
+  words: number;
+  createdAt: string;
+  createdBy: string;
+}
+
 /** Where a server is and who is signed in to it. */
 export interface Connection {
   url: string;
@@ -528,6 +538,8 @@ export function client(conn: Connection) {
     changePassword: (current: string, next: string) =>
       send<{ token?: string; expiresAt: string; user: ServerUser }>("PUT", "/api/me/password", { current, new: next }),
     linkOwnIdentity: (returnTo: string) => send<{ url: string }>("POST", "/api/me/identities", { return: returnTo }),
+    // Spelling dictionaries on the server.
+    dictionaries: () => get<ServerDictionary[]>("/api/dictionaries"),
     // Memories on the server.
     memories: () => get<(CatalogMemory & { createdAt: string; role: Role })[]>("/api/memories"),
     deleteMemory: (name: string) => send<void>("DELETE", `/api/memories/${encodeURIComponent(name)}`),
