@@ -184,7 +184,7 @@ var pgMigrations = []string{
 	CREATE TABLE units (
 		id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 		memory_id       BIGINT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
-		source_key      TEXT NOT NULL,
+		source_key      BYTEA NOT NULL,
 		source_plain    TEXT NOT NULL,
 		source_json     TEXT NOT NULL,
 		target_plain    TEXT NOT NULL,
@@ -225,7 +225,7 @@ var pgMigrations = []string{
 func logChange(ctx context.Context, tx *sqlstore.Tx, memoryID int64, memory string, unitID int64, version int, kind, by string, now time.Time) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO changes(memory_id, memory, unit_id, version, kind, at, author)
 		VALUES (?, COALESCE(NULLIF(?, ''), (SELECT name FROM memories WHERE id = ?), ''), ?, ?, ?, ?, ?)`,
-		memoryID, memory, memoryID, unitID, version, kind, now.Format(timeLayout), by)
+		memoryID, memory, memoryID, unitID, version, kind, now.Format(timeLayout), noNUL(by))
 	if err != nil {
 		return fmt.Errorf("tmdb: change log: %w", err)
 	}
@@ -531,7 +531,7 @@ func (m *Memory) addTx(ctx context.Context, w *writeStmts, u tm.Unit, policy tm.
 		return tm.Unit{}, err
 	}
 	key := tm.SourceKey(prepared.Source)
-	rows, err := w.byKey.QueryContext(ctx, m.id, key)
+	rows, err := w.byKey.QueryContext(ctx, m.id, m.db.keyArg(key))
 	if err != nil {
 		return tm.Unit{}, fmt.Errorf("tmdb: query: %w", err)
 	}
@@ -585,8 +585,8 @@ func (m *Memory) addTx(ctx context.Context, w *writeStmts, u tm.Unit, policy tm.
 		return tm.Unit{}, err
 	}
 	err = w.insertUnit.QueryRowContext(ctx,
-		m.id, key, row.sourcePlain, row.sourceJSON, row.targetPlain, row.targetJSON,
-		row.createdAt, prepared.CreatedBy, row.changedAt, prepared.ChangedBy,
+		m.id, m.db.keyArg(key), row.sourcePlain, row.sourceJSON, row.targetPlain, row.targetJSON,
+		row.createdAt, noNUL(prepared.CreatedBy), row.changedAt, noNUL(prepared.ChangedBy),
 		prepared.UsageCount, row.attrs, row.notes).Scan(&prepared.ID)
 	if err != nil {
 		return tm.Unit{}, fmt.Errorf("tmdb: insert unit: %w", err)
@@ -617,8 +617,8 @@ func (m *Memory) updateTx(ctx context.Context, w *writeStmts, u tm.Unit, version
 		return err
 	}
 	res, err := w.updateUnit.ExecContext(ctx,
-		tm.SourceKey(u.Source), row.sourcePlain, row.sourceJSON, row.targetPlain, row.targetJSON,
-		row.changedAt, u.ChangedBy, u.UsageCount, row.attrs, row.notes, u.ID, version)
+		m.db.keyArg(tm.SourceKey(u.Source)), row.sourcePlain, row.sourceJSON, row.targetPlain, row.targetJSON,
+		row.changedAt, noNUL(u.ChangedBy), u.UsageCount, row.attrs, row.notes, u.ID, version)
 	if err != nil {
 		return fmt.Errorf("tmdb: update unit: %w", err)
 	}
@@ -712,7 +712,7 @@ func (m *Memory) Lookup(ctx context.Context, source content.Content, opts tm.Loo
 	}
 	byID := map[int64]tm.Unit{}
 	exact, err := m.queryUnits(ctx, m.db.sql,
-		`WHERE memory_id = ? AND source_key = ? ORDER BY id DESC LIMIT ?`, m.id, tm.SourceKey(source), candidateLimit)
+		`WHERE memory_id = ? AND source_key = ? ORDER BY id DESC LIMIT ?`, m.id, m.db.keyArg(tm.SourceKey(source)), candidateLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -955,11 +955,32 @@ func encode(u tm.Unit) (encoded, error) {
 		return e, err
 	}
 	return encoded{
-		sourcePlain: u.Source.Plain(), sourceJSON: string(src),
-		targetPlain: u.Target.Plain(), targetJSON: string(tgt),
+		sourcePlain: noNUL(u.Source.Plain()), sourceJSON: string(src),
+		targetPlain: noNUL(u.Target.Plain()), targetJSON: string(tgt),
 		createdAt: u.CreatedAt.UTC().Format(timeLayout), changedAt: u.ChangedAt.UTC().Format(timeLayout),
 		attrs: string(a), notes: string(n),
 	}, nil
+}
+
+// keyArg is an exact-match key as a query argument. Keys separate their
+// parts with NUL, which PostgreSQL text cannot hold, so there they are
+// bytes.
+func (d *DB) keyArg(k string) any {
+	if d.d == sqlstore.Postgres {
+		return []byte(k)
+	}
+	return k
+}
+
+// noNUL drops NUL characters from text stored in plain columns (the
+// search columns and author names), which PostgreSQL cannot hold. The
+// content itself is stored as JSON, where NUL is escaped, so nothing is
+// lost.
+func noNUL(s string) string {
+	if strings.IndexByte(s, 0) < 0 {
+		return s
+	}
+	return strings.ReplaceAll(s, "\x00", "")
 }
 
 func parseTime(s string) time.Time {

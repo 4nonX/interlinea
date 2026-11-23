@@ -124,7 +124,7 @@ var (
 
 // ValidateInfo checks a memory description and normalizes its language tags.
 func ValidateInfo(info Info) (Info, error) {
-	if strings.TrimSpace(info.Name) == "" {
+	if strings.TrimSpace(info.Name) == "" || strings.IndexFunc(info.Name, unicode.IsControl) >= 0 {
 		return Info{}, ErrInvalidInfo
 	}
 	src, err := langtag.Normalize(info.SourceLang)

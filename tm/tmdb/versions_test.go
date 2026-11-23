@@ -282,3 +282,28 @@ func TestMigrateFromVersion1(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNULInStoredText(t *testing.T) {
+	db, _ := openTemp(t)
+	if _, err := db.Create(ctx, tm.Info{Name: "a\x00b", SourceLang: "de", TargetLang: "en"}); !errors.Is(err, tm.ErrInvalidInfo) {
+		t.Fatalf("name with NUL: %v", err)
+	}
+	if _, err := db.Create(ctx, tm.Info{Name: "a\tb", SourceLang: "de", TargetLang: "en"}); !errors.Is(err, tm.ErrInvalidInfo) {
+		t.Fatalf("name with a tab: %v", err)
+	}
+	m, err := db.Create(ctx, tm.Info{Name: "n", SourceLang: "de", TargetLang: "en"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := m.Add(ctx, tm.Unit{Source: content.Text("Satz."), Target: content.Text("Sentence."), CreatedBy: "an\x00na", ChangedBy: "an\x00na"}, tm.KeepBoth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.DeleteUnit(ctx, u.ID, "b\x00en"); err != nil {
+		t.Fatal(err)
+	}
+	cs, _, err := db.Changes(ctx, ChangeQuery{Memories: []string{"n"}})
+	if err != nil || len(cs) != 3 || cs[1].By != "anna" || cs[2].By != "ben" {
+		t.Fatalf("changes = %+v %v", cs, err)
+	}
+}
