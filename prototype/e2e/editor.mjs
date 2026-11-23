@@ -132,13 +132,6 @@ export default () =>
         evaluate(
           `[...document.querySelectorAll('.seg')].find(s => s.querySelector('.seg-num').textContent === '${n}').querySelector('.seg-target-view, .target-editor').click()`,
         ).then(() => sleep(250));
-      const shot = async (file) => {
-        const r = await send("Page.captureScreenshot", { format: "png" });
-        (await import("node:fs")).writeFileSync(
-          file,
-          Buffer.from(r.data, "base64"),
-        );
-      };
       await open("/projects", { wait: 0 });
       for (
         let i = 0;
@@ -196,7 +189,6 @@ export default () =>
           )),
         "fuzzy score badge with its band: " + badge,
       );
-      await shot("/tmp/ed2.png");
       const before = await evaluate(
         "document.querySelector('.progress-text').textContent",
       );
@@ -379,7 +371,6 @@ export default () =>
           /Total\s+38/.test(an),
         "analysis dialog: " + an.replace(/\s+/g, " ").slice(0, 160),
       );
-      await shot("/tmp/ed5.png");
       await click("dialog[open] button", "Close");
       await sleep(150);
       // Preview.
@@ -412,7 +403,6 @@ export default () =>
         (await activeNum()) === "20",
         "clicking text in the preview opens its segment",
       );
-      await shot("/tmp/ed3.png");
       // Save translated document: capture the download and read it back with the core.
       await evaluate(
         "window.__saved = null; const orig = URL.createObjectURL; URL.createObjectURL = (b) => { window.__saved = b; return orig(b); }",
@@ -431,15 +421,6 @@ export default () =>
           saved.includes("Der Vermieter kann"),
         "saved .docx round-trips through the core: " + saved,
       );
-      {
-        const b64 = await evaluate(
-          "(async () => { const b = new Uint8Array(await window.__saved.arrayBuffer()); let s = ''; for (const x of b) s += String.fromCharCode(x); return btoa(s); })()",
-        );
-        (await import("node:fs")).writeFileSync(
-          "/tmp/lo/browser_saved.docx",
-          Buffer.from(b64, "base64"),
-        );
-      }
       check(
         (await evaluate("document.body.innerText")).includes(
           "Saved Mietvertrag_Hofmann_2026_en-GB.docx",
