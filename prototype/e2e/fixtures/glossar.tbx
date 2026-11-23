@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-model href="https://raw.githubusercontent.com/LTAC-Global/TBX-Basic_dialect/master/DCA/TBXcoreStructV03_TBX-Basic_integrated.rng" type="application/xml" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<tbx type="TBX-Basic" style="dca" xml:lang="de" xmlns="urn:iso:std:iso:30042:ed-2">
+<tbxHeader><fileDesc><titleStmt><title>glossar</title></titleStmt><sourceDesc><p>Interlinea</p></sourceDesc></fileDesc></tbxHeader>
+<text><body>
+<conceptEntry id="K-1"><note>[Quelle] Mandant</note><langSec xml:lang="de"><termSec><term>Kaution</term></termSec></langSec><langSec xml:lang="en"><termSec><term>rental deposit</term><termNote type="administrativeStatus">admittedTerm-admn-sts</termNote></termSec></langSec></conceptEntry>
+<conceptEntry id="K-2"><descrip type="definition">Weitervermietung durch den Mieter</descrip><note>[Quelle] Mandant</note><langSec xml:lang="de"><termSec><term>Untermiete</term></termSec></langSec><langSec xml:lang="en"><termSec><term>subletting</term><termNote type="administrativeStatus">preferredTerm-admn-sts</termNote></termSec></langSec></conceptEntry>
+<conceptEntry id="K-3"><note>[Quelle] Mandant</note><langSec xml:lang="de"><termSec><term>Mieterhöhung</term></termSec></langSec><langSec xml:lang="en"><termSec><term>rent increase</term></termSec></langSec></conceptEntry>
+<conceptEntry id="K-4"><langSec xml:lang="de"><termSec><term>Nebenkosten</term></termSec></langSec><langSec xml:lang="en"><termSec><term>ancillary costs</term></termSec><termSec><term>utilities</term></termSec></langSec></conceptEntry>
+</body></text>
+</tbx>

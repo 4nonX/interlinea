@@ -187,6 +187,14 @@ npm install
 npm run dev
 ```
 
+Browser tests drive the production build in headless Chrome (found through
+`$CHROME` or on the PATH) and run in CI:
+
+```
+npm run build
+npm run e2e
+```
+
 Sample documents and a deep link per sample (`#/new/sample/0` to `4`) show
 language detection, including the fallback for files without readable text.
 Word documents (.docx) you choose go through the core's Word filter, running

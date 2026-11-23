@@ -53,3 +53,5 @@ jobs:
       - run: npm ci
       - name: typecheck and build
         run: npm run build
+      - name: browser tests
+        run: npm run e2e

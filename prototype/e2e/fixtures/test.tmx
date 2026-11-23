@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tmx version="1.4"><header creationtool="test" creationtoolversion="1" segtype="sentence" o-tmf="x" adminlang="en" srclang="de-DE" datatype="plaintext"/><body>
+<tu tuid="k1" creationid="Eva Brandt" creationdate="20250918T110000Z"><prop type="x-context-pre">Der Mieter leistet eine Kaution in Höhe von drei Nettokaltmieten.</prop><tuv xml:lang="de-DE"><seg>Die Kaution ist zu Beginn des Mietverhältnisses fällig und wird nach Beendigung des Mietverhältnisses zurückgezahlt.</seg></tuv><tuv xml:lang="en-GB"><seg>The deposit is due at the start of the tenancy and is repaid after it ends.</seg></tuv></tu>
+<tu><tuv xml:lang="de-DE"><seg>Satz ohne Übersetzung.</seg></tuv></tu>
+</body></tmx>
