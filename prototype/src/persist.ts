@@ -11,7 +11,7 @@ const DB_NAME = "interlinea-prototype";
 const STORE = "kv";
 
 /** Bumped when the shape of the saved state changes incompatibly. */
-export const STATE_VERSION = 1;
+export const STATE_VERSION = 2;
 
 export type StorageStatus = "ok" | "unavailable" | "failed";
 

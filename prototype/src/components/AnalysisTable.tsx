@@ -1,16 +1,53 @@
-import { BANDS, type AnalysisRow } from "../editor/analysis";
+import type { CoreBand, CoreCounts, CoreRow } from "../project";
 import { fmtNum } from "../format";
 
-/** The match analysis table: segments and words per band. */
+const SHORT: Record<CoreBand, string> = {
+  locked: "Lock",
+  context: "CM",
+  repetition: "Rep",
+  "cross-file": "XRep",
+  "100": "100%",
+  "95": "95+",
+  "85": "85+",
+  "75": "75+",
+  "50": "50+",
+  new: "New",
+};
+
+const HINT: Record<CoreBand, string> = {
+  locked: "Locked in the file; not translated",
+  context: "100% match whose preceding segment also matches (101%)",
+  repetition: "Same text and tags earlier in the same file",
+  "cross-file": "Same text and tags in an earlier file of the project",
+  "100": "Same text and tags as a memory unit",
+  "95": "",
+  "85": "",
+  "75": "",
+  "50": "Usually charged like new text",
+  new: "No match of 50% or more",
+};
+
+const CLASS: Record<CoreBand, string> = {
+  locked: "band-locked",
+  context: "band-cm",
+  repetition: "band-rep",
+  "cross-file": "band-rep",
+  "100": "band-100",
+  "95": "band-95",
+  "85": "band-85",
+  "75": "band-75",
+  "50": "band-50",
+  new: "band-new",
+};
+
+/** The match analysis table from the core's report: segments and words per band. */
 export function AnalysisTable({
   rows,
-  words,
-  segments,
+  total,
   caption,
 }: {
-  rows: AnalysisRow[];
-  words: number;
-  segments: number;
+  rows: CoreRow[];
+  total: CoreCounts;
   caption: string;
 }) {
   return (
@@ -31,45 +68,36 @@ export function AnalysisTable({
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => {
-          const b = BANDS.find((x) => x.id === r.band)!;
-          return (
-            <tr key={r.band} className={r.words === 0 ? "is-zero" : undefined}>
-              <th scope="row">
-                <span className="analysis-band">
-                  <span className={`score band-${r.band}`}>
-                    {b.id === "cm"
-                      ? "CM"
-                      : b.id === "rep"
-                        ? "Rep"
-                        : b.id === "new"
-                          ? "New"
-                          : b.id === "100"
-                            ? "100%"
-                            : b.id === "50"
-                              ? "50+"
-                              : `${b.id}+`}
-                  </span>
-                  <span className="analysis-label">
-                    {b.label}
-                    {b.hint && <span className="analysis-hint">{b.hint}</span>}
-                  </span>
+        {rows.map((r) => (
+          <tr key={r.band} className={r.words === 0 ? "is-zero" : undefined}>
+            <th scope="row">
+              <span className="analysis-band">
+                <span className={`score ${CLASS[r.band]}`}>
+                  {SHORT[r.band]}
                 </span>
-              </th>
-              <td className="num">{fmtNum(r.segments)}</td>
-              <td className="num">{fmtNum(r.words)}</td>
-              <td className="num">
-                {words ? `${Math.round((r.words / words) * 100)}%` : "0%"}
-              </td>
-            </tr>
-          );
-        })}
+                <span className="analysis-label">
+                  {r.name}
+                  {HINT[r.band] && (
+                    <span className="analysis-hint">{HINT[r.band]}</span>
+                  )}
+                </span>
+              </span>
+            </th>
+            <td className="num">{fmtNum(r.segments)}</td>
+            <td className="num">{fmtNum(r.words)}</td>
+            <td className="num">
+              {total.words
+                ? `${Math.round((r.words / total.words) * 100)}%`
+                : "0%"}
+            </td>
+          </tr>
+        ))}
       </tbody>
       <tfoot>
         <tr>
           <th scope="row">Total</th>
-          <td className="num">{fmtNum(segments)}</td>
-          <td className="num">{fmtNum(words)}</td>
+          <td className="num">{fmtNum(total.segments)}</td>
+          <td className="num">{fmtNum(total.words)}</td>
           <td className="num">100%</td>
         </tr>
       </tfoot>

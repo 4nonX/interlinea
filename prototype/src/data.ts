@@ -134,35 +134,190 @@ export interface Termbase {
 
 export type SetupMode = "layered" | "own" | "direct";
 
+export type ContextRule = "previous" | "both";
+
+/** What a file of a project is for. */
+export type FileRole = "translatable" | "reference";
+
+/** How the prototype reads a file and writes its translation. */
+export type FileKind = "docx" | "xliff" | "text" | "none";
+
+export interface ProjectFile {
+  id: string;
+  /** File name, with the folder it came from ("Anlagen/Hausordnung.docx"). */
+  name: string;
+  role: FileRole;
+  words: number;
+  kind: FileKind;
+  /** A bilingual file is translated into this language only. */
+  targetLang?: LangCode;
+  /** Where the file sits in the project's Trados package. */
+  packagePath?: string;
+  /** The original file: needed to save the translation or open a reference file. */
+  bytes?: Uint8Array;
+  url?: string;
+  /** Paragraph structure from the Word filter, for the preview. */
+  blocks?: Block[];
+  /** Segments per target language. Empty for reference files and unreadable ones. */
+  segments: Record<LangCode, Segment[]>;
+  /** What the filter changed or could not read. */
+  warnings?: string[];
+}
+
+/** How a project uses a translation memory for one target language. */
+export interface MemorySetting {
+  /** The memory's name. */
+  memory: string;
+  lookup: boolean;
+  concordance: boolean;
+  update: boolean;
+  /** Points taken off its match scores. */
+  penalty: number;
+}
+
+/** A translation memory. Its units live in the core, saved as TMX between visits. */
+export interface TranslationMemory {
+  name: string;
+  sourceLang: LangCode;
+  targetLang: LangCode;
+  client?: string;
+  /** A project memory collects one project's confirmed translations. */
+  projectId?: string;
+  createdAt: string;
+  /** Sample memories are filled from sample data instead of saved TMX. */
+  sample?: boolean;
+  /**
+   * A project memory that starts with its project's confirmed segments:
+   * the sample project, and projects saved before projects had memories.
+   */
+  seedFromProject?: boolean;
+}
+
+export interface QaSettings {
+  /** Core checks turned off that are on by default. */
+  disabled: string[];
+  /** Core checks turned on that are off by default. */
+  enabled: string[];
+  /** Warn when a fuzzy match is confirmed unchanged. */
+  uneditedFuzzy: boolean;
+}
+
+export interface PrepareSettings {
+  pretranslate: boolean;
+  /** Lowest match inserted, 50 to 100. */
+  minScore: number;
+  /** Confirm segments filled with a 100% match (context matches included). */
+  confirmExact: boolean;
+  /** Confirm segments filled with a context match. */
+  confirmContext: boolean;
+}
+
+export interface TermSetup {
+  mode: SetupMode;
+  masters: string[];
+  projectTermbaseId?: string;
+  /** Where the project termbase is kept. */
+  location: Location;
+  /** Direct mode: the master new terms go into. */
+  writeTo?: string;
+  /** Take in the masters' changes each time the project opens. */
+  autoUpdate: boolean;
+}
+
 export interface Project {
   id: string;
   name: string;
-  file: string;
-  words: number;
+  client?: string;
+  description?: string;
   sourceLang: LangCode;
   targetLangs: LangCode[];
-  client?: string;
-  setup: {
-    mode: SetupMode;
-    masters: string[];
-    projectTermbaseId?: string;
-    location: Location;
-  };
+  files: ProjectFile[];
+  /** Memories per target language, in priority order. */
+  memories: Record<LangCode, MemorySetting[]>;
+  /** The project has its own memory per target language. */
+  projectMemory: boolean;
+  setup: TermSetup;
+  context: ContextRule;
+  qa: QaSettings;
+  prepare: PrepareSettings;
   createdAt: string;
   due?: string;
+  /** Share of confirmed segments over all files and languages. */
   progress: number;
-  /** Segments of the document. Absent when the prototype has no text for it. */
-  segments?: Segment[];
-  /** Paragraph structure from the file filter, for the preview. */
-  blocks?: Block[];
-  /** The original file, when the core's filter read it: needed to save the translation. */
-  original?: {
-    url?: string;
-    bytes?: Uint8Array;
-    format?: "docx" | "xliff";
-    /** The Trados project package the file came from, to save a return package. */
-    sdlPackage?: { bytes: Uint8Array; name: string; path: string };
+  /** The Trados package the project came from, to save one return package. */
+  sdlPackage?: { bytes: Uint8Array; name: string };
+}
+
+/** What a new project can start from: everything but name, files and dates. */
+export interface Template {
+  id: string;
+  name: string;
+  client?: string;
+  sourceLang: LangCode;
+  targetLangs: LangCode[];
+  memories: Record<LangCode, MemorySetting[]>;
+  projectMemory: boolean;
+  terminology: {
+    mode: SetupMode;
+    masters: string[];
+    writeTo?: string;
+    location: Location;
+    autoUpdate: boolean;
   };
+  context: ContextRule;
+  qa: QaSettings;
+  prepare: PrepareSettings;
+  createdAt: string;
+}
+
+export const DEFAULT_QA: QaSettings = {
+  disabled: [],
+  enabled: [],
+  uneditedFuzzy: true,
+};
+
+export const DEFAULT_PREPARE: PrepareSettings = {
+  pretranslate: false,
+  minScore: 100,
+  confirmExact: false,
+  confirmContext: true,
+};
+
+/** Name of a project's own memory for a target language. */
+export function projectMemoryName(projectName: string, target: LangCode) {
+  return `${projectName} (${target})`;
+}
+
+/** Translatable segments of every file and language. */
+export function allSegments(p: Project): Segment[] {
+  return p.files.flatMap((f) => Object.values(f.segments).flat());
+}
+
+/** Share of confirmed segments, or the stored share for projects without readable text. */
+export function projectProgress(p: Project): number {
+  const segs = allSegments(p);
+  return segs.length ? confirmedShare(segs) : p.progress;
+}
+
+/** The target languages a file is translated into. */
+export function fileTargets(
+  f: ProjectFile,
+  p: Pick<Project, "targetLangs">,
+): LangCode[] {
+  if (f.role !== "translatable") return [];
+  return f.targetLang ? [f.targetLang] : p.targetLangs;
+}
+
+/** Segments for another target language: the same sources, nothing translated. */
+export function freshCopy(segments: Segment[]): Segment[] {
+  return segments.map((s) => ({
+    id: s.id,
+    block: s.block,
+    source: s.source,
+    target: [],
+    status: "new" as const,
+    locked: s.locked,
+  }));
 }
 
 export const SERVER = "terms.kanzlei-weber.example";
@@ -582,36 +737,100 @@ export const INITIAL_ENTRIES: Entry[] = [
   },
 ];
 
+export const SAMPLE_MEMORY = "Kanzlei Weber (DE-EN)";
+
+export const INITIAL_MEMORIES: TranslationMemory[] = [
+  {
+    name: SAMPLE_MEMORY,
+    sourceLang: "de-DE",
+    targetLang: "en-GB",
+    client: "Kanzlei Weber",
+    createdAt: d("2024-03-12T09:00:00Z"),
+    sample: true,
+  },
+  {
+    name: projectMemoryName("Mietvertrag Hofmann", "en-GB"),
+    sourceLang: "de-DE",
+    targetLang: "en-GB",
+    client: "Kanzlei Weber",
+    projectId: "p-hofmann",
+    createdAt: d("2026-11-16T08:30:00Z"),
+    seedFromProject: true,
+  },
+];
+
 export const INITIAL_PROJECTS: Project[] = [
   {
     id: "p-hofmann",
     name: "Mietvertrag Hofmann",
-    file: "Mietvertrag_Hofmann_2026.docx",
-    words: HOFMANN_SEGMENTS.reduce((n, sg) => n + wordCount(sg.source), 0),
     sourceLang: "de-DE",
     targetLangs: ["en-GB"],
     client: "Kanzlei Weber",
+    files: [
+      {
+        id: "f-hofmann",
+        name: "Mietvertrag_Hofmann_2026.docx",
+        role: "translatable",
+        words: HOFMANN_SEGMENTS.reduce((n, sg) => n + wordCount(sg.source), 0),
+        kind: "docx",
+        url: HOFMANN_FILE,
+        blocks: HOFMANN_BLOCKS,
+        segments: { "en-GB": HOFMANN_SEGMENTS },
+      },
+    ],
+    memories: {
+      "en-GB": [
+        {
+          memory: SAMPLE_MEMORY,
+          lookup: true,
+          concordance: true,
+          update: false,
+          penalty: 0,
+        },
+      ],
+    },
+    projectMemory: true,
     setup: {
       mode: "layered",
       masters: ["tb-weber"],
       projectTermbaseId: "tb-p-weber-lease",
       location: "server",
+      autoUpdate: false,
     },
+    context: "previous",
+    qa: DEFAULT_QA,
+    prepare: DEFAULT_PREPARE,
     createdAt: d("2026-11-16T08:30:00Z"),
     due: d("2026-11-26T16:00:00Z"),
     progress: confirmedShare(HOFMANN_SEGMENTS),
-    segments: HOFMANN_SEGMENTS,
-    blocks: HOFMANN_BLOCKS,
-    original: { url: HOFMANN_FILE },
   },
   {
     id: "p-ifu",
     name: "Gebrauchsanweisung Infusionspumpe",
-    file: "IFU_Infusionspumpe_v4.docx",
-    words: 11830,
     sourceLang: "de-DE",
     targetLangs: ["en-US"],
-    setup: { mode: "direct", masters: ["tb-medtech"], location: "local" },
+    files: [
+      {
+        id: "f-ifu",
+        name: "IFU_Infusionspumpe_v4.docx",
+        role: "translatable",
+        words: 11830,
+        kind: "none",
+        segments: {},
+      },
+    ],
+    memories: {},
+    projectMemory: false,
+    setup: {
+      mode: "direct",
+      masters: ["tb-medtech"],
+      writeTo: "tb-medtech",
+      location: "local",
+      autoUpdate: false,
+    },
+    context: "previous",
+    qa: DEFAULT_QA,
+    prepare: DEFAULT_PREPARE,
     createdAt: d("2026-11-10T13:00:00Z"),
     due: d("2026-12-04T12:00:00Z"),
     progress: 0.37,

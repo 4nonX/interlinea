@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   BookText,
+  Database,
   FolderOpen,
   GitBranch,
   Settings as SettingsIcon,
@@ -13,17 +14,30 @@ import { Terminology } from "./screens/Terminology";
 import { MergeReview } from "./screens/MergeReview";
 import { Settings } from "./screens/Settings";
 import { Editor } from "./screens/Editor";
+import { ProjectSettings } from "./screens/ProjectSettings";
+import { Memories } from "./screens/Memories";
 
 export type Route =
   | { page: "projects" }
   | { page: "new"; sample?: number }
   | { page: "terminology"; termbaseId?: string; entryId?: string }
   | { page: "merge"; projectId: string }
-  | { page: "editor"; projectId: string }
+  | { page: "editor"; projectId: string; fileId?: string; lang?: string }
+  | { page: "project"; projectId: string }
+  | { page: "memories" }
   | { page: "settings" };
 
 export function parseRoute(hash: string): Route {
-  const [page, a, b] = hash.replace(/^#\/?/, "").split("/");
+  const [page, a, b, c] = hash
+    .replace(/^#\/?/, "")
+    .split("/")
+    .map((x) => {
+      try {
+        return decodeURIComponent(x);
+      } catch {
+        return x;
+      }
+    });
   switch (page) {
     case "new":
       return a === "sample" && b !== undefined
@@ -38,7 +52,18 @@ export function parseRoute(hash: string): Route {
     case "merge":
       return a ? { page: "merge", projectId: a } : { page: "projects" };
     case "editor":
-      return a ? { page: "editor", projectId: a } : { page: "projects" };
+      return a
+        ? {
+            page: "editor",
+            projectId: a,
+            fileId: b || undefined,
+            lang: c || undefined,
+          }
+        : { page: "projects" };
+    case "project":
+      return a ? { page: "project", projectId: a } : { page: "projects" };
+    case "memories":
+      return { page: "memories" };
     case "settings":
       return { page: "settings" };
     default:
@@ -57,7 +82,11 @@ export function href(r: Route): string {
     case "merge":
       return `#/merge/${r.projectId}`;
     case "editor":
-      return `#/editor/${r.projectId}`;
+      return `#/editor/${r.projectId}${r.fileId ? `/${encodeURIComponent(r.fileId)}${r.lang ? `/${r.lang}` : ""}` : ""}`;
+    case "project":
+      return `#/project/${r.projectId}`;
+    case "memories":
+      return "#/memories";
     case "settings":
       return "#/settings";
   }
@@ -121,7 +150,10 @@ function useRoute(): Route {
 function Rail({ route }: { route: Route }) {
   const { state } = useStore();
   const active =
-    route.page === "new" || route.page === "merge" || route.page === "editor"
+    route.page === "new" ||
+    route.page === "merge" ||
+    route.page === "editor" ||
+    route.page === "project"
       ? "projects"
       : route.page;
   const items = [
@@ -130,6 +162,12 @@ function Rail({ route }: { route: Route }) {
       label: "Projects",
       icon: FolderOpen,
       to: { page: "projects" } as Route,
+    },
+    {
+      id: "memories",
+      label: "Memories",
+      icon: Database,
+      to: { page: "memories" } as Route,
     },
     {
       id: "terminology",
@@ -203,7 +241,18 @@ function Screen({ route }: { route: Route }) {
     case "merge":
       return <MergeReview projectId={route.projectId} />;
     case "editor":
-      return <Editor key={route.projectId} projectId={route.projectId} />;
+      return (
+        <Editor
+          key={`${route.projectId}/${route.fileId ?? ""}/${route.lang ?? ""}`}
+          projectId={route.projectId}
+          fileId={route.fileId}
+          lang={route.lang}
+        />
+      );
+    case "project":
+      return <ProjectSettings projectId={route.projectId} />;
+    case "memories":
+      return <Memories />;
     case "settings":
       return <Settings />;
   }

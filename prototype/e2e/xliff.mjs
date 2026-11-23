@@ -23,6 +23,8 @@ export default () =>
       waitFor,
     }) => {
       await open("/new");
+      await click("button", "Continue to files and languages");
+      await sleep(300);
       await setFile(
         "input[type=file]",
         `${fixtures}/Mietvertrag.docx.sdlxliff`,
@@ -40,17 +42,22 @@ export default () =>
       check(
         t.includes("German (Germany)") &&
           t.includes("English (United Kingdom)") &&
-          t.includes("From the file"),
+          t.includes("From the bilingual files"),
         "languages from the file",
       );
       check(
-        !(await evaluate("!!document.querySelector('#source')")),
+        !(await evaluate("!!document.querySelector('#source')")) &&
+          (await evaluate(
+            "[...document.querySelectorAll('.target-list input')].find(i => i.closest('label').textContent.includes('English (United Kingdom)')).disabled",
+          )),
         "languages cannot be changed",
       );
+      await click("button", "Continue to memories");
+      await sleep(300);
       await click("button", "Continue to terminology");
       await sleep(300);
       await click("button", "Continue to review");
-      await sleep(300);
+      await waitFor("!!document.querySelector('.analysis')");
       await click("button", "Create project");
       check(
         await waitFor("document.querySelectorAll('.seg').length === 5"),
@@ -167,40 +174,70 @@ export default () =>
         "nothing else in the file changed",
       );
 
-      // A Trados project package: pick a file, translate, save a return package.
+      // A Trados project package: all its files in one project, one return package.
       await open("/new");
+      await click("button", "Continue to files and languages");
+      await sleep(300);
       await setFile(
         "input[type=file]",
         `${fixtures}/Mietvertrag Hofmann.sdlppx`,
       );
       check(
         await waitFor(
-          "document.body.innerText.includes('from the Trados package')",
+          "document.body.innerText.includes('From the Trados package')",
         ),
         "package read",
       );
       check(
         (await evaluate(
-          "[...document.querySelectorAll('#pkg-file option')].map(o => o.value).join(',')",
+          "[...document.querySelectorAll('.file-table .cell-title')].map(e => e.textContent).join(',')",
         )) === "en-GB/Anlage.docx.sdlxliff,en-GB/Mietvertrag.docx.sdlxliff",
-        "target files of the package offered",
+        "every target file of the package is a file of the project",
       );
-      await setValue("#pkg-file", "en-GB/Mietvertrag.docx.sdlxliff");
       check(
-        await waitFor(
-          "document.querySelector('#pkg-file')?.value === 'en-GB/Mietvertrag.docx.sdlxliff'",
-        ),
-        "chosen file read",
+        (await evaluate("document.getElementById('pname').value")) ===
+          "Mietvertrag Hofmann",
+        "project named after the package",
       );
+      check(
+        (await text()).includes("A project with this name exists already."),
+        "the name of the sample project is taken",
+      );
+      await setValue("#pname", "Mietvertrag Hofmann Rücklauf");
+      await sleep(300);
+      await click("button", "Continue to memories");
+      await sleep(300);
       await click("button", "Continue to terminology");
       await sleep(300);
       await click("button", "Continue to review");
-      await sleep(300);
+      await waitFor("!!document.querySelector('.analysis')");
+      t = await text();
+      check(
+        t.includes("2 files to translate") &&
+          t.includes("from the Trados package Mietvertrag Hofmann.sdlppx"),
+        "review counts the package's files",
+      );
       await click("button", "Create project");
       check(
-        await waitFor("document.querySelectorAll('.seg').length === 5"),
-        "package file opens in the editor",
+        await waitFor("!!document.querySelector('#ed-file')"),
+        "editor offers the package's files",
       );
+      await setValue(
+        "#ed-file",
+        await evaluate(
+          "[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes('Mietvertrag')).value",
+        ),
+      );
+      check(
+        await waitFor(
+          "document.querySelectorAll('.seg').length === 5 && document.querySelector('#ed-file option:checked')?.textContent.includes('Mietvertrag')",
+        ),
+        "the package's Mietvertrag file opens",
+      );
+      await evaluate(
+        "document.querySelector('.seg.is-active .target-editor')?.focus()",
+      );
+      await sleep(200);
       await key("a", "KeyA", 65, 2);
       await send("Input.insertText", { text: "The deposit" });
       await sleep(200);

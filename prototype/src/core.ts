@@ -55,6 +55,7 @@ export interface CoreApi {
     source: string,
     min: number,
     limit: number,
+    penalty?: number,
   ): Res<string>;
   tmConcordance(
     name: string,
@@ -75,6 +76,18 @@ export interface CoreApi {
     bytes: Uint8Array,
     translated: Record<string, Uint8Array>,
   ): Res<Uint8Array>;
+  qaKinds(): Res<string>;
+  qaCheck(segments: string, options: string): Res<string>;
+  projectDefaults(): Res<string>;
+  projectValidate(settings: string, catalog: string): Res<string>;
+  projectTemplateValidate(template: string, catalog: string): Res<string>;
+  analyze(files: string, memories: string, options: string): Res<string>;
+  pretranslate(
+    files: string,
+    memories: string,
+    prepare: string,
+    rule: string,
+  ): Res<string>;
 }
 
 function unwrap<T>(r: Res<T>): T {
@@ -105,15 +118,17 @@ export const tm = {
   add(c: CoreApi, name: string, units: MemUnit[]) {
     return unwrap(c.tmAdd(name, JSON.stringify(units)));
   },
+  /** Matches of at least min percent; scores lowered by the memory's penalty. */
   lookup(
     c: CoreApi,
     name: string,
     source: CoreRun[],
     min: number,
     limit: number,
+    penalty = 0,
   ): MemUnit[] {
     return JSON.parse(
-      unwrap(c.tmLookup(name, JSON.stringify(source), min, limit)),
+      unwrap(c.tmLookup(name, JSON.stringify(source), min, limit, penalty)),
     ) as MemUnit[];
   },
   concordance(

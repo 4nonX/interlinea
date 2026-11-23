@@ -3,7 +3,8 @@ import { SERVER } from "../data";
 import { resetSavedWork, useStore } from "../store";
 import { storageStatus } from "../persist";
 import { ConfirmButton } from "./TermbaseDialogs";
-import { PageHeader } from "../components/ui";
+import { LangChip, PageHeader } from "../components/ui";
+import { fmtDate } from "../format";
 
 export function Settings() {
   const { state, dispatch } = useStore();
@@ -104,7 +105,13 @@ export function Settings() {
           </label>
         </div>
         <fieldset className="field">
-          <legend className="field-label">Context matches (CM)</legend>
+          <legend className="field-label">
+            Context matches (CM) in new projects
+          </legend>
+          <p className="help">
+            Each project counts context matches its own way; change it in the
+            project's settings.
+          </p>
           <label className="choice">
             <input
               type="radio"
@@ -142,6 +149,8 @@ export function Settings() {
         </fieldset>
       </section>
 
+      <Templates />
+
       <section className="panel" aria-labelledby="s-servers">
         <h2 id="s-servers" className="panel-title">
           Servers
@@ -165,6 +174,51 @@ export function Settings() {
   );
 }
 
+function Templates() {
+  const { state, dispatch, notify } = useStore();
+  return (
+    <section className="panel" aria-labelledby="s-tpl">
+      <h2 id="s-tpl" className="panel-title">
+        Project templates
+      </h2>
+      {state.templates.length === 0 ? (
+        <p className="help">
+          No template yet. Save a project's settings as a template at the end of
+          New project, or from a project's settings.
+        </p>
+      ) : (
+        <ul className="settings-list">
+          {state.templates.map((t) => (
+            <li key={t.id} className="row">
+              <span>
+                <span className="cell-title">{t.name}</span>{" "}
+                <span className="lang-pair">
+                  <LangChip code={t.sourceLang} /> →{" "}
+                  {t.targetLangs.map((l) => (
+                    <LangChip key={l} code={l} />
+                  ))}
+                </span>{" "}
+                <span className="muted">
+                  {t.client ? `${t.client}, ` : ""}saved {fmtDate(t.createdAt)}
+                </span>
+              </span>
+              <ConfirmButton
+                label="Delete"
+                confirm={`Delete the template “${t.name}”? Projects made from it stay as they are.`}
+                action="Delete"
+                onConfirm={() => {
+                  dispatch({ type: "deleteTemplate", templateId: t.id });
+                  notify(`Deleted the template “${t.name}”`);
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function SavedWork() {
   const { dispatch, notify } = useStore();
   const st = storageStatus();
@@ -175,7 +229,7 @@ function SavedWork() {
       </h2>
       {st.status === "ok" ? (
         <p className="help">
-          Projects, translations, termbases, imported memories and these
+          Projects, translations, termbases, memories, templates and these
           settings are saved in this browser as you work, and are here again on
           your next visit. They stay on this computer.
         </p>

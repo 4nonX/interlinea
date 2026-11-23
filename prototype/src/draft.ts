@@ -1,9 +1,11 @@
-// Hands a chosen document from the Projects page to the New project flow.
+// Hands the documents chosen on the Projects page to the New project flow.
 
 import type { Bilingual } from "./core";
 
 export interface PendingDoc {
   file: string;
+  /** Path in the folder or package the file came from, if any. */
+  path?: string;
   words: number;
   /** Extracted text, or null when the prototype cannot read this format. */
   text: string | null;
@@ -21,19 +23,18 @@ export interface PendingDoc {
     bytes: Uint8Array;
     name: string;
     path: string;
-    files: string[];
   };
 }
 
-let pending: PendingDoc | null = null;
+let pending: PendingDoc[] = [];
 
-export function setPendingDoc(doc: PendingDoc) {
-  pending = doc;
+export function setPendingDocs(docs: PendingDoc[]) {
+  pending = docs;
 }
 
-export function takePendingDoc(): PendingDoc | null {
+export function takePendingDocs(): PendingDoc[] {
   const d = pending;
-  pending = null;
+  pending = [];
   return d;
 }
 

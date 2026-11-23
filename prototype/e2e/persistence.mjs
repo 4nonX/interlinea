@@ -27,6 +27,10 @@ export default () =>
       await open("/projects");
       await click("button", "Kaufvertrag_Mueller_Entwurf.docx");
       await sleep(300);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await click("button", "Continue to memories");
+      await sleep(300);
       await click("button", "Continue to terminology");
       await sleep(300);
       await click("button", "Continue to review");
@@ -51,9 +55,20 @@ export default () =>
       await key("Enter", "Enter", 13, 2);
       await sleep(300);
 
-      // A TMX file imported into the project memory.
+      // A TMX file imported into the project memory, which already holds the
+      // sample's confirmed segments and the one just confirmed.
+      const projectUnits = () =>
+        evaluate(
+          "Number([...document.querySelectorAll('dialog[open] tr')].find(r => r.textContent.includes('project memory'))?.querySelector('td.num')?.textContent ?? -1)",
+        );
       await click("button", "Memories");
       await sleep(250);
+      const unitsBefore = await projectUnits();
+      check(
+        unitsBefore === 8,
+        "project memory has the 7 sample units and the confirmed one: " +
+          unitsBefore,
+      );
       await setFile("input[accept*='.tmx']", `${fixtures}/test.tmx`);
       check(
         await waitFor("document.body.innerText.includes('Imported 1 unit')"),
@@ -114,7 +129,7 @@ export default () =>
         "document.querySelector('dialog[open]')?.innerText ?? ''",
       );
       check(
-        /project memory\)?\s+1\b/.test(mem),
+        (await projectUnits()) === unitsBefore + 1,
         "imported memory kept: " + mem.replace(/\s+/g, " ").slice(0, 160),
       );
       await evaluate("document.querySelector('dialog[open]').close()");
@@ -158,9 +173,6 @@ export default () =>
       const after = await evaluate(
         "document.querySelector('dialog[open]')?.innerText ?? ''",
       );
-      check(
-        /project memory\)?\s+0\b/.test(after),
-        "reset emptied the project memory",
-      );
+      check((await projectUnits()) === 7, "reset emptied the project memory");
     },
   );

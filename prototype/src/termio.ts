@@ -518,16 +518,6 @@ export interface CoreHit {
   targets: CoreTerm[];
 }
 
-export interface CoreIssue {
-  kind: "missing" | "forbidden";
-  term?: string;
-  expected?: string;
-  found?: string;
-  start?: number;
-  end?: number;
-  entryId?: string;
-}
-
 interface RecognitionCore {
   termIndex(
     name: string,
@@ -537,13 +527,6 @@ interface RecognitionCore {
     name: string,
     text: string,
     src: string,
-    tgt: string,
-  ): { ok: true; value: string } | { ok: false; error: string };
-  termCheck(
-    name: string,
-    sourceText: string,
-    src: string,
-    targetText: string,
     tgt: string,
   ): { ok: true; value: string } | { ok: false; error: string };
 }
@@ -590,17 +573,4 @@ export function recognizeTerms(
   return JSON.parse(
     unwrap(rc(c).termRecognize(name, text, src, tgt)),
   ) as CoreHit[];
-}
-
-export function checkTerms(
-  c: CoreApi,
-  name: string,
-  sourceText: string,
-  src: string,
-  targetText: string,
-  tgt: string,
-): CoreIssue[] {
-  return JSON.parse(
-    unwrap(rc(c).termCheck(name, sourceText, src, targetText, tgt)),
-  ) as CoreIssue[];
 }

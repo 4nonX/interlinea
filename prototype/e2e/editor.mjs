@@ -9,6 +9,7 @@ export default () =>
       evaluate,
       click,
       text,
+      body,
       check,
       sleep,
       open,
@@ -23,9 +24,22 @@ export default () =>
       await click("button", "Kaufvertrag_Mueller_Entwurf.docx");
       await sleep(300);
       let t = await text();
+      check(t.includes("A blank project"), "new project starts at Start");
+      await click("button", "Continue to files and languages");
+      await sleep(400);
+      t = await text();
       check(
         t.includes("Detected German (Germany)"),
         "German detected for Kaufvertrag sample",
+      );
+      await click("button", "Continue to memories");
+      await sleep(400);
+      check(
+        /Kanzlei Weber \(DE-EN\)/.test(await text()) &&
+          (await evaluate(
+            "[...document.querySelectorAll('.memory-table input[type=checkbox]')].map(i => i.checked).join()",
+          )) === "true,true,false",
+        "client memory suggested for lookup and concordance, not updated (a project memory collects)",
       );
       await click("button", "Continue to terminology");
       await sleep(300);
@@ -50,7 +64,7 @@ export default () =>
       await sleep(200);
       t = await text();
       check(
-        t.includes("will be added to this master") === false,
+        t.includes("Mietrecht has no") === false,
         "Mietrecht has de/en: no missing-language note",
       );
       await click("button", "Continue to review");
@@ -87,11 +101,15 @@ export default () =>
       // Korean sample: script detection and missing-language note.
       await click("button", "임대차계약서_서울.txt");
       await sleep(300);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
       t = await text();
       check(t.includes("Detected Korean"), "Korean detected");
       // Short English sample: English detected
       await open("/new/sample/1", { wait: 0 });
       await sleep(600);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
       t = await text();
       check(
         t.includes("Detected English"),
@@ -100,6 +118,8 @@ export default () =>
       );
       await open("/new/sample/2", { wait: 0 });
       await sleep(600);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
       t = await text();
       check(
         t.includes("Detected French"),
@@ -204,14 +224,14 @@ export default () =>
       check((await activeNum()) === "11", "moved to the next open segment");
       check(
         await evaluate(
-          "[...document.querySelectorAll('.seg')][9].querySelector('.seg-warn')?.textContent.includes('2')",
+          "[...document.querySelectorAll('.seg')][9].querySelector('.seg-warn')?.textContent.includes('3')",
         ),
-        "segment 10 confirmed with 2 warnings (numbers, unchanged match)",
+        "segment 10 confirmed with warnings",
       );
       check(
         (
           await evaluate("document.querySelector('[role=status]').textContent")
-        ).startsWith("Confirmed with 2 warnings"),
+        ).startsWith("Confirmed with 3 warnings"),
         "confirmation announced with warnings",
       );
       check(
@@ -267,22 +287,31 @@ export default () =>
       );
       // Ignore a warning on segment 10.
       await openSeg(10);
+      const issueText = await evaluate(
+        "[...document.querySelectorAll('.issue')].map(i => i.textContent).join(' | ')",
+      );
       check(
-        (await evaluate("document.querySelectorAll('.issue').length")) === 2,
-        "segment 10 shows its two checks",
+        (await evaluate("document.querySelectorAll('.issue').length")) === 3 &&
+          issueText.includes(
+            "1.250,00 and 220,00 from the source are not in the translation",
+          ) &&
+          issueText.includes("980.00 and 180.00 are not in the source") &&
+          issueText.includes("89% match is unchanged"),
+        "segment 10 shows the core's checks (numbers missing and extra) and the unchanged match: " +
+          issueText,
       );
       await click(".issue button", "");
       await sleep(200);
       check(
-        (await evaluate("document.querySelectorAll('.issue').length")) === 1 &&
+        (await evaluate("document.querySelectorAll('.issue').length")) === 2 &&
           (await text()).includes("1 warning ignored"),
         "ignore removes a false alarm",
       );
       check(
         await evaluate(
-          "[...document.querySelectorAll('.seg')][9].querySelector('.seg-warn')?.textContent.includes('1')",
+          "[...document.querySelectorAll('.seg')][9].querySelector('.seg-warn')?.textContent.includes('2')",
         ),
-        "segment warning count drops to 1",
+        "segment warning count drops to 2",
       );
       // Repetitions: "Ort, Datum" in both signature cells.
       await openSeg(31);
@@ -435,7 +464,7 @@ export default () =>
         "document.querySelector('dialog[open]')?.innerText ?? ''",
       );
       check(
-        /Kanzlei Weber \(DE-EN\)\s+13/.test(memText) &&
+        /Kanzlei Weber \(DE-EN\)\s+lookup, concordance\s+13/.test(memText) &&
           memText.includes("project memory"),
         "memories dialog lists the client memory: " +
           memText.replace(/\s+/g, " ").slice(0, 120),
@@ -494,15 +523,19 @@ export default () =>
           ).includes("project memory"),
         "imported unit is a context match (Trados rule)",
       );
-      // memoQ rule: the segment after must match too.
-      await click("a", "Settings");
-      await sleep(300);
+      // memoQ rule, set in the project's settings: the segment after must match too.
+      await click("a", "Project settings");
+      await sleep(500);
       await click(".choice", "before and after");
       await sleep(150);
-      await click("a", "Projects");
+      await click("button", "Save changes");
       await sleep(300);
-      await click("a.cell-link", "Mietvertrag Hofmann");
-      await sleep(500);
+      check(
+        (await body()).includes("Saved the settings of “Mietvertrag Hofmann”"),
+        "project settings saved",
+      );
+      await click("a", "Open in the editor");
+      await sleep(800);
       await openSeg(21);
       check(
         (await evaluate(
@@ -517,13 +550,13 @@ export default () =>
         )) === "CM",
         "both neighbours match: still CM",
       );
-      await click("a", "Settings");
-      await sleep(300);
-      await click(".choice", "segment before also matches");
+      await click("a", "Project settings");
+      await sleep(500);
+      await click(".choice", "The segment before matches");
       await sleep(150);
-      await click("a", "Projects");
+      await click("button", "Save changes");
       await sleep(300);
-      await click("a.cell-link", "Mietvertrag Hofmann");
+      await click("a", "Open in the editor");
       await sleep(500);
       await click("a", "Review and merge");
       await sleep(500);
@@ -540,6 +573,8 @@ export default () =>
       // A real Word file chosen in New project goes through the Word filter.
       await open("/new", { wait: 0 });
       await sleep(500);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
       {
         const doc = await send("DOM.getDocument", {});
         const q = await send("DOM.querySelector", {
@@ -566,8 +601,11 @@ export default () =>
           (t.match(/Detected[^\n]*/)?.[0] ?? t.slice(0, 120)),
       );
       await evaluate(
-        `(() => { const el = [...document.querySelectorAll('input')].find(i => i.closest('.field')?.textContent.includes('Client')); if (el) { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Kanzlei Weber'); el.dispatchEvent(new Event('input', { bubbles: true })); } })()`,
+        `(() => { const el = document.getElementById('client'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'Kanzlei Weber'); el.dispatchEvent(new Event('input', { bubbles: true })); })()`,
       );
+      await sleep(200);
+      await click("button", "Continue to memories");
+      await sleep(300);
       await click("button", "Continue to terminology");
       await sleep(300);
       await click("button", "Continue to review");

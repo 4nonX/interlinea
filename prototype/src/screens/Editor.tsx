@@ -24,12 +24,13 @@ import {
   Plus,
   Repeat2,
   Search,
+  Settings2,
   Tag,
   X,
 } from "lucide-react";
-import { lang, USER } from "../data";
+import { fileTargets, lang, USER, type LangCode } from "../data";
 import { useStore, useWords } from "../store";
-import { computeChanges } from "../merge";
+import { computeChanges, incomingFromMaster } from "../merge";
 import {
   isTag,
   missingTags,
@@ -41,24 +42,30 @@ import {
   type Segment,
   type TmUnit,
 } from "../editor/model";
-import { qa, type QaIssue, type TermHit } from "../editor/match";
-import { buildIndex, checkTerms, recognizeTerms } from "../termio";
+import type { QaIssue, TermHit } from "../editor/match";
+import { buildIndex, recognizeTerms } from "../termio";
 import {
-  analyze,
   bandOf,
   scoreDescription,
   scoreLabel,
   scoredLookup,
-  type ContextRule,
   type ScoredMatch,
 } from "../editor/analysis";
 import {
   concordanceAll,
-  documentMemory,
+  openRefs,
   persistMemory,
-  projectMemories,
-  type MemoryInfo,
+  storeConfirmed,
+  unitOf,
 } from "../editor/memory";
+import {
+  analyzeFiles,
+  checkSegment,
+  memoryRefs,
+  projectMemoryOf,
+  type MemoryRef,
+} from "../project";
+import { go } from "../App";
 import { Preview } from "../editor/Preview";
 import { AnalysisTable } from "../components/AnalysisTable";
 import {
@@ -72,6 +79,7 @@ import {
   SDL_RETURN_TYPE,
   tm,
   XLIFF_TYPE,
+  type CoreApi,
 } from "../core";
 import {
   TargetEditor,
@@ -91,11 +99,38 @@ const STATUS_TEXT: Record<Segment["status"], string> = {
 type Filter = "all" | "todo" | "warnings";
 type Result = { kind: "tm"; m: ScoredMatch } | { kind: "term"; h: TermHit };
 
-export function Editor({ projectId }: { projectId: string }) {
+export function Editor({
+  projectId,
+  fileId,
+  lang: wantedLang,
+}: {
+  projectId: string;
+  fileId?: string;
+  lang?: LangCode;
+}) {
   const { state, dispatch, notify } = useStore();
   const w = useWords();
   const project = state.projects.find((p) => p.id === projectId);
-  const segments = useMemo(() => project?.segments ?? [], [project?.segments]);
+  // The file and language the address names, else the first file to translate.
+  const workable = project
+    ? project.files.filter(
+        (f) => f.role === "translatable" && Object.keys(f.segments).length > 0,
+      )
+    : [];
+  const file = workable.find((f) => f.id === fileId) ?? workable[0];
+  const targets = file && project ? fileTargets(file, project) : [];
+  const target =
+    wantedLang && targets.includes(wantedLang)
+      ? wantedLang
+      : (targets[0] ?? project?.targetLangs[0] ?? "en-GB");
+  const at = useMemo(
+    () => ({ projectId, fileId: file?.id ?? "", lang: target }),
+    [projectId, file?.id, target],
+  );
+  const segments = useMemo(
+    () => file?.segments[target] ?? [],
+    [file?.segments, target],
+  );
   const [activeId, setActiveId] = useState(
     () =>
       segments.find((s) => s.status !== "confirmed" && !s.locked)?.id ??
@@ -122,7 +157,6 @@ export function Editor({ projectId }: { projectId: string }) {
   const sourceSelection = useRef("");
 
   const source = project?.sourceLang ?? "de-DE";
-  const target = project?.targetLangs[0] ?? "en-GB";
   const termbases = useMemo(() => {
     if (!project) return [];
     const ids = [
@@ -140,17 +174,13 @@ export function Editor({ projectId }: { projectId: string }) {
         (t) =>
           t.id ===
           (project.setup.mode === "direct"
-            ? project.setup.masters[0]
+            ? (project.setup.writeTo ?? project.setup.masters[0])
             : project.setup.projectTermbaseId),
       )
     : undefined;
 
-  // The memory: the client's memory (sample project only) plus every segment
-  // confirmed in this document, which is what confirming stores in Trados,
-  // memoQ and Phrase.
-  // Memories live in the core: the client's, the project's (TMX imports)
-  // and the document's confirmed segments, which is what confirming stores
-  // in Trados, memoQ and Phrase.
+  // The memories this language of the project uses, in the core: the
+  // project memory first, then the chosen ones, each with its penalty.
   const [ready, setReady] = useState(() => core() !== null);
   const [memVersion, setMemVersion] = useState(0);
   useEffect(() => {
@@ -169,18 +199,64 @@ export function Editor({ projectId }: { projectId: string }) {
     };
   }, [ready, notify]);
   const c = ready ? core() : null;
-  const fixedMemories = useMemo(
-    () => (c && project ? projectMemories(c, project) : []),
-    [c, project?.id, memVersion],
-  ); // eslint-disable-line react-hooks/exhaustive-deps
-  const memories = useMemo<MemoryInfo[]>(
-    () =>
-      c && project
-        ? [...fixedMemories, documentMemory(c, project, segments, USER)]
-        : [],
-    [c, project, fixedMemories, segments],
-  );
-  const clientTm = fixedMemories.filter((m) => m.kind !== "document");
+  const refs = useMemo(() => {
+    if (!c || !project)
+      return { lookup: [], concordance: [], update: [] } as Record<
+        "lookup" | "concordance" | "update",
+        MemoryRef[]
+      >;
+    const open = (u: "lookup" | "concordance" | "update") =>
+      openRefs(
+        c,
+        memoryRefs(project, target, u, state.memories),
+        state.memories,
+        state.projects,
+      );
+    return {
+      lookup: open("lookup"),
+      concordance: open("concordance"),
+      update: open("update"),
+    };
+    // Opening needs the project's memory settings, not its segments.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    c,
+    project?.id,
+    project?.memories,
+    project?.projectMemory,
+    target,
+    state.memories,
+  ]);
+  const memories = refs.lookup;
+
+  // A layered project set to take in master changes does so when it opens.
+  useEffect(() => {
+    if (
+      !project ||
+      project.setup.mode !== "layered" ||
+      !project.setup.autoUpdate
+    )
+      return;
+    const since = state.branchedAt[project.id] ?? project.createdAt;
+    const incoming = project.setup.masters.reduce((n, mid) => {
+      const inc = incomingFromMaster(
+        state.entries.filter((e) => e.termbaseId === mid),
+        since,
+      );
+      return n + inc.created.length + inc.changed.length;
+    }, 0);
+    if (!incoming) return;
+    dispatch({
+      type: "updateFromMaster",
+      projectId: project.id,
+      now: new Date().toISOString(),
+    });
+    notify(
+      `${w("updated")}: ${plural(incoming, "master change", "master changes")} taken in`,
+    );
+    // Once per opening of the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id]);
 
   const active = segments.find((s) => s.id === activeId);
   const index = segments.findIndex((s) => s.id === activeId);
@@ -231,33 +307,41 @@ export function Editor({ projectId }: { projectId: string }) {
     }
     return out;
   }, [active, c, termIndex, source, target, state.entries, termbases]);
+  const context = project?.context ?? state.contextRule;
   const matches = useMemo(
     () =>
       active && c
-        ? scoredLookup(c, memories, segments, index, state.contextRule, 70, 3)
+        ? scoredLookup(c, memories, segments, index, context, 70, 3)
         : [],
-    [active, c, memories, index, segments, state.contextRule],
+    // memVersion: the memories gained units.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, c, memories, index, segments, context, memVersion],
   );
-  const issues = useMemo(() => {
-    if (!active) return [];
-    const termIssues =
-      c && termIndex && plain(active.target).trim()
-        ? checkTerms(
-            c,
-            termIndex.name,
-            plain(active.source),
-            source,
-            plain(active.target),
-            target,
-          )
-        : [];
-    return qa(active.source, active.target, termIssues, source, target);
-  }, [active, c, termIndex, source, target]);
+  // The core's checks, as the project switches them.
+  const issues = useMemo((): QaIssue[] => {
+    if (!active || !c || !project || !plain(active.target).trim()) return [];
+    return checkSegment(
+      c,
+      segments,
+      active.id,
+      source,
+      target,
+      project.qa,
+      termIndex?.name,
+    ).map((i) => ({
+      kind: i.kind,
+      text:
+        i.kind === "tags-missing"
+          ? `${i.message} Press F9 to insert the next one.`
+          : i.message,
+    }));
+  }, [active, segments, c, project, termIndex, source, target]);
   const allIssues = useMemo<QaIssue[]>(() => {
     if (!active) return [];
     const extra: QaIssue[] = [];
     // Unedited fuzzy match: a common check in memoQ, Phrase and Trados Verify.
     if (
+      project?.qa.uneditedFuzzy &&
       active.origin?.kind === "tm" &&
       active.origin.score < 100 &&
       plain(active.target) === active.origin.inserted
@@ -269,7 +353,7 @@ export function Editor({ projectId }: { projectId: string }) {
     }
     const ignored = new Set(active.ignored ?? []);
     return [...issues, ...extra].filter((q) => !ignored.has(q.text));
-  }, [active, issues]);
+  }, [active, issues, project?.qa.uneditedFuzzy]);
 
   // The numbered results list: memory matches first, then terms (as in memoQ).
   const results: Result[] = [
@@ -281,12 +365,13 @@ export function Editor({ projectId }: { projectId: string }) {
   const concordanceHits = useMemo(() => {
     if (!lookupText || lookupText.trim().length < 2 || !c) return [];
     const q = lookupText.trim().toLocaleLowerCase();
-    return concordanceAll(c, memories, lookupText, 8).map((h) => {
+    return concordanceAll(c, refs.concordance, lookupText, 8).map((h) => {
       const text = plain(h.side === "source" ? h.unit.source : h.unit.target);
       const at = text.toLocaleLowerCase().indexOf(q);
       return { ...h, start: Math.max(0, at), end: at >= 0 ? at + q.length : 0 };
     });
-  }, [lookupText, memories, c]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookupText, refs.concordance, c, memVersion]);
 
   // Track a selection made in the active source text, for "Add term" and concordance.
   useEffect(() => {
@@ -349,6 +434,8 @@ export function Editor({ projectId }: { projectId: string }) {
       </div>
     );
   }
+  const projectMemory = projectMemoryOf(project, target, state.memories);
+  const analysisMemories = memories.filter((m) => !m.project);
 
   const visible =
     filter === "all"
@@ -393,7 +480,7 @@ export function Editor({ projectId }: { projectId: string }) {
     const empty = !plain(runs).trim() && !runs.some(isTag);
     dispatch({
       type: "setTarget",
-      projectId,
+      at,
       segmentId: active.id,
       target: runs,
       status: empty ? "new" : status,
@@ -436,7 +523,24 @@ export function Editor({ projectId }: { projectId: string }) {
         )
       : [];
     const warnings = allIssues.map((q) => ({ kind: q.kind, text: q.text }));
-    dispatch({ type: "confirm", projectId, segmentId: active.id, warnings });
+    dispatch({ type: "confirm", at, segmentId: active.id, warnings });
+    // Confirmed translations go into the memories the project updates.
+    if (c && refs.update.length) {
+      const unit = unitOf(
+        segments.map((s) => (s.id === active.id ? active : s)),
+        index,
+        project!.name,
+        USER,
+        new Date().toISOString(),
+      );
+      void storeConfirmed(c, refs.update, unit).then((kept) => {
+        setMemVersion((v) => v + 1);
+        if (!kept)
+          notify(
+            "The memory is kept only until you close this page: this browser does not allow saving",
+          );
+      });
+    }
 
     const said = [
       warnings.length
@@ -474,45 +578,68 @@ export function Editor({ projectId }: { projectId: string }) {
     });
   }
 
+  async function bytesOf(f: NonNullable<typeof file>): Promise<Uint8Array> {
+    if (f.bytes) return f.bytes;
+    if (!f.url) throw new Error(`${f.name} has no original file to save into.`);
+    return new Uint8Array(
+      await (await fetch(new URL(f.url, document.baseURI))).arrayBuffer(),
+    );
+  }
+
   async function saveDocument() {
-    if (!project?.original) return;
+    if (!project || !file) return;
     setSaving(true);
     try {
-      const bytes =
-        project.original.bytes ??
-        new Uint8Array(
-          await (
-            await fetch(new URL(project.original.url!, document.baseURI))
-          ).arrayBuffer(),
-        );
-      if (project.original.format === "xliff") {
-        // A bilingual file goes back under its own name, for the tool it came from.
-        const out = await mergeXliff(bytes, segments);
-        const open = segments.filter(
-          (s) => s.status !== "confirmed" && !s.locked,
-        ).length;
-        const pending = open
-          ? ` ${plural(open, "segment is", "segments are")} not confirmed yet.`
-          : "";
-        const pkg = project.original.sdlPackage;
-        if (pkg) {
-          const rpx = await returnSdlPackage(pkg.bytes, { [pkg.path]: out });
+      const open = segments.filter(
+        (s) => s.status !== "confirmed" && !s.locked,
+      ).length;
+      const pending = open
+        ? ` ${plural(open, "segment is", "segments are")} not confirmed yet.`
+        : "";
+      if (file.kind === "xliff") {
+        const pkg = project.sdlPackage;
+        if (pkg && file.packagePath) {
+          // A return package holds every file of the package, translated.
+          const translated: Record<string, Uint8Array> = {};
+          for (const f of project.files) {
+            if (f.kind !== "xliff" || !f.packagePath || !f.targetLang) continue;
+            const segs = f.segments[f.targetLang] ?? [];
+            translated[f.packagePath] = await mergeXliff(
+              await bytesOf(f),
+              segs,
+            );
+          }
+          const rpx = await returnSdlPackage(pkg.bytes, translated);
           const name = pkg.name.replace(/\.sdlppx$/i, "") + ".sdlrpx";
           download(rpx, name, SDL_RETURN_TYPE);
-          notify(`Saved the return package ${name}.${pending}`);
+          notify(
+            `Saved the return package ${name} with ${plural(Object.keys(translated).length, "file", "files")}.${pending}`,
+          );
           return;
         }
-        download(out, project.file, XLIFF_TYPE);
-        notify(`Saved ${project.file}.${pending}`);
+        // A bilingual file goes back under its own name, for the tool it came from.
+        const out = await mergeXliff(await bytesOf(file), segments);
+        const name = file.name.split("/").pop() ?? file.name;
+        download(out, name, XLIFF_TYPE);
+        notify(`Saved ${name}.${pending}`);
         return;
       }
-      const out = await mergeDocx(bytes, source, target, segments);
-      const name = project.file.replace(/\.docx$/i, "") + `_${target}.docx`;
+      const out = await mergeDocx(
+        await bytesOf(file),
+        source,
+        target,
+        segments,
+      );
+      const base = (file.name.split("/").pop() ?? file.name).replace(
+        /\.docx$/i,
+        "",
+      );
+      const name = `${base}_${target}.docx`;
       download(out, name, DOCX_TYPE);
-      const open = segments.filter((s) => !plain(s.target).trim()).length;
+      const empty = segments.filter((s) => !plain(s.target).trim()).length;
       notify(
-        open
-          ? `Saved ${name}. ${plural(open, "segment", "segments")} without a translation kept the ${lang(source).name} text.`
+        empty
+          ? `Saved ${name}. ${plural(empty, "segment", "segments")} without a translation kept the ${lang(source).name} text.`
           : `Saved ${name}`,
       );
     } catch (e) {
@@ -615,9 +742,64 @@ export function Editor({ projectId }: { projectId: string }) {
             {project.name}
           </h1>
           <span className="editor-meta">
-            {project.file}
+            {workable.length > 1 ? (
+              <>
+                <label htmlFor="ed-file" className="sr-only">
+                  File
+                </label>
+                <select
+                  id="ed-file"
+                  className="select-small"
+                  value={file?.id ?? ""}
+                  onChange={(e) =>
+                    go({
+                      page: "editor",
+                      projectId,
+                      fileId: e.target.value,
+                      lang: target,
+                    })
+                  }
+                >
+                  {workable.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <span>{file?.name ?? project.files[0]?.name}</span>
+            )}
             <span className="lang-pair">
-              <LangChip code={source} /> → <LangChip code={target} />
+              <LangChip code={source} /> →{" "}
+              {targets.length > 1 ? (
+                <>
+                  <label htmlFor="ed-lang" className="sr-only">
+                    Target language
+                  </label>
+                  <select
+                    id="ed-lang"
+                    className="select-small"
+                    value={target}
+                    onChange={(e) =>
+                      go({
+                        page: "editor",
+                        projectId,
+                        fileId: file?.id,
+                        lang: e.target.value,
+                      })
+                    }
+                  >
+                    {targets.map((t) => (
+                      <option key={t} value={t}>
+                        {lang(t).name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <LangChip code={target} />
+              )}
             </span>
           </span>
         </div>
@@ -676,6 +858,10 @@ export function Editor({ projectId }: { projectId: string }) {
               {w("reviewMerge")} ({pendingChanges})
             </a>
           )}
+          <a className="btn btn-small" href={`#/project/${project.id}`}>
+            <Settings2 size={14} aria-hidden="true" />
+            Project settings
+          </a>
           <button
             type="button"
             className="btn btn-small"
@@ -694,7 +880,7 @@ export function Editor({ projectId }: { projectId: string }) {
             <BarChart3 size={14} aria-hidden="true" />
             Analysis
           </button>
-          {project.blocks && project.original?.format !== "xliff" && (
+          {file?.blocks && file.kind === "docx" && (
             <button
               type="button"
               className="btn btn-small"
@@ -705,23 +891,25 @@ export function Editor({ projectId }: { projectId: string }) {
               Preview
             </button>
           )}
-          {project.original && (
-            <button
-              type="button"
-              className="btn btn-small"
-              onClick={saveDocument}
-              disabled={saving}
-            >
-              <Download size={14} aria-hidden="true" />
-              {saving
-                ? "Saving…"
-                : project.original.sdlPackage
-                  ? "Save return package"
-                  : project.original.format === "xliff"
-                    ? "Save XLIFF"
-                    : "Save translated document"}
-            </button>
-          )}
+          {file &&
+            (file.bytes || file.url) &&
+            (file.kind === "docx" || file.kind === "xliff") && (
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={saveDocument}
+                disabled={saving}
+              >
+                <Download size={14} aria-hidden="true" />
+                {saving
+                  ? "Saving…"
+                  : project.sdlPackage && file.packagePath
+                    ? "Save return package"
+                    : file.kind === "xliff"
+                      ? "Save XLIFF"
+                      : "Save translated document"}
+              </button>
+            )}
         </div>
       </header>
 
@@ -735,9 +923,12 @@ export function Editor({ projectId }: { projectId: string }) {
             Translation memories
           </h2>
           <p className="help">
-            Matches come from these memories, in the core. Confirmed segments
-            are stored in the document memory. TMX files you import go into the
-            project memory.
+            Memories for {lang(target).name}, highest priority first. Matches
+            are scored in the core, with each memory's penalty taken off.{" "}
+            <a href={`#/project/${project.id}`}>
+              Change them in the project settings
+            </a>
+            .
           </p>
           {c && (
             <table className="table">
@@ -745,6 +936,7 @@ export function Editor({ projectId }: { projectId: string }) {
               <thead>
                 <tr>
                   <th scope="col">Memory</th>
+                  <th scope="col">Used for</th>
                   <th scope="col" className="num">
                     Units
                   </th>
@@ -754,44 +946,79 @@ export function Editor({ projectId }: { projectId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {memories.map((m) => (
-                  <tr key={m.name}>
-                    <th scope="row" className="cell-title">
-                      {m.label}
-                    </th>
-                    <td className="num">{fmtNum(tm.count(c, m.name))}</td>
-                    <td className="row">
-                      {m.kind === "project" && (
+                {[
+                  ...new Set(
+                    [...refs.lookup, ...refs.concordance, ...refs.update].map(
+                      (m) => m.name,
+                    ),
+                  ),
+                ].map((name) => {
+                  const look = refs.lookup.find((m) => m.name === name);
+                  const uses = [
+                    look
+                      ? `lookup${look.penalty ? ` (penalty ${look.penalty})` : ""}`
+                      : "",
+                    refs.concordance.some((m) => m.name === name)
+                      ? "concordance"
+                      : "",
+                    refs.update.some((m) => m.name === name)
+                      ? "updated on confirm"
+                      : "",
+                  ].filter(Boolean);
+                  const isProject = projectMemory?.name === name;
+                  return (
+                    <tr key={name}>
+                      <th scope="row" className="cell-title">
+                        {name}
+                        {isProject && (
+                          <span className="muted"> (project memory)</span>
+                        )}
+                      </th>
+                      <td>{uses.join(", ")}</td>
+                      <td className="num">{fmtNum(tm.count(c, name))}</td>
+                      <td className="row">
+                        {isProject && (
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            onClick={() => tmxInput.current?.click()}
+                          >
+                            <Upload size={14} aria-hidden="true" />
+                            Import TMX
+                          </button>
+                        )}
                         <button
                           type="button"
-                          className="btn btn-small"
-                          onClick={() => tmxInput.current?.click()}
+                          className="btn btn-quiet btn-small"
+                          onClick={() =>
+                            download(
+                              tm.exportTMX(c, name),
+                              `${name.replace(/[^\p{L}\p{N}]+/gu, "_")}.tmx`,
+                              "application/x-tmx+xml",
+                            )
+                          }
+                          disabled={tm.count(c, name) === 0}
                         >
-                          <Upload size={14} aria-hidden="true" />
-                          Import TMX
+                          <Download size={14} aria-hidden="true" />
+                          Export TMX
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn btn-quiet btn-small"
-                        onClick={() =>
-                          download(
-                            tm.exportTMX(c, m.name),
-                            `${m.label.replace(/[^\p{L}\p{N}]+/gu, "_")}.tmx`,
-                            "application/x-tmx+xml",
-                          )
-                        }
-                        disabled={tm.count(c, m.name) === 0}
-                      >
-                        <Download size={14} aria-hidden="true" />
-                        Export TMX
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
+          {c &&
+            refs.lookup.length +
+              refs.concordance.length +
+              refs.update.length ===
+              0 && (
+              <p className="muted">
+                This language of the project uses no memory, so the editor shows
+                no matches.
+              </p>
+            )}
           <input
             ref={tmxInput}
             type="file"
@@ -800,16 +1027,15 @@ export function Editor({ projectId }: { projectId: string }) {
             onChange={async (e) => {
               const f = e.target.files?.[0];
               e.target.value = "";
-              const proj = memories.find((m) => m.kind === "project");
-              if (!f || !c || !proj) return;
+              if (!f || !c || !projectMemory) return;
               try {
                 const st = tm.importTMX(
                   c,
-                  proj.name,
+                  projectMemory.name,
                   new Uint8Array(await f.arrayBuffer()),
                 );
                 setMemVersion((v) => v + 1);
-                const kept = await persistMemory(c, proj.name);
+                const kept = await persistMemory(c, projectMemory.name);
                 notify(
                   `Imported ${plural(st.stored, "unit", "units")} from ${f.name}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
                 );
@@ -836,17 +1062,24 @@ export function Editor({ projectId }: { projectId: string }) {
             Analysis
           </h2>
           <p className="help">
-            {project.file} against{" "}
-            {clientTm.map((m) => m.label).join(" and ") || "no memory"}, counted
-            as in Trados: context matches first, then repetitions inside the
-            document, then the best match. Below 50% counts as new.
+            {plural(
+              project.files.filter((f) => f.segments[target]).length,
+              "file",
+              "files",
+            )}{" "}
+            in {lang(target).name} against{" "}
+            {analysisMemories.map((m) => m.name).join(" and ") || "no memory"},
+            counted as in Trados: context matches first, then repetitions within
+            a file and across files, then the best match. Below 50% counts as
+            new. The project memory is left out: it holds this project's own
+            translations.
           </p>
           {c ? (
             <DialogAnalysis
               c={c}
-              segments={segments}
-              memories={clientTm}
-              rule={state.contextRule}
+              project={project}
+              target={target}
+              memories={analysisMemories}
             />
           ) : (
             <p className="muted">Loading the memory…</p>
@@ -872,7 +1105,7 @@ export function Editor({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <div
-          className={`editor-body${showPreview && project.blocks && project.original?.format !== "xliff" ? " with-preview" : ""}`}
+          className={`editor-body${showPreview && file?.blocks && file.kind === "docx" ? " with-preview" : ""}`}
         >
           <ol className="segments" aria-label="Segments">
             {visible.map((s) => {
@@ -949,27 +1182,25 @@ export function Editor({ projectId }: { projectId: string }) {
             })}
           </ol>
 
-          {showPreview &&
-            project.blocks &&
-            project.original?.format !== "xliff" && (
-              <section
-                className="preview-pane"
-                aria-label="Preview of the translated document"
-              >
-                <p className="preview-note">
-                  Layout from the Word file. Untranslated text appears in the
-                  source language. The saved file is exact.
-                </p>
-                <Preview
-                  blocks={project.blocks}
-                  segments={segments}
-                  activeId={activeId}
-                  sourceLang={source}
-                  targetLang={target}
-                  onPick={activate}
-                />
-              </section>
-            )}
+          {showPreview && file?.blocks && file.kind === "docx" && (
+            <section
+              className="preview-pane"
+              aria-label="Preview of the translated document"
+            >
+              <p className="preview-note">
+                Layout from the Word file. Untranslated text appears in the
+                source language. The saved file is exact.
+              </p>
+              <Preview
+                blocks={file.blocks}
+                segments={segments}
+                activeId={activeId}
+                sourceLang={source}
+                targetLang={target}
+                onPick={activate}
+              />
+            </section>
+          )}
 
           <aside className="results" aria-label="Translation results">
             <p id="seg-help" className="sr-only">
@@ -1033,7 +1264,10 @@ export function Editor({ projectId }: { projectId: string }) {
                   ) : (
                     <ul className="issues">
                       {allIssues.map((q) => (
-                        <li key={q.text} className={`issue issue-${q.kind}`}>
+                        <li
+                          key={q.text}
+                          className={`issue issue-${q.kind === "term-forbidden" ? "forbidden" : q.kind}`}
+                        >
                           <AlertTriangle size={14} aria-hidden="true" />
                           <span className="issue-text">{q.text}</span>
                           <button
@@ -1042,7 +1276,7 @@ export function Editor({ projectId }: { projectId: string }) {
                             onClick={() =>
                               dispatch({
                                 type: "ignoreIssue",
-                                projectId,
+                                at,
                                 segmentId: active.id,
                                 text: q.text,
                               })
@@ -1168,6 +1402,7 @@ export function Editor({ projectId }: { projectId: string }) {
                           now: new Date().toISOString(),
                           input: {
                             projectId,
+                            lang: target,
                             source: src,
                             target: tgt,
                             note,
@@ -1290,10 +1525,14 @@ export function Editor({ projectId }: { projectId: string }) {
   );
 }
 
-function unitMeta(u: TmUnit & { memory?: MemoryInfo }): string {
-  if (u.docSegment) return `This document, segment ${u.docSegment}`;
-  const parts = [u.memory?.label ?? "Memory"];
-  if (u.project && u.project !== u.memory?.label) parts.push(u.project);
+function unitMeta(u: TmUnit & { memory?: MemoryRef }): string {
+  const parts = [
+    u.memory
+      ? `${u.memory.name}${u.memory.project ? " (project memory)" : ""}`
+      : "Memory",
+  ];
+  if (u.memory?.penalty) parts.push(`penalty ${u.memory.penalty}`);
+  if (u.project && u.project !== u.memory?.name) parts.push(u.project);
   if (u.by) parts.push(u.by);
   if (u.at) parts.push(fmtDate(u.at));
   return parts.join(", ");
@@ -1397,27 +1636,32 @@ function ScoreBadge({
 
 function DialogAnalysis({
   c,
-  segments,
+  project,
+  target,
   memories,
-  rule,
 }: {
-  c: NonNullable<ReturnType<typeof core>>;
-  segments: Segment[];
-  memories: MemoryInfo[];
-  rule: ContextRule;
+  c: CoreApi;
+  project: NonNullable<
+    ReturnType<typeof useStore>["state"]["projects"][number]
+  >;
+  target: LangCode;
+  memories: MemoryRef[];
 }) {
   // Computed when the dialog renders, against the memories as they are now.
-  const a = useMemo(
-    () => analyze(c, memories, segments, rule),
-    [c, memories, segments, rule],
+  const r = useMemo(
+    () =>
+      analyzeFiles(
+        c,
+        project.files,
+        project.sourceLang,
+        target,
+        memories,
+        project.context,
+      ),
+    [c, project.files, project.sourceLang, target, memories, project.context],
   );
   return (
-    <AnalysisTable
-      rows={a.rows}
-      words={a.words}
-      segments={a.segments}
-      caption="Match analysis"
-    />
+    <AnalysisTable rows={r.rows} total={r.total} caption="Match analysis" />
   );
 }
 

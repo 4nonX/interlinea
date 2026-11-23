@@ -16,47 +16,65 @@ import {
   STATE_VERSION,
   takeResetRequest,
 } from "./persist";
-import { forgetMemories, preloadMemories } from "./editor/memory";
+import {
+  forgetMemories,
+  preloadMemories,
+  renameSavedMemory,
+} from "./editor/memory";
+import { migrateV1 } from "./migrate";
 import {
   BASE_SNAPSHOTS,
   BRANCHED_AT,
   DEFAULT_INFO_TYPES,
   INITIAL_ENTRIES,
+  INITIAL_MEMORIES,
   INITIAL_PROJECTS,
   INITIAL_TERMBASES,
+  SERVER,
   USER,
+  projectProgress,
   type Commit,
   type Entry,
   type InfoType,
   type LangCode,
-  type Location,
   type Project,
-  type SetupMode,
+  type Template,
   type Termbase,
+  type TranslationMemory,
 } from "./data";
 import { applyMerge, type Change, type Decision } from "./merge";
 import {
-  confirmedShare,
   normalize,
-  segmentText,
   sourceKey,
-  type Block,
   type Run,
   type Segment,
   type SegmentStatus,
 } from "./editor/model";
 
+/** Where a segment list is: a file of a project, in a target language. */
+export interface SegmentsAt {
+  projectId: string;
+  fileId: string;
+  lang: LangCode;
+}
+
 function withSegments(
   state: State,
-  projectId: string,
+  at: SegmentsAt,
   f: (segments: Segment[]) => Segment[],
 ): State {
   return {
     ...state,
     projects: state.projects.map((p) => {
-      if (p.id !== projectId || !p.segments) return p;
-      const segments = f(p.segments);
-      return { ...p, segments, progress: confirmedShare(segments) };
+      if (p.id !== at.projectId) return p;
+      const files = p.files.map((file) => {
+        const segs = file.id === at.fileId ? file.segments[at.lang] : undefined;
+        return segs
+          ? { ...file, segments: { ...file.segments, [at.lang]: f(segs) } }
+          : file;
+      });
+      const next = { ...p, files };
+      return { ...next, progress: projectProgress(next) };
     }),
   };
 }
@@ -65,6 +83,8 @@ export interface State {
   termbases: Termbase[];
   entries: Entry[];
   projects: Project[];
+  memories: TranslationMemory[];
+  templates: Template[];
   baseSnapshots: Record<string, Entry>;
   branchedAt: Record<string, string>;
   gitWords: boolean;
@@ -72,32 +92,20 @@ export interface State {
   autoInsert: boolean;
   /** Editor: confirming fills identical segments further on (auto-propagation). */
   autoPropagate: boolean;
-  /** Context matches: the segment before must match (Trados) or before and after (memoQ). */
+  /** Context matches for new projects: the segment before must match (Trados) or before and after (memoQ). */
   contextRule: "previous" | "both";
   toast: { id: number; text: string } | null;
 }
 
-export interface NewProjectInput {
-  name: string;
-  file: string;
-  words: number;
-  sourceLang: LangCode;
-  targetLangs: LangCode[];
-  client?: string;
-  mode: SetupMode;
-  masters: string[];
-  location: Location;
-  /** Document text when the prototype could read it; becomes the segments. */
-  text: string | null;
-  /** Units, structure and bytes from the core's file filter; used instead of text. */
-  extracted?: {
-    segments: Segment[];
-    blocks: Block[];
-    bytes: Uint8Array;
-    format: "docx" | "xliff";
-    /** The Trados project package the file came from. */
-    sdlPackage?: { bytes: Uint8Array; name: string; path: string };
-  };
+/** A project's settings or files changed, with what that changes elsewhere. */
+export interface ProjectChange {
+  project: Project;
+  /** Masters that gain the project languages they lack. */
+  addLanguages: string[];
+  /** Project memories for new target languages. */
+  addMemories: TranslationMemory[];
+  /** Project memories of target languages the project no longer has. */
+  removeMemories: string[];
 }
 
 /** The result of an import the user confirmed; worked out with the core's plan. */
@@ -118,6 +126,7 @@ export interface ImportInput {
 
 export interface NewTermInput {
   projectId: string;
+  lang: LangCode;
   source: string;
   target: string;
   note?: string;
@@ -127,7 +136,13 @@ export interface NewTermInput {
 type Action =
   | { type: "hydrate"; state: SavedState }
   | { type: "resetAll" }
-  | { type: "createProject"; input: NewProjectInput; id: string; now: string }
+  | { type: "createProject"; change: ProjectChange; now: string }
+  | { type: "updateProject"; change: ProjectChange }
+  | { type: "deleteProject"; projectId: string }
+  | { type: "createMemory"; memory: TranslationMemory }
+  | { type: "deleteMemory"; name: string }
+  | { type: "saveTemplate"; template: Template }
+  | { type: "deleteTemplate"; templateId: string }
   | {
       type: "merge";
       projectId: string;
@@ -164,14 +179,14 @@ type Action =
   | { type: "setContextRule"; value: "previous" | "both" }
   | {
       type: "confirm";
-      projectId: string;
+      at: SegmentsAt;
       segmentId: string;
       warnings: { kind: string; text: string }[];
     }
-  | { type: "ignoreIssue"; projectId: string; segmentId: string; text: string }
+  | { type: "ignoreIssue"; at: SegmentsAt; segmentId: string; text: string }
   | {
       type: "setTarget";
-      projectId: string;
+      at: SegmentsAt;
       segmentId: string;
       target: Run[];
       status: SegmentStatus;
@@ -221,6 +236,8 @@ const initial: State = {
   termbases: INITIAL_TERMBASES,
   entries: INITIAL_ENTRIES,
   projects: INITIAL_PROJECTS,
+  memories: INITIAL_MEMORIES,
+  templates: [],
   baseSnapshots: BASE_SNAPSHOTS,
   branchedAt: BRANCHED_AT,
   gitWords: false,
@@ -245,85 +262,122 @@ function commit(at: string, summary: string): Commit {
 function reducer(state: State, action: Action): State {
   switch (action.type) {
     case "createProject": {
-      const { input, id, now } = action;
-      const termbases = [...state.termbases];
-      let projectTermbaseId: string | undefined;
-      const masters = input.masters
-        .map((mid) => termbases.find((t) => t.id === mid)!)
-        .filter(Boolean);
-      const langs = [input.sourceLang, ...input.targetLangs];
-      // A master that lacks a project language gains it, as memoQ does.
-      for (const m of masters) {
-        const missing = langs.filter((l) => !m.languages.includes(l));
-        if (missing.length) {
-          const i = termbases.findIndex((t) => t.id === m.id);
-          termbases[i] = { ...m, languages: [...m.languages, ...missing] };
-        }
+      const { change, now } = action;
+      const p = change.project;
+      const langs = [p.sourceLang, ...p.targetLangs];
+      let termbases = withLanguages(
+        state.termbases,
+        change.addLanguages,
+        langs,
+      );
+      let setup = p.setup;
+      if (setup.mode !== "direct") {
+        const masters = setup.masters
+          .map((mid) => termbases.find((t) => t.id === mid))
+          .filter((t): t is Termbase => !!t);
+        const id = `tb-${p.id}`;
+        termbases = [
+          ...termbases,
+          {
+            id,
+            name: `${p.name} (project)`,
+            kind: "project",
+            location: setup.location,
+            server:
+              setup.location === "server"
+                ? (masters.find((m) => m.server)?.server ?? SERVER)
+                : undefined,
+            languages: langs,
+            client: p.client,
+            basedOn: setup.mode === "layered" ? setup.masters : [],
+            projectId: p.id,
+            infoTypes: masters[0]?.infoTypes ?? DEFAULT_INFO_TYPES,
+          },
+        ];
+        setup = { ...setup, projectTermbaseId: id };
       }
-      if (input.mode !== "direct") {
-        projectTermbaseId = `tb-${id}`;
-        termbases.push({
-          id: projectTermbaseId,
-          name: `${input.name} (project)`,
-          kind: "project",
-          location: input.location,
-          server:
-            input.location === "server"
-              ? (masters.find((m) => m.server)?.server ??
-                "terms.kanzlei-weber.example")
-              : undefined,
-          languages: langs,
-          client: input.client,
-          basedOn: input.mode === "layered" ? input.masters : [],
-          projectId: id,
-          infoTypes: masters[0]?.infoTypes ?? DEFAULT_INFO_TYPES,
-        });
-      }
-      const project: Project = {
-        id,
-        name: input.name,
-        file: input.file,
-        words: input.words,
-        sourceLang: input.sourceLang,
-        targetLangs: input.targetLangs,
-        client: input.client,
-        setup: {
-          mode: input.mode,
-          masters: input.masters,
-          projectTermbaseId,
-          location: input.location,
-        },
-        createdAt: now,
-        // A bilingual file can arrive partly or fully translated.
-        progress: input.extracted
-          ? confirmedShare(input.extracted.segments)
-          : 0,
-        segments: input.extracted
-          ? input.extracted.segments
-          : input.text
-            ? segmentText(input.text).map((src, i) => ({
-                id: `s${i + 1}`,
-                source: [src],
-                target: [],
-                status: "new" as const,
-              }))
-            : undefined,
-        blocks: input.extracted?.blocks,
-        original: input.extracted
-          ? {
-              bytes: input.extracted.bytes,
-              format: input.extracted.format,
-              sdlPackage: input.extracted.sdlPackage,
-            }
-          : undefined,
-      };
+      const project = { ...p, setup, progress: projectProgress(p) };
       return {
         ...state,
         termbases,
+        memories: [...state.memories, ...change.addMemories],
         projects: [project, ...state.projects],
-        branchedAt: { ...state.branchedAt, [id]: now },
+        branchedAt: { ...state.branchedAt, [p.id]: now },
       };
     }
+    case "updateProject": {
+      const { change } = action;
+      const p = change.project;
+      const langs = [p.sourceLang, ...p.targetLangs];
+      const termbases = withLanguages(
+        state.termbases,
+        change.addLanguages,
+        langs,
+      ).map((t) => {
+        if (t.id !== p.setup.projectTermbaseId) return t;
+        // The project termbase follows the project's languages and masters.
+        return {
+          ...t,
+          languages: [...new Set([...t.languages, ...langs])],
+          basedOn: p.setup.mode === "layered" ? p.setup.masters : t.basedOn,
+          client: p.client,
+        };
+      });
+      const removed = new Set(change.removeMemories);
+      return {
+        ...state,
+        termbases,
+        memories: [
+          ...state.memories.filter((m) => !removed.has(m.name)),
+          ...change.addMemories,
+        ],
+        projects: state.projects.map((x) =>
+          x.id === p.id ? { ...p, progress: projectProgress(p) } : x,
+        ),
+      };
+    }
+    case "deleteProject": {
+      const p = state.projects.find((x) => x.id === action.projectId);
+      if (!p) return state;
+      const ptb = p.setup.projectTermbaseId;
+      const gone = new Set(
+        state.entries.filter((e) => e.termbaseId === ptb).map((e) => e.id),
+      );
+      const baseSnapshots = { ...state.baseSnapshots };
+      for (const id of gone) delete baseSnapshots[id];
+      const branchedAt = { ...state.branchedAt };
+      delete branchedAt[p.id];
+      return {
+        ...state,
+        projects: state.projects.filter((x) => x.id !== p.id),
+        termbases: state.termbases.filter((t) => t.id !== ptb),
+        entries: state.entries.filter((e) => !gone.has(e.id)),
+        memories: state.memories.filter((m) => m.projectId !== p.id),
+        baseSnapshots,
+        branchedAt,
+      };
+    }
+    case "createMemory":
+      return { ...state, memories: [...state.memories, action.memory] };
+    case "deleteMemory":
+      return {
+        ...state,
+        memories: state.memories.filter((m) => m.name !== action.name),
+      };
+    case "saveTemplate":
+      return {
+        ...state,
+        templates: state.templates.some((t) => t.id === action.template.id)
+          ? state.templates.map((t) =>
+              t.id === action.template.id ? action.template : t,
+            )
+          : [...state.templates, action.template],
+      };
+    case "deleteTemplate":
+      return {
+        ...state,
+        templates: state.templates.filter((t) => t.id !== action.templateId),
+      };
     case "merge": {
       const project = state.projects.find((p) => p.id === action.projectId)!;
       const ptb = project.setup.projectTermbaseId!;
@@ -437,7 +491,7 @@ function reducer(state: State, action: Action): State {
     case "setContextRule":
       return { ...state, contextRule: action.value };
     case "setTarget":
-      return withSegments(state, action.projectId, (segments) =>
+      return withSegments(state, action.at, (segments) =>
         segments.map((sg) =>
           sg.id === action.segmentId
             ? {
@@ -456,7 +510,7 @@ function reducer(state: State, action: Action): State {
         ),
       );
     case "confirm":
-      return withSegments(state, action.projectId, (segments) => {
+      return withSegments(state, action.at, (segments) => {
         const done = segments.find((sg) => sg.id === action.segmentId)!;
         const key = sourceKey(done.source);
         const ignored = new Set(done.ignored ?? []);
@@ -486,7 +540,7 @@ function reducer(state: State, action: Action): State {
         });
       });
     case "ignoreIssue":
-      return withSegments(state, action.projectId, (segments) =>
+      return withSegments(state, action.at, (segments) =>
         segments.map((sg) =>
           sg.id === action.segmentId
             ? {
@@ -502,7 +556,7 @@ function reducer(state: State, action: Action): State {
       const p = state.projects.find((x) => x.id === input.projectId)!;
       const termbaseId =
         p.setup.mode === "direct"
-          ? p.setup.masters[0]!
+          ? (p.setup.writeTo ?? p.setup.masters[0]!)
           : p.setup.projectTermbaseId!;
       const tb = state.termbases.find((t) => t.id === termbaseId)!;
       const entry: Entry = {
@@ -512,7 +566,7 @@ function reducer(state: State, action: Action): State {
         concept: {},
         terms: {
           [p.sourceLang]: [{ text: input.source, status: "proposed" }],
-          [p.targetLangs[0]!]: [
+          [input.lang]: [
             {
               text: input.target,
               status: "proposed",
@@ -533,7 +587,7 @@ function reducer(state: State, action: Action): State {
       };
       // A termbase gains the project's languages the first time they are used.
       const languages = [
-        ...new Set([...tb.languages, p.sourceLang, p.targetLangs[0]!]),
+        ...new Set([...tb.languages, p.sourceLang, input.lang]),
       ];
       return {
         ...state,
@@ -760,9 +814,26 @@ function looksValid(s: unknown): s is SavedState {
     Array.isArray(x.termbases) &&
     Array.isArray(x.entries) &&
     Array.isArray(x.projects) &&
+    Array.isArray(x.memories) &&
+    Array.isArray(x.templates) &&
     typeof x.baseSnapshots === "object" &&
     typeof x.branchedAt === "object"
   );
+}
+
+/** Masters that gain the languages they lack, as the user chose. */
+function withLanguages(
+  termbases: Termbase[],
+  ids: string[],
+  langs: LangCode[],
+): Termbase[] {
+  return termbases.map((t) => {
+    if (!ids.includes(t.id)) return t;
+    const missing = langs.filter((l) => !t.languages.includes(l));
+    return missing.length
+      ? { ...t, languages: [...t.languages, ...missing] }
+      : t;
+  });
 }
 
 // Loaded once per page, also when React runs effects twice in development.
@@ -775,11 +846,22 @@ function loadSaved(): Promise<SavedState | null> {
       forgetMemories();
       return null;
     }
-    await preloadMemories();
     const rec = await load<SavedRecord>("state");
-    return rec && rec.version === STATE_VERSION && looksValid(rec.state)
-      ? rec.state
-      : null;
+    let state: SavedState | null = null;
+    if (rec?.version === 1) {
+      // Work saved before projects had several files, languages and
+      // memories: moved into the current shape, nothing dropped.
+      const m = migrateV1(
+        rec.state as unknown as Parameters<typeof migrateV1>[0],
+      );
+      for (const [from, to] of m.renamedMemories)
+        await renameSavedMemory(from, to);
+      state = m.state;
+    } else if (rec?.version === STATE_VERSION && looksValid(rec.state)) {
+      state = rec.state;
+    }
+    await preloadMemories();
+    return state;
   })();
   return boot;
 }

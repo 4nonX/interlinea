@@ -1,67 +1,194 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
   FileText,
+  FolderOpen,
   Info,
-  Plus,
+  Upload,
   X,
 } from "lucide-react";
 import {
+  DEFAULT_PREPARE,
+  DEFAULT_QA,
   LANGUAGES,
   SAMPLE_DOCS,
   lang,
   primary,
+  projectMemoryName,
+  type FileRole,
   type LangCode,
-  type Location,
-  type SetupMode,
+  type Project,
+  type ProjectFile,
+  type TranslationMemory,
 } from "../data";
 import {
   CONFIDENT,
   detectLanguage,
-  readDocument,
-  readPackageFile,
+  readFiles,
   type Detection,
 } from "../detect";
-import { extractDocx, XLIFF_FORMAT_NAME, type Extracted } from "../core";
-import { analyze } from "../editor/analysis";
-import { clientMemories } from "../editor/memory";
-import { core, loadCore } from "../core";
-import { segmentText } from "../editor/model";
+import { core, loadCore, XLIFF_FORMAT_NAME, type Extracted } from "../core";
+import {
+  buildFiles,
+  docName,
+  docTarget,
+  draftDocs,
+  extractWordDocs,
+  kindOf,
+  knownLang,
+  readable,
+  type DraftDoc,
+} from "../setup";
+import { openRefs, persistMemory } from "../editor/memory";
 import { AnalysisTable } from "../components/AnalysisTable";
-import { takePendingDoc, type PendingDoc } from "../draft";
-import type { Segment } from "../editor/model";
-import { useStore, useWords, type NewProjectInput } from "../store";
-import { fmtNum, plural } from "../format";
-import { LangChip, LocationBadge, PageHeader } from "../components/ui";
+import { takePendingDocs, type PendingDoc } from "../draft";
+import { useStore } from "../store";
+import { fmtDate, fmtNum, plural } from "../format";
+import { LangChip, PageHeader } from "../components/ui";
 import { go } from "../App";
+import {
+  analyzeFiles,
+  draftOf,
+  draftOfTemplate,
+  memoryRefs,
+  pretranslateFiles,
+  problemsAt,
+  templateOf,
+  validate,
+  type CoreReport,
+  type Draft,
+  type Problem,
+} from "../project";
+import {
+  ChecksSection,
+  checksOn,
+  MemoriesSection,
+  PrepareSection,
+  Problems,
+  TargetPicker,
+  TerminologySection,
+  newSetting,
+  type NewMemory,
+} from "./ProjectSections";
+import { droppedFiles, chosenFiles } from "../files";
 
-const STEPS = ["Languages", "Terminology", "Review"] as const;
+const STEPS = [
+  "Start",
+  "Files and languages",
+  "Memories",
+  "Terminology",
+  "Review",
+] as const;
+
+/** The fields each step sets, for its problems and its Continue button. */
+const STEP_FIELDS: string[][] = [
+  [],
+  ["name", "client", "due", "sourceLang", "targetLangs", "files"],
+  ["memories"],
+  ["terminology"],
+  [],
+];
+
+type Start =
+  | { kind: "blank" }
+  | { kind: "template"; id: string }
+  | { kind: "project"; id: string };
 
 function nameFromFile(file: string): string {
   return file
+    .replace(/^.*\//, "")
     .replace(/\.[^.]+$/, "")
     .replace(/[_]+/g, " ")
     .trim();
 }
 
+function emptyDraft(contextRule: Draft["context"]): Draft {
+  return {
+    name: "",
+    client: "",
+    description: "",
+    due: "",
+    sourceLang: "",
+    targetLangs: [],
+    files: [],
+    memories: {},
+    projectMemory: true,
+    terminology: {
+      mode: "own",
+      masters: [],
+      addLanguages: [],
+      location: "local",
+      autoUpdate: true,
+    },
+    context: contextRule,
+    qa: DEFAULT_QA,
+    prepare: DEFAULT_PREPARE,
+  };
+}
+
 export function NewProject({ sample }: { sample?: number }) {
   const { state, dispatch, notify } = useStore();
-  const w = useWords();
-  const [doc, setDoc] = useState<PendingDoc | null>(() => {
-    const pending = takePendingDoc();
-    if (pending) return pending;
-    // Deep link to a sample document: #/new/sample/<index>
+  const [docs, setDocs] = useState<DraftDoc[]>(() => {
+    const pending = takePendingDocs();
+    if (pending.length) return draftDocs(pending);
     const s = sample !== undefined ? SAMPLE_DOCS[sample] : undefined;
     return s
-      ? { file: s.file, words: s.words, text: s.text || null, client: s.client }
-      : null;
+      ? draftDocs([
+          {
+            file: s.file,
+            words: s.words,
+            text: s.text || null,
+            client: s.client,
+          },
+        ])
+      : [];
   });
   const [step, setStep] = useState(0);
   const stepHeading = useRef<HTMLHeadingElement>(null);
+  const [draft, setDraft] = useState<Draft>(() => {
+    const d = emptyDraft(state.contextRule);
+    d.client = docs.find((x) => x.doc.client)?.doc.client ?? "";
+    return d;
+  });
+  const [start, setStart] = useState<Start>({ kind: "blank" });
+  const [touched, setTouched] = useState({
+    name: false,
+    source: false,
+    targets: false,
+    masters: false,
+    location: false,
+    memories: false,
+  });
+  const touch = (k: keyof typeof touched) =>
+    setTouched((t) => (t[k] ? t : { ...t, [k]: true }));
+  const [created, setCreated] = useState<NewMemory[]>([]);
+  const [asTemplate, setAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [creating, setCreating] = useState(false);
 
-  // Most frequent source and target languages of earlier projects: the fallback
-  // when a document gives no usable text.
+  const [c, setC] = useState(() => core());
+  useEffect(() => {
+    if (c) return;
+    let live = true;
+    loadCore().then(
+      (x) => live && setC(x),
+      (e: unknown) =>
+        live &&
+        notify(
+          `The core could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+    );
+    return () => {
+      live = false;
+    };
+  }, [c, notify]);
+
+  useEffect(() => {
+    stepHeading.current?.focus();
+  }, [step]);
+
+  // Earlier projects suggest the languages when the files give none.
   const recentSource = useMemo(
     () => mostCommon(state.projects.map((p) => p.sourceLang)) ?? "de-DE",
     [state.projects],
@@ -71,229 +198,493 @@ export function NewProject({ sample }: { sample?: number }) {
     [state.projects],
   );
   const clients = useMemo(
-    () => [
-      ...new Set(
-        state.termbases.map((t) => t.client).filter(Boolean) as string[],
+    () =>
+      [
+        ...new Set(
+          [
+            ...state.termbases.map((t) => t.client),
+            ...state.memories.map((m) => m.client),
+            ...state.projects.map((p) => p.client),
+          ].filter(Boolean) as string[],
+        ),
+      ].sort(),
+    [state.termbases, state.memories, state.projects],
+  );
+
+  const translatable = docs.filter((d) => d.role === "translatable");
+  const bilingual = translatable.filter((d) => d.doc.bilingual);
+  const bilingualSources = [
+    ...new Set(bilingual.map((d) => knownLang(d.doc.bilingual!.sourceLang))),
+  ];
+  const fixedTargets = [
+    ...new Set(
+      bilingual
+        .map((d) => d.doc.bilingual!.targetLang)
+        .filter(Boolean)
+        .map((t) => knownLang(t!)),
+    ),
+  ];
+  const packages = [
+    ...new Set(docs.map((d) => d.doc.sdlPackage?.name).filter(Boolean)),
+  ];
+  const detection: Detection = useMemo(
+    () =>
+      detectLanguage(
+        translatable
+          .filter((d) => !d.doc.bilingual)
+          .map((d) => d.doc.text ?? "")
+          .join("\n")
+          .slice(0, 20000),
       ),
-    ],
-    [state.termbases],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [docs],
   );
 
-  const detection: Detection | null = useMemo(
-    () => (doc ? detectLanguage(doc.text ?? "") : null),
-    [doc],
-  );
-  const [source, setSource] = useState<LangCode>("");
-  const [sourceTouched, setSourceTouched] = useState(false);
-  const [targets, setTargets] = useState<LangCode[]>([]);
-  const [name, setName] = useState("");
-  const [client, setClient] = useState("");
-
+  // Suggestions follow the files and the start until the user sets a field.
   useEffect(() => {
-    if (!doc) return;
-    setName(nameFromFile(doc.file));
-    setClient(doc.client ?? "");
-    if (doc.bilingual) {
-      // A bilingual file names its languages; they cannot change.
-      setSource(knownLang(doc.bilingual.sourceLang));
-      setSourceTouched(true);
-      setTargets(
-        doc.bilingual.targetLang ? [knownLang(doc.bilingual.targetLang)] : [],
+    setDraft((d) => {
+      let next = d;
+      if (!touched.name) {
+        const first = docs[0];
+        const name = first
+          ? nameFromFile(
+              first.doc.sdlPackage?.name ?? first.doc.path ?? first.doc.file,
+            )
+          : "";
+        if (name !== d.name) next = { ...next, name };
+      }
+      if (bilingualSources.length === 1) {
+        if (next.sourceLang !== bilingualSources[0])
+          next = { ...next, sourceLang: bilingualSources[0]! };
+      } else if (!touched.source && start.kind === "blank") {
+        const src = detection.code ?? recentSource;
+        if (next.sourceLang !== src) next = { ...next, sourceLang: src };
+      }
+      let targets = next.targetLangs.filter((t) => t !== next.sourceLang);
+      for (const t of fixedTargets)
+        if (!targets.includes(t)) targets = [...targets, t];
+      if (
+        !touched.targets &&
+        start.kind === "blank" &&
+        fixedTargets.length === 0
+      ) {
+        const suggested = recentTargets.filter(
+          (t) => primary(t) !== primary(next.sourceLang),
+        );
+        targets = suggested.length
+          ? [suggested[0]!]
+          : [primary(next.sourceLang) === "en" ? "de-DE" : "en-GB"];
+      }
+      if (targets.join() !== next.targetLangs.join())
+        next = { ...next, targetLangs: targets };
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docs, detection, start, touched.name, touched.source, touched.targets]);
+
+  // Memory settings exist only for the project's target languages; the
+  // client's memories that fit are suggested until the user edits them.
+  useEffect(() => {
+    setDraft((d) => {
+      const memories: Draft["memories"] = {};
+      for (const t of d.targetLangs) {
+        memories[t] = touched.memories
+          ? (d.memories[t] ?? [])
+          : state.memories
+              .filter(
+                (m) =>
+                  !m.projectId &&
+                  !!d.client &&
+                  m.client === d.client &&
+                  primary(m.sourceLang) === primary(d.sourceLang) &&
+                  primary(m.targetLang) === primary(t),
+              )
+              .map((m) => newSetting(m.name, d.projectMemory));
+      }
+      const same =
+        Object.keys(memories).length === Object.keys(d.memories).length &&
+        Object.entries(memories).every(
+          ([k, v]) => JSON.stringify(v) === JSON.stringify(d.memories[k]),
+        );
+      return same ? d : { ...d, memories };
+    });
+  }, [
+    draft.targetLangs,
+    draft.sourceLang,
+    draft.client,
+    draft.projectMemory,
+    touched.memories,
+    state.memories,
+  ]);
+
+  // Masters for the client are suggested until the user chooses.
+  useEffect(() => {
+    if (touched.masters || start.kind !== "blank") return;
+    setDraft((d) => {
+      const masters = state.termbases
+        .filter(
+          (t) => t.kind === "master" && !!d.client && t.client === d.client,
+        )
+        .map((t) => t.id);
+      const mode = masters.length ? "layered" : "own";
+      const server = state.termbases.some(
+        (t) => masters.includes(t.id) && t.location === "server",
       );
-      return;
-    }
-    const detected = detection?.code ?? null;
-    const src = detected ?? recentSource;
-    setSource(src);
-    setSourceTouched(false);
-    const suggested = recentTargets.filter((t) => primary(t) !== primary(src));
-    setTargets(
-      suggested.length
-        ? [suggested[0]!]
-        : [primary(src) === "en" ? "de-DE" : "en-GB"],
-    );
-  }, [doc]);
+      const location = touched.location
+        ? d.terminology.location
+        : server
+          ? "server"
+          : "local";
+      const t = d.terminology;
+      if (
+        t.masters.join() === masters.join() &&
+        t.mode === mode &&
+        t.location === location
+      )
+        return d;
+      return {
+        ...d,
+        terminology: {
+          ...t,
+          masters,
+          mode,
+          location,
+          addLanguages: [],
+          writeTo: undefined,
+        },
+      };
+    });
+  }, [draft.client, touched.masters, touched.location, start, state.termbases]);
 
-  // Terminology choices.
-  const masters = state.termbases.filter((t) => t.kind === "master");
-  const [selectedMasters, setSelectedMasters] = useState<string[]>([]);
-  const [mode, setMode] = useState<SetupMode>("layered");
-  const [directTarget, setDirectTarget] = useState<string>("");
-  const [location, setLocation] = useState<Location>("local");
-  const [autoUpdate, setAutoUpdate] = useState(true);
-  const [mastersTouched, setMastersTouched] = useState(false);
+  function applyStart(s: Start) {
+    setStart(s);
+    if (s.kind === "blank") return;
+    const tpl =
+      s.kind === "template"
+        ? state.templates.find((t) => t.id === s.id)
+        : undefined;
+    const earlier =
+      s.kind === "project"
+        ? state.projects.find((p) => p.id === s.id)
+        : undefined;
+    const from = tpl ? draftOfTemplate(tpl) : earlier ? draftOf(earlier) : null;
+    if (!from) return;
+    setDraft((d) => ({
+      ...d,
+      ...from,
+      name: d.name,
+      due: "",
+      description: "",
+      // The memories of the earlier project, but not its own project memory.
+      memories: from.memories,
+      terminology: { ...from.terminology, addLanguages: [] },
+    }));
+    setTouched((t) => ({
+      ...t,
+      source: true,
+      targets: true,
+      masters: true,
+      location: true,
+      memories: true,
+    }));
+  }
 
-  // Suggest masters for the client and the document's source language until
-  // the user changes the selection.
-  useEffect(() => {
-    if (mastersTouched) return;
-    const byClient = masters
-      .filter((m) => client && m.client === client)
-      .map((m) => m.id);
-    setSelectedMasters(byClient);
-  }, [client, mastersTouched]);
+  const files: Draft["files"] = docs.map((d) => ({
+    name: docName(d),
+    role: d.role,
+    targetLang: docTarget(d),
+  }));
+  const full: Draft = { ...draft, files };
 
-  useEffect(() => {
-    if (selectedMasters.length === 0 && mode !== "own") setMode("own");
-    if (selectedMasters.length > 0 && mode === "own" && !mastersTouched)
-      setMode("layered");
-    if (!selectedMasters.includes(directTarget))
-      setDirectTarget(selectedMasters[0] ?? "");
-    const serverMaster = state.termbases.find(
-      (t) => selectedMasters.includes(t.id) && t.location === "server",
-    );
-    if (!mastersTouched) setLocation(serverMaster ? "server" : "local");
-  }, [selectedMasters]);
-
-  useEffect(() => {
-    stepHeading.current?.focus();
-  }, [step]);
-
-  const serverAvailable = state.termbases.some((t) => t.location === "server");
-  const projectLangs = [source, ...targets];
-  const targetError =
-    targets.length === 0
-      ? "Choose at least one target language."
-      : targets.includes(source)
-        ? "A target language can't be the same as the source language."
-        : null;
-  const nameError = name.trim() ? null : "Give the project a name.";
-
-  const [creating, setCreating] = useState(false);
-  // Word documents are extracted again with the chosen source language when
-  // the review step opens; the analysis and the new project both use it.
-  const [prepared, setPrepared] = useState<{
-    lang: LangCode;
-    ex: Extracted;
-  } | null>(null);
-  useEffect(() => {
+  // The setup checks of the core, and the few that need the prototype's data.
+  const problems: Problem[] = useMemo(() => {
+    if (!c) return [];
+    const ps = validate(c, full, {
+      memories: [...state.memories, ...created.map((n) => n.memory)],
+      termbases: state.termbases,
+    });
     if (
-      step !== 2 ||
-      !doc?.bytes ||
-      doc.bilingual ||
-      !source ||
-      prepared?.lang === source
+      state.projects.some(
+        (p) => p.name.toLowerCase() === full.name.trim().toLowerCase(),
+      )
     )
-      return;
+      ps.push({
+        field: "name",
+        message: "A project with this name exists already.",
+      });
+    if (bilingualSources.length > 1)
+      ps.push({
+        field: "files",
+        message: `The bilingual files have different source languages (${bilingualSources.map((l) => lang(l).name).join(", ")}). A project has one source language.`,
+      });
+    if (packages.length > 1)
+      ps.push({
+        field: "files",
+        message:
+          "A project holds the files of one Trados package, so it can be saved back as one return package.",
+      });
+    if (asTemplate && step === 4) {
+      if (!templateName.trim())
+        ps.push({ field: "template", message: "Give the template a name." });
+      else if (
+        state.templates.some(
+          (t) => t.name.toLowerCase() === templateName.trim().toLowerCase(),
+        )
+      )
+        ps.push({
+          field: "template",
+          message: "A template with this name exists already.",
+        });
+    }
+    return ps;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    c,
+    JSON.stringify(full),
+    state.memories,
+    state.termbases,
+    state.projects,
+    state.templates,
+    created,
+    asTemplate,
+    templateName,
+    step,
+  ]);
+
+  const stepProblems = (i: number) =>
+    STEP_FIELDS[i]!.flatMap((f) => problemsAt(problems, f));
+
+  // Word files are extracted again with the confirmed source language, so
+  // sentences break as that language does; the review and the project use it.
+  const [words, setWords] = useState<{
+    lang: LangCode;
+    docs: DraftDoc[];
+    ex: Map<string, Extracted>;
+  } | null>(null);
+  const [prepareError, setPrepareError] = useState("");
+  useEffect(() => {
+    if (step < 4 || !draft.sourceLang) return;
+    if (words && words.lang === draft.sourceLang && words.docs === docs) return;
     let live = true;
-    extractDocx(doc.bytes, source).then(
-      (ex) => live && setPrepared({ lang: source, ex }),
-      () => undefined,
+    setPrepareError("");
+    extractWordDocs(docs, draft.sourceLang).then(
+      (ex) => live && setWords({ lang: draft.sourceLang, docs, ex }),
+      (e: unknown) =>
+        live && setPrepareError(e instanceof Error ? e.message : String(e)),
     );
     return () => {
       live = false;
     };
-  }, [step, doc, source, prepared?.lang]);
-  const analysisSegments: Segment[] | null = useMemo(() => {
-    if (doc?.bilingual) return doc.bilingual.segments;
-    if (doc?.bytes)
-      return prepared?.lang === source ? prepared.ex.segments : null;
-    return doc?.text
-      ? segmentText(doc.text).map((t, i) => ({
-          id: `a${i}`,
-          source: [t],
-          target: [],
-          status: "new" as const,
-        }))
-      : [];
-  }, [doc, prepared, source]);
-  const [coreReady, setCoreReady] = useState(() => core() !== null);
-  useEffect(() => {
-    if (step === 2 && !coreReady)
-      loadCore().then(
-        () => setCoreReady(true),
-        () => undefined,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, draft.sourceLang, docs]);
+
+  const projectFiles: ProjectFile[] | null = useMemo(
+    () =>
+      words && words.lang === draft.sourceLang && words.docs === docs
+        ? buildFiles(docs, words.ex, draft.targetLangs, (i) => `f${i + 1}`)
+        : null,
+    [docs, words, draft.sourceLang, draft.targetLangs],
+  );
+
+  // The review analyses each target language against its memories, and
+  // shows what pre-translation would fill.
+  const review = useMemo(() => {
+    if (step !== 4 || !c || !projectFiles) return null;
+    const all = [...state.memories, ...created.map((n) => n.memory)];
+    const out: Record<
+      LangCode,
+      {
+        report: CoreReport;
+        memories: string[];
+        filled: number;
+        confirmed: number;
+      }
+    > = {};
+    for (const t of draft.targetLangs) {
+      const refs = openRefs(
+        c,
+        memoryRefs(
+          { id: "", memories: draft.memories, projectMemory: false },
+          t,
+          "lookup",
+          all,
+        ),
+        all,
+        state.projects,
       );
-  }, [step, coreReady]);
-  const analysisMemory = useMemo(() => {
-    const c = coreReady ? core() : null;
-    return c
-      ? clientMemories(c, {
-          client: client.trim(),
-          sourceLang: source,
-          targetLangs: targets,
-        })
-      : [];
-  }, [coreReady, client, source, targets]);
-  const analysis = useMemo(() => {
-    const c = coreReady ? core() : null;
-    return analysisSegments && c
-      ? analyze(c, analysisMemory, analysisSegments, state.contextRule)
-      : null;
-  }, [coreReady, analysisSegments, analysisMemory, state.contextRule]);
+      const report = analyzeFiles(
+        c,
+        projectFiles,
+        draft.sourceLang,
+        t,
+        refs,
+        draft.context,
+      );
+      const pt =
+        draft.prepare.pretranslate &&
+        draft.prepare.minScore >= 50 &&
+        draft.prepare.minScore <= 100
+          ? pretranslateFiles(
+              c,
+              projectFiles,
+              t,
+              refs,
+              draft.prepare,
+              draft.context,
+            )
+          : { filled: 0, confirmed: 0 };
+      out[t] = {
+        report,
+        memories: refs.map((r) => r.name),
+        filled: pt.filled,
+        confirmed: pt.confirmed,
+      };
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    step,
+    c,
+    projectFiles,
+    JSON.stringify(draft.memories),
+    draft.targetLangs,
+    draft.sourceLang,
+    draft.context,
+    JSON.stringify(draft.prepare),
+    created,
+    state.memories,
+  ]);
+  const [reviewLang, setReviewLang] = useState<LangCode>("");
+  const shownLang = draft.targetLangs.includes(reviewLang)
+    ? reviewLang
+    : (draft.targetLangs[0] ?? "");
 
   async function create() {
+    if (!c || !projectFiles || problems.length) return;
+    setCreating(true);
     const id = `p-${Date.now().toString(36)}`;
-    const usedMasters =
-      mode === "direct"
-        ? [directTarget]
-        : mode === "layered"
-          ? selectedMasters
-          : [];
-    let extracted: NewProjectInput["extracted"];
-    if (doc!.bilingual && doc!.bytes) {
-      extracted = {
-        segments: doc!.bilingual.segments,
-        blocks: doc!.bilingual.blocks,
-        bytes: doc!.bytes,
-        format: "xliff",
-        sdlPackage: doc!.sdlPackage && {
-          bytes: doc!.sdlPackage.bytes,
-          name: doc!.sdlPackage.name,
-          path: doc!.sdlPackage.path,
-        },
-      };
-    } else if (doc!.bytes) {
-      setCreating(true);
-      try {
-        // Sentence breaks follow the confirmed source language.
-        const ex =
-          prepared?.lang === source
-            ? prepared.ex
-            : await extractDocx(doc!.bytes, source);
-        extracted = { ...ex, bytes: doc!.bytes, format: "docx" };
-      } catch (e) {
-        notify(
-          `Could not read ${doc!.file}: ${e instanceof Error ? e.message : String(e)}`,
+    const now = new Date().toISOString();
+    const memoriesNow = [...state.memories, ...created.map((n) => n.memory)];
+    let files = projectFiles;
+    let filled = 0;
+    if (draft.prepare.pretranslate) {
+      for (const t of draft.targetLangs) {
+        const refs = openRefs(
+          c,
+          memoryRefs(
+            { id, memories: draft.memories, projectMemory: false },
+            t,
+            "lookup",
+            memoriesNow,
+          ),
+          memoriesNow,
+          state.projects,
         );
-        setCreating(false);
-        return;
+        const r = pretranslateFiles(
+          c,
+          files,
+          t,
+          refs,
+          draft.prepare,
+          draft.context,
+        );
+        files = r.files;
+        filled += r.filled;
       }
     }
+    const name = draft.name.trim();
+    const addMemories: TranslationMemory[] = draft.projectMemory
+      ? draft.targetLangs.map((t) => ({
+          name: uniqueName(projectMemoryName(name, t), memoriesNow),
+          sourceLang: draft.sourceLang,
+          targetLang: t,
+          client: draft.client.trim() || undefined,
+          projectId: id,
+          createdAt: now,
+        }))
+      : [];
+    // New memories are saved first, so nothing the project refers to is missing.
+    let kept = true;
+    for (const n of created) {
+      dispatch({ type: "createMemory", memory: n.memory });
+      kept = (await persistMemory(c, n.memory.name)) && kept;
+    }
+    const t = draft.terminology;
+    const pkgDoc = docs.find((d) => d.doc.sdlPackage)?.doc.sdlPackage;
+    const project: Project = {
+      id,
+      name,
+      client: draft.client.trim() || undefined,
+      description: draft.description.trim() || undefined,
+      sourceLang: draft.sourceLang,
+      targetLangs: draft.targetLangs,
+      files,
+      memories: draft.memories,
+      projectMemory: draft.projectMemory,
+      setup: {
+        mode: t.mode,
+        masters: t.mode === "own" ? [] : t.masters,
+        writeTo: t.mode === "direct" ? t.writeTo : undefined,
+        location: t.location,
+        autoUpdate: t.mode === "layered" && t.autoUpdate,
+      },
+      context: draft.context,
+      qa: draft.qa,
+      prepare: draft.prepare,
+      createdAt: now,
+      due: draft.due || undefined,
+      progress: 0,
+      sdlPackage: pkgDoc
+        ? { bytes: pkgDoc.bytes, name: pkgDoc.name }
+        : undefined,
+    };
     dispatch({
       type: "createProject",
-      id,
-      now: new Date().toISOString(),
-      input: {
-        name: name.trim(),
-        file: doc!.file,
-        words: doc!.words,
-        sourceLang: source,
-        targetLangs: targets,
-        client: client.trim() || undefined,
-        mode,
-        masters: usedMasters,
-        location,
-        text: doc!.text,
-        extracted,
+      change: {
+        project,
+        addLanguages: t.addLanguages,
+        addMemories,
+        removeMemories: [],
       },
+      now,
     });
-    notify(`Created project “${name.trim()}”`);
-    go({ page: "editor", projectId: id });
+    if (asTemplate)
+      dispatch({
+        type: "saveTemplate",
+        template: templateOf(
+          `tpl-${Date.now().toString(36)}`,
+          templateName,
+          full,
+          now,
+        ),
+      });
+    notify(
+      `Created project “${name}”` +
+        (filled
+          ? `; ${plural(filled, "segment", "segments")} pre-translated`
+          : "") +
+        (asTemplate ? `; template “${templateName.trim()}” saved` : "") +
+        (kept
+          ? ""
+          : ". The new memories are kept only until you close this page: this browser does not allow saving"),
+    );
+    const first = files.find(
+      (f) => f.role === "translatable" && Object.keys(f.segments).length,
+    );
+    go({
+      page: "editor",
+      projectId: id,
+      fileId: first?.id,
+      lang: first ? (first.targetLang ?? draft.targetLangs[0]) : undefined,
+    });
   }
 
-  if (!doc) return <ChooseDocument onChosen={setDoc} />;
+  const canContinue = (i: number) =>
+    stepProblems(i).length === 0 && (i !== 1 || translatable.length > 0);
 
   return (
     <div className="page page-narrow">
-      <PageHeader
-        title="New project"
-        description={
-          <>
-            From <strong>{doc.file}</strong>
-          </>
-        }
-      >
+      <PageHeader title="New project">
         <a className="btn btn-quiet" href="#/projects">
           Cancel
         </a>
@@ -332,190 +723,130 @@ export function NewProject({ sample }: { sample?: number }) {
             tabIndex={-1}
             className="panel-title"
           >
-            Languages
+            Start
           </h2>
-
-          <div className="file-row">
-            <FileText size={20} aria-hidden="true" />
-            <div>
-              <div className="cell-title">{doc.file}</div>
-              <div className="cell-sub">
-                {doc.words
-                  ? plural(doc.words, "word", "words")
-                  : "Word count after import"}
-                {doc.bilingual
-                  ? `, ${doc.sdlPackage ? `from the Trados package ${doc.sdlPackage.name}` : (XLIFF_FORMAT_NAME[doc.bilingual.format] ?? "XLIFF")}, ${bilingualSummary(doc.bilingual.segments)}`
-                  : doc.bytes && ", formatting kept by the Word filter"}
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-quiet btn-small file-row-action"
-              onClick={() => setDoc(null)}
-            >
-              Choose another file
-            </button>
-          </div>
-          {doc.warnings?.map((w) => (
-            <p key={w} className="detect detect-warn">
-              <AlertTriangle size={16} aria-hidden="true" />
-              <span>{w}</span>
-            </p>
-          ))}
-          {doc.error && (
-            <p className="detect detect-warn" role="alert">
-              <AlertTriangle size={16} aria-hidden="true" />
-              <span>
-                {doc.file} could not be read: {doc.error}
-              </span>
-            </p>
-          )}
-
-          {doc.sdlPackage && doc.sdlPackage.files.length > 1 && (
-            <div className="field">
-              <label htmlFor="pkg-file">File of the package to translate</label>
-              <select
-                id="pkg-file"
-                value={doc.sdlPackage.path}
-                onChange={async (e) => {
-                  const p = doc.sdlPackage!;
-                  setDoc(
-                    await readPackageFile(
-                      p.name,
-                      p.bytes,
-                      e.target.value,
-                      p.files,
-                    ),
-                  );
-                }}
-              >
-                {doc.sdlPackage.files.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-              <p className="help">
-                A Trados package can hold several files; each becomes its own
-                project, saved back in a return package.
-              </p>
-            </div>
-          )}
-          {doc.bilingual ? (
-            <div className="field">
-              <span className="field-label">Languages</span>
-              <p className="lang-fixed">
-                {lang(source).name} <LangChip code={source} /> to{" "}
-                {targets[0] ? lang(targets[0]).name : "no target language"}{" "}
-                {targets[0] && <LangChip code={targets[0]} />}
-              </p>
-              <p className="help">
-                From the file. A bilingual file is translated into the language
-                it was made for.
-              </p>
-              {targetError && (
-                <p className="error" role="alert">
-                  {doc.bilingual.targetLang
-                    ? targetError
-                    : "The file names no target language, so it cannot be translated here."}
-                </p>
+          <fieldset className="field">
+            <legend>Start from</legend>
+            <ul className="choice-list">
+              <li>
+                <label className="choice">
+                  <input
+                    type="radio"
+                    name="start"
+                    checked={start.kind === "blank"}
+                    onChange={() => applyStart({ kind: "blank" })}
+                  />
+                  <span className="choice-body">
+                    <span className="choice-title">A blank project</span>
+                    <span className="choice-desc">
+                      Languages from the files, memories and termbases suggested
+                      for the client.
+                    </span>
+                  </span>
+                </label>
+              </li>
+              {state.templates.map((t) => (
+                <li key={t.id}>
+                  <label className="choice">
+                    <input
+                      type="radio"
+                      name="start"
+                      checked={start.kind === "template" && start.id === t.id}
+                      onChange={() =>
+                        applyStart({ kind: "template", id: t.id })
+                      }
+                    />
+                    <span className="choice-body">
+                      <span className="choice-title">
+                        Template: {t.name}
+                        {t.client && <span className="tag">{t.client}</span>}
+                      </span>
+                      <span className="choice-meta">
+                        <span className="lang-pair">
+                          <LangChip code={t.sourceLang} /> →{" "}
+                          {t.targetLangs.map((l) => (
+                            <LangChip key={l} code={l} />
+                          ))}
+                        </span>
+                        <span>
+                          {plural(
+                            Object.values(t.memories).reduce(
+                              (n, ms) => n + ms.length,
+                              0,
+                            ),
+                            "memory",
+                            "memories",
+                          )}
+                        </span>
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+              {state.projects.length > 0 && (
+                <li>
+                  <div className="choice">
+                    <input
+                      type="radio"
+                      name="start"
+                      id="start-project"
+                      checked={start.kind === "project"}
+                      onChange={() =>
+                        applyStart({
+                          kind: "project",
+                          id: state.projects[0]!.id,
+                        })
+                      }
+                    />
+                    <span className="choice-body">
+                      <label className="choice-title" htmlFor="start-project">
+                        Like an earlier project
+                      </label>
+                      <span className="choice-desc">
+                        Its languages, memories, termbases and checks; new files
+                        and a new name.
+                      </span>
+                      {start.kind === "project" && (
+                        <span className="choice-inline">
+                          <label htmlFor="start-project-pick">Project</label>
+                          <select
+                            id="start-project-pick"
+                            value={start.id}
+                            onChange={(e) =>
+                              applyStart({
+                                kind: "project",
+                                id: e.target.value,
+                              })
+                            }
+                          >
+                            {state.projects.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                                {p.client ? ` (${p.client})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </li>
               )}
-            </div>
-          ) : (
-            <>
-              <div className="field">
-                <label htmlFor="source">Source language</label>
-                <SourceDetection
-                  detection={detection!}
-                  source={source}
-                  touched={sourceTouched}
-                  fallback={recentSource}
-                />
-                <select
-                  id="source"
-                  value={source}
-                  onChange={(e) => {
-                    setSource(e.target.value);
-                    setSourceTouched(true);
-                    setTargets((ts) => ts.filter((t) => t !== e.target.value));
-                  }}
-                  aria-describedby="source-help"
-                >
-                  {LANGUAGES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-                <p id="source-help" className="help">
-                  Text shows the language, not the region. Check the variant
-                  (for example German (Austria)) if the client needs it.
-                </p>
-              </div>
-
-              <fieldset className="field">
-                <legend>Target languages</legend>
-                <TargetPicker
-                  source={source}
-                  targets={targets}
-                  setTargets={setTargets}
-                  suggestions={recentTargets}
-                />
-                {targetError && (
-                  <p className="error" role="alert">
-                    {targetError}
-                  </p>
-                )}
-              </fieldset>
-            </>
-          )}
-
-          <div className="field-grid">
-            <div className="field">
-              <label htmlFor="pname">Project name</label>
-              <input
-                id="pname"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                aria-invalid={!!nameError}
-                aria-describedby={nameError ? "pname-err" : undefined}
-              />
-              {nameError && (
-                <p id="pname-err" className="error">
-                  {nameError}
-                </p>
-              )}
-            </div>
-            <div className="field">
-              <label htmlFor="client">
-                Client <span className="optional">optional</span>
-              </label>
-              <input
-                id="client"
-                list="clients"
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                aria-describedby="client-help"
-              />
-              <datalist id="clients">
-                {clients.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-              <p id="client-help" className="help">
-                Used to suggest the client's termbases.
+            </ul>
+            {state.templates.length === 0 && (
+              <p className="help">
+                You can save any project's settings as a template, here at the
+                end or later from the project's settings.
               </p>
-            </div>
-          </div>
-
+            )}
+          </fieldset>
           <div className="panel-actions">
             <button
               type="button"
               className="btn btn-primary"
-              disabled={!!targetError || !!nameError}
               onClick={() => setStep(1)}
             >
-              Continue to terminology
+              Continue to files and languages
             </button>
           </div>
         </section>
@@ -529,228 +860,157 @@ export function NewProject({ sample }: { sample?: number }) {
             tabIndex={-1}
             className="panel-title"
           >
-            Terminology
+            Files and languages
           </h2>
+          <FilesField docs={docs} setDocs={setDocs} />
+          <Problems messages={problemsAt(problems, "files")} />
 
-          <fieldset className="field">
-            <legend>Master termbases to use</legend>
-            <p className="help">
-              Masters you keep across projects, for a client, a domain or a set
-              of languages.
-            </p>
-            <ul className="choice-list">
-              {masters.map((m) => {
-                const missing = projectLangs.filter(
-                  (l) => !m.languages.includes(l),
-                );
-                const suggested = !!client && m.client === client;
-                const count =
-                  (m.extraEntries ?? 0) +
-                  state.entries.filter((e) => e.termbaseId === m.id).length;
-                return (
-                  <li key={m.id}>
-                    <label className="choice">
-                      <input
-                        type="checkbox"
-                        checked={selectedMasters.includes(m.id)}
-                        onChange={(e) => {
-                          setMastersTouched(true);
-                          setSelectedMasters((s) =>
-                            e.target.checked
-                              ? [...s, m.id]
-                              : s.filter((x) => x !== m.id),
-                          );
-                        }}
-                      />
-                      <span className="choice-body">
-                        <span className="choice-title">
-                          {m.name}
-                          {suggested && (
-                            <span className="tag tag-accent">
-                              Suggested for {m.client}
-                            </span>
-                          )}
-                        </span>
-                        <span className="choice-meta">
-                          <LocationBadge
-                            location={m.location}
-                            server={m.server}
-                          />
-                          <span>{plural(count, "entry", "entries")}</span>
-                          <span className="lang-list">
-                            {m.languages.map((l) => (
-                              <LangChip key={l} code={l} />
-                            ))}
-                          </span>
-                        </span>
-                        {missing.length > 0 &&
-                          selectedMasters.includes(m.id) && (
-                            <span className="choice-note">
-                              <Info size={14} aria-hidden="true" />
-                              {missing.map((c) => lang(c).name).join(", ")} will
-                              be added to this master.
-                            </span>
-                          )}
-                      </span>
-                    </label>
-                  </li>
-                );
-              })}
-            </ul>
-          </fieldset>
-
-          <fieldset className="field">
-            <legend>Where new terms go</legend>
-            <ul className="choice-list">
-              <li>
-                <label
-                  className={`choice${selectedMasters.length === 0 ? " is-disabled" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    name="mode"
-                    value="layered"
-                    checked={mode === "layered"}
-                    disabled={selectedMasters.length === 0}
-                    onChange={() => setMode("layered")}
-                  />
-                  <span className="choice-body">
-                    <span className="choice-title">
-                      {w("projectTermbase")}, then merge into the masters{" "}
-                      <span className="tag">Recommended</span>
-                    </span>
-                    <span className="choice-desc">
-                      New and changed terms stay in the project. When the
-                      project is done, you review them and merge into the
-                      masters. The masters stay unchanged until then.
-                    </span>
-                  </span>
-                </label>
-              </li>
-              <li>
-                <label
-                  className={`choice${selectedMasters.length === 0 ? " is-disabled" : ""}`}
-                >
-                  <input
-                    type="radio"
-                    name="mode"
-                    value="direct"
-                    checked={mode === "direct"}
-                    disabled={selectedMasters.length === 0}
-                    onChange={() => setMode("direct")}
-                  />
-                  <span className="choice-body">
-                    <span className="choice-title">Directly into a master</span>
-                    <span className="choice-desc">
-                      New terms are saved to the master right away. Simple when
-                      you work alone on this client.
-                    </span>
-                    {mode === "direct" && selectedMasters.length > 1 && (
-                      <span className="choice-inline">
-                        <label htmlFor="direct-target">
-                          Master for new terms
-                        </label>
-                        <select
-                          id="direct-target"
-                          value={directTarget}
-                          onChange={(e) => setDirectTarget(e.target.value)}
-                        >
-                          {selectedMasters.map((id) => (
-                            <option key={id} value={id}>
-                              {state.termbases.find((t) => t.id === id)!.name}
-                            </option>
-                          ))}
-                        </select>
-                      </span>
-                    )}
-                  </span>
-                </label>
-              </li>
-              <li>
-                <label className="choice">
-                  <input
-                    type="radio"
-                    name="mode"
-                    value="own"
-                    checked={mode === "own"}
-                    onChange={() => setMode("own")}
-                  />
-                  <span className="choice-body">
-                    <span className="choice-title">
-                      Own project termbase only
-                    </span>
-                    <span className="choice-desc">
-                      {selectedMasters.length === 0
-                        ? "No master selected. "
-                        : "Selected masters are not used. "}
-                      You can turn it into a master or merge it into one later.
-                    </span>
-                  </span>
-                </label>
-              </li>
-            </ul>
-          </fieldset>
-
-          {mode !== "direct" && (
-            <fieldset className="field">
-              <legend>Store the project termbase</legend>
-              <div
-                className="segmented"
-                role="radiogroup"
-                aria-label="Store the project termbase"
-              >
-                <label className="segment">
-                  <input
-                    type="radio"
-                    name="loc"
-                    checked={location === "local"}
-                    onChange={() => {
-                      setMastersTouched(true);
-                      setLocation("local");
-                    }}
-                  />
-                  <span>On this computer</span>
-                </label>
-                <label
-                  className={`segment${serverAvailable ? "" : " is-disabled"}`}
-                >
-                  <input
-                    type="radio"
-                    name="loc"
-                    checked={location === "server"}
-                    disabled={!serverAvailable}
-                    onChange={() => {
-                      setMastersTouched(true);
-                      setLocation("server");
-                    }}
-                  />
-                  <span>On the server</span>
-                </label>
-              </div>
-              <p className="help">
-                {location === "server"
-                  ? "Colleagues on the server see the project's terms while you work. Masters stay where they are."
-                  : "Only you see the project's terms until you merge. Masters stay where they are."}
-              </p>
-            </fieldset>
-          )}
-
-          {mode === "layered" && (
+          {bilingualSources.length === 1 ? (
             <div className="field">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={autoUpdate}
-                  onChange={(e) => setAutoUpdate(e.target.checked)}
-                />
-                <span>{w("updateFromMaster")} each time the project opens</span>
-              </label>
+              <span className="field-label">Source language</span>
+              <p className="lang-fixed">
+                {lang(draft.sourceLang).name}{" "}
+                <LangChip code={draft.sourceLang} />
+              </p>
               <p className="help">
-                Otherwise the project keeps the masters as they are today until
-                you update it yourself.
+                From the bilingual files, which are made for it.
               </p>
             </div>
+          ) : (
+            <div className="field">
+              <label htmlFor="source">Source language</label>
+              <SourceDetection
+                detection={detection}
+                source={draft.sourceLang}
+                touched={touched.source || start.kind !== "blank"}
+                fallback={recentSource}
+              />
+              <select
+                id="source"
+                value={draft.sourceLang}
+                onChange={(e) => {
+                  touch("source");
+                  const v = e.target.value;
+                  setDraft((d) => ({
+                    ...d,
+                    sourceLang: v,
+                    targetLangs: d.targetLangs.filter((t) => t !== v),
+                  }));
+                }}
+                aria-describedby="source-help"
+              >
+                {LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.name}
+                  </option>
+                ))}
+                {draft.sourceLang &&
+                  !LANGUAGES.some((l) => l.code === draft.sourceLang) && (
+                    <option value={draft.sourceLang}>
+                      {lang(draft.sourceLang).name}
+                    </option>
+                  )}
+              </select>
+              <p id="source-help" className="help">
+                Text shows the language, not the region. Check the variant (for
+                example German (Austria)) if the client needs it.
+              </p>
+              <Problems messages={problemsAt(problems, "sourceLang")} />
+            </div>
           )}
+
+          <fieldset className="field">
+            <legend>Target languages</legend>
+            <TargetPicker
+              source={draft.sourceLang}
+              targets={draft.targetLangs}
+              setTargets={(ts) => {
+                touch("targets");
+                setDraft((d) => ({ ...d, targetLangs: ts }));
+              }}
+              suggestions={recentTargets}
+              fixed={fixedTargets}
+            />
+            {draft.targetLangs.length > 1 && (
+              <p className="help">
+                Each file is translated into every target language; a bilingual
+                file only into the language it was made for.
+              </p>
+            )}
+            <Problems messages={problemsAt(problems, "targetLangs")} />
+          </fieldset>
+
+          <div className="field-grid">
+            <div className="field">
+              <label htmlFor="pname">Project name</label>
+              <input
+                id="pname"
+                value={draft.name}
+                onChange={(e) => {
+                  touch("name");
+                  setDraft((d) => ({ ...d, name: e.target.value }));
+                }}
+                aria-invalid={problemsAt(problems, "name").length > 0}
+                aria-describedby="pname-err"
+              />
+              <Problems
+                id="pname-err"
+                messages={problemsAt(problems, "name")}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="client">
+                Client <span className="optional">optional</span>
+              </label>
+              <input
+                id="client"
+                list="clients"
+                value={draft.client}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, client: e.target.value }))
+                }
+                aria-describedby="client-help"
+              />
+              <datalist id="clients">
+                {clients.map((x) => (
+                  <option key={x} value={x} />
+                ))}
+              </datalist>
+              <p id="client-help" className="help">
+                Used to suggest the client's memories and termbases.
+              </p>
+              <Problems messages={problemsAt(problems, "client")} />
+            </div>
+            <div className="field">
+              <label htmlFor="due">
+                Due <span className="optional">optional</span>
+              </label>
+              <input
+                id="due"
+                type="datetime-local"
+                value={toLocalInput(draft.due)}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    due: fromLocalInput(e.target.value),
+                  }))
+                }
+              />
+              <Problems messages={problemsAt(problems, "due")} />
+            </div>
+            <div className="field">
+              <label htmlFor="desc">
+                Description <span className="optional">optional</span>
+              </label>
+              <input
+                id="desc"
+                value={draft.description}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, description: e.target.value }))
+                }
+              />
+            </div>
+          </div>
 
           <div className="panel-actions">
             <button
@@ -763,9 +1023,10 @@ export function NewProject({ sample }: { sample?: number }) {
             <button
               type="button"
               className="btn btn-primary"
+              disabled={!c || !canContinue(1)}
               onClick={() => setStep(2)}
             >
-              Continue to review
+              Continue to memories
             </button>
           </div>
         </section>
@@ -779,60 +1040,19 @@ export function NewProject({ sample }: { sample?: number }) {
             tabIndex={-1}
             className="panel-title"
           >
-            Review
+            Memories
           </h2>
-          <dl className="summary">
-            <dt>Project</dt>
-            <dd>
-              {name.trim()}
-              {client.trim() && (
-                <span className="muted"> for {client.trim()}</span>
-              )}
-            </dd>
-            <dt>Document</dt>
-            <dd>
-              {doc.file}
-              {doc.words > 0 && (
-                <span className="muted"> ({fmtNum(doc.words)} words)</span>
-              )}
-            </dd>
-            <dt>Languages</dt>
-            <dd>
-              {lang(source).name} into{" "}
-              {targets.map((t) => lang(t).name).join(", ")}
-            </dd>
-            <dt>Terminology</dt>
-            <dd>
-              <TerminologySummary
-                mode={mode}
-                masters={mode === "direct" ? [directTarget] : selectedMasters}
-                location={location}
-                autoUpdate={autoUpdate}
-              />
-            </dd>
-            <dt>Match analysis</dt>
-            <dd>
-              {analysis === null ? (
-                <p className="muted">Analysing the document…</p>
-              ) : analysis.segments === 0 ? (
-                <p className="muted">Available once the text can be read.</p>
-              ) : (
-                <>
-                  <p className="help">
-                    {analysisMemory.length
-                      ? `Against ${analysisMemory.map((m) => m.label).join(" and ")}, counted as in Trados.`
-                      : "No translation memory for this client and language pair yet, so only repetitions inside the document count."}
-                  </p>
-                  <AnalysisTable
-                    rows={analysis.rows}
-                    words={analysis.words}
-                    segments={analysis.segments}
-                    caption="Match analysis of the document"
-                  />
-                </>
-              )}
-            </dd>
-          </dl>
+          <MemoriesSection
+            c={c}
+            draft={draft}
+            setDraft={(f) => {
+              touch("memories");
+              setDraft(f);
+            }}
+            problems={problems}
+            created={created}
+            setCreated={setCreated}
+          />
           <div className="panel-actions">
             <button
               type="button"
@@ -844,10 +1064,253 @@ export function NewProject({ sample }: { sample?: number }) {
             <button
               type="button"
               className="btn btn-primary"
-              onClick={create}
-              disabled={creating}
+              disabled={!canContinue(2)}
+              onClick={() => setStep(3)}
             >
-              {creating ? "Reading the document…" : "Create project"}
+              Continue to terminology
+            </button>
+          </div>
+        </section>
+      )}
+
+      {step === 3 && (
+        <section aria-labelledby="step-title" className="panel">
+          <h2
+            id="step-title"
+            ref={stepHeading}
+            tabIndex={-1}
+            className="panel-title"
+          >
+            Terminology
+          </h2>
+          <TerminologySection
+            draft={draft}
+            setDraft={setDraft}
+            problems={problems}
+            onTouched={(k) => touch(k)}
+          />
+          <div className="panel-actions">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => setStep(2)}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!canContinue(3)}
+              onClick={() => setStep(4)}
+            >
+              Continue to review
+            </button>
+          </div>
+        </section>
+      )}
+
+      {step === 4 && (
+        <section aria-labelledby="step-title" className="panel">
+          <h2
+            id="step-title"
+            ref={stepHeading}
+            tabIndex={-1}
+            className="panel-title"
+          >
+            Review
+          </h2>
+          <dl className="summary">
+            <dt>Project</dt>
+            <dd>
+              {draft.name.trim()}
+              {draft.client.trim() && (
+                <span className="muted"> for {draft.client.trim()}</span>
+              )}
+              {draft.due && (
+                <span className="muted">, due {fmtDate(draft.due)}</span>
+              )}
+            </dd>
+            <dt>Files</dt>
+            <dd>
+              {plural(translatable.length, "file", "files")} to translate
+              {docs.length > translatable.length &&
+                `, ${plural(docs.length - translatable.length, "reference file", "reference files")}`}
+              {packages[0] && (
+                <span className="muted">
+                  {" "}
+                  from the Trados package {packages[0]}
+                </span>
+              )}
+            </dd>
+            <dt>Languages</dt>
+            <dd>
+              {lang(draft.sourceLang).name} into{" "}
+              {draft.targetLangs.map((t) => lang(t).name).join(", ")}
+            </dd>
+            <dt>Memories</dt>
+            <dd>
+              {draft.targetLangs.map((t) => (
+                <div key={t}>
+                  <LangChip code={t} />{" "}
+                  {(draft.memories[t] ?? []).length
+                    ? (draft.memories[t] ?? [])
+                        .map(
+                          (m) =>
+                            `${m.memory}${m.penalty ? ` (−${m.penalty})` : ""}`,
+                        )
+                        .join(", ")
+                    : "none"}
+                  {draft.projectMemory && (
+                    <span className="muted">, and a project memory</span>
+                  )}
+                </div>
+              ))}
+            </dd>
+            <dt>Terminology</dt>
+            <dd>
+              <TerminologySummary draft={draft} />
+            </dd>
+          </dl>
+
+          <details className="settings-details">
+            <summary>
+              Checks and context matches
+              <span className="muted">
+                {c &&
+                  ` ${checksOn(c, draft.qa).on} of ${checksOn(c, draft.qa).of} checks on, context matches ${draft.context === "both" ? "as memoQ counts them" : "as Trados counts them"}`}
+              </span>
+            </summary>
+            <ChecksSection
+              c={c}
+              qa={draft.qa}
+              setQa={(qa) => setDraft((d) => ({ ...d, qa }))}
+              context={draft.context}
+              setContext={(context) => setDraft((d) => ({ ...d, context }))}
+            />
+          </details>
+
+          <PrepareSection
+            prepare={draft.prepare}
+            setPrepare={(prepare) => setDraft((d) => ({ ...d, prepare }))}
+            problems={problems}
+            summary={
+              review && shownLang && review[shownLang]
+                ? draft.targetLangs
+                    .map(
+                      (t) =>
+                        `${lang(t).name}: ${plural(review[t]?.filled ?? 0, "segment", "segments")} filled, ${review[t]?.confirmed ?? 0} confirmed`,
+                    )
+                    .join(". ") + "."
+                : undefined
+            }
+          />
+
+          <section className="field" aria-labelledby="an-title">
+            <h3 id="an-title" className="field-label">
+              Match analysis
+            </h3>
+            {prepareError ? (
+              <p className="error" role="alert">
+                A Word file could not be read: {prepareError}
+              </p>
+            ) : !review || !projectFiles ? (
+              <p className="muted" role="status">
+                Analysing the files…
+              </p>
+            ) : (
+              <>
+                {draft.targetLangs.length > 1 && (
+                  <div
+                    className="tabs tabs-small"
+                    role="tablist"
+                    aria-label="Target language"
+                  >
+                    {draft.targetLangs.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="tab"
+                        aria-selected={t === shownLang}
+                        onClick={() => setReviewLang(t)}
+                      >
+                        {lang(t).name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {review[shownLang] && (
+                  <>
+                    <p className="help">
+                      {review[shownLang]!.memories.length
+                        ? `Against ${review[shownLang]!.memories.join(" and ")}, counted as in Trados: context matches first, then repetitions within a file and across files, then the best match.`
+                        : "No memory for this language, so only repetitions count."}
+                    </p>
+                    <AnalysisTable
+                      rows={review[shownLang]!.report.rows}
+                      total={review[shownLang]!.report.total}
+                      caption={`Match analysis, ${lang(shownLang).name}`}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </section>
+
+          <div className="field">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={asTemplate}
+                onChange={(e) => setAsTemplate(e.target.checked)}
+              />
+              <span>Save these settings as a template</span>
+            </label>
+            {asTemplate && (
+              <div className="nested field">
+                <label htmlFor="tpl-name">Template name</label>
+                <input
+                  id="tpl-name"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                />
+                <p className="help">
+                  Languages, memories, termbases, checks and pre-translation;
+                  not the files, name or due date.
+                </p>
+                <Problems messages={problemsAt(problems, "template")} />
+              </div>
+            )}
+          </div>
+
+          {problems.length > 0 && (
+            <div className="notice" role="alert">
+              <AlertTriangle size={18} aria-hidden="true" />
+              <div className="notice-body">
+                <p className="notice-title">The project can't be created yet</p>
+                <ul>
+                  {problems.map((p) => (
+                    <li key={p.field + p.message}>{p.message}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          <div className="panel-actions">
+            <button
+              type="button"
+              className="btn btn-quiet"
+              onClick={() => setStep(3)}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={create}
+              disabled={creating || !projectFiles || problems.length > 0}
+            >
+              {creating ? "Creating…" : "Create project"}
             </button>
           </div>
         </section>
@@ -856,39 +1319,281 @@ export function NewProject({ sample }: { sample?: number }) {
   );
 }
 
-function TerminologySummary({
-  mode,
-  masters,
-  location,
-  autoUpdate,
+/** The project's files: add files or folders, choose what each is for, remove. */
+export function FilesField({
+  docs,
+  setDocs,
+  existing = [],
+  label = "Files",
 }: {
-  mode: SetupMode;
-  masters: string[];
-  location: Location;
-  autoUpdate: boolean;
+  /** Heading of the list. */
+  label?: string;
+  docs: DraftDoc[];
+  setDocs: (f: (d: DraftDoc[]) => DraftDoc[]) => void;
+  /** Names already in the project (on its settings page). */
+  existing?: string[];
 }) {
+  const filesInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const [reading, setReading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState("");
+
+  async function add(list: { file: File; path?: string }[]) {
+    if (!list.length) return;
+    setReading(true);
+    setError("");
+    try {
+      const read = await readFiles(list);
+      setDocs((d) => [...d, ...draftDocs(read)]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReading(false);
+    }
+  }
+
+  async function onDrop(e: DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    await add(await droppedFiles(e.dataTransfer));
+  }
+
+  const names = [...existing.map((n) => n.toLowerCase())];
+  return (
+    <div className="field">
+      <span className="field-label" id="files-label">
+        {label}
+      </span>
+      {docs.length > 0 && (
+        <div className="table-wrap">
+          <table className="table file-table" aria-labelledby="files-label">
+            <thead>
+              <tr>
+                <th scope="col">File</th>
+                <th scope="col" className="num">
+                  Words
+                </th>
+                <th scope="col">Use</th>
+                <th scope="col">
+                  <span className="sr-only">Remove</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {docs.map((d) => {
+                const name = d.doc.path ?? d.doc.file;
+                const twice =
+                  names.filter((n) => n === name.toLowerCase()).length > 0 ||
+                  docs.filter(
+                    (x) =>
+                      (x.doc.path ?? x.doc.file).toLowerCase() ===
+                      name.toLowerCase(),
+                  ).length > 1;
+                names.push(name.toLowerCase());
+                const canTranslate = readable(d.doc);
+                return (
+                  <tr key={d.key}>
+                    <th scope="row">
+                      <span className="file-name">
+                        <FileText size={15} aria-hidden="true" />
+                        <span className="cell-title">{name}</span>
+                      </span>
+                      <span className="cell-sub">{describe(d.doc)}</span>
+                      {d.doc.warnings?.map((w) => (
+                        <span key={w} className="detect detect-warn">
+                          <AlertTriangle size={14} aria-hidden="true" />
+                          <span>{w}</span>
+                        </span>
+                      ))}
+                      {!canTranslate && (
+                        <span className="detect detect-warn">
+                          <AlertTriangle size={14} aria-hidden="true" />
+                          <span>
+                            {whyNot(d.doc)} It is added as a reference file.
+                          </span>
+                        </span>
+                      )}
+                      {twice && (
+                        <span className="error">
+                          This file name is in the project twice.
+                        </span>
+                      )}
+                    </th>
+                    <td className="num">
+                      {d.doc.words ? fmtNum(d.doc.words) : "–"}
+                    </td>
+                    <td>
+                      <label className="sr-only" htmlFor={`role-${d.key}`}>
+                        Use of {name}
+                      </label>
+                      <select
+                        id={`role-${d.key}`}
+                        className="select-small"
+                        value={d.role}
+                        disabled={!canTranslate}
+                        onChange={(e) =>
+                          setDocs((ds) =>
+                            ds.map((x) =>
+                              x.key === d.key
+                                ? { ...x, role: e.target.value as FileRole }
+                                : x,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="translatable">Translate</option>
+                        <option value="reference">Reference</option>
+                      </select>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Remove ${name}`}
+                        onClick={() =>
+                          setDocs((ds) => ds.filter((x) => x.key !== d.key))
+                        }
+                      >
+                        <X size={14} aria-hidden="true" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div
+        className={`dropzone dropzone-small${dragging ? " is-dragging" : ""}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => void onDrop(e)}
+      >
+        <Upload size={18} aria-hidden="true" className="dropzone-icon" />
+        <p className="dropzone-text">
+          {reading
+            ? "Reading the files…"
+            : "Drop files or folders here. Word files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .xlf) and Trados packages (.sdlppx) keep their translations and states."}
+        </p>
+        <div className="row">
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => filesInput.current?.click()}
+            disabled={reading}
+          >
+            <FileText size={14} aria-hidden="true" />
+            Add files
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => folderInput.current?.click()}
+            disabled={reading}
+          >
+            <FolderOpen size={14} aria-hidden="true" />
+            Add a folder
+          </button>
+        </div>
+        <input
+          ref={filesInput}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            const list = e.target.files ? chosenFiles(e.target.files) : [];
+            e.target.value = "";
+            void add(list);
+          }}
+        />
+        <input
+          ref={folderInput}
+          type="file"
+          multiple
+          hidden
+          {...{ webkitdirectory: "" }}
+          onChange={(e) => {
+            const list = e.target.files ? chosenFiles(e.target.files) : [];
+            e.target.value = "";
+            void add(list);
+          }}
+        />
+      </div>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <p className="help">
+        <Info size={14} aria-hidden="true" /> Reference files (a style guide, an
+        earlier version) travel with the project for the translators to read;
+        they are not translated.
+      </p>
+    </div>
+  );
+}
+
+function describe(doc: PendingDoc): string {
+  if (doc.bilingual) {
+    const bi = doc.bilingual;
+    const done = bi.segments.filter((s) => s.status === "confirmed").length;
+    const locked = bi.segments.filter((s) => s.locked).length;
+    const what = doc.sdlPackage
+      ? `From the Trados package ${doc.sdlPackage.name}`
+      : (XLIFF_FORMAT_NAME[bi.format] ?? "XLIFF");
+    const langs = bi.targetLang
+      ? `, ${lang(knownLang(bi.sourceLang)).name} to ${lang(knownLang(bi.targetLang)).name}`
+      : "";
+    return `${what}${langs}, ${done} of ${plural(bi.segments.length, "segment", "segments")} confirmed${locked ? `, ${locked} locked` : ""}`;
+  }
+  switch (kindOf(doc)) {
+    case "docx":
+      return "Word document, formatting kept by the Word filter";
+    case "text":
+      return "Read as plain text";
+    default:
+      return "No text the prototype can read";
+  }
+}
+
+function whyNot(doc: PendingDoc): string {
+  if (doc.error) return `It could not be read: ${doc.error}`;
+  if (doc.bilingual && !doc.bilingual.targetLang)
+    return "The file names no target language, so it can't be translated here.";
+  return "The prototype can't read text from this file (for example a scan or a format only the full product imports).";
+}
+
+function TerminologySummary({ draft }: { draft: Draft }) {
   const { state } = useStore();
-  const w = useWords();
-  const names = masters
-    .map((id) => state.termbases.find((t) => t.id === id)?.name)
+  const t = draft.terminology;
+  const names = t.masters
+    .map((id) => state.termbases.find((x) => x.id === id)?.name)
     .filter(Boolean)
     .join(", ");
-  if (mode === "direct") return <>New terms go straight into {names}.</>;
-  if (mode === "own")
+  const where = t.location === "server" ? "on the server" : "on this computer";
+  if (t.mode === "direct")
     return (
       <>
-        A new {w("projectTermbase").toLowerCase()}{" "}
-        <LocationBadge location={location} />, no master.
+        New terms go straight into{" "}
+        {state.termbases.find((x) => x.id === t.writeTo)?.name ?? names}.
       </>
     );
+  if (t.mode === "own") return <>A new project termbase {where}, no master.</>;
   return (
     <>
-      A new {w("projectTermbase").toLowerCase()}{" "}
-      <LocationBadge location={location} />, {w("basedOn").toLowerCase()}{" "}
-      {names}.{" "}
-      {autoUpdate
-        ? "Updates from the masters when the project opens."
-        : "Keeps today's state of the masters."}
+      A new project termbase {where}, based on {names}.{" "}
+      {t.autoUpdate
+        ? "Takes in master changes each time the project opens."
+        : "Master changes wait until you take them in."}
+      {t.addLanguages.length > 0 &&
+        ` Languages are added to ${t.addLanguages
+          .map((id) => state.termbases.find((x) => x.id === id)?.name)
+          .join(", ")}.`}
     </>
   );
 }
@@ -905,10 +1610,22 @@ function SourceDetection({
   fallback: LangCode;
 }) {
   if (touched) {
+    const differs =
+      detection.code &&
+      detection.confidence >= CONFIDENT &&
+      primary(detection.code) !== primary(source);
     return (
-      <p className="detect detect-info">
-        <Info size={16} aria-hidden="true" />
-        <span>Set by you: {lang(source).name}.</span>
+      <p className={`detect ${differs ? "detect-warn" : "detect-info"}`}>
+        {differs ? (
+          <AlertTriangle size={16} aria-hidden="true" />
+        ) : (
+          <Info size={16} aria-hidden="true" />
+        )}
+        <span>
+          Set to {lang(source).name}.
+          {differs &&
+            ` The files look ${lang(detection.code!).name} (${Math.round(detection.confidence * 100)}%). Check the source language.`}
+        </span>
       </p>
     );
   }
@@ -917,7 +1634,7 @@ function SourceDetection({
       <p className="detect detect-warn">
         <AlertTriangle size={16} aria-hidden="true" />
         <span>
-          No text found in this file (for example a scanned PDF), so the
+          No text found in the files (for example a scanned PDF), so the
           language can't be detected. Preselected {lang(fallback).name}, the
           source language of most of your projects. Change it if it's wrong.
         </span>
@@ -959,159 +1676,38 @@ function SourceDetection({
         {detection.unit === "characters"
           ? plural(detection.basis, "character", "characters")
           : plural(detection.basis, "word", "words")}{" "}
-        of the document.
+        of the files.
       </span>
     </p>
   );
 }
 
-function TargetPicker({
-  source,
-  targets,
-  setTargets,
-  suggestions,
-}: {
-  source: LangCode;
-  targets: LangCode[];
-  setTargets: (f: (t: LangCode[]) => LangCode[]) => void;
-  suggestions: LangCode[];
-}) {
-  const [adding, setAdding] = useState("");
-  const quick = [...new Set([...suggestions, ...targets])].filter(
-    (c) => c !== source,
-  );
-  const others = LANGUAGES.filter(
-    (l) => l.code !== source && !quick.includes(l.code),
-  );
-  return (
-    <div className="targets">
-      <ul className="target-list">
-        {quick.map((c) => (
-          <li key={c}>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={targets.includes(c)}
-                onChange={(e) =>
-                  setTargets((t) =>
-                    e.target.checked ? [...t, c] : t.filter((x) => x !== c),
-                  )
-                }
-              />
-              <span>{lang(c).name}</span>
-            </label>
-          </li>
-        ))}
-      </ul>
-      <div className="add-lang">
-        <label htmlFor="add-lang" className="sr-only">
-          Add another target language
-        </label>
-        <select
-          id="add-lang"
-          value={adding}
-          onChange={(e) => setAdding(e.target.value)}
-        >
-          <option value="">Add another language…</option>
-          {others.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="btn btn-small"
-          disabled={!adding}
-          onClick={() => {
-            setTargets((t) => [...t, adding]);
-            setAdding("");
-          }}
-        >
-          <Plus size={14} aria-hidden="true" />
-          Add
-        </button>
-      </div>
-      {targets.some((t) => !quick.includes(t)) && (
-        <ul className="target-chips">
-          {targets
-            .filter((t) => !quick.includes(t))
-            .map((t) => (
-              <li key={t}>
-                {lang(t).name}
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={`Remove ${lang(t).name}`}
-                  onClick={() => setTargets((x) => x.filter((y) => y !== t))}
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-        </ul>
-      )}
-    </div>
-  );
+function uniqueName(name: string, taken: TranslationMemory[]): string {
+  let out = name;
+  for (
+    let n = 2;
+    taken.some((m) => m.name.toLowerCase() === out.toLowerCase());
+    n++
+  )
+    out = `${name} ${n}`;
+  return out;
 }
 
-function ChooseDocument({ onChosen }: { onChosen: (d: PendingDoc) => void }) {
-  const input = useRef<HTMLInputElement>(null);
-  return (
-    <div className="page page-narrow">
-      <PageHeader title="New project" />
-      <section className="dropzone" aria-labelledby="dz2">
-        <div className="dropzone-text">
-          <h2 id="dz2">Choose the document to translate</h2>
-          <p>
-            Interlinea detects its source language. Word documents (.docx) go
-            through the core's file filter, so the translation keeps their
-            formatting. Bilingual files from Trados (.sdlxliff), memoQ
-            (.mqxliff) and other tools (.xlf, .xliff) open with their
-            translations and states and are saved back for that tool. Plain text
-            formats are read as text; other formats fall back to your usual
-            source language.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => input.current?.click()}
-        >
-          Choose document
-        </button>
-        <input
-          ref={input}
-          type="file"
-          hidden
-          onChange={async (e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            onChosen(await readDocument(f));
-          }}
-        />
-      </section>
-    </div>
-  );
+/** An ISO date as the datetime-local input shows it, in local time. */
+export function toLocalInput(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** A language code as the prototype lists it (de-de becomes de-DE). */
-function knownLang(code: string): LangCode {
-  const lower = code.toLowerCase().replace("_", "-");
-  const exact = LANGUAGES.find((l) => l.code.toLowerCase() === lower);
-  if (exact) return exact.code;
-  if (!lower.includes("-")) {
-    const byPrimary = LANGUAGES.find((l) => primary(l.code) === lower);
-    if (byPrimary) return byPrimary.code;
-  }
-  const [p, r] = lower.split("-");
-  return r ? `${p}-${r.toUpperCase()}` : lower;
-}
-
-function bilingualSummary(segments: Segment[]): string {
-  const done = segments.filter((s) => s.status === "confirmed").length;
-  const locked = segments.filter((s) => s.locked).length;
-  return `${done} of ${plural(segments.length, "segment", "segments")} confirmed${locked ? `, ${locked} locked` : ""}`;
+export function fromLocalInput(v: string): string {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 function mostCommon<T>(xs: T[]): T | undefined {

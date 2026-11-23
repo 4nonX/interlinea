@@ -324,8 +324,6 @@ export interface TmUnit {
   /** Plain source of the segments before and after it when it was translated (context match). */
   prev?: string;
   next?: string;
-  /** Set for segments confirmed earlier in the open document. */
-  docSegment?: number;
 }
 
 /** Translation memory "Kanzlei Weber (DE-EN)". Synthetic. */

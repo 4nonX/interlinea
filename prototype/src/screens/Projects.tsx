@@ -1,11 +1,18 @@
 import { useRef, useState, type DragEvent } from "react";
-import { FileText, GitMerge, Upload } from "lucide-react";
-import { SAMPLE_DOCS } from "../data";
+import {
+  FileText,
+  FolderOpen,
+  GitMerge,
+  Settings2,
+  Upload,
+} from "lucide-react";
+import { SAMPLE_DOCS, type Project } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges } from "../merge";
-import { setPendingDoc } from "../draft";
-import { readDocument } from "../detect";
-import { fmtDate, fmtNum } from "../format";
+import { setPendingDocs } from "../draft";
+import { readFiles } from "../detect";
+import { chosenFiles, droppedFiles, type ChosenFile } from "../files";
+import { fmtDate, fmtNum, plural } from "../format";
 import { LangChip, LocationBadge, PageHeader } from "../components/ui";
 import { go } from "../App";
 
@@ -13,18 +20,25 @@ export function Projects() {
   const { state } = useStore();
   const w = useWords();
   const input = useRef<HTMLInputElement>(null);
+  const folder = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [reading, setReading] = useState(false);
 
-  async function start(file: File) {
-    setPendingDoc(await readDocument(file));
+  async function start(files: ChosenFile[]) {
+    if (!files.length) return;
+    setReading(true);
+    try {
+      setPendingDocs(await readFiles(files));
+    } finally {
+      setReading(false);
+    }
     go({ page: "new" });
   }
 
-  function onDrop(e: DragEvent) {
+  async function onDrop(e: DragEvent) {
     e.preventDefault();
     setDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) void start(f);
+    await start(await droppedFiles(e.dataTransfer));
   }
 
   function pendingChanges(projectId: string): number {
@@ -58,32 +72,61 @@ export function Projects() {
           setDragging(true);
         }}
         onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
+        onDrop={(e) => void onDrop(e)}
         aria-labelledby="dz-title"
       >
         <Upload size={22} aria-hidden="true" className="dropzone-icon" />
         <div className="dropzone-text">
-          <h2 id="dz-title">Start a project from a document</h2>
+          <h2 id="dz-title">Start a project from files</h2>
           <p>
-            Drop a file here. Interlinea detects the source language and
-            suggests termbases for the client.
+            {reading
+              ? "Reading the files…"
+              : "Drop files, a folder or a Trados package here. Interlinea detects the source language and suggests memories and termbases for the client."}
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => input.current?.click()}
-        >
-          Choose document
-        </button>
+        <div className="row">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => input.current?.click()}
+            disabled={reading}
+          >
+            Choose files
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => folder.current?.click()}
+            disabled={reading}
+          >
+            <FolderOpen size={14} aria-hidden="true" />
+            Choose a folder
+          </button>
+          <a className="btn btn-quiet" href="#/new">
+            New project without files
+          </a>
+        </div>
         <input
           ref={input}
           type="file"
+          multiple
           hidden
           onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void start(f);
+            const list = e.target.files ? chosenFiles(e.target.files) : [];
             e.target.value = "";
+            void start(list);
+          }}
+        />
+        <input
+          ref={folder}
+          type="file"
+          multiple
+          hidden
+          {...{ webkitdirectory: "" }}
+          onChange={(e) => {
+            const list = e.target.files ? chosenFiles(e.target.files) : [];
+            e.target.value = "";
+            void start(list);
           }}
         />
       </section>
@@ -99,12 +142,14 @@ export function Projects() {
                 type="button"
                 className="btn btn-quiet btn-small"
                 onClick={() => {
-                  setPendingDoc({
-                    file: d.file,
-                    words: d.words,
-                    text: d.text || null,
-                    client: d.client,
-                  });
+                  setPendingDocs([
+                    {
+                      file: d.file,
+                      words: d.words,
+                      text: d.text || null,
+                      client: d.client,
+                    },
+                  ]);
                   go({ page: "new" });
                 }}
               >
@@ -154,7 +199,7 @@ export function Projects() {
                       >
                         {p.name}
                       </a>
-                      <div className="cell-sub">{p.file}</div>
+                      <div className="cell-sub">{filesLine(p)}</div>
                     </td>
                     <td>
                       <span className="lang-pair">
@@ -187,7 +232,13 @@ export function Projects() {
                         <LocationBadge location={p.setup.location} />
                       </div>
                     </td>
-                    <td className="num">{fmtNum(p.words)}</td>
+                    <td className="num">
+                      {fmtNum(
+                        p.files
+                          .filter((f) => f.role === "translatable")
+                          .reduce((n, f) => n + f.words, 0),
+                      )}
+                    </td>
                     <td className="num">{Math.round(p.progress * 100)}%</td>
                     <td>
                       {p.due ? (
@@ -197,12 +248,22 @@ export function Projects() {
                       )}
                     </td>
                     <td className="cell-action">
-                      {changes > 0 && (
-                        <a className="btn btn-small" href={`#/merge/${p.id}`}>
-                          <GitMerge size={14} aria-hidden="true" />
-                          {w("reviewMerge")} ({changes})
+                      <span className="row">
+                        {changes > 0 && (
+                          <a className="btn btn-small" href={`#/merge/${p.id}`}>
+                            <GitMerge size={14} aria-hidden="true" />
+                            {w("reviewMerge")} ({changes})
+                          </a>
+                        )}
+                        <a
+                          className="btn btn-quiet btn-small"
+                          href={`#/project/${p.id}`}
+                          aria-label={`Settings of ${p.name}`}
+                        >
+                          <Settings2 size={14} aria-hidden="true" />
+                          Settings
                         </a>
-                      )}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -213,4 +274,14 @@ export function Projects() {
       </section>
     </div>
   );
+}
+
+function filesLine(p: Project): string {
+  const tr = p.files.filter((f) => f.role === "translatable");
+  const refs = p.files.length - tr.length;
+  const first =
+    tr.length === 1 ? tr[0]!.name : plural(tr.length, "file", "files");
+  return refs
+    ? `${first}, ${plural(refs, "reference file", "reference files")}`
+    : first;
 }

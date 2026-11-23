@@ -2400,6 +2400,12 @@ kbd {
   color: var(--server);
 }
 
+.band-locked {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-3);
+}
+
 /* Edited after insertion: outlined, so untouched matches stand out. */
 .score.is-edited {
   background: transparent;
@@ -3320,4 +3326,204 @@ select.select-auto {
   background: var(--surface-2);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* Project setup: files, memories, checks */
+
+.file-table th[scope="row"] {
+  display: grid;
+  gap: 2px;
+  font-weight: inherit;
+}
+
+.file-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+}
+
+.file-name .cell-title {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.file-table .detect {
+  margin: 2px 0 0;
+  font-size: 0.8125rem;
+}
+
+.file-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: var(--s2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+tr.is-removed .cell-title {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+
+.dropzone-small {
+  padding: var(--s3) var(--s4);
+}
+
+.memory-set {
+  display: grid;
+  gap: var(--s2);
+}
+
+.memory-table td,
+.memory-table th {
+  vertical-align: middle;
+}
+
+.memory-table th[scope="row"] {
+  display: grid;
+  gap: 2px;
+  font-weight: inherit;
+}
+
+.memory-table td:not(.row) {
+  text-align: center;
+}
+
+input.penalty {
+  width: 4.5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.memory-add {
+  display: grid;
+  gap: var(--s2);
+}
+
+.memory-add .add-lang {
+  max-width: none;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.memory-add .add-lang select {
+  max-width: 320px;
+}
+
+.memory-new {
+  display: grid;
+  gap: var(--s2);
+  max-width: 520px;
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  background: var(--surface-2);
+}
+
+.choice-note-wrap {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  line-height: 1.45;
+}
+
+.choice-note-wrap > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.check-inline {
+  display: inline-flex;
+  align-items: center;
+  margin-inline: 2px;
+}
+
+.check-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--s2) var(--s4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-desc {
+  display: block;
+  color: var(--text-3);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.inline-number {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-block: var(--s2);
+}
+
+.save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.save-bar .error {
+  margin: 0 auto 0 0;
+}
+
+.editor-meta select {
+  max-width: 260px;
+}
+
+.file-table tbody th,
+.memory-table tbody th {
+  background: transparent;
+}
+
+.dropzone.dropzone-small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  text-align: left;
+}
+
+.dropzone-small .dropzone-text {
+  flex: 1 1 320px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+
+.settings-details {
+  border: 1px solid var(--border);
+  border-radius: var(--r-panel);
+  padding: var(--s2) var(--s3);
+}
+
+.settings-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.settings-details > summary .muted {
+  font-weight: 400;
+}
+
+.settings-details[open] > summary {
+  margin-bottom: var(--s3);
+}
+
+.master-langs {
+  margin: var(--s1) 0 0 26px;
 }

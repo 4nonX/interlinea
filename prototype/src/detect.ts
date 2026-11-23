@@ -325,72 +325,105 @@ export async function readText(file: File): Promise<string | null> {
   return text.slice(0, 20000);
 }
 
-/**
- * Reads a chosen file for the New project flow. Word documents go through
- * the core's filter (WebAssembly), which also keeps their formatting for
- * the translated file; plain text formats are read directly.
- */
 const unreadable = (e: unknown) =>
   `${e instanceof Error ? e.message : String(e)} Check that the file still exists and is not open in another program.`;
 
 /** Reads one bilingual file of a Trados package as a pending document. */
-export async function readPackageFile(
+/** One bilingual file of a Trados package, as a document of the project. */
+async function readPackageFile(
   name: string,
   pkgBytes: Uint8Array,
   path: string,
-  files: string[],
 ): Promise<PendingDoc> {
+  const file = path.split("/").pop() ?? path;
   try {
     const bytes = await readSdlPackage(pkgBytes, path);
     const bi = await extractXliff(bytes);
     const text = bi.segments.map((s) => plain(s.source)).join("\n");
     return {
-      file: path.split("/").pop() ?? path,
+      file,
+      path,
       words: countWords(text),
       text: text.slice(0, 20000),
       bytes,
       warnings: bi.warnings,
       bilingual: bi,
-      sdlPackage: { bytes: pkgBytes, name, path, files },
+      sdlPackage: { bytes: pkgBytes, name, path },
     };
   } catch (e) {
     return {
-      file: name,
+      file,
+      path,
       words: 0,
       text: null,
       error: e instanceof Error ? e.message : String(e),
+      sdlPackage: { bytes: pkgBytes, name, path },
     };
   }
 }
 
-export async function readDocument(file: File): Promise<PendingDoc> {
-  if (SDL_PACKAGE_FILE.test(file.name)) {
-    let bytes: Uint8Array;
-    try {
-      bytes = new Uint8Array(await file.arrayBuffer());
-    } catch (e) {
-      return { file: file.name, words: 0, text: null, error: unreadable(e) };
+/**
+ * Reads the files chosen for a project. A Trados package becomes all the
+ * files it has for translation, each keeping its path in the package; a
+ * file from a folder keeps the folder's path (its relative path).
+ */
+export async function readFiles(
+  files: { file: File; path?: string }[],
+): Promise<PendingDoc[]> {
+  const out: PendingDoc[] = [];
+  for (const { file, path } of files) {
+    if (SDL_PACKAGE_FILE.test(file.name)) {
+      out.push(...(await readPackage(file)));
+      continue;
     }
-    try {
-      const pkg = await openSdlPackage(bytes);
-      const targets = pkg.files.filter((f) => f.target).map((f) => f.path);
-      if (!targets.length)
-        return {
+    const doc = await readDocument(file);
+    out.push(path && path !== file.name ? { ...doc, path } : doc);
+  }
+  return out;
+}
+
+async function readPackage(file: File): Promise<PendingDoc[]> {
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await file.arrayBuffer());
+  } catch (e) {
+    return [{ file: file.name, words: 0, text: null, error: unreadable(e) }];
+  }
+  try {
+    const pkg = await openSdlPackage(bytes);
+    const targets = pkg.files.filter((f) => f.target).map((f) => f.path);
+    if (!targets.length)
+      return [
+        {
           file: file.name,
           words: 0,
           text: null,
           error: "The package has no files to translate.",
-        };
-      return readPackageFile(file.name, bytes, targets[0]!, targets);
-    } catch (e) {
-      return {
+        },
+      ];
+    const docs: PendingDoc[] = [];
+    for (const path of targets)
+      docs.push(await readPackageFile(file.name, bytes, path));
+    return docs;
+  } catch (e) {
+    return [
+      {
         file: file.name,
         words: 0,
         text: null,
         error: e instanceof Error ? e.message : String(e),
-      };
-    }
+      },
+    ];
   }
+}
+
+/**
+ * Reads one chosen file that is not a package. Word documents go through
+ * the core's filter (WebAssembly), which also keeps their formatting for
+ * the translated file; plain text formats are read directly. Every file
+ * keeps its bytes, so a reference file can be opened from the project.
+ */
+async function readDocument(file: File): Promise<PendingDoc> {
   if (XLIFF_FILE.test(file.name)) {
     let bytes: Uint8Array;
     try {
@@ -457,8 +490,9 @@ export async function readDocument(file: File): Promise<PendingDoc> {
     }
   }
   try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
     const text = await readText(file);
-    return { file: file.name, words: text ? countWords(text) : 0, text };
+    return { file: file.name, words: text ? countWords(text) : 0, text, bytes };
   } catch (e) {
     return {
       file: file.name,

@@ -305,8 +305,8 @@ that match by primary language only (`de-AT` for `de-DE`).
 
 ## Prototype
 
-`prototype/` is a clickable React prototype (sample data) of project creation,
-termbase setup, the translation editor, terminology management and the
+`prototype/` is a clickable React prototype (sample data) of project setup,
+translation memories, the translation editor, terminology management and the
 git-like merge review.
 
 ```
@@ -317,8 +317,9 @@ npm run dev
 ```
 
 The prototype saves your work in the browser (IndexedDB) as you go:
-projects with their Word files, translations, termbases, settings and the
-TMX files imported into project memories are there again on the next visit.
+projects with their files, translations, termbases, memories, templates and
+settings are there again on the next visit. Work saved by the first version
+of the prototype is moved into the current shape when it loads.
 Settings shows whether saving works in this browser and can start again
 from the sample data; `?reset` in the address does the same on load.
 
@@ -330,8 +331,34 @@ npm run build
 npm run e2e
 ```
 
-Sample documents and a deep link per sample (`#/new/sample/0` to `4`) show
-language detection, including the fallback for files without readable text.
+New project starts blank, from a template, or like an earlier project, then
+takes the files and languages, the memories, the terminology and a review,
+each checked by the core's project validation:
+
+- several files and whole folders, kept with their paths; each file is
+  translated or a reference file (what the prototype can't read becomes one);
+  a Trados package (.sdlppx) becomes one project with all its files;
+- one source and several target languages; a bilingual file is translated
+  only into the language it was made for;
+- name, client, due date and description;
+- memories per target language, in priority order, each used for lookup,
+  concordance and updating as chosen, with a penalty in points; new memories,
+  empty or from TMX; a project memory per language that collects confirmed
+  translations;
+- master termbases suggested for the client; a master lacking a project
+  language gains it only when you choose so; where new terms go; where the
+  project termbase is kept; whether master changes come in on opening;
+- the core's quality checks to run, the context match rule, pre-translation
+  (lowest match, which matches are confirmed), the core's analysis per target
+  language, and saving the settings as a template.
+
+Every choice can be changed later on the project's settings page, which also
+adds and removes files and target languages, adds a project memory's units to
+a main memory, pre-translates again, saves a template and deletes the
+project. Memories lists all memories with their units and users, creates,
+imports into, exports and deletes them. Sample documents and a deep link per
+sample (`#/new/sample/0` to `4`) show language detection, including the
+fallback for files without readable text.
 Word documents (.docx) you choose go through the core's Word filter, running
 in the browser as WebAssembly: the units keep their formatting as tags, and
 "Save translated document" writes the .docx with the original layout.
@@ -341,21 +368,24 @@ sample lease, a real Word file in `prototype/samples`). It follows the
 conventions Trados Studio, memoQ and Phrase share: the best match goes into
 an empty segment when it opens, Ctrl+Enter confirms and fills repetitions,
 Ctrl+1 to 9 insert numbered results, terms are recognized by the core
-(including inflected forms), checks run again on confirm and stay on
+(including inflected forms), the core's checks run as the project switches
+them (consistency across the file included), run again on confirm and stay on
 the segment as warnings until fixed or ignored, Ctrl+K searches the memory,
-and F9 inserts the next tag. Match scores look as in Trados: CM for context
-matches, the percentage coloured by band, outlined once edited; Analysis
-counts segments and words per band (also shown before a project is
-created). Preview shows the translated document with its headings, tables
+and F9 inserts the next tag. A project with several files or target
+languages switches between them in the editor's header. Confirmed segments
+go into the memories the project updates. Match scores look as in Trados: CM
+for context matches, the percentage coloured by band, outlined once edited,
+penalties taken off; Analysis is the core's, over all files of the language
+(also shown before a project is created). Preview shows the translated document with its headings, tables
 and footnotes. Terms added while translating show up in the merge review.
 Bilingual files from Trados (.sdlxliff), memoQ (.mqxliff) and other tools
 (.xlf, .xliff) open as projects with their translations and states: the
 languages come from the file, translated segments arrive confirmed,
 locked segments are read-only, reviewer approvals and rejections are
 shown, and "Save XLIFF" writes the file back under its own name with only
-the changed segments and states. A Trados project package (.sdlppx) opens
-one of its files to translate, and "Save return package" writes the
-.sdlrpx.
+the changed segments and states. A Trados project package (.sdlppx) becomes
+a project with all its files, and "Save return package" writes one .sdlrpx
+with every file translated.
 Terminology manages termbases: create, rename and delete them, set their
 languages and fields, add and edit entries, terms and statuses, find and
 merge duplicates, import TBX, MultiTerm XML, Excel and CSV files (with column
