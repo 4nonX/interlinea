@@ -429,3 +429,32 @@ func TestSpellingWithHunspell(t *testing.T) {
 		t.Fatalf("issues: %+v", is)
 	}
 }
+
+func TestRuleCheck(t *testing.T) {
+	ok := []UserRule{
+		{Name: "no Sie", Target: `\bSie\b`, Mode: "must-not"},
+		{Name: "euro", Source: `EUR`, Target: `€`, Mode: "count", Severity: Error},
+		{Name: "date", Target: `\d{2}\.\d{2}`, Mode: "must", Severity: Warning},
+	}
+	for _, r := range ok {
+		if err := r.Check(); err != nil {
+			t.Errorf("%s: %v", r.Name, err)
+		}
+	}
+	bad := []UserRule{
+		{Name: "no target", Mode: "must"},
+		{Name: "bad target", Target: `(`, Mode: "must"},
+		{Name: "bad source", Source: `[`, Target: `x`, Mode: "must"},
+		{Name: "bad mode", Target: `x`, Mode: "should"},
+		{Name: "count without source", Target: `x`, Mode: "count"},
+		{Name: "bad severity", Target: `x`, Mode: "must", Severity: "fatal"},
+	}
+	for _, r := range bad {
+		if err := r.Check(); err == nil {
+			t.Errorf("%s accepted", r.Name)
+		}
+		if _, err := Check(nil, Options{Rules: []UserRule{r}}); err == nil {
+			t.Errorf("%s accepted by Check", r.Name)
+		}
+	}
+}

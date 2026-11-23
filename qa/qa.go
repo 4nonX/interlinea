@@ -185,6 +185,44 @@ type compiledRule struct {
 	src, tgt *regexp.Regexp
 }
 
+// Check reports what is wrong with a rule: no target pattern, a pattern
+// that doesn't compile, an unknown mode or severity, or "count" without a
+// source pattern. Check (the function) refuses options with such a rule.
+func (r UserRule) Check() error {
+	_, err := compileRule(r)
+	return err
+}
+
+func compileRule(r UserRule) (compiledRule, error) {
+	cr := compiledRule{UserRule: r}
+	var err error
+	if r.Target == "" {
+		return cr, fmt.Errorf("qa: rule %q has no target pattern", r.Name)
+	}
+	if cr.tgt, err = regexp.Compile(r.Target); err != nil {
+		return cr, fmt.Errorf("qa: rule %q: %w", r.Name, err)
+	}
+	if r.Source != "" {
+		if cr.src, err = regexp.Compile(r.Source); err != nil {
+			return cr, fmt.Errorf("qa: rule %q: %w", r.Name, err)
+		}
+	}
+	switch r.Mode {
+	case "must", "must-not", "count":
+	default:
+		return cr, fmt.Errorf("qa: rule %q: mode must be must, must-not or count", r.Name)
+	}
+	switch r.Severity {
+	case "", Error, Warning:
+	default:
+		return cr, fmt.Errorf("qa: rule %q: severity must be error or warning", r.Name)
+	}
+	if cr.Mode == "count" && cr.src == nil {
+		return cr, fmt.Errorf("qa: rule %q: mode count needs a source pattern", r.Name)
+	}
+	return cr, nil
+}
+
 func newChecker(o Options) (*checker, error) {
 	c := &checker{opts: o, on: map[Kind]bool{}, ignore: map[string]bool{}, srcLang: langtag.Primary(o.SourceLang), tgtLang: langtag.Primary(o.TargetLang),
 		spellCache: map[string]bool{}, sugCache: map[string][]string{}}
@@ -204,26 +242,9 @@ func newChecker(o Options) (*checker, error) {
 		c.opts.RatioMin = 0.4
 	}
 	for _, r := range o.Rules {
-		cr := compiledRule{UserRule: r}
-		var err error
-		if r.Target == "" {
-			return nil, fmt.Errorf("qa: rule %q has no target pattern", r.Name)
-		}
-		if cr.tgt, err = regexp.Compile(r.Target); err != nil {
-			return nil, fmt.Errorf("qa: rule %q: %w", r.Name, err)
-		}
-		if r.Source != "" {
-			if cr.src, err = regexp.Compile(r.Source); err != nil {
-				return nil, fmt.Errorf("qa: rule %q: %w", r.Name, err)
-			}
-		}
-		switch r.Mode {
-		case "must", "must-not", "count":
-		default:
-			return nil, fmt.Errorf("qa: rule %q: mode must be must, must-not or count", r.Name)
-		}
-		if cr.Mode == "count" && cr.src == nil {
-			return nil, fmt.Errorf("qa: rule %q: mode count needs a source pattern", r.Name)
+		cr, err := compileRule(r)
+		if err != nil {
+			return nil, err
 		}
 		c.rules = append(c.rules, cr)
 	}

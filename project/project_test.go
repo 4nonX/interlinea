@@ -48,6 +48,10 @@ func catalog() Catalog {
 			"tb-weber":   {"de-DE", "en-GB"},
 			"tb-medtech": {"de", "en", "fr"},
 		},
+		Dictionaries: map[string]string{
+			"English (GB)": "en-GB",
+			"Français":     "fr",
+		},
 	}
 }
 
@@ -123,6 +127,28 @@ func TestValidateProblems(t *testing.T) {
 		{"bad context rule", func(s *Settings) { s.Analysis.Context = "next" }, []string{"analysis.context"}},
 		{"unknown disabled check", func(s *Settings) { s.QA.Disabled = []qa.Kind{"vibes"} }, []string{"qa.disabled"}},
 		{"unknown enabled check", func(s *Settings) { s.QA.Enabled = []qa.Kind{"vibes"} }, []string{"qa.enabled"}},
+		{"rule without a name", func(s *Settings) {
+			s.QA.Rules = []qa.UserRule{{Target: "x", Mode: "must"}}
+		}, []string{"qa.rules[0].name"}},
+		{"two rules of one name", func(s *Settings) {
+			s.QA.Rules = []qa.UserRule{{Name: "A", Target: "x", Mode: "must"}, {Name: "a", Target: "y", Mode: "must"}}
+		}, []string{"qa.rules[1].name"}},
+		{"rule that doesn't compile", func(s *Settings) {
+			s.QA.Rules = []qa.UserRule{{Name: "A", Target: "(", Mode: "must"}}
+		}, []string{"qa.rules[0]"}},
+		{"count rule without a source pattern", func(s *Settings) {
+			s.QA.Rules = []qa.UserRule{{Name: "A", Target: "x", Mode: "count"}}
+		}, []string{"qa.rules[0]"}},
+		{"dictionary for a language not in the project", func(s *Settings) {
+			s.QA.Dictionaries = map[string]string{"it-IT": "Français"}
+		}, []string{"qa.dictionaries.it-IT"}},
+		{"unknown dictionary", func(s *Settings) {
+			s.QA.Dictionaries = map[string]string{"en-GB": "Nope"}
+		}, []string{"qa.dictionaries.en-GB"}},
+		{"dictionary of another language", func(s *Settings) {
+			s.QA.Dictionaries = map[string]string{"en-GB": "Français"}
+		}, []string{"qa.dictionaries.en-GB"}},
+		{"empty project word", func(s *Settings) { s.QA.Words = []string{"Hofmann", " "} }, []string{"qa.words"}},
 		{"pre-translation threshold too low", func(s *Settings) {
 			s.Prepare.Pretranslate = true
 			s.Prepare.MinScore = 40
@@ -209,12 +235,37 @@ func TestTemplates(t *testing.T) {
 	}
 }
 
+func TestValidQASettings(t *testing.T) {
+	s := valid()
+	s.QA.Rules = []qa.UserRule{{Name: "Euro sign", Source: `EUR`, Target: `€`, Mode: "count", Severity: qa.Warning}}
+	s.QA.Dictionaries = map[string]string{"en-GB": "English (GB)", "fr-FR": "Français"}
+	s.QA.Words = []string{"Hofmann"}
+	if ps := Validate(s, catalog()); len(ps) != 0 {
+		t.Fatalf("%+v", ps)
+	}
+	s.QA.Rules[0].Target = "("
+	ps := Validate(s, catalog())
+	if len(ps) != 1 || !strings.HasPrefix(ps[0].Message, "Rule \"Euro sign\": error parsing regexp") {
+		t.Fatalf("rule message: %+v", ps)
+	}
+}
+
 func TestQAOptions(t *testing.T) {
 	s := valid()
-	s.QA = QA{Disabled: []qa.Kind{qa.Capitalization}, Enabled: []qa.Kind{qa.LengthRatio}}
+	s.QA = QA{
+		Disabled: []qa.Kind{qa.Capitalization},
+		Enabled:  []qa.Kind{qa.LengthRatio},
+		Rules:    []qa.UserRule{{Name: "no Sie", Target: `\bSie\b`, Mode: "must-not"}},
+		Words:    []string{"Hofmann"},
+	}
 	o := s.QAOptions("fr-FR")
-	if o.SourceLang != "de-DE" || o.TargetLang != "fr-FR" || !reflect.DeepEqual(o.Disabled, s.QA.Disabled) || !reflect.DeepEqual(o.Enabled, s.QA.Enabled) {
+	if o.SourceLang != "de-DE" || o.TargetLang != "fr-FR" || !reflect.DeepEqual(o.Disabled, s.QA.Disabled) || !reflect.DeepEqual(o.Enabled, s.QA.Enabled) ||
+		!reflect.DeepEqual(o.Rules, s.QA.Rules) || !reflect.DeepEqual(o.SpellIgnore, s.QA.Words) {
 		t.Fatalf("%+v", o)
+	}
+	o.Rules[0].Name = "changed"
+	if s.QA.Rules[0].Name != "no Sie" {
+		t.Fatal("options share the project's rules")
 	}
 	issues, err := qa.Check([]qa.Segment{{ID: "1", Source: content.Text("Der Mieter zahlt."), Target: content.Text("the tenant pays.")}}, o)
 	if err != nil {

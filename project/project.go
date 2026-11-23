@@ -110,6 +110,13 @@ type Analysis struct {
 type QA struct {
 	Disabled []qa.Kind `json:"disabled,omitempty"`
 	Enabled  []qa.Kind `json:"enabled,omitempty"`
+	// Rules are checks of the project's own.
+	Rules []qa.UserRule `json:"rules,omitempty"`
+	// Dictionaries names the spelling dictionary for each target
+	// language; a language without one is not spell-checked.
+	Dictionaries map[string]string `json:"dictionaries,omitempty"`
+	// Words are always spelled right in this project (names, terms).
+	Words []string `json:"words,omitempty"`
 	// UneditedFuzzy warns when a fuzzy match is confirmed unchanged.
 	UneditedFuzzy bool `json:"uneditedFuzzy"`
 }
@@ -156,6 +163,8 @@ type Catalog struct {
 	Memories map[string]tm.Info `json:"memories"`
 	// Termbases by ID, with their languages.
 	Termbases map[string][]string `json:"termbases"`
+	// Dictionaries by name, with the language each spells.
+	Dictionaries map[string]string `json:"dictionaries"`
 }
 
 // Problem is one thing wrong with a setup.
@@ -368,6 +377,51 @@ func Validate(s Settings, cat Catalog) []Problem {
 			add("qa.enabled", "%q is not a quality check.", k)
 		}
 	}
+	ruleNames := map[string]bool{}
+	for i, r := range s.QA.Rules {
+		field := fmt.Sprintf("qa.rules[%d]", i)
+		name := strings.TrimSpace(r.Name)
+		switch {
+		case name == "":
+			add(field+".name", "Give the rule a name.")
+		case ruleNames[strings.ToLower(name)]:
+			add(field+".name", "Two rules are called %s.", name)
+		default:
+			ruleNames[strings.ToLower(name)] = true
+		}
+		if err := r.Check(); err != nil {
+			add(field, "%s", ruleProblem(err))
+		}
+	}
+	dictLangs := make([]string, 0, len(s.QA.Dictionaries))
+	for l := range s.QA.Dictionaries {
+		dictLangs = append(dictLangs, l)
+	}
+	sort.Strings(dictLangs)
+	for _, l := range dictLangs {
+		field := "qa.dictionaries." + l
+		n, err := langtag.Normalize(l)
+		if err != nil || !targets[n] {
+			add(field, "A dictionary is set for %s, which is not a target language of the project.", l)
+			continue
+		}
+		name := s.QA.Dictionaries[l]
+		if cat.Dictionaries == nil {
+			continue
+		}
+		dl, ok := cat.Dictionaries[name]
+		if !ok {
+			add(field, "There is no dictionary called %s.", name)
+		} else if primary(dl) != primary(n) {
+			add(field, "%s spells %s, not %s.", name, dl, n)
+		}
+	}
+	for _, w := range s.QA.Words {
+		if strings.TrimSpace(w) == "" || hasControl(w) {
+			add("qa.words", "The project's words can't be empty or contain line breaks or tabs.")
+			break
+		}
+	}
 	if s.Prepare.Pretranslate && (s.Prepare.MinScore < 50 || s.Prepare.MinScore > 100) {
 		add("prepare.minScore", "The lowest match to insert must be between 50%% and 100%%.")
 	}
@@ -511,14 +565,40 @@ func cloneMemories(m map[string][]MemorySetting) map[string][]MemorySetting {
 func cloneQA(q QA) QA {
 	q.Disabled = append([]qa.Kind(nil), q.Disabled...)
 	q.Enabled = append([]qa.Kind(nil), q.Enabled...)
+	q.Rules = append([]qa.UserRule(nil), q.Rules...)
+	q.Words = append([]string(nil), q.Words...)
+	if q.Dictionaries != nil {
+		d := make(map[string]string, len(q.Dictionaries))
+		for k, v := range q.Dictionaries {
+			d[k] = v
+		}
+		q.Dictionaries = d
+	}
 	return q
 }
 
+// ruleProblem is a rule's error without the package prefix, for people.
+func ruleProblem(err error) string {
+	msg := strings.TrimPrefix(err.Error(), "qa: ")
+	if !strings.HasSuffix(msg, ".") {
+		msg += "."
+	}
+	return strings.ToUpper(msg[:1]) + msg[1:]
+}
+
 // QAOptions are the qa package's options for checking a target language
-// of the project.
+// of the project. The spelling dictionary, s.QA.Dictionaries[target], is
+// for the caller to open and set as Spell.
 func (s Settings) QAOptions(target string) qa.Options {
 	q := cloneQA(s.QA)
-	return qa.Options{SourceLang: s.SourceLang, TargetLang: target, Disabled: q.Disabled, Enabled: q.Enabled}
+	return qa.Options{
+		SourceLang:  s.SourceLang,
+		TargetLang:  target,
+		Disabled:    q.Disabled,
+		Enabled:     q.Enabled,
+		Rules:       q.Rules,
+		SpellIgnore: q.Words,
+	}
 }
 
 func cloneTerminology(t Terminology) Terminology {
