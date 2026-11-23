@@ -171,9 +171,48 @@ const schema = `
 	);
 	CREATE INDEX changes_by_project ON changes (project_id, seq);`
 
+// Version 2: who works on what, and who has which segment open.
+const schemaV2 = `
+	CREATE TABLE assignments (
+		id          %[1]s,
+		project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		file        TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		from_seg    TEXT NOT NULL,
+		to_seg      TEXT NOT NULL,
+		user_id     BIGINT NOT NULL,
+		user_name   TEXT NOT NULL,
+		task        TEXT NOT NULL,
+		due         TEXT NOT NULL,
+		done        INTEGER NOT NULL,
+		version     INTEGER NOT NULL,
+		changed_at  TEXT NOT NULL,
+		changed_by  TEXT NOT NULL
+	);
+	CREATE INDEX assignments_by_project ON assignments (project_id, file, target_lang);
+	CREATE INDEX assignments_by_user ON assignments (user_id);
+	CREATE TABLE presence (
+		project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		file        TEXT NOT NULL,
+		target_lang TEXT NOT NULL,
+		seg_id      TEXT NOT NULL,
+		user_id     BIGINT NOT NULL,
+		user_name   TEXT NOT NULL,
+		since       TEXT NOT NULL,
+		expires     TEXT NOT NULL
+	);
+	CREATE UNIQUE INDEX presence_by_user ON presence (project_id, user_id);
+	CREATE INDEX presence_by_file ON presence (project_id, file, target_lang);`
+
 var (
-	migrations   = []string{fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT", "BLOB")}
-	pgMigrations = []string{fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "BYTEA")}
+	migrations = []string{
+		fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT", "BLOB"),
+		fmt.Sprintf(schemaV2, "INTEGER PRIMARY KEY AUTOINCREMENT"),
+	}
+	pgMigrations = []string{
+		fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "BYTEA"),
+		fmt.Sprintf(schemaV2, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"),
+	}
 )
 
 // noNUL keeps NUL out of text columns, which PostgreSQL refuses.
@@ -664,6 +703,9 @@ func (d *DB) UpdateSettings(ctx context.Context, id int64, s project.Settings, v
 			if _, err := tx.ExecContext(ctx, `DELETE FROM segments WHERE target_lang = ? AND file_id IN (SELECT id FROM files WHERE project_id = ?)`, t, id); err != nil {
 				return err
 			}
+			if err := dropWork(ctx, tx, id, "target_lang = ?", t); err != nil {
+				return err
+			}
 		}
 		if err := bumpProject(ctx, tx, id, s, version, by, now); err != nil {
 			return err
@@ -755,6 +797,9 @@ func (d *DB) RemoveFile(ctx context.Context, id int64, name string, version int,
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM files WHERE id = ?`, fid); err != nil {
+			return err
+		}
+		if err := dropWork(ctx, tx, id, "lower(file) = lower(?)", removed); err != nil {
 			return err
 		}
 		for i, f := range s.Files {
