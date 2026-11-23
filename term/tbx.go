@@ -258,11 +258,26 @@ func WriteTBX(tb *Termbase, opts TBXOptions) []byte {
 	if !v3 {
 		entryEl, langEl, termEl = "termEntry", "langSet", "tig"
 	}
-	for i, e := range tb.Entries {
-		id := e.ID
-		if id == "" || !validXMLID(id) {
-			id = fmt.Sprintf("c%d", i+1)
+	// IDs must be unique XML names; entries without one get c1, c2 and so
+	// on, skipping names other entries already use.
+	used := map[string]bool{}
+	for _, e := range tb.Entries {
+		if validXMLID(e.ID) {
+			used[e.ID] = true
 		}
+	}
+	written := map[string]bool{}
+	next := 1
+	for _, e := range tb.Entries {
+		id := e.ID
+		if id == "" || !validXMLID(id) || written[id] {
+			for used[fmt.Sprintf("c%d", next)] || written[fmt.Sprintf("c%d", next)] {
+				next++
+			}
+			id = fmt.Sprintf("c%d", next)
+			next++
+		}
+		written[id] = true
 		b.WriteString("<" + entryEl + ` id="` + escAttr(id) + `">`)
 		writeTBXValues(&b, e.Fields, "descrip")
 		writeTBXTransac(&b, "origination", e.CreatedAt, e.CreatedBy)

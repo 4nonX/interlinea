@@ -148,6 +148,28 @@ func NormalizeLang(s string) string {
 	return s
 }
 
+// ResolveLang returns the language of a termbase (one of langs) that a
+// file's language tag means: the same tag (after normalization), or, for a
+// tag without a region or script, the termbase's variant of that language
+// ("de" becomes "de-DE" when the termbase has de-DE). Otherwise the
+// normalized tag itself is returned.
+func ResolveLang(lang string, langs []string) string {
+	n := NormalizeLang(lang)
+	for _, l := range langs {
+		if strings.EqualFold(NormalizeLang(l), n) {
+			return l
+		}
+	}
+	if !strings.ContainsAny(n, "-_") {
+		for _, l := range langs {
+			if langtag.Primary(l) == strings.ToLower(n) {
+				return l
+			}
+		}
+	}
+	return n
+}
+
 // Clean tidies an entry: trims text, drops empty terms, languages and
 // values, removes duplicate terms within a language and normalizes language
 // tags. It reports whether anything usable is left.

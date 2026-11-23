@@ -20,6 +20,8 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export |
 | `tm/sqlitetm` | Persistent backend: any number of memories in one SQLite file, term index for fuzzy candidates, FTS5 trigram index for concordance |
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
+| `term/termdb` | Persistent termbases: any number in one SQLite file, every version of every entry, edits on stale copies refused, term index for lookups, FTS5 trigram search, imports in one transaction |
+| `internal/sqlitedb` | Opens the SQLite stores with shared settings (WAL, busy timeout) and migrates their schema |
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |
 | `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
@@ -74,6 +76,30 @@ Memories live in `Interlinea/memories.db` in the user configuration directory
 (`%AppData%` on Windows, `~/Library/Application Support` on macOS,
 `~/.config` on Linux). `-db` or the `INTERLINEA_DB` environment variable
 selects another file.
+
+Stored termbases:
+
+```
+interlinea termbase create -name "Kanzlei Weber" -langs de-DE,en-GB
+interlinea termbase import -name "Kanzlei Weber" -dry-run client.tbx
+interlinea termbase import -name "Kanzlei Weber" -match term -on merge client.tbx
+interlinea termbase import -name "Glossar" -create -mapping mapping.json glossary.xlsx
+interlinea termbase search -name "Kanzlei Weber" -lang de -status approved miet
+interlinea termbase lookup -name "Kanzlei Weber" -lang de Kaution
+interlinea termbase show -name "Kanzlei Weber" c12
+interlinea termbase history -name "Kanzlei Weber" c12
+interlinea termbase duplicates -name "Kanzlei Weber" -lang de
+interlinea termbase merge -name "Kanzlei Weber" c12 c40
+interlinea termbase recognize -name "Projekt,Kanzlei Weber" -src de-DE -tgt en-GB "Die Kaution ..."
+interlinea termbase export -name "Kanzlei Weber" weber.tbx
+```
+
+Termbases live in `Interlinea/termbases.db` next to the memories
+(`-db` or `INTERLINEA_TERMDB` for another file). Every change keeps the
+previous version with who made it and why; deleted entries are kept as a
+record. Entries keep the IDs of the file they came from when those are
+free, otherwise they are numbered c1, c2 and so on, which are valid TBX IDs,
+so a TBX export imported back with `-match id` finds them again.
 
 Other commands:
 

@@ -14,19 +14,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 
-	_ "github.com/ncruces/go-sqlite3/driver" // registers the "sqlite3" driver
-	_ "github.com/ncruces/go-sqlite3/embed"  // embeds the SQLite build (with FTS5)
-
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/fuzzy"
+	"github.com/4nonX/interlinea/internal/sqlitedb"
 	"github.com/4nonX/interlinea/tm"
 )
 
@@ -37,7 +32,6 @@ var (
 )
 
 const (
-	schemaVersion  = 1
 	candidateLimit = 200
 	timeLayout     = time.RFC3339Nano
 )
@@ -54,79 +48,11 @@ type DB struct {
 // Open opens or creates the database at path and brings its schema up to date.
 // Parent directories are created as needed.
 func Open(path string) (*DB, error) {
-	if strings.TrimSpace(path) == "" {
-		return nil, errors.New("sqlitetm: empty database path")
-	}
-	abs, err := filepath.Abs(path)
+	sdb, err := sqlitedb.Open(path, "sqlitetm", migrations)
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return nil, err
-	}
-	dsn := fileDSN(filepath.ToSlash(abs))
-	sdb, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("sqlitetm: open %s: %w", path, err)
-	}
-	d := &DB{sql: sdb, now: func() time.Time { return time.Now().UTC() }}
-	var mode string
-	if err := sdb.QueryRow(`PRAGMA journal_mode = wal`).Scan(&mode); err != nil {
-		sdb.Close()
-		return nil, fmt.Errorf("sqlitetm: enable WAL: %w", err)
-	}
-	if !strings.EqualFold(mode, "wal") {
-		sdb.Close()
-		return nil, fmt.Errorf("sqlitetm: database does not support WAL mode (got %q)", mode)
-	}
-	if err := d.migrate(context.Background()); err != nil {
-		sdb.Close()
-		return nil, err
-	}
-	return d, nil
-}
-
-// fileDSN builds the SQLite URI for an absolute path with forward slashes
-// ("/home/dan/x.db" or "C:/Users/Dan/x.db") and the connection settings.
-//
-// The path is written without an authority ("file:/home/..." and
-// "file:C:/Users/..."). The SQLite inside the driver decodes URIs the Unix
-// way, so "file:///C:/..." would become "/C:/...", which Windows rejects.
-func fileDSN(slashPath string) string {
-	q := url.Values{}
-	// busy_timeout comes first: the driver applies these pragmas to every new
-	// connection, and the ones after it may need a lock that another
-	// connection holds at that moment. WAL mode is stored in the database
-	// file and is set once in Open.
-	q.Add("_pragma", "busy_timeout(10000)")
-	q.Add("_pragma", "foreign_keys(1)")
-	q.Add("_pragma", "synchronous(normal)")
-	// Write transactions take the write lock at BEGIN, where the busy timeout
-	// applies; a deferred transaction that reads first could fail with
-	// SQLITE_BUSY when it upgrades to a write.
-	q.Set("_txlock", "immediate")
-	return "file:" + escapeURIPath(slashPath) + "?" + q.Encode()
-}
-
-// escapeURIPath percent-encodes every byte of p except unreserved characters
-// and the separators "/" and ":", so "?", "#", "%", spaces and non-ASCII
-// characters survive the URI unchanged.
-func escapeURIPath(p string) string {
-	const hex = "0123456789ABCDEF"
-	var b strings.Builder
-	for i := 0; i < len(p); i++ {
-		c := p[i]
-		switch {
-		case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9',
-			c == '-', c == '.', c == '_', c == '~', c == '/', c == ':':
-			b.WriteByte(c)
-		default:
-			b.WriteByte('%')
-			b.WriteByte(hex[c>>4])
-			b.WriteByte(hex[c&15])
-		}
-	}
-	return b.String()
+	return &DB{sql: sdb, now: func() time.Time { return time.Now().UTC() }}, nil
 }
 
 // Close closes the database.
@@ -185,36 +111,6 @@ var migrations = []string{
 		INSERT INTO units_fts(rowid, source_plain, target_plain)
 		VALUES (new.id, new.source_plain, new.target_plain);
 	END;`,
-}
-
-func (d *DB) migrate(ctx context.Context) error {
-	d.wmu.Lock()
-	defer d.wmu.Unlock()
-	var current int
-	if err := d.sql.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&current); err != nil {
-		return fmt.Errorf("sqlitetm: read schema version: %w", err)
-	}
-	if current > schemaVersion {
-		return fmt.Errorf("sqlitetm: database schema version %d is newer than this program supports (%d)", current, schemaVersion)
-	}
-	for v := current; v < schemaVersion; v++ {
-		tx, err := d.sql.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, migrations[v]); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("sqlitetm: migrate to version %d: %w", v+1, err)
-		}
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, v+1)); err != nil {
-			tx.Rollback()
-			return err
-		}
-		if err := tx.Commit(); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // Summary describes a stored memory.

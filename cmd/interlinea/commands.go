@@ -38,7 +38,7 @@ func runSegment(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	lang := fs.String("lang", "en", "language of the text (BCP 47, e.g. de-DE)")
 	srxFile := fs.String("srx", "", "SRX 2.0 file with custom rules (default: built-in rules)")
 	asJSON := fs.Bool("json", false, "print paragraphs and segments as JSON")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() > 1 {
@@ -96,7 +96,7 @@ func runSegment(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 
 func runTMXInfo(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlags("tmx-info", "<file.tmx>", stderr)
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -224,7 +224,7 @@ func runLookup(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	mf := addMemFlags(fs)
 	minScore := fs.Int("min", 70, "minimum match percentage")
 	limit := fs.Int("n", 5, "maximum number of matches")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() == 0 {
@@ -279,7 +279,7 @@ func runConcordance(args []string, _ io.Reader, stdout, stderr io.Writer) error 
 	mf := addMemFlags(fs)
 	inTarget := fs.Bool("target", false, "search the target language instead of the source")
 	limit := fs.Int("n", 20, "maximum number of results")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() == 0 {
@@ -322,7 +322,7 @@ func printUnits(w io.Writer, units []tm.Unit, asJSON bool) error {
 
 func runScore(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlags("score", "<segment A> <segment B>", stderr)
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {

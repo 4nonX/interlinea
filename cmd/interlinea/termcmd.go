@@ -129,7 +129,7 @@ func runTermInfo(args []string, stdout, stderr io.Writer) error {
 	format := fs.String("from", "", "input format (default: detected)")
 	mapping := fs.String("mapping", "", "column mapping JSON for CSV, TSV and Excel (see 'term mapping')")
 	asJSON := fs.Bool("json", false, "print the whole termbase as JSON")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -175,7 +175,7 @@ func runTermConvert(args []string, stdout, stderr io.Writer) error {
 	from := fs.String("from", "", "input format (default: detected)")
 	to := fs.String("to", "", "output format (default: from the output file extension; .tbx is TBX 3)")
 	mapping := fs.String("mapping", "", "column mapping JSON for CSV, TSV and Excel input")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
@@ -214,7 +214,7 @@ func runTermConvert(args []string, stdout, stderr io.Writer) error {
 func runTermMapping(args []string, stdout, stderr io.Writer) error {
 	fs := newFlags("term mapping", "file", stderr)
 	from := fs.String("from", "", "input format: csv, tsv or xlsx (default: detected)")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -250,7 +250,7 @@ func runTermDuplicates(args []string, stdout, stderr io.Writer) error {
 	from := fs.String("from", "", "input format (default: detected)")
 	mapping := fs.String("mapping", "", "column mapping JSON for CSV, TSV and Excel")
 	lang := fs.String("lang", "", "only compare terms of this language (default: all)")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -296,7 +296,7 @@ func runTermRecognize(args []string, stdout, stderr io.Writer) error {
 	tgt := fs.String("tgt", "", "target language (required)")
 	target := fs.String("target", "", "translation to check for missing and forbidden terms")
 	asJSON := fs.Bool("json", false, "print hits and issues as JSON")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
@@ -312,38 +312,18 @@ func runTermRecognize(args []string, stdout, stderr io.Writer) error {
 	x := term.NewIndex()
 	x.Add(tb.Name, tb.Entries)
 	text := fs.Arg(1)
-	hits := x.Recognize(text, *src, *tgt)
-	var issues []term.Issue
-	if *target != "" {
-		issues = x.Check(hits, *target, *tgt)
-	}
 	if *asJSON {
-		enc := json.NewEncoder(stdout)
-		enc.SetIndent("", "  ")
-		return enc.Encode(struct {
+		hits := x.Recognize(text, *src, *tgt)
+		var issues []term.Issue
+		if *target != "" {
+			issues = x.Check(hits, *target, *tgt)
+		}
+		return printJSON(stdout, struct {
 			Hits   []term.Hit   `json:"hits"`
 			Issues []term.Issue `json:"issues,omitempty"`
 		}{hits, issues})
 	}
-	for _, h := range hits {
-		var ts []string
-		for _, t := range h.Targets {
-			s := t.Text
-			if t.Status != "" && t.Status != term.StatusApproved {
-				s += " (" + t.Status + ")"
-			}
-			ts = append(ts, s)
-		}
-		fmt.Fprintf(stdout, "%s\t%s\t%s\n", text[h.Start:h.End], h.Term.Text, strings.Join(ts, "; "))
-	}
-	for _, is := range issues {
-		switch is.Kind {
-		case "missing":
-			fmt.Fprintf(stdout, "missing: %q is usually %q\n", is.Term, is.Expected)
-		case "forbidden":
-			fmt.Fprintf(stdout, "forbidden: %q\n", is.Found)
-		}
-	}
+	printRecognition(stdout, x, text, *src, *tgt, *target)
 	printWarnings(stderr, rep.Warnings)
 	return nil
 }

@@ -19,7 +19,7 @@ func runExtract(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	lang := fs.String("lang", "en", "source language of the document (BCP 47)")
 	asJSON := fs.Bool("json", false, "print units and blocks as JSON")
 	keep := fs.Bool("keep-revisions", false, "keep tracked changes as tags instead of accepting them")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	opts := docx.Options{KeepRevisions: *keep}
@@ -58,7 +58,7 @@ func runMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	target := fs.String("target", "", "target language written to the translated text (BCP 47)")
 	outName := fs.String("o", "", "output file (required)")
 	keep := fs.Bool("keep-revisions", false, "as used for extract")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	opts := docx.Options{KeepRevisions: *keep}

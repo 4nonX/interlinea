@@ -349,3 +349,27 @@ func TestGuessSeparator(t *testing.T) {
 		t.Fatalf("synonyms: %v %+v", err, tb)
 	}
 }
+
+func TestTBXUniqueIDs(t *testing.T) {
+	tb := &Termbase{Definition: Definition{Languages: []string{"de"}}, Entries: []Entry{
+		{ID: "1", Languages: []Language{{Lang: "de", Terms: []Term{{Text: "a"}}}}},
+		{ID: "c1", Languages: []Language{{Lang: "de", Terms: []Term{{Text: "b"}}}}},
+		{ID: "c1", Languages: []Language{{Lang: "de", Terms: []Term{{Text: "c"}}}}},
+		{Languages: []Language{{Lang: "de", Terms: []Term{{Text: "d"}}}}},
+	}}
+	data, err := Write(tb, FormatTBX)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back, _, err := Read(FormatTBX, data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, e := range back.Entries {
+		ids = append(ids, e.ID)
+	}
+	if strings.Join(ids, " ") != "c2 c1 c3 c4" {
+		t.Fatalf("ids: %v", ids)
+	}
+}

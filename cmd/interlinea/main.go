@@ -30,6 +30,7 @@ var commands = []command{
 	{"extract", "list the translatable units of a Word document", runExtract},
 	{"merge", "write a translated copy of a Word document", runMerge},
 	{"term", "termbase files: info, convert (TBX, MultiTerm, CSV, Excel), duplicates", runTerm},
+	{"termbase", "manage stored termbases (create, import, export, search, edit history, ...)", runTermbase},
 	{"version", "print the version", runVersion},
 }
 
@@ -92,13 +93,22 @@ func newFlags(name, args string, stderr io.Writer) *flag.FlagSet {
 	return fs
 }
 
+// parseFlags parses args; a wrong option is a usage error (exit code 2).
+func parseFlags(fs *flag.FlagSet, args []string) error {
+	err := fs.Parse(args)
+	if err == nil || errors.Is(err, flag.ErrHelp) {
+		return err
+	}
+	return fmt.Errorf("%w: %v", errUsage, err)
+}
+
 func usageErr(format string, a ...any) error {
 	return fmt.Errorf("%w: %s", errUsage, fmt.Sprintf(format, a...))
 }
 
 func runVersion(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlags("version", "", stderr)
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "interlinea %s\n", version)

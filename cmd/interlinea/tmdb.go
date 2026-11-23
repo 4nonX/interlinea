@@ -93,7 +93,7 @@ func runTMCreate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	name := fs.String("name", "", "memory name (required)")
 	src := fs.String("src", "", "source language, e.g. de-DE (required)")
 	tgt := fs.String("tgt", "", "target language, e.g. en-GB (required)")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
@@ -120,7 +120,7 @@ func runTMList(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlags("tm list", "", stderr)
 	dbPath := dbFlag(fs)
 	asJSON := fs.Bool("json", false, "print as JSON")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	db, err := sqlitetm.Open(*dbPath)
@@ -164,7 +164,7 @@ func runTMDelete(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	dbPath := dbFlag(fs)
 	name := fs.String("name", "", "memory name (required)")
 	yes := fs.Bool("yes", false, "confirm permanent deletion (required)")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if strings.TrimSpace(*name) == "" {
@@ -203,7 +203,7 @@ func runTMImport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	name := fs.String("name", "", "memory name (required)")
 	overwrite := fs.Bool("overwrite", false, "replace existing translations of the same source instead of keeping both")
 	primary := fs.Bool("primary", false, "also accept variants that match only by primary language (de-AT for de-DE)")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
@@ -239,7 +239,7 @@ func runTMExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	dbPath := dbFlag(fs)
 	name := fs.String("name", "", "memory name (required)")
 	outPath := fs.String("o", "", "output file (default: standard output)")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	ctx := context.Background()
@@ -269,7 +269,7 @@ func runTMLookup(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	minScore := fs.Int("min", 70, "minimum match percentage")
 	limit := fs.Int("n", 5, "maximum number of matches")
 	asJSON := fs.Bool("json", false, "print results as JSON")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() == 0 {
@@ -298,7 +298,7 @@ func runTMConcordance(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 	inTarget := fs.Bool("target", false, "search the target language instead of the source")
 	limit := fs.Int("n", 20, "maximum number of results")
 	asJSON := fs.Bool("json", false, "print results as JSON")
-	if err := fs.Parse(args); err != nil {
+	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() == 0 {
