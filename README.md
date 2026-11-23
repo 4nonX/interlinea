@@ -273,6 +273,12 @@ matches, the percentage coloured by band, outlined once edited; Analysis
 counts segments and words per band (also shown before a project is
 created). Preview shows the translated document with its headings, tables
 and footnotes. Terms added while translating show up in the merge review.
+Bilingual files from Trados (.sdlxliff), memoQ (.mqxliff) and other tools
+(.xlf, .xliff) open as projects with their translations and states: the
+languages come from the file, translated segments arrive confirmed,
+locked segments are read-only, reviewer approvals and rejections are
+shown, and "Save XLIFF" writes the file back under its own name with only
+the changed segments and states.
 Terminology manages termbases: create, rename and delete them, set their
 languages and fields, add and edit entries, terms and statuses, find and
 merge duplicates, import TBX, MultiTerm XML, Excel and CSV files (with column

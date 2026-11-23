@@ -89,8 +89,13 @@ export interface NewProjectInput {
   location: Location;
   /** Document text when the prototype could read it; becomes the segments. */
   text: string | null;
-  /** Units, structure and bytes from the core's Word filter; used instead of text. */
-  extracted?: { segments: Segment[]; blocks: Block[]; bytes: Uint8Array };
+  /** Units, structure and bytes from the core's file filter; used instead of text. */
+  extracted?: {
+    segments: Segment[];
+    blocks: Block[];
+    bytes: Uint8Array;
+    format: "docx" | "xliff";
+  };
 }
 
 /** The result of an import the user confirmed; worked out with the core's plan. */
@@ -287,7 +292,10 @@ function reducer(state: State, action: Action): State {
           location: input.location,
         },
         createdAt: now,
-        progress: 0,
+        // A bilingual file can arrive partly or fully translated.
+        progress: input.extracted
+          ? confirmedShare(input.extracted.segments)
+          : 0,
         segments: input.extracted
           ? input.extracted.segments
           : input.text
@@ -300,7 +308,7 @@ function reducer(state: State, action: Action): State {
             : undefined,
         blocks: input.extracted?.blocks,
         original: input.extracted
-          ? { bytes: input.extracted.bytes }
+          ? { bytes: input.extracted.bytes, format: input.extracted.format }
           : undefined,
       };
       return {

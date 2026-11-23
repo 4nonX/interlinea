@@ -2,31 +2,73 @@
 // desktop app and the server use. Loaded on first use; about 1.3 MB
 // compressed. Build it with `make wasm` in the repository root.
 
-import { coreToRuns, runsToCore, type Block, type CoreRun, type Segment } from "./editor/model";
+import {
+  coreToRuns,
+  plain,
+  runsToCore,
+  type Block,
+  type CoreRun,
+  type FileState,
+  type Run,
+  type Segment,
+} from "./editor/model";
 
 export { unwrap };
 
 export type { Block };
 
+interface CoreUnit {
+  id: string;
+  block: string;
+  source: CoreRun[];
+  target?: CoreRun[];
+  state?: FileState;
+  locked?: boolean;
+  match?: number;
+  notes?: string[];
+}
+
 interface CoreExtraction {
-  units: { id: string; block: string; source: CoreRun[] }[];
+  units: CoreUnit[];
   blocks: Block[];
   warnings?: string[];
+  format?: string;
+  sourceLang?: string;
+  targetLang?: string;
 }
 
 type Res<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export interface CoreApi {
   extract(bytes: Uint8Array, lang: string, options?: string): Res<string>;
-  merge(bytes: Uint8Array, lang: string, target: string, translations: string, options?: string): Res<Uint8Array>;
+  merge(
+    bytes: Uint8Array,
+    lang: string,
+    target: string,
+    translations: string,
+    options?: string,
+  ): Res<Uint8Array>;
   tmOpen(name: string, source: string, target: string): Res<boolean>;
   tmAdd(name: string, units: string): Res<number>;
-  tmLookup(name: string, source: string, min: number, limit: number): Res<string>;
-  tmConcordance(name: string, query: string, inTarget: boolean, limit: number): Res<string>;
+  tmLookup(
+    name: string,
+    source: string,
+    min: number,
+    limit: number,
+  ): Res<string>;
+  tmConcordance(
+    name: string,
+    query: string,
+    inTarget: boolean,
+    limit: number,
+  ): Res<string>;
   tmCount(name: string): Res<number>;
   tmImportTMX(name: string, bytes: Uint8Array): Res<string>;
   tmExportTMX(name: string): Res<Uint8Array>;
   // Termbase functions: see termio.ts.
+  xliffDetect(bytes: Uint8Array): Res<string>;
+  xliffExtract(bytes: Uint8Array): Res<string>;
+  xliffMerge(bytes: Uint8Array, updates: string): Res<Uint8Array>;
 }
 
 function unwrap<T>(r: Res<T>): T {
@@ -57,16 +99,36 @@ export const tm = {
   add(c: CoreApi, name: string, units: MemUnit[]) {
     return unwrap(c.tmAdd(name, JSON.stringify(units)));
   },
-  lookup(c: CoreApi, name: string, source: CoreRun[], min: number, limit: number): MemUnit[] {
-    return JSON.parse(unwrap(c.tmLookup(name, JSON.stringify(source), min, limit))) as MemUnit[];
+  lookup(
+    c: CoreApi,
+    name: string,
+    source: CoreRun[],
+    min: number,
+    limit: number,
+  ): MemUnit[] {
+    return JSON.parse(
+      unwrap(c.tmLookup(name, JSON.stringify(source), min, limit)),
+    ) as MemUnit[];
   },
-  concordance(c: CoreApi, name: string, query: string, inTarget: boolean, limit: number): MemUnit[] {
-    return JSON.parse(unwrap(c.tmConcordance(name, query, inTarget, limit))) as MemUnit[];
+  concordance(
+    c: CoreApi,
+    name: string,
+    query: string,
+    inTarget: boolean,
+    limit: number,
+  ): MemUnit[] {
+    return JSON.parse(
+      unwrap(c.tmConcordance(name, query, inTarget, limit)),
+    ) as MemUnit[];
   },
   count(c: CoreApi, name: string): number {
     return unwrap(c.tmCount(name));
   },
-  importTMX(c: CoreApi, name: string, bytes: Uint8Array): { read: number; stored: number; skipped: number } {
+  importTMX(
+    c: CoreApi,
+    name: string,
+    bytes: Uint8Array,
+  ): { read: number; stored: number; skipped: number } {
     return JSON.parse(unwrap(c.tmImportTMX(name, bytes)));
   },
   exportTMX(c: CoreApi, name: string): Uint8Array {
@@ -78,7 +140,10 @@ declare global {
   interface Window {
     interlineaCore?: CoreApi;
     interlineaCoreReady?: () => void;
-    Go?: new () => { importObject: WebAssembly.Imports; run(instance: WebAssembly.Instance): Promise<void> };
+    Go?: new () => {
+      importObject: WebAssembly.Imports;
+      run(instance: WebAssembly.Instance): Promise<void>;
+    };
   }
 }
 
@@ -103,12 +168,17 @@ export function loadCore(): Promise<CoreApi> {
   loading ??= (async () => {
     if (!window.Go) await loadScript(`${base()}core/wasm_exec.js`);
     const res = await fetch(`${base()}core/interlinea.wasm`);
-    if (!res.ok) throw new Error(`The core is missing (${res.status}). Run "make wasm" in the repository.`);
+    if (!res.ok)
+      throw new Error(
+        `The core is missing (${res.status}). Run "make wasm" in the repository.`,
+      );
     // instantiateStreaming needs the application/wasm type, which not every
     // host sends; compiling from the bytes works everywhere.
     const bytes = await res.arrayBuffer();
     const go = new window.Go!();
-    const ready = new Promise<void>((resolve) => (window.interlineaCoreReady = resolve));
+    const ready = new Promise<void>(
+      (resolve) => (window.interlineaCoreReady = resolve),
+    );
     const { instance } = await WebAssembly.instantiate(bytes, go.importObject);
     void go.run(instance);
     await ready;
@@ -128,13 +198,22 @@ export interface Extracted {
 }
 
 /** Extracts the units of a Word document as editor segments. */
-export async function extractDocx(bytes: Uint8Array, lang: string): Promise<Extracted> {
+export async function extractDocx(
+  bytes: Uint8Array,
+  lang: string,
+): Promise<Extracted> {
   const core = await loadCore();
   const r = core.extract(bytes, lang);
   if (!r.ok) throw new Error(r.error);
   const ex = JSON.parse(r.value) as CoreExtraction;
   return {
-    segments: ex.units.map((u) => ({ id: u.id, block: u.block, source: coreToRuns(u.source), target: [], status: "new" as const })),
+    segments: ex.units.map((u) => ({
+      id: u.id,
+      block: u.block,
+      source: coreToRuns(u.source),
+      target: [],
+      status: "new" as const,
+    })),
     blocks: ex.blocks,
     warnings: ex.warnings ?? [],
   };
@@ -144,15 +223,125 @@ export async function extractDocx(bytes: Uint8Array, lang: string): Promise<Extr
  * Writes the translated document. Segments without a translation keep their
  * source text, as in other CAT tools.
  */
-export async function mergeDocx(bytes: Uint8Array, lang: string, target: string, segments: Segment[]): Promise<Uint8Array> {
+export async function mergeDocx(
+  bytes: Uint8Array,
+  lang: string,
+  target: string,
+  segments: Segment[],
+): Promise<Uint8Array> {
   const core = await loadCore();
   const tr: Record<string, CoreRun[]> = {};
   for (const s of segments) {
-    if (s.target.length && s.target.some((r) => typeof r !== "string" || r.trim())) tr[s.id] = runsToCore(s.target);
+    if (
+      s.target.length &&
+      s.target.some((r) => typeof r !== "string" || r.trim())
+    )
+      tr[s.id] = runsToCore(s.target);
   }
   const r = core.merge(bytes, lang, target, JSON.stringify(tr));
   if (!r.ok) throw new Error(r.error);
   return r.value;
+}
+
+/** File names the XLIFF filter reads: XLIFF 1.2 and 2, Trados SDLXLIFF, memoQ MQXLIFF. */
+export const XLIFF_FILE = /\.(xlf|xliff|sdlxliff|mqxliff)$/i;
+export const XLIFF_TYPE = "application/xliff+xml";
+
+/** What a bilingual file holds besides its segments. */
+export interface Bilingual extends Extracted {
+  /** The variant: "xliff-1.2", "sdlxliff", "mqxliff" or "xliff-2". */
+  format: string;
+  sourceLang: string;
+  targetLang: string;
+}
+
+export const XLIFF_FORMAT_NAME: Record<string, string> = {
+  "xliff-1.2": "XLIFF 1.2",
+  "xliff-2": "XLIFF 2",
+  sdlxliff: "Trados SDLXLIFF",
+  mqxliff: "memoQ MQXLIFF",
+};
+
+// A segment's state in the file becomes the editor's: confirmed for
+// translated and later, draft for drafts and rejections.
+function editorStatus(
+  state: FileState | undefined,
+  target: Run[],
+): Segment["status"] {
+  switch (state) {
+    case "translated":
+    case "reviewed":
+    case "final":
+      return "confirmed";
+    case "draft":
+    case "rejected":
+      return "draft";
+    default:
+      return plain(target).trim() ? "draft" : "new";
+  }
+}
+
+/** Reads a bilingual XLIFF file with its translations and states. */
+export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
+  const core = await loadCore();
+  const ex = JSON.parse(unwrap(core.xliffExtract(bytes))) as CoreExtraction;
+  return {
+    format: ex.format ?? "xliff-1.2",
+    sourceLang: ex.sourceLang ?? "",
+    targetLang: ex.targetLang ?? "",
+    blocks: ex.blocks,
+    warnings: ex.warnings ?? [],
+    segments: ex.units.map((u): Segment => {
+      const target = u.target ? coreToRuns(u.target) : [];
+      return {
+        id: u.id,
+        block: u.block,
+        source: coreToRuns(u.source),
+        target,
+        status: editorStatus(u.state, target),
+        locked: u.locked || undefined,
+        notes: u.notes,
+        file: {
+          state: u.state ?? "new",
+          target: JSON.stringify(u.target ?? []),
+          match: u.match || undefined,
+        },
+      };
+    }),
+  };
+}
+
+/**
+ * The state to write for a segment: a confirmed segment is translated,
+ * unless the file had it reviewed or signed off and the translation did not
+ * change; a draft stays rejected if it was and did not change.
+ */
+function fileState(s: Segment): FileState {
+  const unchanged =
+    s.file !== undefined &&
+    JSON.stringify(runsToCore(s.target)) === s.file.target;
+  if (s.status === "confirmed")
+    return unchanged &&
+      (s.file?.state === "reviewed" || s.file?.state === "final")
+      ? s.file.state
+      : "translated";
+  if (s.status === "draft")
+    return unchanged && s.file?.state === "rejected" ? "rejected" : "draft";
+  return plain(s.target).trim() ? "draft" : "new";
+}
+
+/** Writes translations and states into the original XLIFF file. Locked segments stay as they are. */
+export async function mergeXliff(
+  bytes: Uint8Array,
+  segments: Segment[],
+): Promise<Uint8Array> {
+  const core = await loadCore();
+  const updates: Record<string, { target: CoreRun[]; state: FileState }> = {};
+  for (const s of segments) {
+    if (!s.locked)
+      updates[s.id] = { target: runsToCore(s.target), state: fileState(s) };
+  }
+  return unwrap(core.xliffMerge(bytes, JSON.stringify(updates)));
 }
 
 /** Offers bytes as a download. */
@@ -167,4 +356,5 @@ export function download(bytes: Uint8Array, name: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-export const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+export const DOCX_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

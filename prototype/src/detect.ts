@@ -6,7 +6,7 @@
 
 import type { LangCode } from "./data";
 import { countWords, type PendingDoc } from "./draft";
-import { extractDocx } from "./core";
+import { extractDocx, extractXliff, XLIFF_FILE } from "./core";
 import { plain } from "./editor/model";
 
 export interface Detection {
@@ -324,6 +324,38 @@ export async function readText(file: File): Promise<string | null> {
  * the translated file; plain text formats are read directly.
  */
 export async function readDocument(file: File): Promise<PendingDoc> {
+  if (XLIFF_FILE.test(file.name)) {
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch (e) {
+      return {
+        file: file.name,
+        words: 0,
+        text: null,
+        error: `${e instanceof Error ? e.message : String(e)} Check that the file still exists and is not open in another program.`,
+      };
+    }
+    try {
+      const bi = await extractXliff(bytes);
+      const text = bi.segments.map((s) => plain(s.source)).join("\n");
+      return {
+        file: file.name,
+        words: countWords(text),
+        text: text.slice(0, 20000),
+        bytes,
+        warnings: bi.warnings,
+        bilingual: bi,
+      };
+    } catch (e) {
+      return {
+        file: file.name,
+        words: 0,
+        text: null,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }
   if (/\.docx$/i.test(file.name)) {
     let bytes: Uint8Array;
     try {

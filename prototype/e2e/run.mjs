@@ -2,10 +2,11 @@
 import editor from "./editor.mjs";
 import terminology from "./terminology.mjs";
 import persistence from "./persistence.mjs";
+import xliff from "./xliff.mjs";
 
 let passed = 0;
 let failed = 0;
-for (const t of [editor, terminology, persistence]) {
+for (const t of [editor, terminology, persistence, xliff]) {
   const r = await t();
   passed += r.passed;
   failed += r.failed;

@@ -138,7 +138,7 @@ export interface Project {
   /** Paragraph structure from the file filter, for the preview. */
   blocks?: Block[];
   /** The original file, when the core's filter read it: needed to save the translation. */
-  original?: { url?: string; bytes?: Uint8Array };
+  original?: { url?: string; bytes?: Uint8Array; format?: "docx" | "xliff" };
 }
 
 export const SERVER = "terms.kanzlei-weber.example";

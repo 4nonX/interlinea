@@ -1,21 +1,90 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { AlertTriangle, ArrowLeft, BarChart3, Check, CircleDashed, Copy, Database, Download, Eye, Upload, GitMerge, Keyboard, PencilLine, Plus, Repeat2, Search, Tag, X } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  BarChart3,
+  Check,
+  CircleDashed,
+  Copy,
+  Database,
+  Download,
+  Eye,
+  Upload,
+  GitMerge,
+  Keyboard,
+  Lock,
+  PencilLine,
+  Plus,
+  Repeat2,
+  Search,
+  Tag,
+  X,
+} from "lucide-react";
 import { lang, USER } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges } from "../merge";
-import { isTag, missingTags, plain, sourceKey, wordCount, type Run, type Segment, type TmUnit } from "../editor/model";
+import {
+  isTag,
+  missingTags,
+  plain,
+  runsToCore,
+  sourceKey,
+  wordCount,
+  type Run,
+  type Segment,
+  type TmUnit,
+} from "../editor/model";
 import { qa, type QaIssue, type TermHit } from "../editor/match";
 import { buildIndex, checkTerms, recognizeTerms } from "../termio";
-import { analyze, bandOf, scoreDescription, scoreLabel, scoredLookup, type ContextRule, type ScoredMatch } from "../editor/analysis";
-import { concordanceAll, documentMemory, persistMemory, projectMemories, type MemoryInfo } from "../editor/memory";
+import {
+  analyze,
+  bandOf,
+  scoreDescription,
+  scoreLabel,
+  scoredLookup,
+  type ContextRule,
+  type ScoredMatch,
+} from "../editor/analysis";
+import {
+  concordanceAll,
+  documentMemory,
+  persistMemory,
+  projectMemories,
+  type MemoryInfo,
+} from "../editor/memory";
 import { Preview } from "../editor/Preview";
 import { AnalysisTable } from "../components/AnalysisTable";
-import { core, DOCX_TYPE, download, loadCore, mergeDocx, tm } from "../core";
-import { TargetEditor, chipText, tagDescription, type TargetEditorHandle } from "../editor/TargetEditor";
+import {
+  core,
+  DOCX_TYPE,
+  download,
+  loadCore,
+  mergeDocx,
+  mergeXliff,
+  tm,
+  XLIFF_TYPE,
+} from "../core";
+import {
+  TargetEditor,
+  chipText,
+  tagDescription,
+  type TargetEditorHandle,
+} from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
 
-const STATUS_TEXT: Record<Segment["status"], string> = { new: "Not translated", draft: "Draft", confirmed: "Confirmed" };
+const STATUS_TEXT: Record<Segment["status"], string> = {
+  new: "Not translated",
+  draft: "Draft",
+  confirmed: "Confirmed",
+};
 
 type Filter = "all" | "todo" | "warnings";
 type Result = { kind: "tm"; m: ScoredMatch } | { kind: "term"; h: TermHit };
@@ -25,9 +94,17 @@ export function Editor({ projectId }: { projectId: string }) {
   const w = useWords();
   const project = state.projects.find((p) => p.id === projectId);
   const segments = useMemo(() => project?.segments ?? [], [project?.segments]);
-  const [activeId, setActiveId] = useState(() => segments.find((s) => s.status !== "confirmed")?.id ?? segments[0]?.id ?? "");
+  const [activeId, setActiveId] = useState(
+    () =>
+      segments.find((s) => s.status !== "confirmed" && !s.locked)?.id ??
+      segments[0]?.id ??
+      "",
+  );
   const [filter, setFilter] = useState<Filter>("all");
-  const [capture, setCapture] = useState<{ source: string; target: string } | null>(null);
+  const [capture, setCapture] = useState<{
+    source: string;
+    target: string;
+  } | null>(null);
   const [lookupText, setLookupText] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [showPreview, setShowPreview] = useState(false);
@@ -37,16 +114,34 @@ export function Editor({ projectId }: { projectId: string }) {
   const tmxInput = useRef<HTMLInputElement>(null);
   const [announcement, setAnnouncement] = useState("");
   const editor = useRef<TargetEditorHandle>(null);
+  // A locked segment has no editor; its read-only view takes the focus so
+  // the keyboard still moves between segments.
+  const lockedView = useRef<HTMLDivElement>(null);
   const sourceSelection = useRef("");
 
   const source = project?.sourceLang ?? "de-DE";
   const target = project?.targetLangs[0] ?? "en-GB";
   const termbases = useMemo(() => {
     if (!project) return [];
-    const ids = [...project.setup.masters, ...(project.setup.projectTermbaseId ? [project.setup.projectTermbaseId] : [])];
-    return ids.map((id) => state.termbases.find((t) => t.id === id)!).filter(Boolean);
+    const ids = [
+      ...project.setup.masters,
+      ...(project.setup.projectTermbaseId
+        ? [project.setup.projectTermbaseId]
+        : []),
+    ];
+    return ids
+      .map((id) => state.termbases.find((t) => t.id === id)!)
+      .filter(Boolean);
   }, [project, state.termbases]);
-  const writeTermbase = project ? state.termbases.find((t) => t.id === (project.setup.mode === "direct" ? project.setup.masters[0] : project.setup.projectTermbaseId)) : undefined;
+  const writeTermbase = project
+    ? state.termbases.find(
+        (t) =>
+          t.id ===
+          (project.setup.mode === "direct"
+            ? project.setup.masters[0]
+            : project.setup.projectTermbaseId),
+      )
+    : undefined;
 
   // The memory: the client's memory (sample project only) plus every segment
   // confirmed in this document, which is what confirming stores in Trados,
@@ -61,16 +156,26 @@ export function Editor({ projectId }: { projectId: string }) {
     let live = true;
     loadCore().then(
       () => live && setReady(true),
-      (e: unknown) => live && notify(`The translation memory could not be loaded: ${e instanceof Error ? e.message : String(e)}`),
+      (e: unknown) =>
+        live &&
+        notify(
+          `The translation memory could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+        ),
     );
     return () => {
       live = false;
     };
   }, [ready, notify]);
   const c = ready ? core() : null;
-  const fixedMemories = useMemo(() => (c && project ? projectMemories(c, project) : []), [c, project?.id, memVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fixedMemories = useMemo(
+    () => (c && project ? projectMemories(c, project) : []),
+    [c, project?.id, memVersion],
+  ); // eslint-disable-line react-hooks/exhaustive-deps
   const memories = useMemo<MemoryInfo[]>(
-    () => (c && project ? [...fixedMemories, documentMemory(c, project, segments, USER)] : []),
+    () =>
+      c && project
+        ? [...fixedMemories, documentMemory(c, project, segments, USER)]
+        : [],
     [c, project, fixedMemories, segments],
   );
   const clientTm = fixedMemories.filter((m) => m.kind !== "document");
@@ -88,29 +193,77 @@ export function Editor({ projectId }: { projectId: string }) {
   const hits = useMemo((): TermHit[] => {
     if (!active || !c || !termIndex) return [];
     const out: TermHit[] = [];
-    for (const h of recognizeTerms(c, termIndex.name, plain(active.source), source, target)) {
+    for (const h of recognizeTerms(
+      c,
+      termIndex.name,
+      plain(active.source),
+      source,
+      target,
+    )) {
       const entry = state.entries.find((e) => e.id === h.entryId);
       const tb = termbases.find((t) => t.id === h.source);
       if (!entry || !tb) continue;
-      const own = (code: string) => Object.entries(entry.terms).filter(([l]) => l === code || primaryOf(l) === primaryOf(code)).flatMap(([, ts]) => ts);
-      const term = own(source).find((t) => t.text === h.term.text) ?? { text: h.term.text, status: "approved" as const };
-      const targets = h.targets.map((ct) => own(target).find((t) => t.text === ct.text) ?? { text: ct.text, status: (ct.status as TermHit["term"]["status"]) || "approved" });
-      out.push({ entry, termbase: tb, term, start: h.start, end: h.end, targets });
+      const own = (code: string) =>
+        Object.entries(entry.terms)
+          .filter(([l]) => l === code || primaryOf(l) === primaryOf(code))
+          .flatMap(([, ts]) => ts);
+      const term = own(source).find((t) => t.text === h.term.text) ?? {
+        text: h.term.text,
+        status: "approved" as const,
+      };
+      const targets = h.targets.map(
+        (ct) =>
+          own(target).find((t) => t.text === ct.text) ?? {
+            text: ct.text,
+            status: (ct.status as TermHit["term"]["status"]) || "approved",
+          },
+      );
+      out.push({
+        entry,
+        termbase: tb,
+        term,
+        start: h.start,
+        end: h.end,
+        targets,
+      });
     }
     return out;
   }, [active, c, termIndex, source, target, state.entries, termbases]);
-  const matches = useMemo(() => (active && c ? scoredLookup(c, memories, segments, index, state.contextRule, 70, 3) : []), [active, c, memories, index, segments, state.contextRule]);
+  const matches = useMemo(
+    () =>
+      active && c
+        ? scoredLookup(c, memories, segments, index, state.contextRule, 70, 3)
+        : [],
+    [active, c, memories, index, segments, state.contextRule],
+  );
   const issues = useMemo(() => {
     if (!active) return [];
-    const termIssues = c && termIndex && plain(active.target).trim() ? checkTerms(c, termIndex.name, plain(active.source), source, plain(active.target), target) : [];
+    const termIssues =
+      c && termIndex && plain(active.target).trim()
+        ? checkTerms(
+            c,
+            termIndex.name,
+            plain(active.source),
+            source,
+            plain(active.target),
+            target,
+          )
+        : [];
     return qa(active.source, active.target, termIssues, source, target);
   }, [active, c, termIndex, source, target]);
   const allIssues = useMemo<QaIssue[]>(() => {
     if (!active) return [];
     const extra: QaIssue[] = [];
     // Unedited fuzzy match: a common check in memoQ, Phrase and Trados Verify.
-    if (active.origin?.kind === "tm" && active.origin.score < 100 && plain(active.target) === active.origin.inserted) {
-      extra.push({ kind: "unedited", text: `The ${active.origin.score}% match is unchanged. Check what differs from the memory source.` });
+    if (
+      active.origin?.kind === "tm" &&
+      active.origin.score < 100 &&
+      plain(active.target) === active.origin.inserted
+    ) {
+      extra.push({
+        kind: "unedited",
+        text: `The ${active.origin.score}% match is unchanged. Check what differs from the memory source.`,
+      });
     }
     const ignored = new Set(active.ignored ?? []);
     return [...issues, ...extra].filter((q) => !ignored.has(q.text));
@@ -119,7 +272,9 @@ export function Editor({ projectId }: { projectId: string }) {
   // The numbered results list: memory matches first, then terms (as in memoQ).
   const results: Result[] = [
     ...matches.map((m) => ({ kind: "tm" as const, m })),
-    ...hits.filter((h) => h.targets.some((t) => t.status !== "forbidden")).map((h) => ({ kind: "term" as const, h })),
+    ...hits
+      .filter((h) => h.targets.some((t) => t.status !== "forbidden"))
+      .map((h) => ({ kind: "term" as const, h })),
   ];
   const concordanceHits = useMemo(() => {
     if (!lookupText || lookupText.trim().length < 2 || !c) return [];
@@ -136,8 +291,12 @@ export function Editor({ projectId }: { projectId: string }) {
     const on = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) return;
-      const node = sel.anchorNode instanceof Element ? sel.anchorNode : sel.anchorNode?.parentElement;
-      if (node?.closest(".seg.is-active .seg-source")) sourceSelection.current = sel.toString().trim();
+      const node =
+        sel.anchorNode instanceof Element
+          ? sel.anchorNode
+          : sel.anchorNode?.parentElement;
+      if (node?.closest(".seg.is-active .seg-source"))
+        sourceSelection.current = sel.toString().trim();
     };
     document.addEventListener("selectionchange", on);
     return () => document.removeEventListener("selectionchange", on);
@@ -147,18 +306,32 @@ export function Editor({ projectId }: { projectId: string }) {
   // default), then tell screen readers where they are.
   useEffect(() => {
     if (!active) return;
+    if (active.locked) lockedView.current?.focus();
     setSelected(0);
     sourceSelection.current = "";
-    const parts = [`Segment ${index + 1} of ${segments.length}`, STATUS_TEXT[active.status]];
+    const parts = [
+      `Segment ${index + 1} of ${segments.length}`,
+      STATUS_TEXT[active.status],
+    ];
     const best = matches[0];
-    if (state.autoInsert && best && active.status === "new" && !plain(active.target).trim()) {
+    if (active.locked) parts.push("Locked in the file");
+    if (
+      state.autoInsert &&
+      best &&
+      !active.locked &&
+      active.status === "new" &&
+      !plain(active.target).trim()
+    ) {
       insertMatch(best);
       parts.push(`${scoreDescription(best.score, best.context)} inserted`);
     } else if (best) {
-      parts.push(`${plural(matches.length, "memory match", "memory matches")}, best ${scoreLabel(best.score, best.context)}`);
+      parts.push(
+        `${plural(matches.length, "memory match", "memory matches")}, best ${scoreLabel(best.score, best.context)}`,
+      );
     }
     if (hits.length) parts.push(plural(hits.length, "term", "terms"));
-    if (active.warnings?.length) parts.push(plural(active.warnings.length, "warning", "warnings"));
+    if (active.warnings?.length)
+      parts.push(plural(active.warnings.length, "warning", "warnings"));
     setAnnouncement(parts.join(". ") + ".");
   }, [activeId, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -178,22 +351,52 @@ export function Editor({ projectId }: { projectId: string }) {
   const visible =
     filter === "all"
       ? segments
-      : segments.filter((s) => s.id === activeId || (filter === "todo" ? s.status !== "confirmed" : (s.warnings?.length ?? 0) > 0));
+      : segments.filter(
+          (s) =>
+            s.id === activeId ||
+            (filter === "todo"
+              ? s.status !== "confirmed"
+              : (s.warnings?.length ?? 0) > 0),
+        );
   const withWarnings = segments.filter((s) => s.warnings?.length).length;
   const totalWords = segments.reduce((n, s) => n + wordCount(s.source), 0);
-  const doneWords = segments.filter((s) => s.status === "confirmed").reduce((n, s) => n + wordCount(s.source), 0);
+  const doneWords = segments
+    .filter((s) => s.status === "confirmed")
+    .reduce((n, s) => n + wordCount(s.source), 0);
   const pendingChanges =
     project.setup.mode === "layered" && project.setup.projectTermbaseId
       ? project.setup.masters.reduce((n, mid) => {
           const m = state.termbases.find((t) => t.id === mid)!;
-          return n + computeChanges(state.entries.filter((e) => e.termbaseId === project.setup.projectTermbaseId), m, state.entries.filter((e) => e.termbaseId === mid), state.baseSnapshots, state.branchedAt[project.id] ?? project.createdAt).length;
+          return (
+            n +
+            computeChanges(
+              state.entries.filter(
+                (e) => e.termbaseId === project.setup.projectTermbaseId,
+              ),
+              m,
+              state.entries.filter((e) => e.termbaseId === mid),
+              state.baseSnapshots,
+              state.branchedAt[project.id] ?? project.createdAt,
+            ).length
+          );
         }, 0)
       : 0;
 
-  function setTarget(runs: Run[], status: Segment["status"] = "draft", origin?: Segment["origin"]) {
-    if (!active) return;
+  function setTarget(
+    runs: Run[],
+    status: Segment["status"] = "draft",
+    origin?: Segment["origin"],
+  ) {
+    if (!active || active.locked) return;
     const empty = !plain(runs).trim() && !runs.some(isTag);
-    dispatch({ type: "setTarget", projectId, segmentId: active.id, target: runs, status: empty ? "new" : status, origin });
+    dispatch({
+      type: "setTarget",
+      projectId,
+      segmentId: active.id,
+      target: runs,
+      status: empty ? "new" : status,
+      origin,
+    });
   }
 
   function activate(id: string) {
@@ -208,22 +411,48 @@ export function Editor({ projectId }: { projectId: string }) {
 
   function confirmAndNext() {
     if (!active) return;
+    if (active.locked) {
+      setAnnouncement(
+        "This segment is locked in the file and cannot be changed.",
+      );
+      return;
+    }
     if (!plain(active.target).trim()) {
-      setAnnouncement("The target is empty. Type a translation or insert a match first.");
+      setAnnouncement(
+        "The target is empty. Type a translation or insert a match first.",
+      );
       return;
     }
     const key = sourceKey(active.source);
-    const repetitions = state.autoPropagate ? segments.filter((s) => s.id !== active.id && s.status !== "confirmed" && sourceKey(s.source) === key) : [];
+    const repetitions = state.autoPropagate
+      ? segments.filter(
+          (s) =>
+            s.id !== active.id &&
+            s.status !== "confirmed" &&
+            !s.locked &&
+            sourceKey(s.source) === key,
+        )
+      : [];
     const warnings = allIssues.map((q) => ({ kind: q.kind, text: q.text }));
     dispatch({ type: "confirm", projectId, segmentId: active.id, warnings });
 
-    const said = [warnings.length ? `Confirmed with ${plural(warnings.length, "warning", "warnings")}` : "Confirmed"];
+    const said = [
+      warnings.length
+        ? `Confirmed with ${plural(warnings.length, "warning", "warnings")}`
+        : "Confirmed",
+    ];
     if (repetitions.length) {
-      said.push(`${plural(repetitions.length, "repetition", "repetitions")} filled: segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")}`);
-      notify(`Also filled ${plural(repetitions.length, "repetition", "repetitions")} (segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")})`);
+      said.push(
+        `${plural(repetitions.length, "repetition", "repetitions")} filled: segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")}`,
+      );
+      notify(
+        `Also filled ${plural(repetitions.length, "repetition", "repetitions")} (segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")})`,
+      );
     }
     const skip = new Set([active.id, ...repetitions.map((r) => r.id)]);
-    const next = segments.slice(index + 1).find((s) => s.status !== "confirmed" && !skip.has(s.id)) ?? segments.find((s) => s.status !== "confirmed" && !skip.has(s.id));
+    const open = (s: Segment) =>
+      s.status !== "confirmed" && !s.locked && !skip.has(s.id);
+    const next = segments.slice(index + 1).find(open) ?? segments.find(open);
     if (next) activate(next.id);
     else {
       notify("All segments confirmed");
@@ -235,21 +464,52 @@ export function Editor({ projectId }: { projectId: string }) {
 
   function insertMatch(m: ScoredMatch) {
     editor.current?.setRuns(m.unit.target);
-    setTarget(m.unit.target, "draft", { kind: "tm", score: m.score, inserted: plain(m.unit.target), context: m.context });
+    setTarget(m.unit.target, "draft", {
+      kind: "tm",
+      score: m.score,
+      inserted: plain(m.unit.target),
+      context: m.context,
+    });
   }
 
   async function saveDocument() {
     if (!project?.original) return;
     setSaving(true);
     try {
-      const bytes = project.original.bytes ?? new Uint8Array(await (await fetch(new URL(project.original.url!, document.baseURI))).arrayBuffer());
+      const bytes =
+        project.original.bytes ??
+        new Uint8Array(
+          await (
+            await fetch(new URL(project.original.url!, document.baseURI))
+          ).arrayBuffer(),
+        );
+      if (project.original.format === "xliff") {
+        // A bilingual file goes back under its own name, for the tool it came from.
+        const out = await mergeXliff(bytes, segments);
+        download(out, project.file, XLIFF_TYPE);
+        const open = segments.filter(
+          (s) => s.status !== "confirmed" && !s.locked,
+        ).length;
+        notify(
+          open
+            ? `Saved ${project.file}. ${plural(open, "segment is", "segments are")} not confirmed yet.`
+            : `Saved ${project.file}`,
+        );
+        return;
+      }
       const out = await mergeDocx(bytes, source, target, segments);
       const name = project.file.replace(/\.docx$/i, "") + `_${target}.docx`;
       download(out, name, DOCX_TYPE);
       const open = segments.filter((s) => !plain(s.target).trim()).length;
-      notify(open ? `Saved ${name}. ${plural(open, "segment", "segments")} without a translation kept the ${lang(source).name} text.` : `Saved ${name}`);
+      notify(
+        open
+          ? `Saved ${name}. ${plural(open, "segment", "segments")} without a translation kept the ${lang(source).name} text.`
+          : `Saved ${name}`,
+      );
     } catch (e) {
-      notify(`Could not save the document: ${e instanceof Error ? e.message : String(e)}`);
+      notify(
+        `Could not save the document: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -275,12 +535,17 @@ export function Editor({ projectId }: { projectId: string }) {
 
   function openCapture() {
     setLookupText(null);
-    setCapture({ source: sourceSelection.current, target: editor.current?.selectedText() ?? "" });
+    setCapture({
+      source: sourceSelection.current,
+      target: editor.current?.selectedText() ?? "",
+    });
   }
 
   function openLookup() {
     setCapture(null);
-    setLookupText(editor.current?.selectedText() || sourceSelection.current || "");
+    setLookupText(
+      editor.current?.selectedText() || sourceSelection.current || "",
+    );
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
@@ -347,25 +612,51 @@ export function Editor({ projectId }: { projectId: string }) {
             </span>
           </span>
         </div>
-        <div className="editor-progress" aria-label={`${Math.round((doneWords / (totalWords || 1)) * 100)} percent confirmed`}>
+        <div
+          className="editor-progress"
+          aria-label={`${Math.round((doneWords / (totalWords || 1)) * 100)} percent confirmed`}
+        >
           <span className="progress-track" aria-hidden="true">
-            <span className="progress-fill" style={{ width: `${(doneWords / (totalWords || 1)) * 100}%` }} />
+            <span
+              className="progress-fill"
+              style={{ width: `${(doneWords / (totalWords || 1)) * 100}%` }}
+            />
           </span>
           <span className="progress-text">
-            {plural(doneWords, "word", "words")} of {totalWords.toLocaleString("en-GB")} confirmed
+            {plural(doneWords, "word", "words")} of{" "}
+            {totalWords.toLocaleString("en-GB")} confirmed
           </span>
         </div>
-        <div className="segmented segmented-small" role="radiogroup" aria-label="Show segments">
+        <div
+          className="segmented segmented-small"
+          role="radiogroup"
+          aria-label="Show segments"
+        >
           <label className="segment">
-            <input type="radio" name="segfilter" checked={filter === "all"} onChange={() => setFilter("all")} />
+            <input
+              type="radio"
+              name="segfilter"
+              checked={filter === "all"}
+              onChange={() => setFilter("all")}
+            />
             <span>All</span>
           </label>
           <label className="segment">
-            <input type="radio" name="segfilter" checked={filter === "todo"} onChange={() => setFilter("todo")} />
+            <input
+              type="radio"
+              name="segfilter"
+              checked={filter === "todo"}
+              onChange={() => setFilter("todo")}
+            />
             <span>To do</span>
           </label>
           <label className="segment">
-            <input type="radio" name="segfilter" checked={filter === "warnings"} onChange={() => setFilter("warnings")} />
+            <input
+              type="radio"
+              name="segfilter"
+              checked={filter === "warnings"}
+              onChange={() => setFilter("warnings")}
+            />
             <span>Warnings{withWarnings > 0 && ` (${withWarnings})`}</span>
           </label>
         </div>
@@ -376,35 +667,67 @@ export function Editor({ projectId }: { projectId: string }) {
               {w("reviewMerge")} ({pendingChanges})
             </a>
           )}
-          <button type="button" className="btn btn-small" onClick={() => memoryDialog.current?.showModal()} disabled={!c}>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => memoryDialog.current?.showModal()}
+            disabled={!c}
+          >
             <Database size={14} aria-hidden="true" />
             Memories
           </button>
-          <button type="button" className="btn btn-small" onClick={() => analysisDialog.current?.showModal()} disabled={segments.length === 0}>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => analysisDialog.current?.showModal()}
+            disabled={segments.length === 0}
+          >
             <BarChart3 size={14} aria-hidden="true" />
             Analysis
           </button>
-          {project.blocks && (
-            <button type="button" className="btn btn-small" aria-pressed={showPreview} onClick={() => setShowPreview((v) => !v)}>
+          {project.blocks && project.original?.format !== "xliff" && (
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-pressed={showPreview}
+              onClick={() => setShowPreview((v) => !v)}
+            >
               <Eye size={14} aria-hidden="true" />
               Preview
             </button>
           )}
           {project.original && (
-            <button type="button" className="btn btn-small" onClick={saveDocument} disabled={saving}>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={saveDocument}
+              disabled={saving}
+            >
               <Download size={14} aria-hidden="true" />
-              {saving ? "Saving…" : "Save translated document"}
+              {saving
+                ? "Saving…"
+                : project.original.format === "xliff"
+                  ? "Save XLIFF"
+                  : "Save translated document"}
             </button>
           )}
         </div>
       </header>
 
-      <dialog ref={memoryDialog} className="dialog" aria-labelledby="memory-title">
+      <dialog
+        ref={memoryDialog}
+        className="dialog"
+        aria-labelledby="memory-title"
+      >
         <form method="dialog" className="dialog-body">
           <h2 id="memory-title" className="dialog-title">
             Translation memories
           </h2>
-          <p className="help">Matches come from these memories, in the core. Confirmed segments are stored in the document memory. TMX files you import go into the project memory.</p>
+          <p className="help">
+            Matches come from these memories, in the core. Confirmed segments
+            are stored in the document memory. TMX files you import go into the
+            project memory.
+          </p>
           {c && (
             <table className="table">
               <caption className="sr-only">Memories of this project</caption>
@@ -428,12 +751,27 @@ export function Editor({ projectId }: { projectId: string }) {
                     <td className="num">{fmtNum(tm.count(c, m.name))}</td>
                     <td className="row">
                       {m.kind === "project" && (
-                        <button type="button" className="btn btn-small" onClick={() => tmxInput.current?.click()}>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          onClick={() => tmxInput.current?.click()}
+                        >
                           <Upload size={14} aria-hidden="true" />
                           Import TMX
                         </button>
                       )}
-                      <button type="button" className="btn btn-quiet btn-small" onClick={() => download(tm.exportTMX(c, m.name), `${m.label.replace(/[^\p{L}\p{N}]+/gu, "_")}.tmx`, "application/x-tmx+xml")} disabled={tm.count(c, m.name) === 0}>
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-small"
+                        onClick={() =>
+                          download(
+                            tm.exportTMX(c, m.name),
+                            `${m.label.replace(/[^\p{L}\p{N}]+/gu, "_")}.tmx`,
+                            "application/x-tmx+xml",
+                          )
+                        }
+                        disabled={tm.count(c, m.name) === 0}
+                      >
                         <Download size={14} aria-hidden="true" />
                         Export TMX
                       </button>
@@ -454,12 +792,20 @@ export function Editor({ projectId }: { projectId: string }) {
               const proj = memories.find((m) => m.kind === "project");
               if (!f || !c || !proj) return;
               try {
-                const st = tm.importTMX(c, proj.name, new Uint8Array(await f.arrayBuffer()));
+                const st = tm.importTMX(
+                  c,
+                  proj.name,
+                  new Uint8Array(await f.arrayBuffer()),
+                );
                 setMemVersion((v) => v + 1);
                 const kept = await persistMemory(c, proj.name);
-                notify(`Imported ${plural(st.stored, "unit", "units")} from ${f.name}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`);
+                notify(
+                  `Imported ${plural(st.stored, "unit", "units")} from ${f.name}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
+                );
               } catch (err) {
-                notify(`Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+                notify(
+                  `Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`,
+                );
               }
             }}
           />
@@ -469,15 +815,31 @@ export function Editor({ projectId }: { projectId: string }) {
         </form>
       </dialog>
 
-      <dialog ref={analysisDialog} className="dialog" aria-labelledby="analysis-title">
+      <dialog
+        ref={analysisDialog}
+        className="dialog"
+        aria-labelledby="analysis-title"
+      >
         <form method="dialog" className="dialog-body">
           <h2 id="analysis-title" className="dialog-title">
             Analysis
           </h2>
           <p className="help">
-            {project.file} against {clientTm.map((m) => m.label).join(" and ") || "no memory"}, counted as in Trados: context matches first, then repetitions inside the document, then the best match. Below 50% counts as new.
+            {project.file} against{" "}
+            {clientTm.map((m) => m.label).join(" and ") || "no memory"}, counted
+            as in Trados: context matches first, then repetitions inside the
+            document, then the best match. Below 50% counts as new.
           </p>
-          {c ? <DialogAnalysis c={c} segments={segments} memories={clientTm} rule={state.contextRule} /> : <p className="muted">Loading the memory…</p>}
+          {c ? (
+            <DialogAnalysis
+              c={c}
+              segments={segments}
+              memories={clientTm}
+              rule={state.contextRule}
+            />
+          ) : (
+            <p className="muted">Loading the memory…</p>
+          )}
           <div className="row">
             <button className="btn btn-primary btn-small">Close</button>
           </div>
@@ -491,22 +853,57 @@ export function Editor({ projectId }: { projectId: string }) {
       {segments.length === 0 ? (
         <div className="empty">
           <p className="empty-title">No text to translate in this prototype</p>
-          <p>The document has no readable text here (for example a scan, or a format only the full product imports). Text recognition for scans comes with the file filters.</p>
+          <p>
+            The document has no readable text here (for example a scan, or a
+            format only the full product imports). Text recognition for scans
+            comes with the file filters.
+          </p>
         </div>
       ) : (
-        <div className={`editor-body${showPreview && project.blocks ? " with-preview" : ""}`}>
+        <div
+          className={`editor-body${showPreview && project.blocks && project.original?.format !== "xliff" ? " with-preview" : ""}`}
+        >
           <ol className="segments" aria-label="Segments">
             {visible.map((s) => {
               const n = segments.indexOf(s) + 1;
               const isActive = s.id === activeId;
               return (
-                <li key={s.id} className={`seg seg-${s.status}${isActive ? " is-active" : ""}`} aria-current={isActive ? "true" : undefined}>
+                <li
+                  key={s.id}
+                  className={`seg seg-${s.status}${isActive ? " is-active" : ""}${s.locked ? " is-locked" : ""}`}
+                  aria-current={isActive ? "true" : undefined}
+                >
                   <span className="seg-num">{n}</span>
-                  <div className="seg-source" lang={source} onClick={() => !isActive && activate(s.id)}>
+                  <div
+                    className="seg-source"
+                    lang={source}
+                    onClick={() => !isActive && activate(s.id)}
+                  >
                     <SourceText runs={s.source} hits={isActive ? hits : []} />
                   </div>
                   <div className="seg-target">
-                    {isActive ? (
+                    {isActive && s.locked ? (
+                      <div
+                        className="seg-target-view seg-locked"
+                        lang={target}
+                        ref={lockedView}
+                        tabIndex={0}
+                        onKeyDown={onKeyDown}
+                        aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. Locked in the file`}
+                      >
+                        <span className="seg-target-text">
+                          {s.target.length ? (
+                            <RunsView runs={s.target} />
+                          ) : (
+                            <span className="missing">Not translated</span>
+                          )}
+                        </span>
+                        <span className="seg-locked-note">
+                          <Lock size={13} aria-hidden="true" /> Locked in the
+                          file
+                        </span>
+                      </div>
+                    ) : isActive ? (
                       <TargetEditor
                         key={s.id}
                         ref={editor}
@@ -518,8 +915,20 @@ export function Editor({ projectId }: { projectId: string }) {
                         onKeyDown={onKeyDown}
                       />
                     ) : (
-                      <button type="button" className="seg-target-view" lang={target} onClick={() => activate(s.id)} aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. ${STATUS_TEXT[s.status]}${s.warnings?.length ? `, ${plural(s.warnings.length, "warning", "warnings")}` : ""}. Edit`}>
-                        <span className="seg-target-text">{s.target.length ? <RunsView runs={s.target} /> : <span className="missing">Not translated</span>}</span>
+                      <button
+                        type="button"
+                        className="seg-target-view"
+                        lang={target}
+                        onClick={() => activate(s.id)}
+                        aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. ${STATUS_TEXT[s.status]}${s.warnings?.length ? `, ${plural(s.warnings.length, "warning", "warnings")}` : ""}. Edit`}
+                      >
+                        <span className="seg-target-text">
+                          {s.target.length ? (
+                            <RunsView runs={s.target} />
+                          ) : (
+                            <span className="missing">Not translated</span>
+                          )}
+                        </span>
                       </button>
                     )}
                   </div>
@@ -529,31 +938,73 @@ export function Editor({ projectId }: { projectId: string }) {
             })}
           </ol>
 
-          {showPreview && project.blocks && (
-            <section className="preview-pane" aria-label="Preview of the translated document">
-              <p className="preview-note">Layout from the Word file. Untranslated text appears in the source language. The saved file is exact.</p>
-              <Preview blocks={project.blocks} segments={segments} activeId={activeId} sourceLang={source} targetLang={target} onPick={activate} />
-            </section>
-          )}
+          {showPreview &&
+            project.blocks &&
+            project.original?.format !== "xliff" && (
+              <section
+                className="preview-pane"
+                aria-label="Preview of the translated document"
+              >
+                <p className="preview-note">
+                  Layout from the Word file. Untranslated text appears in the
+                  source language. The saved file is exact.
+                </p>
+                <Preview
+                  blocks={project.blocks}
+                  segments={segments}
+                  activeId={activeId}
+                  sourceLang={source}
+                  targetLang={target}
+                  onPick={activate}
+                />
+              </section>
+            )}
 
           <aside className="results" aria-label="Translation results">
             <p id="seg-help" className="sr-only">
-              Control Enter confirms and moves on. Control and a number inserts a numbered result. Control E adds a term. Control K searches the memory. F9 inserts the next tag.
+              Control Enter confirms and moves on. Control and a number inserts
+              a numbered result. Control E adds a term. Control K searches the
+              memory. F9 inserts the next tag.
             </p>
             {active && (
               <>
                 <Section title="Translation results" count={results.length}>
                   {results.length === 0 ? (
-                    <p className="muted">No memory matches or terms for this segment.</p>
+                    <p className="muted">
+                      No memory matches or terms for this segment.
+                    </p>
                   ) : (
                     <ol className="result-list">
                       {results.map((r, i) => (
-                        <li key={r.kind === "tm" ? `tm-${i}` : `t-${r.h.entry.id}`}>
-                          <button type="button" className={`result${r === highlighted ? " is-selected" : ""}`} onClick={() => insertResult(r)} aria-keyshortcuts={i < 9 ? `Control+${i + 1}` : undefined}>
+                        <li
+                          key={
+                            r.kind === "tm" ? `tm-${i}` : `t-${r.h.entry.id}`
+                          }
+                        >
+                          <button
+                            type="button"
+                            className={`result${r === highlighted ? " is-selected" : ""}`}
+                            onClick={() => insertResult(r)}
+                            aria-keyshortcuts={
+                              i < 9 ? `Control+${i + 1}` : undefined
+                            }
+                          >
                             <span className="result-key" aria-hidden="true">
                               {i + 1}
                             </span>
-                            {r.kind === "tm" ? <MatchBody m={r.m} source={source} target={target} /> : <TermBody h={r.h} source={source} target={target} />}
+                            {r.kind === "tm" ? (
+                              <MatchBody
+                                m={r.m}
+                                source={source}
+                                target={target}
+                              />
+                            ) : (
+                              <TermBody
+                                h={r.h}
+                                source={source}
+                                target={target}
+                              />
+                            )}
                           </button>
                         </li>
                       ))}
@@ -563,21 +1014,42 @@ export function Editor({ projectId }: { projectId: string }) {
 
                 <Section title="Checks" count={allIssues.length}>
                   {allIssues.length === 0 ? (
-                    <p className="muted">{plain(active.target).trim() ? "No problems found." : "Checks run as you type and again when you confirm."}</p>
+                    <p className="muted">
+                      {plain(active.target).trim()
+                        ? "No problems found."
+                        : "Checks run as you type and again when you confirm."}
+                    </p>
                   ) : (
                     <ul className="issues">
                       {allIssues.map((q) => (
                         <li key={q.text} className={`issue issue-${q.kind}`}>
                           <AlertTriangle size={14} aria-hidden="true" />
                           <span className="issue-text">{q.text}</span>
-                          <button type="button" className="btn btn-quiet btn-tiny" onClick={() => dispatch({ type: "ignoreIssue", projectId, segmentId: active.id, text: q.text })} aria-label={`Ignore: ${q.text}`}>
+                          <button
+                            type="button"
+                            className="btn btn-quiet btn-tiny"
+                            onClick={() =>
+                              dispatch({
+                                type: "ignoreIssue",
+                                projectId,
+                                segmentId: active.id,
+                                text: q.text,
+                              })
+                            }
+                            aria-label={`Ignore: ${q.text}`}
+                          >
                             Ignore
                           </button>
                         </li>
                       ))}
                     </ul>
                   )}
-                  {(active.ignored?.length ?? 0) > 0 && <p className="help">{plural(active.ignored!.length, "warning", "warnings")} ignored for this segment.</p>}
+                  {(active.ignored?.length ?? 0) > 0 && (
+                    <p className="help">
+                      {plural(active.ignored!.length, "warning", "warnings")}{" "}
+                      ignored for this segment.
+                    </p>
+                  )}
                 </Section>
 
                 {lookupText !== null && (
@@ -598,7 +1070,13 @@ export function Editor({ projectId }: { projectId: string }) {
                         Search the memory
                       </label>
                       <Search size={14} aria-hidden="true" />
-                      <input id="lookup-q" autoFocus value={lookupText} onChange={(e) => setLookupText(e.target.value)} placeholder="Words in either language" />
+                      <input
+                        id="lookup-q"
+                        autoFocus
+                        value={lookupText}
+                        onChange={(e) => setLookupText(e.target.value)}
+                        placeholder="Words in either language"
+                      />
                       <button
                         type="button"
                         className="btn btn-quiet btn-tiny"
@@ -617,16 +1095,39 @@ export function Editor({ projectId }: { projectId: string }) {
                           {plural(concordanceHits.length, "result", "results")}
                         </p>
                         {concordanceHits.length === 0 ? (
-                          <p className="muted">Nothing in the memory contains “{lookupText.trim()}”.</p>
+                          <p className="muted">
+                            Nothing in the memory contains “{lookupText.trim()}
+                            ”.
+                          </p>
                         ) : (
                           <ul className="lookup-list">
                             {concordanceHits.map((c, i) => (
                               <li key={i}>
-                                <span lang={source}>{c.side === "source" ? <Highlight text={plain(c.unit.source)} start={c.start} end={c.end} /> : plain(c.unit.source)}</span>
-                                <span lang={target} className="lookup-target">
-                                  {c.side === "target" ? <Highlight text={plain(c.unit.target)} start={c.start} end={c.end} /> : plain(c.unit.target)}
+                                <span lang={source}>
+                                  {c.side === "source" ? (
+                                    <Highlight
+                                      text={plain(c.unit.source)}
+                                      start={c.start}
+                                      end={c.end}
+                                    />
+                                  ) : (
+                                    plain(c.unit.source)
+                                  )}
                                 </span>
-                                <span className="result-meta">{unitMeta(c.unit)}</span>
+                                <span lang={target} className="lookup-target">
+                                  {c.side === "target" ? (
+                                    <Highlight
+                                      text={plain(c.unit.target)}
+                                      start={c.start}
+                                      end={c.end}
+                                    />
+                                  ) : (
+                                    plain(c.unit.target)
+                                  )}
+                                </span>
+                                <span className="result-meta">
+                                  {unitMeta(c.unit)}
+                                </span>
                               </li>
                             ))}
                           </ul>
@@ -650,22 +1151,46 @@ export function Editor({ projectId }: { projectId: string }) {
                         editor.current?.focus();
                       }}
                       onSave={(src, tgt, note) => {
-                        dispatch({ type: "addTerm", id: `t-${Date.now().toString(36)}`, now: new Date().toISOString(), input: { projectId, source: src, target: tgt, note, segment: plain(active.source) } });
-                        notify(`Added “${src}” to ${writeTermbase?.name ?? "the termbase"}`);
+                        dispatch({
+                          type: "addTerm",
+                          id: `t-${Date.now().toString(36)}`,
+                          now: new Date().toISOString(),
+                          input: {
+                            projectId,
+                            source: src,
+                            target: tgt,
+                            note,
+                            segment: plain(active.source),
+                          },
+                        });
+                        notify(
+                          `Added “${src}” to ${writeTermbase?.name ?? "the termbase"}`,
+                        );
                         setCapture(null);
                         editor.current?.focus();
                       }}
                     />
                   ) : (
                     <div className="capture-intro">
-                      <p className="muted">Select the term in the source and its translation in the target, then add it. The sentence is saved with it.</p>
+                      <p className="muted">
+                        Select the term in the source and its translation in the
+                        target, then add it. The sentence is saved with it.
+                      </p>
                       <div className="tool-row">
-                        <button type="button" className="btn btn-small" onClick={openCapture}>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          onClick={openCapture}
+                        >
                           <Plus size={14} aria-hidden="true" />
                           Add term
                           <kbd>Ctrl+E</kbd>
                         </button>
-                        <button type="button" className="btn btn-small" onClick={openLookup}>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          onClick={openLookup}
+                        >
                           <Search size={14} aria-hidden="true" />
                           Search memory
                           <kbd>Ctrl+K</kbd>
@@ -676,17 +1201,34 @@ export function Editor({ projectId }: { projectId: string }) {
                 </Section>
 
                 <div className="tool-row">
-                  <button type="button" className="btn btn-small" onClick={() => active && editor.current?.setRuns(active.source)}>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() =>
+                      active && editor.current?.setRuns(active.source)
+                    }
+                  >
                     <Copy size={14} aria-hidden="true" />
                     Copy source
                     <kbd>Ctrl+Ins</kbd>
                   </button>
-                  <button type="button" className="btn btn-small" onClick={insertNextTag} disabled={missingTags(active.source, active.target).length === 0}>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={insertNextTag}
+                    disabled={
+                      missingTags(active.source, active.target).length === 0
+                    }
+                  >
                     <Tag size={14} aria-hidden="true" />
                     Next tag
                     <kbd>F9</kbd>
                   </button>
-                  <button type="button" className="btn btn-primary btn-small" onClick={confirmAndNext}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-small"
+                    onClick={confirmAndNext}
+                  >
                     <Check size={14} aria-hidden="true" />
                     Confirm
                     <kbd>Ctrl+Enter</kbd>
@@ -700,13 +1242,20 @@ export function Editor({ projectId }: { projectId: string }) {
                   </summary>
                   <dl>
                     <dt>Ctrl+Enter</dt>
-                    <dd>Confirm, fill repetitions and go to the next open segment</dd>
+                    <dd>
+                      Confirm, fill repetitions and go to the next open segment
+                    </dd>
                     <dt>Alt+↓ / Alt+↑</dt>
                     <dd>Next / previous segment</dd>
                     <dt>Ctrl+1 to 9</dt>
-                    <dd>Insert result 1 to 9 (a memory match replaces the target, a term goes in at the caret)</dd>
+                    <dd>
+                      Insert result 1 to 9 (a memory match replaces the target,
+                      a term goes in at the caret)
+                    </dd>
                     <dt>Ctrl+↓ / Ctrl+↑, Ctrl+Space</dt>
-                    <dd>Move through the results, insert the highlighted one</dd>
+                    <dd>
+                      Move through the results, insert the highlighted one
+                    </dd>
                     <dt>Ctrl+Insert</dt>
                     <dd>Copy source to target</dd>
                     <dt>F9</dt>
@@ -716,7 +1265,10 @@ export function Editor({ projectId }: { projectId: string }) {
                     <dt>Ctrl+K or F3</dt>
                     <dd>Search the memory for the selection</dd>
                   </dl>
-                  <p className="help">These follow Trados, memoQ and Phrase where they agree. Editable in the full product.</p>
+                  <p className="help">
+                    These follow Trados, memoQ and Phrase where they agree.
+                    Editable in the full product.
+                  </p>
                 </details>
               </>
             )}
@@ -736,19 +1288,72 @@ function unitMeta(u: TmUnit & { memory?: MemoryInfo }): string {
   return parts.join(", ");
 }
 
+/** How a bilingual file's state reads when it says more than the editor's status. */
+const FILE_STATE_TEXT: Partial<
+  Record<NonNullable<Segment["file"]>["state"], string>
+> = {
+  reviewed: "Approved by a reviewer in the file",
+  final: "Signed off in the file",
+  rejected: "Rejected by a reviewer in the file",
+};
+
 function SegmentStatusCell({ s }: { s: Segment }) {
   const warnings = s.warnings ?? [];
+  const fileNote =
+    s.file && JSON.stringify(runsToCore(s.target)) === s.file.target
+      ? FILE_STATE_TEXT[s.file.state]
+      : undefined;
+  const title = [
+    STATUS_TEXT[s.status],
+    s.locked ? "Locked in the file" : "",
+    fileNote ?? "",
+    ...(s.notes ?? []).map((n) => `Note: ${n}`),
+    ...warnings.map((x) => x.text),
+  ]
+    .filter(Boolean)
+    .join("\n");
   return (
-    <span className="seg-status" title={[STATUS_TEXT[s.status], ...warnings.map((x) => x.text)].join("\n")}>
-      {s.status === "confirmed" ? <Check size={16} aria-label="Confirmed" /> : s.status === "draft" ? <PencilLine size={15} aria-label="Draft" /> : <CircleDashed size={15} aria-label="Not translated" />}
+    <span className="seg-status" title={title}>
+      {s.status === "confirmed" ? (
+        <Check size={16} aria-label="Confirmed" />
+      ) : s.status === "draft" ? (
+        <PencilLine size={15} aria-label="Draft" />
+      ) : (
+        <CircleDashed size={15} aria-label="Not translated" />
+      )}
+      {s.locked && <Lock size={13} aria-label="Locked in the file" />}
+      {fileNote && (
+        <span className={`seg-file-state seg-file-${s.file!.state}`}>
+          {s.file!.state === "rejected"
+            ? "Rejected"
+            : s.file!.state === "final"
+              ? "Signed off"
+              : "Approved"}
+        </span>
+      )}
+      {s.file?.match && !s.origin ? (
+        <span
+          className="seg-file-match"
+          title={`${s.file.match}% match in the file`}
+        >
+          {s.file.match}%
+        </span>
+      ) : null}
       {warnings.length > 0 && (
         <span className="seg-warn">
           <AlertTriangle size={13} aria-hidden="true" />
-          <span className="sr-only">{plural(warnings.length, "warning", "warnings")}</span>
+          <span className="sr-only">
+            {plural(warnings.length, "warning", "warnings")}
+          </span>
           <span aria-hidden="true">{warnings.length}</span>
         </span>
       )}
-      {s.origin?.kind === "tm" && <ScoreBadge origin={s.origin} edited={plain(s.target) !== s.origin.inserted} />}
+      {s.origin?.kind === "tm" && (
+        <ScoreBadge
+          origin={s.origin}
+          edited={plain(s.target) !== s.origin.inserted}
+        />
+      )}
       {s.origin?.kind === "repetition" && (
         <span className="seg-origin">
           <Repeat2 size={13} aria-label="Repetition" />
@@ -759,27 +1364,67 @@ function SegmentStatusCell({ s }: { s: Segment }) {
 }
 
 /** The match score next to a segment, as in Trados' status column. */
-function ScoreBadge({ origin, edited }: { origin: { score: number; context?: boolean }; edited: boolean }) {
+function ScoreBadge({
+  origin,
+  edited,
+}: {
+  origin: { score: number; context?: boolean };
+  edited: boolean;
+}) {
   const label = scoreLabel(origin.score, origin.context);
   const desc = `${scoreDescription(origin.score, origin.context)}${edited ? ", edited" : ""}`;
   return (
-    <span className={`score band-${bandOf(origin.score, origin.context)}${edited ? " is-edited" : ""}`} title={desc}>
+    <span
+      className={`score band-${bandOf(origin.score, origin.context)}${edited ? " is-edited" : ""}`}
+      title={desc}
+    >
       <span aria-hidden="true">{label}</span>
       <span className="sr-only">{desc}</span>
     </span>
   );
 }
 
-function DialogAnalysis({ c, segments, memories, rule }: { c: NonNullable<ReturnType<typeof core>>; segments: Segment[]; memories: MemoryInfo[]; rule: ContextRule }) {
+function DialogAnalysis({
+  c,
+  segments,
+  memories,
+  rule,
+}: {
+  c: NonNullable<ReturnType<typeof core>>;
+  segments: Segment[];
+  memories: MemoryInfo[];
+  rule: ContextRule;
+}) {
   // Computed when the dialog renders, against the memories as they are now.
-  const a = useMemo(() => analyze(c, memories, segments, rule), [c, memories, segments, rule]);
-  return <AnalysisTable rows={a.rows} words={a.words} segments={a.segments} caption="Match analysis" />;
+  const a = useMemo(
+    () => analyze(c, memories, segments, rule),
+    [c, memories, segments, rule],
+  );
+  return (
+    <AnalysisTable
+      rows={a.rows}
+      words={a.words}
+      segments={a.segments}
+      caption="Match analysis"
+    />
+  );
 }
 
-function MatchBody({ m, source, target }: { m: ScoredMatch; source: string; target: string }) {
+function MatchBody({
+  m,
+  source,
+  target,
+}: {
+  m: ScoredMatch;
+  source: string;
+  target: string;
+}) {
   return (
     <>
-      <span className={`result-score score band-${bandOf(m.score, m.context)}`} title={scoreDescription(m.score, m.context)}>
+      <span
+        className={`result-score score band-${bandOf(m.score, m.context)}`}
+        title={scoreDescription(m.score, m.context)}
+      >
         <span aria-hidden="true">{scoreLabel(m.score, m.context)}</span>
         <span className="sr-only">{scoreDescription(m.score, m.context)}</span>
       </span>
@@ -801,7 +1446,15 @@ function MatchBody({ m, source, target }: { m: ScoredMatch; source: string; targ
   );
 }
 
-function TermBody({ h, source, target }: { h: TermHit; source: string; target: string }) {
+function TermBody({
+  h,
+  source,
+  target,
+}: {
+  h: TermHit;
+  source: string;
+  target: string;
+}) {
   return (
     <>
       <span className="result-score result-term">
@@ -816,7 +1469,11 @@ function TermBody({ h, source, target }: { h: TermHit; source: string; target: s
           {h.targets.map((t, k) => (
             <span key={t.text}>
               {k > 0 && ", "}
-              <span className={t.status === "forbidden" ? "term-forbidden" : undefined}>
+              <span
+                className={
+                  t.status === "forbidden" ? "term-forbidden" : undefined
+                }
+              >
                 <InLang code={target}>{t.text}</InLang>
               </span>
               {t.status !== "approved" && (
@@ -834,7 +1491,15 @@ function TermBody({ h, source, target }: { h: TermHit; source: string; target: s
   );
 }
 
-function Highlight({ text, start, end }: { text: string; start: number; end: number }) {
+function Highlight({
+  text,
+  start,
+  end,
+}: {
+  text: string;
+  start: number;
+  end: number;
+}) {
   return (
     <>
       {text.slice(0, start)}
@@ -844,12 +1509,22 @@ function Highlight({ text, start, end }: { text: string; start: number; end: num
   );
 }
 
-function Section({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+function Section({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count?: number;
+  children: ReactNode;
+}) {
   return (
     <section className="results-section" aria-label={title}>
       <h2 className="results-title">
         {title}
-        {count !== undefined && count > 0 && <span className="results-count">{count}</span>}
+        {count !== undefined && count > 0 && (
+          <span className="results-count">{count}</span>
+        )}
       </h2>
       {children}
     </section>
@@ -863,7 +1538,13 @@ export function RunsView({ runs }: { runs: Run[] }) {
         typeof r === "string" ? (
           <span key={i}>{r}</span>
         ) : (
-          <span key={i} className={`tag-chip tag-${r.kind}`} role="img" aria-label={tagDescription(r)} title={r.desc}>
+          <span
+            key={i}
+            className={`tag-chip tag-${r.kind}`}
+            role="img"
+            aria-label={tagDescription(r)}
+            title={r.desc}
+          >
             {chipText(r)}
           </span>
         ),
@@ -883,7 +1564,13 @@ function SourceText({ runs, hits }: { runs: Run[]; hits: TermHit[] }) {
   runs.forEach((r, i) => {
     if (typeof r !== "string") {
       out.push(
-        <span key={`t${i}`} className={`tag-chip tag-${r.kind}`} role="img" aria-label={tagDescription(r)} title={r.desc}>
+        <span
+          key={`t${i}`}
+          className={`tag-chip tag-${r.kind}`}
+          role="img"
+          aria-label={tagDescription(r)}
+          title={r.desc}
+        >
           {chipText(r)}
         </span>,
       );
@@ -895,16 +1582,27 @@ function SourceText({ runs, hits }: { runs: Run[]; hits: TermHit[] }) {
     for (const h of hits.filter((x) => x.start < end && x.end > start)) {
       const a = Math.max(h.start, start);
       const b = Math.min(h.end, end);
-      if (a > pos) out.push(<span key={`${i}-${pos}`}>{r.slice(pos - start, a - start)}</span>);
-      const tgt = h.targets.filter((t) => t.status !== "forbidden").map((t) => t.text).join(", ");
+      if (a > pos)
+        out.push(
+          <span key={`${i}-${pos}`}>{r.slice(pos - start, a - start)}</span>,
+        );
+      const tgt = h.targets
+        .filter((t) => t.status !== "forbidden")
+        .map((t) => t.text)
+        .join(", ");
       out.push(
-        <span key={`${i}-h${a}`} className="term-hit" title={`${h.termbase.name}: ${tgt || "no translation"}`}>
+        <span
+          key={`${i}-h${a}`}
+          className="term-hit"
+          title={`${h.termbase.name}: ${tgt || "no translation"}`}
+        >
           {r.slice(a - start, b - start)}
         </span>,
       );
       pos = b;
     }
-    if (pos < end) out.push(<span key={`${i}-${pos}`}>{r.slice(pos - start)}</span>);
+    if (pos < end)
+      out.push(<span key={`${i}-${pos}`}>{r.slice(pos - start)}</span>);
     offset = end;
   });
   return <>{out}</>;
@@ -951,21 +1649,48 @@ function CaptureForm({
       }}
     >
       <label htmlFor="cap-src">{lang(sourceLang).name}</label>
-      <input id="cap-src" ref={first} lang={sourceLang} value={src} onChange={(e) => setSrc(e.target.value)} placeholder="Select it in the source, or type" />
+      <input
+        id="cap-src"
+        ref={first}
+        lang={sourceLang}
+        value={src}
+        onChange={(e) => setSrc(e.target.value)}
+        placeholder="Select it in the source, or type"
+      />
       <label htmlFor="cap-tgt">{lang(targetLang).name}</label>
-      <input id="cap-tgt" ref={second} lang={targetLang} value={tgt} onChange={(e) => setTgt(e.target.value)} placeholder="Select it in your translation, or type" />
+      <input
+        id="cap-tgt"
+        ref={second}
+        lang={targetLang}
+        value={tgt}
+        onChange={(e) => setTgt(e.target.value)}
+        placeholder="Select it in your translation, or type"
+      />
       <label htmlFor="cap-note">
         Note <span className="optional">optional</span>
       </label>
-      <input id="cap-note" value={note} onChange={(e) => setNote(e.target.value)} />
+      <input
+        id="cap-note"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+      />
       <p className="help">
-        Saved as proposed to {termbaseName} <LocationBadge location={location} />, with this sentence.
+        Saved as proposed to {termbaseName}{" "}
+        <LocationBadge location={location} />, with this sentence.
       </p>
       <div className="row">
-        <button type="submit" className="btn btn-primary btn-small" disabled={!valid}>
+        <button
+          type="submit"
+          className="btn btn-primary btn-small"
+          disabled={!valid}
+        >
           Add term
         </button>
-        <button type="button" className="btn btn-quiet btn-small" onClick={onCancel}>
+        <button
+          type="button"
+          className="btn btn-quiet btn-small"
+          onClick={onCancel}
+        >
           Cancel
         </button>
       </div>

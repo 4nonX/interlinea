@@ -3260,3 +3260,57 @@ select.select-auto {
   margin: 0;
   color: var(--text-2);
 }
+
+/* Bilingual files */
+.lang-fixed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+  margin: 0;
+  font-weight: 500;
+}
+
+.seg.is-locked .seg-target-view {
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.seg-locked {
+  display: grid;
+  gap: var(--s1);
+  cursor: default;
+}
+
+.seg-locked-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 0.75rem;
+}
+
+.seg-file-state,
+.seg-file-match {
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.seg-file-state {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.seg-file-rejected {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.seg-file-match {
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}

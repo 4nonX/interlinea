@@ -102,7 +102,19 @@ export interface Segment {
   warnings?: { kind: string; text: string }[];
   /** Warnings the translator marked as false alarms. */
   ignored?: string[];
+  /** Bilingual files (XLIFF): the segment is locked there and cannot be edited. */
+  locked?: boolean;
+  /**
+   * Bilingual files: the segment's state in the file and the translation it
+   * had, so saving keeps a reviewer's approval when nothing changed.
+   */
+  file?: { state: FileState; target: string; match?: number };
+  /** Bilingual files: comments on the segment. */
+  notes?: string[];
 }
+
+/** States of segments in bilingual files, as the core reports them. */
+export type FileState = "new" | "draft" | "translated" | "reviewed" | "final" | "rejected";
 
 /** Share of source words in confirmed segments, 0 to 1. */
 export function confirmedShare(segments: Segment[]): number {
