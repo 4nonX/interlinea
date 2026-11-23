@@ -17,7 +17,7 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `segment` | SRX 2.0 parser and segmenter, built-in rules for German, English, CJK and a generic fallback |
 | `fuzzy` | Weighted token edit distance and match percentages, aware of tags, case and punctuation |
 | `tmx` | Streaming TMX 1.4b reader and writer (UTF-8, UTF-16, ISO-8859-1, Windows-1252), inline markup mapped to tags |
-| `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export |
+| `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export, penalties for less trusted memories |
 | `tm/tmdb` | Persistent backend: any number of memories in a SQLite file (desktop) or PostgreSQL (server); term index for fuzzy candidates, trigram index for concordance, unit versions that refuse stale edits, change log for syncing |
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
 | `term/termdb` | Persistent termbases: any number in one SQLite file, every version of every entry, edits on stale copies refused, term index for lookups, FTS5 trigram search, imports in one transaction |
@@ -30,8 +30,10 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `analysis` | Word counts and analysis against memories as in Trados and memoQ: locked, context matches (101%, segment before or before and after), repetitions within and across files, 100%, fuzzy bands, new; segments, words, characters, tags and placeables per file and in total; weighted word counts for quotes; reports in HTML, CSV and JSON |
 | `qa` | Quality checks as in Trados, memoQ and Xbench: empty and untranslated segments, tags (missing, extra, nesting), numbers read with each language's separators, end punctuation, spacing (double, leading and trailing, before punctuation, French no-break spaces), brackets, repeated words, capitalization, length limits and ratio, consistency across segments, terminology, spelling, rules of your own (regular expressions); reports in HTML, CSV and JSON |
 | `spell` | Hunspell spelling in Go: reads LibreOffice, Firefox and system dictionaries (.aff/.dic, .oxt extensions), affixes, compounds, all flag types and character sets, suggestions in Hunspell's order |
+| `project` | Project setups: languages, translatable and reference files, memories per target language (lookup, concordance, update, penalty), terminology (project termbase over masters, directly into a master, own), context rule, QA switches, preparation; validation that names the field of every problem; templates; pre-translation from memories as the analysis counts matches |
+| `project/projectdb` | Persistent projects in a SQLite file or PostgreSQL: settings, files with their bytes, segments per file and target language with versions that refuse stale saves, target languages added or removed later, pre-translation applied safely, templates, change log for syncing |
 | `cmd/interlinea` | Command-line interface to all of the above |
-| `cmd/interlinea-wasm` | The filters, memories and termbase formats compiled to WebAssembly for the browser prototype |
+| `cmd/interlinea-wasm` | The filters, memories, termbase formats, QA, analysis, project validation and pre-translation compiled to WebAssembly for the browser prototype |
 
 The SQLite driver is pure Go (SQLite compiled to WebAssembly), so builds need
 no C compiler on any platform.
