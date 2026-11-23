@@ -315,6 +315,50 @@ export interface Identity {
   subject: string;
 }
 
+export interface MergeRequest {
+  id: number;
+  project: string;
+  target: string;
+  title: string;
+  createdAt: string;
+  createdBy: string;
+  deadline?: string;
+  state: "open" | "closed";
+  closedAt?: string;
+}
+
+export interface MergeItem {
+  id: number;
+  kind: "new" | "changed" | "deleted";
+  entryId: string;
+  author: string;
+  changedAt: string;
+  state: string;
+  reviewer?: string;
+  decidedAt?: string;
+  comment?: string;
+  rule?: string;
+  entry: CoreEntry;
+  master?: CoreEntry & { version: number };
+  changes?: { path: string; old: string; new: string }[];
+  conflicts?: { path: string; ours?: string; theirs?: string; base?: string }[];
+  merged?: CoreEntry;
+  forbidden?: boolean;
+  duplicates?: string[];
+}
+
+export interface MergeProgress {
+  total: number;
+  states: Record<string, number>;
+  conflicts: number;
+}
+
+export interface MergeFilter {
+  ids?: number[];
+  states?: string[];
+  conflicts?: boolean;
+}
+
 export interface CatalogMemory {
   name: string;
   sourceLang: string;
@@ -409,8 +453,6 @@ export function client(conn: Connection) {
     memoryTMX: async (id: number, name: string) =>
       new Uint8Array(await (await call(`${p(id)}/memories/${encodeURIComponent(name)}/export`)).arrayBuffer()),
     terminology: (id: number) => get<ProjectTermbase[]>(`${p(id)}/terminology`),
-    addTerm: (id: number, entry: CoreEntry) =>
-      send<{ termbase: string; entry: LayeredEntry }>("POST", `${p(id)}/terms`, entry),
     assignments: (id: number) => get<Assignment[]>(`${p(id)}/assignments`),
     myAssignments: () => get<Assignment[]>("/api/me/assignments"),
     assign: (id: number, a: Partial<Assignment>) => send<Assignment>("POST", `${p(id)}/assignments`, a),
@@ -447,6 +489,56 @@ export function client(conn: Connection) {
     changePassword: (current: string, next: string) =>
       send<{ token: string; expiresAt: string; user: ServerUser }>("PUT", "/api/me/password", { current, new: next }),
     linkOwnIdentity: (returnTo: string) => send<{ url: string }>("POST", "/api/me/identities", { return: returnTo }),
+    // Memories on the server.
+    memories: () => get<(CatalogMemory & { createdAt: string; role: Role })[]>("/api/memories"),
+    deleteMemory: (name: string) => send<void>("DELETE", `/api/memories/${encodeURIComponent(name)}`),
+    memoryConcordance: (name: string, query: string, inTarget: boolean) =>
+      send<{ memory: string; unit: { id: number; source: CoreRun[]; target: CoreRun[]; changedBy?: string; changedAt?: string } }[]>(
+        "POST",
+        `/api/memories/${encodeURIComponent(name)}/concordance`,
+        { query, inTarget, limit: 50 },
+      ),
+    exportMemory: async (name: string) =>
+      new Uint8Array(await (await call(`/api/memories/${encodeURIComponent(name)}/export`)).arrayBuffer()),
+    // Termbases on the server.
+    termbases: () => get<(CatalogTermbase & { upstreams?: string[]; role: Role; terms: number })[]>("/api/termbases"),
+    termbase: (name: string) =>
+      get<{ name: string; kind: "master" | "project"; upstreams?: string[]; definition: ProjectTermbase["definition"]; entries: number; role: Role }>(
+        `/api/termbases/${encodeURIComponent(name)}`,
+      ),
+    entries: (name: string, offset: number, limit: number) =>
+      get<{ entries: (CoreEntry & { version: number; changedAt?: string; changedBy?: string })[]; total: number }>(
+        `/api/termbases/${encodeURIComponent(name)}/entries?${q({ offset: String(offset), limit: String(limit) })}`,
+      ),
+    addEntry: (name: string, entry: CoreEntry) =>
+      send<CoreEntry & { version: number }>("POST", `/api/termbases/${encodeURIComponent(name)}/entries`, { entry, summary: "" }),
+    updateEntry: (name: string, entry: CoreEntry, version: number) =>
+      send<CoreEntry & { version: number }>(
+        "PUT",
+        `/api/termbases/${encodeURIComponent(name)}/entries/${encodeURIComponent(entry.id ?? "")}`,
+        { entry, summary: "" },
+        version,
+      ),
+    deleteEntry: (name: string, id: string) =>
+      send<void>("DELETE", `/api/termbases/${encodeURIComponent(name)}/entries/${encodeURIComponent(id)}`),
+    exportTermbase: async (name: string, format: string) =>
+      new Uint8Array(await (await call(`/api/termbases/${encodeURIComponent(name)}/export?${q({ format })}`)).arrayBuffer()),
+    deleteTermbase: (name: string) => send<void>("DELETE", `/api/termbases/${encodeURIComponent(name)}`),
+    // Merge requests.
+    mergeRequests: (termbase: string) => get<MergeRequest[]>(`/api/termbases/${encodeURIComponent(termbase)}/merge-requests`),
+    openMergeRequest: (termbase: string, master: string, title: string) =>
+      send<MergeRequest>("POST", `/api/termbases/${encodeURIComponent(termbase)}/merge-requests`, { master, title }),
+    mergeRequest: (id: number) => get<MergeRequest>(`/api/merge-requests/${id}`),
+    mergeItems: (id: number, states: string[], offset: number) =>
+      send<{ items: MergeItem[]; total: number }>("POST", `/api/merge-requests/${id}/items`, {
+        filter: states.length ? { states } : {},
+        limit: 50,
+        offset,
+      }),
+    mergeProgress: (id: number) => get<MergeProgress>(`/api/merge-requests/${id}/progress`),
+    decide: (id: number, filter: MergeFilter, decision: { state: string; comment?: string; edited?: CoreEntry }) =>
+      send<{ decided: number; needResolution?: number[] }>("POST", `/api/merge-requests/${id}/decide`, { filter, decision }),
+    closeMergeRequest: (id: number) => send<MergeRequest>("POST", `/api/merge-requests/${id}/close`),
     createMemory: (m: { name: string; sourceLang: string; targetLang: string }) =>
       send<CatalogMemory>("POST", "/api/memories", m),
     importTMX: async (name: string, tmx: Uint8Array) =>

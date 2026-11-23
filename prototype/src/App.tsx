@@ -20,6 +20,7 @@ import { ProjectSettings } from "./screens/ProjectSettings";
 import { Memories } from "./screens/Memories";
 import { ServerProjectPage } from "./screens/ServerProjectPage";
 import { Accounts } from "./screens/Accounts";
+import { ServerMergeReview } from "./screens/ServerMergeReview";
 
 export type Route =
   | { page: "projects" }
@@ -30,6 +31,7 @@ export type Route =
   | { page: "project"; projectId: string }
   | { page: "memories" }
   | { page: "accounts" }
+  | { page: "review"; id: number }
   | { page: "settings" };
 
 export function parseRoute(hash: string): Route {
@@ -71,6 +73,8 @@ export function parseRoute(hash: string): Route {
       return { page: "memories" };
     case "accounts":
       return { page: "accounts" };
+    case "review":
+      return a && /^\d+$/.test(a) ? { page: "review", id: Number(a) } : { page: "terminology" };
     case "settings":
       return { page: "settings" };
     default:
@@ -96,6 +100,8 @@ export function href(r: Route): string {
       return "#/memories";
     case "accounts":
       return "#/accounts";
+    case "review":
+      return `#/review/${r.id}`;
     case "settings":
       return "#/settings";
   }
@@ -165,7 +171,9 @@ function Rail({ route }: { route: Route }) {
     route.page === "editor" ||
     route.page === "project"
       ? "projects"
-      : route.page;
+      : route.page === "review"
+        ? "terminology"
+        : route.page;
   const items = [
     {
       id: "projects",
@@ -285,6 +293,8 @@ function Screen({ route }: { route: Route }) {
       return <Memories />;
     case "accounts":
       return <Accounts />;
+    case "review":
+      return <ServerMergeReview id={route.id} />;
     case "settings":
       return <Settings />;
   }

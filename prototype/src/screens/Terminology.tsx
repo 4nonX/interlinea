@@ -31,7 +31,7 @@ import {
   type Termbase,
   type TermStatus,
 } from "../data";
-import { useLocalStore, useWords } from "../store";
+import { useStore, useWords } from "../store";
 import { fmtTime, plural } from "../format";
 import {
   InLang,
@@ -49,9 +49,15 @@ import {
   useCore,
 } from "./TermbaseDialogs";
 import { fromCoreEntry, term, toCoreEntry } from "../termio";
+import { errorText, useRemote } from "../remote";
+import { ReloadButton, ServerReviewNote, ServerTermbaseGroup } from "./ServerTerminology";
 
 type DialogKind = "import" | "import-new" | "export" | "settings" | null;
 
+/**
+ * Termbases: a termbase on the team server (srv:<name>) is opened from
+ * there first, with its entries; changes to it are saved there.
+ */
 export function Terminology({
   termbaseId,
   entryId,
@@ -59,10 +65,50 @@ export function Terminology({
   termbaseId?: string;
   entryId?: string;
 }) {
-  const { state } = useLocalStore();
+  const { state } = useStore();
+  const r = useRemote();
+  const wanted = termbaseId?.startsWith("srv:") ? termbaseId : undefined;
+  const loaded = !wanted || state.termbases.some((t) => t.id === wanted);
+  const [problem, setProblem] = useState("");
+  const openTermbase = r.openTermbase;
+  useEffect(() => {
+    if (!wanted || !r.conn || loaded) return;
+    setProblem("");
+    openTermbase(wanted.slice(4)).catch((e: unknown) => setProblem(errorText(e)));
+  }, [wanted, r.conn, loaded, openTermbase]);
+  if (wanted && !loaded)
+    return (
+      <div className="page page-narrow">
+        <PageHeader title="Terminology" />
+        {!r.conn ? (
+          <p>
+            This termbase is on a team server. Sign in to it in <a href="#/settings">Settings</a>.
+          </p>
+        ) : problem ? (
+          <p className="error" role="alert">
+            {problem}
+          </p>
+        ) : (
+          <p className="muted" role="status">
+            Opening the termbase from {new URL(r.conn.url).host}…
+          </p>
+        )}
+      </div>
+    );
+  return <TerminologyPage termbaseId={termbaseId} entryId={entryId} />;
+}
+
+function TerminologyPage({
+  termbaseId,
+  entryId,
+}: {
+  termbaseId?: string;
+  entryId?: string;
+}) {
+  const { state } = useStore();
   const tb =
     state.termbases.find((t) => t.id === termbaseId) ??
-    state.termbases.find((t) => t.kind === "master")!;
+    state.termbases.find((t) => t.kind === "master" && !t.remote)!;
   const entries = useMemo(
     () => state.entries.filter((e) => e.termbaseId === tb.id),
     [state.entries, tb.id],
@@ -126,14 +172,18 @@ export function Terminology({
                   <Download size={14} aria-hidden="true" />
                   Export
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-small"
-                  onClick={() => setDialog("settings")}
-                >
-                  <Settings2 size={14} aria-hidden="true" />
-                  Settings
-                </button>
+                {tb.remote ? (
+                  <ReloadButton tb={tb} />
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-small"
+                    onClick={() => setDialog("settings")}
+                  >
+                    <Settings2 size={14} aria-hidden="true" />
+                    Settings
+                  </button>
+                )}
               </div>
             </div>
             <div className="pane-sub">
@@ -158,7 +208,11 @@ export function Terminology({
                 </span>
               )}
             </div>
-            {tb.kind === "project" && <ProjectBranchNote tb={tb} />}
+            {tb.remote ? (
+              <ServerReviewNote tb={tb} />
+            ) : (
+              tb.kind === "project" && <ProjectBranchNote tb={tb} />
+            )}
           </div>
           <div
             className="tabs tabs-small"
@@ -304,7 +358,7 @@ function TermbaseList({
   current: string;
   onImport: () => void;
 }) {
-  const { state, dispatch, notify } = useLocalStore();
+  const { state, dispatch, notify } = useStore();
   const w = useWords();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -315,10 +369,10 @@ function TermbaseList({
     if (creating) nameRef.current?.focus();
   }, [creating]);
   const groups: [string, Termbase[]][] = [
-    ["Masters", state.termbases.filter((t) => t.kind === "master")],
+    ["Masters", state.termbases.filter((t) => t.kind === "master" && !t.remote)],
     [
       `${w("projectTermbase")}s`,
-      state.termbases.filter((t) => t.kind === "project"),
+      state.termbases.filter((t) => t.kind === "project" && !t.remote),
     ],
   ];
   return (
@@ -354,6 +408,7 @@ function TermbaseList({
           </ul>
         </div>
       ))}
+      <ServerTermbaseGroup current={current} />
       {creating ? (
         <form
           className="tb-create"
@@ -491,7 +546,7 @@ function TermbaseList({
 }
 
 function ProjectBranchNote({ tb }: { tb: Termbase }) {
-  const { state } = useLocalStore();
+  const { state } = useStore();
   const w = useWords();
   const masters = (tb.basedOn ?? [])
     .map((id) => state.termbases.find((t) => t.id === id)!)
@@ -530,7 +585,7 @@ function headTerm(
 }
 
 function NewEntry({ tb, initial }: { tb: Termbase; initial: string }) {
-  const { dispatch, notify } = useLocalStore();
+  const { dispatch, notify } = useStore();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [code, setCode] = useState<LangCode>(sourceLangOf(tb));
@@ -713,7 +768,7 @@ function EntryRow({
 }
 
 function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
-  const { state, dispatch, notify } = useLocalStore();
+  const { state, dispatch, notify } = useStore();
   const w = useWords();
   const [tab, setTab] = useState<"entry" | "history">("entry");
   const conceptTypes = tb.infoTypes.filter((i) => i.level === "concept");
@@ -1276,7 +1331,7 @@ function AddLanguage({
  * "find duplicates" show them, with a merge into one entry.
  */
 function Duplicates({ tb, entries }: { tb: Termbase; entries: Entry[] }) {
-  const { dispatch, notify } = useLocalStore();
+  const { dispatch, notify } = useStore();
   const c = useCore();
   const [code, setCode] = useState<string>("");
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -1454,7 +1509,7 @@ function FieldRow({
 }
 
 function AddInfoType({ tb }: { tb: Termbase }) {
-  const { dispatch, notify } = useLocalStore();
+  const { dispatch, notify } = useStore();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [scope, setScope] = useState<InfoType["level"]>("concept");

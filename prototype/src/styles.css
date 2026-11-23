@@ -3752,3 +3752,80 @@ input.mono {
   display: grid;
   gap: var(--s1);
 }
+
+.server-detail {
+  display: grid;
+  gap: var(--s4);
+  margin: var(--s4) 0;
+}
+
+/* Merge requests on the team server */
+
+.server-review {
+  display: grid;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.mr-items {
+  display: grid;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mr-item {
+  display: grid;
+  gap: var(--s2);
+}
+
+.mr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+}
+
+.mr-head .status {
+  margin-left: auto;
+}
+
+.mr-terms {
+  display: grid;
+  gap: var(--s1);
+  margin: 0;
+}
+
+.mr-terms div {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+}
+
+.mr-terms dd {
+  margin: 0;
+}
+
+.mr-changes {
+  margin: 0;
+  padding-left: var(--s4);
+}
+
+.mr-changes del {
+  color: var(--text-3);
+}
+
+.mr-changes ins {
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.tb-group-note {
+  padding: 0 var(--s3);
+  font-size: 0.8125rem;
+}
+
+.panel progress {
+  width: 100%;
+}

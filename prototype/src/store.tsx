@@ -245,6 +245,7 @@ type Action =
       entries: Entry[];
     }
   | { type: "remoteSegments"; at: SegmentsAt; segments: Segment[] }
+  | { type: "remoteTermbase"; termbase: Termbase; entries: Entry[] }
   | { type: "remoteProject"; projectId: string; patch: Partial<Project> }
   | { type: "remoteEntry"; localId: string; entry: Entry }
   | { type: "remoteUnload"; projectId?: string };
@@ -294,7 +295,10 @@ function withoutRemote(state: State, projectId?: string): State {
   const usedTermbases = new Set(
     projects.filter((p) => p.remote).flatMap((p) => [...p.setup.masters, p.setup.projectTermbaseId ?? ""]),
   );
-  const termbases = state.termbases.filter((t) => !t.remote || usedTermbases.has(t.id));
+  // Termbases opened on their own stay while only a project goes.
+  const termbases = state.termbases.filter(
+    (t) => !t.remote || usedTermbases.has(t.id) || (!!projectId && t.opened),
+  );
   const kept = new Set(termbases.map((t) => t.id));
   return {
     ...state,
@@ -318,6 +322,15 @@ function reducer(state: State, action: Action): State {
         memories: [...state.memories.filter((m) => !names.has(m.name)), ...memories],
         termbases: [...state.termbases.filter((t) => !tbIds.has(t.id)), ...termbases],
         entries: [...state.entries.filter((e) => !tbIds.has(e.termbaseId)), ...entries],
+      };
+    }
+    case "remoteTermbase": {
+      const t = action.termbase;
+      const before = state.termbases.find((x) => x.id === t.id);
+      return {
+        ...state,
+        termbases: [...state.termbases.filter((x) => x.id !== t.id), { ...before, ...t }],
+        entries: [...state.entries.filter((e) => e.termbaseId !== t.id), ...action.entries],
       };
     }
     case "remoteSegments": {

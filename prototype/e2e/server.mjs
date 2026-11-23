@@ -248,6 +248,66 @@ export default () =>
       }
       check(done, "the work is reported done on the server");
 
+      // Ben adds a term to the project termbase on the server, from Terminology.
+      const ptb = p.settings.terminology.termbase;
+      await open("/terminology", { keep: true });
+      check(await waitFor(`[...document.querySelectorAll('.tb-link')].some(a => a.textContent.includes(${JSON.stringify(ptb)}))`, 10000), "server termbases are listed");
+      await click(".tb-link", ptb);
+      check(await waitFor(`document.querySelector('#entries-title')?.textContent === ${JSON.stringify(ptb)}`, 15000), "the server termbase opens");
+      await click(".new-entry-bar button", "New entry");
+      await sleep(200);
+      await setValue("#ne-text", "Kaution");
+      await click(".new-entry button", "Add entry");
+      let added = null;
+      for (let i = 0; i < 40 && !added; i++) {
+        await sleep(200);
+        const page = await api("GET", `/api/termbases/${encodeURIComponent(ptb)}/entries?text=Kaution`, admin);
+        added = page.entries[0] ?? null;
+      }
+      check(!!added && added.createdBy === "ben", "the new entry is on the server");
+
+      // Ben submits the project's terms for review; he can't approve them.
+      check(await waitFor("!!document.querySelector('form[aria-label=\"Submit for review\"]')"), "a project termbase can be submitted for review");
+      await click("form[aria-label='Submit for review'] button", "Submit to");
+      check(await waitFor("location.hash.startsWith('#/review/')", 10000), "the review opens");
+      const mrId = Number((await evaluate("location.hash")).split("/").pop());
+      check(await waitFor("document.querySelector('main').innerText.includes('Waiting (')", 10000), "the review lists what waits");
+      await click("button", "Approve all waiting");
+      check(await waitFor("document.body.innerText.includes('approve role')", 10000), "only the master's reviewers approve");
+
+      // Anna approves, and finds Ben's confirmed translation in the project memory.
+      await open("/settings", { keep: true });
+      await click("button", "Sign out");
+      check(await waitFor("!!document.querySelector('input[autocomplete=username]')"), "Ben signed out");
+      await setValue("input[autocomplete=username]", "anna");
+      await setValue("input[autocomplete=current-password]", ADMIN_PASSWORD);
+      await click("button", "Sign in");
+      check(await waitFor("document.querySelector('main').innerText.includes('Signed in as anna')"), "Anna signed in again");
+      await open(`/review/${mrId}`, { keep: true });
+      check(await waitFor("document.querySelector('main').innerText.includes('Approve all waiting')", 10000), "Anna opens the review");
+      await click("button", "Approve all waiting");
+      let inMaster = [];
+      const master = p.settings.terminology.masters[0];
+      for (let i = 0; i < 40 && inMaster.length === 0; i++) {
+        await sleep(200);
+        inMaster = await api("GET", `/api/termbases/${encodeURIComponent(master)}/lookup?text=Kaution&lang=${encodeURIComponent(p.settings.sourceLang)}`, admin);
+      }
+      check(inMaster.length === 1, `the approved term is in the master ${master}`);
+      await click("button", "Close the request");
+      await sleep(150);
+      await click(".confirm button", "Close");
+      check(await waitFor("document.querySelector('main').innerText.includes('Closed on')", 10000), "the request is closed");
+
+      await open("/memories", { keep: true });
+      check(await waitFor(`document.querySelector('main').innerText.includes(${JSON.stringify(`Hofmann Team (${lang})`)})`, 10000), "server memories are listed");
+      await evaluate(`[...document.querySelectorAll('section[aria-labelledby=mem-server] tr')].find(tr => tr.textContent.includes(${JSON.stringify(`Hofmann Team (${lang})`)})).querySelector('button').click()`);
+      check(await waitFor("!!document.querySelector('#srvmem-title')"), "a server memory opens");
+      await setValue("section[aria-labelledby=srvmem-title] input[type=search]", "Tenancy");
+      await evaluate("document.querySelector('section[aria-labelledby=srvmem-title] input[type=checkbox]').click()");
+      await sleep(100);
+      await click("section[aria-labelledby=srvmem-title] button", "Search");
+      check(await waitFor("document.querySelector('section[aria-labelledby=srvmem-title]').innerText.includes('Tenancy agreement')", 10000), "the memory is searched on the server");
+
       // Nothing from the server is kept in the browser.
       await open("/projects", { keep: true });
       check(

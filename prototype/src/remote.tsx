@@ -150,6 +150,8 @@ interface Remote {
   refresh(): Promise<void>;
   /** Opens a server project into the store; resolves to its store ID. */
   open(n: number): Promise<string>;
+  /** Opens a server termbase with its entries into the store; resolves to its store ID. */
+  openTermbase(name: string): Promise<string>;
   /** Subscribes to the live feed; returns the function that unsubscribes. */
   listen(on: (e: FeedEvent) => void): () => void;
 }
@@ -187,6 +189,30 @@ function segmentOf(s: StoredSegment, local?: Segment): Segment {
   };
 }
 
+/** An entry of a server termbase in the store. */
+function entryOf(
+  e: { id?: string; version: number; changedAt?: string; changedBy?: string; createdAt?: string; createdBy?: string } & Parameters<typeof fromCoreEntry>[0],
+  tbId: string,
+  ids: Map<string, string>,
+  fallbackAt: string,
+): Entry {
+  const eid = `${tbId}:${e.id}`;
+  return {
+    id: eid,
+    termbaseId: tbId,
+    version: e.version,
+    ...fromCoreEntry(e, ids, "approved"),
+    history: [
+      {
+        id: `h-${eid}`,
+        at: e.changedAt ?? e.createdAt ?? fallbackAt,
+        by: e.changedBy ?? e.createdBy ?? "",
+        summary: "On the team server",
+      },
+    ],
+  };
+}
+
 /** Extension of a file name, lower case. */
 const ext = (name: string) => /\.([^./]+)$/.exec(name)?.[1]?.toLowerCase() ?? "";
 
@@ -210,7 +236,11 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
   // here and is saved.
   const versions = useRef(new Map<string, number>());
   const known = useRef(new WeakSet<Segment>());
-  const knownEntries = useRef(new Set<string>());
+  // Entries as the server has them: the objects (one not among them was
+  // changed here) and, per termbase, the IDs (one missing was deleted here).
+  const knownEntries = useRef(new WeakSet<Entry>());
+  const serverEntries = useRef(new Map<string, Set<string>>());
+  const sendingEntries = useRef(new Set<string>());
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const failing = useRef(new Set<string>());
   // What the server has of each segment, to send only real changes.
@@ -426,24 +456,11 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
             add(e.termbase, e.termbase === v.name ? (v.kind === "project" ? "project" : "master") : "master");
             const eid = `${termbaseId(e.termbase)}:${e.id}`;
             if (entries.some((x) => x.id === eid)) continue;
-            knownEntries.current.add(eid);
-            entries.push({
-              id: eid,
-              termbaseId: termbaseId(e.termbase),
-              version: e.version,
-              ...fromCoreEntry(e, ids, "approved"),
-              history: [
-                {
-                  id: `h-${eid}`,
-                  at: e.changedAt ?? e.createdAt ?? p.createdAt,
-                  by: e.changedBy ?? e.createdBy ?? "",
-                  summary: "On the team server",
-                },
-              ],
-            });
+            entries.push(entryOf(e, termbaseId(e.termbase), ids, p.createdAt));
           }
         }
       }
+      remember(termbases, entries);
 
       const project: Project = {
         id,
@@ -475,6 +492,46 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "remoteLoad", project, memories, termbases, entries });
     },
     [api, conn, dispatch],
+  );
+
+  /** Marks entries loaded from the server as being there. */
+  const remember = useCallback((termbases: Termbase[], entries: Entry[]) => {
+    for (const t of termbases) serverEntries.current.set(t.id, new Set());
+    for (const e of entries) {
+      knownEntries.current.add(e);
+      serverEntries.current.get(e.termbaseId)?.add(e.id);
+    }
+  }, []);
+
+  const openTermbase = useCallback(
+    async (name: string): Promise<string> => {
+      if (!api || !conn) throw new Error("Sign in to the team server first.");
+      const info = await api.termbase(name);
+      const infoTypes = infoTypesFromCore(info.definition.fields as never);
+      const ids = new Map(infoTypes.map((i) => [i.name, i.id]));
+      const tb: Termbase = {
+        id: termbaseId(info.name),
+        name: info.name,
+        kind: info.kind,
+        location: "server",
+        server: new URL(conn.url).host,
+        languages: info.definition.languages,
+        basedOn: info.kind === "project" ? (info.upstreams ?? []).map(termbaseId) : undefined,
+        infoTypes,
+        remote: true,
+        opened: true,
+      };
+      const entries: Entry[] = [];
+      for (let offset = 0; ; offset += 1000) {
+        const page = await api.entries(info.name, offset, 1000);
+        for (const e of page.entries) entries.push(entryOf(e, tb.id, ids, ""));
+        if (offset + page.entries.length >= page.total || page.entries.length === 0) break;
+      }
+      remember([tb], entries);
+      dispatch({ type: "remoteTermbase", termbase: tb, entries });
+      return tb.id;
+    },
+    [api, conn, dispatch, remember],
   );
 
   const open = useCallback(
@@ -569,31 +626,59 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
     }
   }, [state.projects, push]);
 
-  // New terms of server projects go to the server.
+  // Entries of server termbases changed here go to the server: new ones
+  // are added, changed ones saved from the version they were made from,
+  // deleted ones deleted.
   useEffect(() => {
     if (!api) return;
+    const nameOf = (tbId: string) => state.termbases.find((t) => t.id === tbId && t.remote)?.name;
+    const serverId = (e: Entry) => e.id.slice(e.termbaseId.length + 1);
+    const fail = (what: string, tbId: string, err: unknown) => {
+      notify(`${what} was not saved on the server: ${errorText(err)}`);
+      const name = nameOf(tbId);
+      // The server's version replaces ours.
+      if (name) void openTermbaseQuiet(name);
+    };
+    const openTermbaseQuiet = (name: string) => openTermbase(name).catch(() => undefined);
     for (const e of state.entries) {
-      if (knownEntries.current.has(e.id)) continue;
-      const tb = state.termbases.find((t) => t.id === e.termbaseId);
-      if (!tb?.remote) continue;
-      const p = state.projects.find(
-        (x) => x.remote && (x.setup.projectTermbaseId === tb.id || x.setup.writeTo === tb.id),
-      );
-      if (!p?.remote) continue;
-      knownEntries.current.add(e.id);
-      void api
-        .addTerm(p.remote.id, { ...toCoreEntry(e, tb), id: undefined })
-        .then((r) => {
-          const id = `${termbaseId(r.termbase)}:${r.entry.id}`;
-          knownEntries.current.add(id);
-          dispatch({ type: "remoteEntry", localId: e.id, entry: { ...e, id, version: r.entry.version } });
-        })
-        .catch((err) => {
-          knownEntries.current.delete(e.id);
-          notify(`The term was not saved on the server: ${errorText(err)}`);
+      if (knownEntries.current.has(e) || sendingEntries.current.has(e.id)) continue;
+      const name = nameOf(e.termbaseId);
+      if (!name) continue;
+      const tb = state.termbases.find((t) => t.id === e.termbaseId)!;
+      const onServer = serverEntries.current.get(e.termbaseId)?.has(e.id);
+      sendingEntries.current.add(e.id);
+      const core = toCoreEntry(e, tb);
+      const done = (saved: { id?: string; version: number }) => {
+        sendingEntries.current.delete(e.id);
+        const id = `${e.termbaseId}:${saved.id}`;
+        serverEntries.current.get(e.termbaseId)?.add(id);
+        const next = { ...e, id, version: saved.version };
+        knownEntries.current.add(next);
+        dispatch({ type: "remoteEntry", localId: e.id, entry: next });
+      };
+      if (onServer)
+        void api.updateEntry(name, { ...core, id: serverId(e) }, e.version ?? 1).then(done, (err) => {
+          sendingEntries.current.delete(e.id);
+          fail("The entry", e.termbaseId, err);
+        });
+      else
+        void api.addEntry(name, { ...core, id: undefined }).then(done, (err) => {
+          sendingEntries.current.delete(e.id);
+          fail("The new entry", e.termbaseId, err);
         });
     }
-  }, [api, state.entries, state.termbases, state.projects, dispatch, notify]);
+    // Deleted here: gone on the server too.
+    for (const [tbId, ids] of serverEntries.current) {
+      const name = nameOf(tbId);
+      if (!name) continue;
+      const here = new Set(state.entries.filter((e) => e.termbaseId === tbId).map((e) => e.id));
+      for (const id of ids) {
+        if (here.has(id)) continue;
+        ids.delete(id);
+        void api.deleteEntry(name, id.slice(tbId.length + 1)).catch((err) => fail("Deleting the entry", tbId, err));
+      }
+    }
+  }, [api, state.entries, state.termbases, dispatch, notify, openTermbase]);
 
   // ---- What others change ----------------------------------------------
 
@@ -756,9 +841,10 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
       open,
+      openTermbase,
       listen,
     }),
-    [conn, info, api, live, unsaved, projects, work, people, error, signIn, setup, signInWithProvider, signOut, refresh, open, listen],
+    [conn, info, api, live, unsaved, projects, work, people, error, signIn, setup, signInWithProvider, signOut, refresh, open, openTermbase, listen],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

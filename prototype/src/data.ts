@@ -132,6 +132,8 @@ export interface Termbase {
   extraEntries?: number;
   /** A termbase of a team-server project, loaded from the server: never saved in the browser. */
   remote?: boolean;
+  /** A server termbase opened on its own (from Terminology), not only for a project. */
+  opened?: boolean;
 }
 
 export type SetupMode = "layered" | "own" | "direct";

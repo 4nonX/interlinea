@@ -7,6 +7,7 @@ import {
   type TranslationMemory,
 } from "../data";
 import { core, download, loadCore, tm, type CoreApi } from "../core";
+import { ServerMemories } from "./ServerMemories";
 import { useLocalStore } from "../store";
 import {
   dropMemory,
@@ -47,6 +48,7 @@ export function Memories() {
         title="Memories"
         description="Translation memories, in the core. Projects choose which to use for each target language."
       />
+      <ServerMemories />
       {!c ? (
         <p className="muted" role="status">
           Loading the memories…
@@ -55,7 +57,7 @@ export function Memories() {
         <>
           <section className="section" aria-labelledby="mem-main">
             <h2 id="mem-main" className="section-title">
-              Main memories
+              Main memories on this computer
             </h2>
             <MemoryTable
               key={version}
