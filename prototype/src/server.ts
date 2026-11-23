@@ -327,6 +327,7 @@ export interface CatalogTermbase {
   name: string;
   languages: string[];
   entries: number;
+  kind: "master" | "project";
   role?: Role;
 }
 
@@ -456,8 +457,15 @@ export function client(conn: Connection) {
           headers: { "Content-Type": "application/xml" },
         }),
       ),
-    createTermbase: (definition: { name: string; languages: string[]; fields?: unknown[] }) =>
-      send<unknown>("POST", "/api/termbases", { definition }),
+    createTermbase: (definition: { name: string; languages?: string[]; fields?: unknown[] }, upstreams?: string[]) =>
+      send<unknown>("POST", "/api/termbases", { definition, upstreams }),
+    setUpstreams: (name: string, upstreams: string[]) =>
+      send<unknown>("PUT", `/api/termbases/${encodeURIComponent(name)}/upstreams`, { upstreams }),
+    addFile: (id: number, f: FileUpload, version: number) => send<ServerProject>("POST", `${p(id)}/files`, f, version),
+    removeFile: (id: number, name: string, version: number) =>
+      send<ServerProject>("DELETE", `${p(id)}/files?${q({ name })}`, undefined, version),
+    pretranslate: (id: number, prepare?: CoreSettings["prepare"], lang?: string) =>
+      send<{ lang: string; filled: number }[]>("POST", `${p(id)}/pretranslate`, { lang: lang ?? "", prepare }),
     importTermbase: async (name: string, tbx: Uint8Array) =>
       json<{ added: number }>(
         await call(`/api/termbases/${encodeURIComponent(name)}/import?${q({ format: "tbx", match: "none" })}`, {

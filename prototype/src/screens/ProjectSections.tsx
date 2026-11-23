@@ -2,7 +2,7 @@
 // project's settings page, so a choice made at setup is changed later in
 // the same place and the same words.
 
-import { useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Info, Plus, X } from "lucide-react";
 import {
   LANGUAGES,
@@ -15,6 +15,8 @@ import {
   type QaRule,
   type QaSettings,
   type SpellDictionary,
+  type Entry,
+  type Termbase,
   type TranslationMemory,
 } from "../data";
 import { useLocalStore, useWords } from "../store";
@@ -48,6 +50,29 @@ export function Problems({
       ))}
     </div>
   );
+}
+
+/**
+ * The memories and termbases the sections offer: by default this
+ * computer's; a team-server project's settings offer the server's.
+ */
+export interface SectionsSource {
+  memories: TranslationMemory[];
+  termbases: Termbase[];
+  entries: Entry[];
+  /** Units per memory, when the memories are not in the browser. */
+  units?: Record<string, number>;
+}
+
+const SourceCtx = createContext<SectionsSource | null>(null);
+export const SectionsSourceProvider = SourceCtx.Provider;
+
+function useSource(): SectionsSource & { projects: Project[]; local: boolean } {
+  const { state } = useLocalStore();
+  const o = useContext(SourceCtx);
+  return o
+    ? { ...o, projects: [], local: false }
+    : { memories: state.memories, termbases: state.termbases, entries: state.entries, projects: state.projects, local: true };
 }
 
 /** Target languages: suggestions as checkboxes, any other from the list. */
@@ -184,7 +209,7 @@ export function MemoriesSection({
   /** The project being edited, if it exists already. */
   projectId?: string;
 }) {
-  const { state } = useLocalStore();
+  const state = useSource();
   const all = useMemo(
     () => [
       ...state.memories.filter((m) => !m.projectId),
@@ -270,8 +295,10 @@ export function MemoriesSection({
                                 <>
                                   <LangChip code={info.sourceLang} /> →{" "}
                                   <LangChip code={info.targetLang} />
-                                  {c &&
-                                    ` ${plural(memoryCount(c, info, state.projects), "unit", "units")}`}
+                                  {state.units
+                                    ? ` ${plural(state.units[info.name] ?? 0, "unit", "units")}`
+                                    : c &&
+                                      ` ${plural(memoryCount(c, info, state.projects), "unit", "units")}`}
                                 </>
                               ) : (
                                 "This memory no longer exists."
@@ -590,7 +617,7 @@ export function TerminologySection({
   /** The project exists: its project termbase is in place. */
   existing?: boolean;
 }) {
-  const { state } = useLocalStore();
+  const state = useSource();
   const w = useWords();
   const t = draft.terminology;
   const masters = state.termbases.filter((x) => x.kind === "master");

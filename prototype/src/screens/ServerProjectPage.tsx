@@ -12,6 +12,7 @@ import { fromLocalInput, toLocalInput } from "./NewProject";
 import { workScope } from "./Projects";
 import { go } from "../App";
 import { AccessPanel } from "./AccessPanel";
+import { ServerProjectSettings } from "./ServerProjectSettings";
 
 const TASK_TEXT: Record<Task, string> = { translate: "Translate", review: "Review" };
 
@@ -83,6 +84,9 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
 
       <Details project={project} manager={manager} onSaved={load} />
 
+      {manager ? (
+        <ServerProjectSettings project={project} onSaved={load} />
+      ) : (
       <section className="panel" aria-labelledby="sp-files">
         <h2 id="sp-files" className="panel-title">
           Files
@@ -114,6 +118,7 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
           ))}
         </ul>
       </section>
+      )}
 
       <Work project={project} work={work} manager={manager} onChanged={load} segmentsOf={(file, l) => {
         const fid = loaded?.remote && Object.entries(loaded.remote.files).find(([, x]) => x === file)?.[0];
@@ -193,7 +198,8 @@ function Details({ project, manager, onSaved }: { project: ServerProject; manage
     e.preventDefault();
     setProblems({});
     try {
-      await r.saveSettings(`srv-${project.id}`, { ...s, name: d.name.trim(), client: d.client.trim(), description: d.description.trim(), due: d.due });
+      await r.api!.updateSettings(project.id, { ...s, name: d.name.trim(), client: d.client.trim(), description: d.description.trim(), due: d.due }, project.version);
+      await r.open(project.id).catch(() => undefined);
       notify("Saved the project's details on the server");
       await onSaved();
     } catch (err) {

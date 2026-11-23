@@ -4,7 +4,7 @@
 // entries, so the project finds them there.
 
 import { tm, type CoreApi } from "./core";
-import type { Entry, Project, Termbase, TranslationMemory } from "./data";
+import type { Entry, Project, ProjectFile, Termbase, TranslationMemory } from "./data";
 import { projectMemoryName } from "./data";
 import { openMemory } from "./editor/memory";
 import { coreSettings, type Draft } from "./project";
@@ -109,35 +109,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
     },
   } as CoreSettings;
 
-  const files: FileUpload[] = p.files.map((f) => {
-    const bytes =
-      f.bytes ??
-      new TextEncoder().encode(
-        Object.values(f.segments)[0]?.map((s) => s.source.filter((r) => typeof r === "string").join("")).join("\n\n") ?? "",
-      );
-    return {
-      name: f.name,
-      role: f.role,
-      targetLang: f.targetLang,
-      format: f.role === "reference" ? (/\.([^.]+)$/.exec(f.name)?.[1]?.toLowerCase() ?? "") : f.kind === "text" ? "txt" : f.kind,
-      data: base64(bytes),
-      segments:
-        f.role === "translatable"
-          ? Object.fromEntries(
-              Object.entries(f.segments).map(([l, segs]) => [
-                l,
-                segs.map((s) => ({
-                  id: s.id,
-                  source: runsToCore(s.source),
-                  target: runsToCore(s.target),
-                  status: s.status,
-                  locked: s.locked,
-                })),
-              ]),
-            )
-          : undefined,
-    };
-  });
+  const files: FileUpload[] = p.files.map(uploadOf);
 
   const made = await api.createProject({
     settings,
@@ -146,4 +118,35 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
     termbase: t.mode !== "direct" ? { name: `${p.name} (project)` } : undefined,
   });
   return { project: made, uploaded };
+}
+
+/** A project file as the server takes it: its bytes and its segments. */
+export function uploadOf(f: ProjectFile): FileUpload {
+  const bytes =
+    f.bytes ??
+    new TextEncoder().encode(
+      Object.values(f.segments)[0]?.map((s) => s.source.filter((r) => typeof r === "string").join("")).join("\n\n") ?? "",
+    );
+  return {
+    name: f.name,
+    role: f.role,
+    targetLang: f.targetLang,
+    format: f.role === "reference" ? (/\.([^.]+)$/.exec(f.name)?.[1]?.toLowerCase() ?? "") : f.kind === "text" ? "txt" : f.kind,
+    data: base64(bytes),
+    segments:
+      f.role === "translatable"
+        ? Object.fromEntries(
+            Object.entries(f.segments).map(([l, segs]) => [
+              l,
+              segs.map((s) => ({
+                id: s.id,
+                source: runsToCore(s.source),
+                target: runsToCore(s.target),
+                status: s.status,
+                locked: s.locked,
+              })),
+            ]),
+          )
+        : undefined,
+  };
 }

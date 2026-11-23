@@ -2,6 +2,9 @@
 // server from the New project flow, giving work to a translator, the
 // translator seeing only their part, translations saved on the server,
 // others' changes and presence arriving live, and reporting work done.
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { run, call, ADMIN_PASSWORD } from "./harness.mjs";
 
 export default () =>
@@ -115,6 +118,37 @@ export default () =>
       );
 
       check((await text()).includes("People with access"), "managers decide who may use the project");
+
+      // The manager changes the project on the server: a file in and out,
+      // and a check turned off.
+      check(await waitFor("document.querySelector('main').innerText.includes('Languages and memories')", 10000), "managers get the project's settings");
+      const dir = mkdtempSync(join(tmpdir(), "il-e2e-"));
+      writeFileSync(join(dir, "Hinweise.txt"), "Der Schlüssel liegt beim Hausmeister.\n\nDie Heizung wird im Oktober eingeschaltet.\n");
+      const doc2 = await send("DOM.getDocument", { depth: -1, pierce: true });
+      const fin = await send("DOM.querySelector", { nodeId: doc2.root.nodeId, selector: "input[aria-label='Files to add']" });
+      await send("DOM.setFileInputFiles", { nodeId: fin.nodeId, files: [join(dir, "Hinweise.txt")] });
+      check(await waitFor("document.querySelector('main').innerText.includes('Hinweise.txt')", 15000), "the added file is listed");
+      let sp = await api("GET", `/api/projects/${p.id}`, admin);
+      check(sp.settings.files.some((f) => f.name === "Hinweise.txt"), "the file is on the server");
+      const hs = await api("GET", `/api/projects/${p.id}/segments?file=Hinweise.txt&lang=${lang}`, admin);
+      check(hs.length === 2, `the file's segments are on the server (${hs.length})`);
+      await evaluate("[...document.querySelectorAll('.server-file')].find(li => li.textContent.includes('Hinweise.txt')).querySelector('button').click()");
+      await sleep(150);
+      await evaluate("[...document.querySelectorAll('.server-file')].find(li => li.textContent.includes('Hinweise.txt')).querySelector('.confirm button').click()");
+      check(await waitFor("![...document.querySelectorAll('.server-file')].some(li => li.textContent.includes('Hinweise.txt'))", 10000), "the file is removed");
+      sp = await api("GET", `/api/projects/${p.id}`, admin);
+      check(!sp.settings.files.some((f) => f.name === "Hinweise.txt"), "and gone on the server");
+      const before = (sp.settings.qa.disabled ?? []).length;
+      await evaluate("document.querySelector('section[aria-labelledby=sps-checks] input[type=checkbox]:checked').click()");
+      await sleep(150);
+      await click("button", "Save settings");
+      let qa = null;
+      for (let i = 0; i < 40 && !qa; i++) {
+        await sleep(200);
+        const now = await api("GET", `/api/projects/${p.id}`, admin);
+        if ((now.settings.qa.disabled ?? []).length === before + 1) qa = now.settings.qa;
+      }
+      check(!!qa, "the settings are saved on the server");
 
       // Work for Ben: the first two segments.
       check(await waitFor("[...document.querySelectorAll('form[aria-label=\"Give out work\"] select')[0].options].some(o => o.textContent.includes('Ben Roth'))"), "Ben can be chosen");

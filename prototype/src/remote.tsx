@@ -150,8 +150,6 @@ interface Remote {
   refresh(): Promise<void>;
   /** Opens a server project into the store; resolves to its store ID. */
   open(n: number): Promise<string>;
-  /** Saves a server project's settings. */
-  saveSettings(projectId: string, settings: CoreSettings): Promise<void>;
   /** Subscribes to the live feed; returns the function that unsubscribes. */
   listen(on: (e: FeedEvent) => void): () => void;
 }
@@ -165,7 +163,7 @@ export function useRemote(): Remote {
 }
 
 /** The store's QA settings from the core's. */
-function qaOf(q: CoreSettings["qa"]) {
+export function qaOf(q: CoreSettings["qa"]) {
   return {
     ...DEFAULT_QA,
     disabled: q.disabled ?? [],
@@ -597,17 +595,6 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
     }
   }, [api, state.entries, state.termbases, state.projects, dispatch, notify]);
 
-  const saveSettings = useCallback(
-    async (projectId: string, settings: CoreSettings) => {
-      const p = latest.current.projects.find((x) => x.id === projectId);
-      if (!api || !p?.remote) return;
-      const got = await api.updateSettings(p.remote.id, settings, p.remote.version);
-      await open(got.id);
-      await refresh();
-    },
-    [api, open, refresh],
-  );
-
   // ---- What others change ----------------------------------------------
 
   useEffect(() => {
@@ -769,10 +756,9 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       signOut,
       refresh,
       open,
-      saveSettings,
       listen,
     }),
-    [conn, info, api, live, unsaved, projects, work, people, error, signIn, setup, signInWithProvider, signOut, refresh, open, saveSettings, listen],
+    [conn, info, api, live, unsaved, projects, work, people, error, signIn, setup, signInWithProvider, signOut, refresh, open, listen],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

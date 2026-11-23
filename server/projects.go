@@ -89,7 +89,9 @@ type catalogTermbase struct {
 	Name      string   `json:"name"`
 	Languages []string `json:"languages"`
 	Entries   int      `json:"entries"`
-	Role      string   `json:"role,omitempty"`
+	// Kind is master or project.
+	Kind string `json:"kind"`
+	Role string `json:"role,omitempty"`
 }
 
 // catalogView lists the memories and termbases someone may set up
@@ -133,7 +135,17 @@ func (s *Server) catalogView(w http.ResponseWriter, r *http.Request, me session)
 			return
 		}
 		if all || role.Includes(authdb.RoleRead) {
-			out.Termbases = append(out.Termbases, catalogTermbase{Name: t.Name, Languages: nonNil(t.Languages), Entries: t.Entries, Role: string(role)})
+			tb, err := s.cfg.Termbases.Termbase(ctx, t.Name)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			info, err := tb.Info(ctx)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			out.Termbases = append(out.Termbases, catalogTermbase{Name: t.Name, Languages: nonNil(t.Languages), Entries: t.Entries, Kind: info.Kind, Role: string(role)})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)

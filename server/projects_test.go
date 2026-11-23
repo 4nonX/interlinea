@@ -520,7 +520,7 @@ func TestTemplatesAndCatalog(t *testing.T) {
 		Termbases []catalogTermbase `json:"termbases"`
 	}
 	te.call("GET", "/api/catalog", te.pm, nil, 200, &cat)
-	if len(cat.Memories) != 1 || cat.Memories[0].Units != 1 || len(cat.Termbases) != 1 || cat.Termbases[0].Role != "manage" {
+	if len(cat.Memories) != 1 || cat.Memories[0].Units != 1 || len(cat.Termbases) != 1 || cat.Termbases[0].Role != "manage" || cat.Termbases[0].Kind != "master" {
 		t.Fatalf("project manager's catalog %+v", cat)
 	}
 	te.call("GET", "/api/catalog", te.ben, nil, 200, &cat)
