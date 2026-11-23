@@ -107,7 +107,7 @@ private slots:
         }
         ApiClient gone(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(port)), QString());
         const ApiResult r = wait(gone.get(QStringLiteral("/api/server")));
-        QVERIFY(r.error.offline());
+        QVERIFY2(r.error.offline(), qPrintable(QStringLiteral("%1 (%2): %3").arg(r.error.code).arg(r.status).arg(r.error.message)));
         QVERIFY(!r.error.message.isEmpty());
     }
 
