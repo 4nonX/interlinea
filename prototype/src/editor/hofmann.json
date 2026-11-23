@@ -758,5 +758,7 @@
         "field"
       ]
     }
-  ]
+  ],
+  "format": "docx",
+  "sourceLang": "de-DE"
 }

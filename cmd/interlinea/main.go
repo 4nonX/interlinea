@@ -29,6 +29,7 @@ var commands = []command{
 	{"score", "show the match percentage between two segments", runScore},
 	{"extract", "list the translatable units of a Word document", runExtract},
 	{"merge", "write a translated copy of a Word document", runMerge},
+	{"xliff", "bilingual XLIFF, SDLXLIFF and MQXLIFF files: info, extract, merge", runXLIFF},
 	{"term", "termbase files: info, convert (TBX, MultiTerm, CSV, Excel), duplicates", runTerm},
 	{"termbase", "manage stored termbases (create, import, export, search, edit history, ...)", runTermbase},
 	{"version", "print the version", runVersion},

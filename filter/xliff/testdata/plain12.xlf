@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file original="vertrag.html" source-language="de-DE" target-language="en-GB" datatype="html">
+    <body>
+      <trans-unit id="t1" resname="title" maxwidth="40" size-unit="char">
+        <source>Der <g id="1" ctype="bold">Mieter</g> zahlt<x id="2" ctype="lb"/>monatlich.</source>
+        <target state="translated">The <g id="1" ctype="bold">tenant</g> pays<x id="2" ctype="lb"/>monthly.</target>
+        <note>Rechtlich geprüft</note>
+      </trans-unit>
+      <trans-unit id="t2">
+        <source>Siehe <bpt id="3">&lt;a href="#k"&gt;</bpt>Kaution<ept id="3">&lt;/a&gt;</ept> und <ph id="4">&lt;br/&gt;</ph>.</source>
+      </trans-unit>
+      <group id="g1" translate="no">
+        <trans-unit id="t3"><source>Nicht übersetzen</source></trans-unit>
+      </group>
+      <trans-unit id="t4" approved="yes">
+        <source>Ende</source>
+        <target>End</target>
+      </trans-unit>
+      <trans-unit id="t5">
+        <source>Leer</source>
+        <target/>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

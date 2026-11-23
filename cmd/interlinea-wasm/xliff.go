@@ -1,0 +1,72 @@
+//go:build js && wasm
+
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"syscall/js"
+
+	"github.com/4nonX/interlinea/filter/xliff"
+)
+
+// Bilingual XLIFF files (XLIFF 1.2, SDLXLIFF, MQXLIFF, XLIFF 2):
+//
+//	xliffDetect(bytes) -> the variant, or "" when the file is not XLIFF
+//	xliffExtract(bytes) -> JSON extraction with targets and states
+//	xliffMerge(bytes, updates JSON {id: {target, state}}) -> Uint8Array
+func xliffFuncs() map[string]any {
+	return map[string]any{
+		"xliffDetect":  guard(xliffDetect),
+		"xliffExtract": guard(xliffExtract),
+		"xliffMerge":   guard(xliffMerge),
+	}
+}
+
+func xliffDetect(args []js.Value) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("xliffDetect(bytes)")
+	}
+	data, err := bytesArg(args[0])
+	if err != nil {
+		return nil, err
+	}
+	f, _ := xliff.Detect(data)
+	return f, nil
+}
+
+func xliffExtract(args []js.Value) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("xliffExtract(bytes)")
+	}
+	data, err := bytesArg(args[0])
+	if err != nil {
+		return nil, err
+	}
+	ex, err := xliff.Extract(data)
+	if err != nil {
+		return nil, err
+	}
+	return jsonOut(ex)
+}
+
+func xliffMerge(args []js.Value) (any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("xliffMerge(bytes, updates)")
+	}
+	data, err := bytesArg(args[0])
+	if err != nil {
+		return nil, err
+	}
+	var up map[string]xliff.Update
+	if err := json.Unmarshal([]byte(args[1].String()), &up); err != nil {
+		return nil, fmt.Errorf("updates: %w", err)
+	}
+	out, err := xliff.Merge(data, up)
+	if err != nil {
+		return nil, err
+	}
+	arr := js.Global().Get("Uint8Array").New(len(out))
+	js.CopyBytesToJS(arr, out)
+	return arr, nil
+}

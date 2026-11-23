@@ -111,12 +111,15 @@ func main() {
 	api := map[string]any{
 		"extract": js.FuncOf(extract),
 		"merge":   js.FuncOf(merge),
-		"version": "2",
+		"version": "3",
 	}
 	for k, v := range tmFuncs() {
 		api[k] = v
 	}
 	for k, v := range termFuncs() {
+		api[k] = v
+	}
+	for k, v := range xliffFuncs() {
 		api[k] = v
 	}
 	js.Global().Set("interlineaCore", api)

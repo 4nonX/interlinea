@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" version="2.0" srcLang="de-DE" trgLang="en-GB">
+  <file id="f1" original="vertrag.json">
+    <unit id="u1" name="intro">
+      <notes><note>Kontext: Einleitung</note></notes>
+      <originalData><data id="d1">&lt;b&gt;</data><data id="d2">&lt;/b&gt;</data><data id="d3">{name}</data></originalData>
+      <segment id="s1" state="translated">
+        <source>Hallo <pc id="1" dataRefStart="d1" dataRefEnd="d2">Welt</pc> <ph id="2" dataRef="d3"/>.</source>
+        <target>Hello <pc id="1" dataRefStart="d1" dataRefEnd="d2">world</pc> <ph id="2" dataRef="d3"/>.</target>
+      </segment>
+      <ignorable><source> </source></ignorable>
+      <segment id="s2">
+        <source>Zweiter <sc id="3"/>Satz<ec startRef="3"/>.</source>
+      </segment>
+    </unit>
+    <unit id="u2" translate="no"><segment><source>Code</source></segment></unit>
+    <group id="g1">
+      <unit id="u3">
+        <segment state="initial" subState="interlinea:draft"><source>Entwurf <mrk id="m1" type="term">Kaution</mrk></source><target>Draft <mrk id="m1" type="term">deposit</mrk></target></segment>
+      </unit>
+    </group>
+  </file>
+</xliff>

@@ -137,3 +137,45 @@ func TestTermbaseCommands(t *testing.T) {
 		t.Fatalf("exported TBX: %s", stdout)
 	}
 }
+
+func TestXLIFFCommands(t *testing.T) {
+	dir := t.TempDir()
+	in, err := os.ReadFile(filepath.Join("..", "..", "filter", "xliff", "testdata", "trados.sdlxliff"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(dir, "a.sdlxliff")
+	if err := os.WriteFile(src, in, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	up := filepath.Join(dir, "up.json")
+	os.WriteFile(up, []byte(`{"1/u1/2": "The deposit", "1/u2/4": {"target": [{"text": "New "}, {"tag": {"kind": "standalone", "id": "pt2"}}, {"text": "sentence."}], "state": "draft"}, "1/u1/1": {"state": "final"}}`), 0o644)
+	out := filepath.Join(dir, "b.sdlxliff")
+	steps := []struct {
+		args []string
+		code int
+		want string
+	}{
+		{[]string{"xliff"}, 2, ""},
+		{[]string{"xliff", "info", src}, 0, "sdlxliff"},
+		{[]string{"xliff", "info", src}, 0, "Segments:  5 (1 locked)"},
+		{[]string{"xliff", "extract", "-state", "new", src}, 0, "1/u2/4 [new]\n  Neuer {pt2/}Satz."},
+		{[]string{"xliff", "extract", "-state", "nope", src}, 2, ""},
+		{[]string{"xliff", "extract", "-json", src}, 0, `"format": "sdlxliff"`},
+		{[]string{"xliff", "merge", src, up}, 2, ""},
+		{[]string{"xliff", "merge", "-o", out, src, up}, 0, "3 segments updated"},
+		{[]string{"xliff", "extract", out}, 0, "1/u2/4 [draft]\n  Neuer {pt2/}Satz.\n  New {pt2/}sentence."},
+		{[]string{"xliff", "extract", out}, 0, "1/u1/1 [final 100%]"},
+		{[]string{"xliff", "info", up}, 1, ""},
+	}
+	for _, s := range steps {
+		code, stdout, errOut := exec(t, "", s.args...)
+		if code != s.code || !strings.Contains(stdout, s.want) {
+			t.Fatalf("%v: exit %d (want %d)\nstdout: %s\nstderr: %s", s.args, code, s.code, stdout, errOut)
+		}
+	}
+	os.WriteFile(up, []byte(`{"1/u1/3": "x"}`), 0o644)
+	if code, _, errOut := exec(t, "", "xliff", "merge", "-o", out, src, up); code != 1 || !strings.Contains(errOut, "locked") {
+		t.Fatalf("locked segment: %d %s", code, errOut)
+	}
+}

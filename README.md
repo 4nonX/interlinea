@@ -24,6 +24,7 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `internal/sqlitedb` | Opens the SQLite stores with shared settings (WAL, busy timeout) and migrates their schema |
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |
 | `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
+| `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
 | `cmd/interlinea` | Command-line interface to all of the above |
 | `cmd/interlinea-wasm` | The filters, memories and termbase formats compiled to WebAssembly for the browser prototype |
@@ -117,6 +118,19 @@ interlinea extract -lang de-DE -json lease.docx > units.json
 interlinea merge -lang de-DE -target en-GB -o lease_en-GB.docx lease.docx translations.json
 ```
 
+Bilingual XLIFF files (from Trados, memoQ, Phrase or any XLIFF tool):
+
+```
+interlinea xliff info Mietvertrag.docx.sdlxliff
+interlinea xliff extract -state new Mietvertrag.docx.sdlxliff
+interlinea xliff extract -json Mietvertrag.mqxliff > segments.json
+interlinea xliff merge -o Mietvertrag.docx.sdlxliff Mietvertrag.docx.sdlxliff updates.json
+```
+
+`updates.json` maps segment IDs to `{"target": ..., "state": ...}` (target as
+a plain string or the run array `extract -json` prints) or to a plain string,
+which also sets the state to translated.
+
 Termbase files:
 
 ```
@@ -159,6 +173,20 @@ that match by primary language only (`de-AT` for `de-DE`).
   are (bold, colour, font, size, style, link and so on). Tracked changes in
   a rewritten paragraph are accepted, with a warning; `-keep-revisions`
   keeps them as tags instead.
+- XLIFF: segments keep their Trados, memoQ or XLIFF state, mapped to
+  Interlinea's new, draft, translated, reviewed, final and rejected (Trados
+  Not Translated, Draft, Translated, Approved Translation, Approved
+  Sign-off, Rejected; memoQ Not started, Pre-translated or Edited,
+  Confirmed, Reviewer 1 confirmed, Proofread, Rejected; XLIFF 1.2 and 2
+  `state`). Merge writes only the target of each changed segment and its
+  state: the Trados confirmation level in `sdl:seg-defs` (and origin
+  `interactive` for edited text), the memoQ `mq:status`, or the XLIFF
+  `state` (XLIFF 2 drafts and rejections as `subState`
+  `interlinea:draft` and `interlinea:rejected`). Locked segments (Trados
+  and memoQ locks) cannot change. Trados tracked changes in a segment stay
+  as tags; their deleted text is not translatable. Files in UTF-8 or UTF-16
+  are written back in the same encoding. Not read yet: `alt-trans`
+  suggestions in XLIFF 1.2 and the XLIFF 2 matches module.
 - Termbases: an entry is one concept with its terms per language, as in
   MultiTerm, memoQ and TBX. Statuses map to TBX `administrativeStatus`
   (approved = preferredTerm, proposed = admittedTerm, forbidden =

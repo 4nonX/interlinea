@@ -62,6 +62,8 @@ func Extract(data []byte, lang string, opts Options) (*filter.Extraction, error)
 	if err != nil {
 		return nil, err
 	}
+	d.ext.Format = "docx"
+	d.ext.SourceLang = lang
 	return &d.ext, nil
 }
 

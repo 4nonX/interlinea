@@ -64,6 +64,73 @@ type Unit struct {
 	ID     string          `json:"id"`
 	Block  string          `json:"block"`
 	Source content.Content `json:"source"`
+
+	// The fields below come from bilingual files (XLIFF, SDLXLIFF,
+	// MQXLIFF), which carry translations and their state.
+
+	// Target is the translation in the file, if any.
+	Target content.Content `json:"target,omitempty"`
+	// State is how far the translation is ("" for monolingual files).
+	State State `json:"state,omitempty"`
+	// Locked units must not be changed (locked in Trados or memoQ).
+	Locked bool `json:"locked,omitempty"`
+	// Match is the match percentage the file records for the translation
+	// (100, 101 for a context match), Origin where it came from ("tm",
+	// "mt", "interactive").
+	Match  int    `json:"match,omitempty"`
+	Origin string `json:"origin,omitempty"`
+	// Key is the unit's name in the file (resname), Notes its comments.
+	Key   string   `json:"key,omitempty"`
+	Notes []string `json:"notes,omitempty"`
+	// MaxLength is the longest the translation may be, in characters
+	// (0 for no limit).
+	MaxLength int `json:"maxLength,omitempty"`
+}
+
+// State is how far the translation of a unit is, in the terms Interlinea
+// shows; bilingual filters map their format's states to these and back.
+type State string
+
+const (
+	// StateNew: not translated yet.
+	StateNew State = "new"
+	// StateDraft: a translation exists but is not confirmed (Trados Draft,
+	// memoQ pre-translated or edited).
+	StateDraft State = "draft"
+	// StateTranslated: confirmed by the translator.
+	StateTranslated State = "translated"
+	// StateReviewed: approved by a reviewer (Trados Approved Translation,
+	// memoQ Reviewer 1 confirmed).
+	StateReviewed State = "reviewed"
+	// StateFinal: signed off (Trados Approved Sign-off, memoQ proofread).
+	StateFinal State = "final"
+	// StateRejected: rejected by a reviewer.
+	StateRejected State = "rejected"
+)
+
+// Rank orders states from new to final; rejected counts as a draft.
+func (s State) Rank() int {
+	switch s {
+	case StateDraft, StateRejected:
+		return 1
+	case StateTranslated:
+		return 2
+	case StateReviewed:
+		return 3
+	case StateFinal:
+		return 4
+	default:
+		return 0
+	}
+}
+
+// Valid reports whether s is one of the states.
+func (s State) Valid() bool {
+	switch s {
+	case StateNew, StateDraft, StateTranslated, StateReviewed, StateFinal, StateRejected:
+		return true
+	}
+	return false
 }
 
 // Extraction is the translatable content of a file in document order.
@@ -73,6 +140,12 @@ type Extraction struct {
 	// Warnings tell the user about things the filter changes or cannot
 	// translate (tracked changes that will be accepted, for example).
 	Warnings []string `json:"warnings,omitempty"`
+	// Format names the file format and its variant ("docx", "xliff-1.2",
+	// "sdlxliff", "mqxliff", "xliff-2.0"); SourceLang and TargetLang are
+	// the languages a bilingual file declares.
+	Format     string `json:"format,omitempty"`
+	SourceLang string `json:"sourceLang,omitempty"`
+	TargetLang string `json:"targetLang,omitempty"`
 }
 
 // Translations maps unit IDs to target content. Units without an entry keep

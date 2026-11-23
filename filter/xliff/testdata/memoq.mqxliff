@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xliff xmlns:mq="MQXliff" version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file original="Mietvertrag.docx" source-language="de-de" target-language="en-gb" datatype="x-docx">
+    <header><tool tool-id="MQ" tool-name="memoQ"/></header>
+    <body>
+      <trans-unit id="1" mq:status="NotStarted" mq:segmentguid="a">
+        <source xml:space="preserve">Der <bpt id="1" ctype="bold">{}</bpt>Mieter<ept id="1">{}</ept> zahlt.</source>
+        <target xml:space="preserve"></target>
+        <mq:historical-unit mq:status="ManuallyConfirmed"><source>Der Mieter zahlt.</source><target>Old</target></mq:historical-unit>
+      </trans-unit>
+      <trans-unit id="2" mq:status="PreTranslated" mq:percent="101" mq:segmentguid="b">
+        <source xml:space="preserve">Die Kaution.</source>
+        <target xml:space="preserve">The deposit.</target>
+      </trans-unit>
+      <trans-unit id="3" mq:status="Proofread" mq:locked="locked" mq:segmentguid="c">
+        <source xml:space="preserve">Gesperrt.</source>
+        <target xml:space="preserve">Locked.</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>
