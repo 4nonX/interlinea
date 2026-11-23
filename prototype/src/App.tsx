@@ -5,6 +5,7 @@ import {
   FolderOpen,
   GitBranch,
   Settings as SettingsIcon,
+  Users,
 } from "lucide-react";
 import { StoreProvider, useStore } from "./store";
 import { RemoteProvider, errorText, serverNumber, useRemote } from "./remote";
@@ -18,6 +19,7 @@ import { Editor } from "./screens/Editor";
 import { ProjectSettings } from "./screens/ProjectSettings";
 import { Memories } from "./screens/Memories";
 import { ServerProjectPage } from "./screens/ServerProjectPage";
+import { Accounts } from "./screens/Accounts";
 
 export type Route =
   | { page: "projects" }
@@ -27,6 +29,7 @@ export type Route =
   | { page: "editor"; projectId: string; fileId?: string; lang?: string }
   | { page: "project"; projectId: string }
   | { page: "memories" }
+  | { page: "accounts" }
   | { page: "settings" };
 
 export function parseRoute(hash: string): Route {
@@ -66,6 +69,8 @@ export function parseRoute(hash: string): Route {
       return a ? { page: "project", projectId: a } : { page: "projects" };
     case "memories":
       return { page: "memories" };
+    case "accounts":
+      return { page: "accounts" };
     case "settings":
       return { page: "settings" };
     default:
@@ -89,6 +94,8 @@ export function href(r: Route): string {
       return `#/project/${r.projectId}`;
     case "memories":
       return "#/memories";
+    case "accounts":
+      return "#/accounts";
     case "settings":
       return "#/settings";
   }
@@ -151,6 +158,7 @@ function useRoute(): Route {
 
 function Rail({ route }: { route: Route }) {
   const { state } = useStore();
+  const remote = useRemote();
   const active =
     route.page === "new" ||
     route.page === "merge" ||
@@ -177,6 +185,16 @@ function Rail({ route }: { route: Route }) {
       icon: BookText,
       to: { page: "terminology" } as Route,
     },
+    ...(remote.conn?.user.admin
+      ? [
+          {
+            id: "accounts",
+            label: "Accounts",
+            icon: Users,
+            to: { page: "accounts" } as Route,
+          },
+        ]
+      : []),
     {
       id: "settings",
       label: "Settings",
@@ -265,6 +283,8 @@ function Screen({ route }: { route: Route }) {
       );
     case "memories":
       return <Memories />;
+    case "accounts":
+      return <Accounts />;
     case "settings":
       return <Settings />;
   }

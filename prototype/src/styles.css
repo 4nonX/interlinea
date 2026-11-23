@@ -3671,3 +3671,84 @@ input.mono {
   padding: 0;
   list-style: none;
 }
+
+/* Accounts */
+
+.accounts {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) 1fr;
+  gap: var(--s4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .accounts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.account-list {
+  margin: 0 0 var(--s4);
+  padding: 0;
+  list-style: none;
+}
+
+.account-row {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: var(--s2) var(--s3);
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-row:hover {
+  background: var(--surface-2);
+}
+
+.account-row[aria-current="true"] {
+  background: var(--accent-weak);
+}
+
+.account-new {
+  border-top: 1px solid var(--border);
+  padding-top: var(--s4);
+}
+
+.account-detail {
+  display: grid;
+  gap: var(--s3);
+}
+
+.account-switches {
+  display: grid;
+  gap: var(--s2);
+}
+
+.account-delete {
+  border-top: 1px solid var(--border);
+  padding-top: var(--s4);
+}
+
+.identity {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.role-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s3);
+}
+
+.role-add label {
+  display: grid;
+  gap: var(--s1);
+}

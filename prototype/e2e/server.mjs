@@ -10,7 +10,6 @@ export default () =>
     async ({ base, send, evaluate, click, text, body, check, sleep, open, setValue, key, samples, waitFor }) => {
       const api = (method, path, token, b) => call(base, method, path, token, b);
       const admin = (await api("POST", "/api/auth/password", null, { username: "anna", password: ADMIN_PASSWORD })).token;
-      const ben = await api("POST", "/api/users", admin, { username: "ben", name: "Ben Roth", password: "ben's long password" });
 
       // Signing in from Settings: the server serving the app is offered.
       await open("/settings");
@@ -30,6 +29,47 @@ export default () =>
       await click("button", "Sign in");
       check(await waitFor("document.querySelector('main').innerText.includes('Signed in as anna')"), "signed in");
       check(await waitFor("document.querySelector('main').innerText.includes('Connected')"), "the live feed is connected");
+
+      // Accounts: Anna makes Ben's account and gives and takes a role.
+      check(await waitFor("[...document.querySelectorAll('.rail a')].some(a => a.textContent.includes('Accounts'))"), "administrators get Accounts");
+      await open("/accounts", { keep: true });
+      check(await waitFor("!!document.querySelector('form[aria-label=\"New account\"]')"), "the accounts page opens");
+      const field = (i, v) =>
+        evaluate(
+          `(() => { const el = document.querySelectorAll('form[aria-label="New account"] input')[${i}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`,
+        );
+      await field(0, "ben");
+      await field(1, "Ben Roth");
+      await field(2, "ben@agentur.example");
+      await field(3, "short");
+      await sleep(100);
+      await click("button", "Make the account");
+      check(await waitFor("document.querySelector('form[aria-label=\"New account\"] .error')?.textContent.includes('12')"), "a short password is refused at its field");
+      await field(3, "ben's long password");
+      await sleep(100);
+      await click("button", "Make the account");
+      check(await waitFor("document.querySelector('#acc-detail')?.textContent === 'Ben Roth'"), "the new account opens");
+      const ben = (await api("GET", "/api/users", admin)).find((u) => u.username === "ben");
+      check(!!ben && ben.email === "ben@agentur.example" && ben.hasPassword, "the account is on the server");
+      const pickIn = (form, i, v) =>
+        evaluate(
+          `(() => { const s = document.querySelectorAll('form[aria-label="${form}"] select')[${i}]; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, ${JSON.stringify(v)}); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`,
+        );
+      await pickIn("Give a role", 0, "memory");
+      await sleep(100);
+      await pickIn("Give a role", 2, "read");
+      await sleep(100);
+      await click("form[aria-label='Give a role'] button", "Give the role");
+      check(await waitFor("document.querySelector('.account-detail').innerText.includes('All memories')"), "the role is listed");
+      let gs = await api("GET", `/api/users/${ben.id}/grants`, admin);
+      check(gs.length === 1 && gs[0].kind === "memory" && gs[0].resource === "*" && gs[0].role === "read", "the role is on the server");
+      await click(".account-detail table button", "Remove");
+      check(await waitFor("document.querySelector('.account-detail').innerText.includes('No roles')"), "the role is taken away");
+      await evaluate("[...document.querySelectorAll('.account-switches label')].find(l => l.textContent.includes('Disabled')).querySelector('input').click()");
+      check(await waitFor("document.querySelector('.account-list').innerText.includes('disabled')"), "disabling shows in the list");
+      check((await api("GET", `/api/users/${ben.id}`, admin)).disabled, "the account is disabled on the server");
+      await evaluate("[...document.querySelectorAll('.account-switches label')].find(l => l.textContent.includes('Disabled')).querySelector('input').click()");
+      check(await waitFor("!document.querySelector('.account-list').innerText.includes('disabled')"), "enabled again");
 
       // A new project, kept on the server.
       await open("/new", { keep: true, wait: 0 });
@@ -73,6 +113,8 @@ export default () =>
         memories.some((m) => m.name === `Hofmann Team (${lang})`),
         "the project's own memory is on the server: " + memories.map((m) => m.name).join(", "),
       );
+
+      check((await text()).includes("People with access"), "managers decide who may use the project");
 
       // Work for Ben: the first two segments.
       check(await waitFor("[...document.querySelectorAll('form[aria-label=\"Give out work\"] select')[0].options].some(o => o.textContent.includes('Ben Roth'))"), "Ben can be chosen");

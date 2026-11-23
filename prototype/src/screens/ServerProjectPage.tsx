@@ -11,6 +11,7 @@ import { ConfirmButton } from "./TermbaseDialogs";
 import { fromLocalInput, toLocalInput } from "./NewProject";
 import { workScope } from "./Projects";
 import { go } from "../App";
+import { AccessPanel } from "./AccessPanel";
 
 const TASK_TEXT: Record<Task, string> = { translate: "Translate", review: "Review" };
 
@@ -138,6 +139,8 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
           </ul>
         )}
       </section>
+
+      {manager && <AccessPanel kind="project" resource={String(n)} title="People with access" />}
 
       {manager && (
         <section className="panel" aria-labelledby="sp-delete">

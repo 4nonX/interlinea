@@ -14,6 +14,7 @@ export interface ServerUser {
   admin: boolean;
   disabled: boolean;
   hasPassword: boolean;
+  createdAt: string;
   version: number;
 }
 
@@ -286,6 +287,34 @@ export interface Person {
   name: string;
 }
 
+export type Kind = "project" | "memory" | "termbase" | "all";
+
+export interface Grant {
+  userId: number;
+  kind: Kind;
+  /** A project's number, a memory's or termbase's name, or * for all of a kind. */
+  resource: string;
+  role: Role;
+}
+
+export interface GrantView extends Grant {
+  username: string;
+  name: string;
+}
+
+export interface SignIn {
+  id: number;
+  name: string;
+  createdAt: string;
+  lastUsed?: string;
+  expiresAt: string;
+}
+
+export interface Identity {
+  issuer: string;
+  subject: string;
+}
+
 export interface CatalogMemory {
   name: string;
   sourceLang: string;
@@ -391,6 +420,32 @@ export function client(conn: Connection) {
     touch: (id: number, file: string, lang: string, segment: string) =>
       send<Presence>("PUT", `${p(id)}/presence`, { file, lang, segment }),
     leave: (id: number) => send<void>("DELETE", `${p(id)}/presence`),
+    // Accounts (administrators) and roles (administrators, and managers of
+    // the resource).
+    users: () => get<ServerUser[]>("/api/users"),
+    createUser: (u: { username: string; name: string; email: string; password: string; admin: boolean }) =>
+      send<ServerUser>("POST", "/api/users", u),
+    updateUser: (u: ServerUser, change: { name?: string; email?: string; admin?: boolean; disabled?: boolean }) =>
+      send<ServerUser>("PATCH", `/api/users/${u.id}`, change, u.version),
+    deleteUser: (id: number) => send<void>("DELETE", `/api/users/${id}`),
+    setUserPassword: (id: number, password: string) => send<void>("PUT", `/api/users/${id}/password`, { password }),
+    userTokens: (id: number) => get<SignIn[]>(`/api/users/${id}/tokens`),
+    revokeUserTokens: (id: number) => send<void>("DELETE", `/api/users/${id}/tokens`),
+    userIdentities: (id: number) => get<Identity[]>(`/api/users/${id}/identities`),
+    linkIdentity: (id: number, issuer: string, subject: string) =>
+      send<void>("POST", `/api/users/${id}/identities`, { issuer, subject }),
+    unlinkIdentity: (id: number, issuer: string, subject: string) =>
+      send<void>("DELETE", `/api/users/${id}/identities?${q({ issuer, subject })}`),
+    userGrants: (id: number) => get<Grant[]>(`/api/users/${id}/grants`),
+    grantsOn: (kind: Kind, resource: string) => get<GrantView[]>(`/api/grants?${q({ kind, resource })}`),
+    setGrant: (g: Grant) => send<void>("PUT", "/api/grants", g),
+    revokeGrant: (g: Pick<Grant, "userId" | "kind" | "resource">) =>
+      send<void>("DELETE", `/api/grants?${q({ userId: String(g.userId), kind: g.kind, resource: g.resource })}`),
+    ownTokens: () => get<(SignIn & { current: boolean })[]>("/api/me/tokens"),
+    revokeOwnToken: (id: number) => send<void>("DELETE", `/api/me/tokens/${id}`),
+    changePassword: (current: string, next: string) =>
+      send<{ token: string; expiresAt: string; user: ServerUser }>("PUT", "/api/me/password", { current, new: next }),
+    linkOwnIdentity: (returnTo: string) => send<{ url: string }>("POST", "/api/me/identities", { return: returnTo }),
     createMemory: (m: { name: string; sourceLang: string; targetLang: string }) =>
       send<CatalogMemory>("POST", "/api/memories", m),
     importTMX: async (name: string, tmx: Uint8Array) =>
