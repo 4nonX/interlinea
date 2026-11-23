@@ -3,7 +3,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 BIN     := bin
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: all build test race vet fmt-check lint bench cross wasm sample clean
+.PHONY: all build test race vet fmt-check apidoc apidoc-check lint bench cross wasm sample clean
 
 all: lint test build
 
@@ -22,7 +22,15 @@ vet:
 fmt-check:
 	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
-lint: fmt-check vet
+# The API reference (server/openapi.json, docs/api.md) is written from the
+# server's source; apidoc rewrites it after an API change.
+apidoc:
+	go run ./cmd/interlinea-apidoc
+
+apidoc-check:
+	go run ./cmd/interlinea-apidoc -check
+
+lint: fmt-check vet apidoc-check
 
 bench:
 	go test -run "^$$" -bench . -benchmem ./...

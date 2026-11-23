@@ -41,6 +41,9 @@ type memoryView struct {
 	Role       string    `json:"role"`
 }
 
+// listMemories lists the memories the person may read, with their role on each.
+//
+// Access: signed in; each memory needs read.
 func (s *Server) listMemories(w http.ResponseWriter, r *http.Request, me session) {
 	ctx := r.Context()
 	ms, err := s.cfg.Memories.List(ctx)
@@ -62,6 +65,11 @@ func (s *Server) listMemories(w http.ResponseWriter, r *http.Request, me session
 	writeJSON(w, http.StatusOK, out)
 }
 
+// createMemory makes a memory for one language pair. The person who makes it
+// manages it.
+//
+// Access: those who manage memories (a manage grant on all memories) and
+// administrators.
 func (s *Server) createMemory(w http.ResponseWriter, r *http.Request, me session) {
 	ctx := r.Context()
 	ok, err := s.mayCreate(ctx, me, authdb.KindMemory)
@@ -124,6 +132,9 @@ func (s *Server) openMemoryFor(w http.ResponseWriter, r *http.Request, me sessio
 	return m, role, true
 }
 
+// getMemory returns a memory's languages, size and the person's role on it.
+//
+// Access: read on the memory.
 func (s *Server) getMemory(w http.ResponseWriter, r *http.Request, me session) {
 	m, role, ok := s.openMemoryFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -178,6 +189,10 @@ func inUse(w http.ResponseWriter, what string, users []string) {
 	writeError(w, http.StatusConflict, "inUse", fmt.Sprintf("%s is used by %s. Take it out of their settings first.", what, strings.Join(users, ", ")))
 }
 
+// deleteMemory deletes a memory and the grants on it. A memory a project or
+// template uses is not deleted; the answer names them.
+//
+// Access: manage on the memory.
 func (s *Server) deleteMemory(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -213,6 +228,9 @@ func (s *Server) deleteMemory(w http.ResponseWriter, r *http.Request, me session
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// memoryLookup finds the memory's matches for a segment, best first.
+//
+// Access: read on the memory.
 func (s *Server) memoryLookup(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -230,6 +248,10 @@ func (s *Server) memoryLookup(w http.ResponseWriter, r *http.Request, me session
 	writeJSON(w, http.StatusOK, out)
 }
 
+// memoryConcordance searches the memory's sources (or targets) for a word or
+// phrase.
+//
+// Access: read on the memory.
 func (s *Server) memoryConcordance(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -275,6 +297,10 @@ func unitProblem(w http.ResponseWriter, err error) bool {
 	return true
 }
 
+// addUnit adds a translation unit. ?policy=keep (the default) keeps other
+// translations of the same source; ?policy=overwrite replaces them.
+//
+// Access: edit on the memory.
 func (s *Server) addUnit(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -307,6 +333,9 @@ func unitID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return pathID(w, r, "uid")
 }
 
+// getUnit returns a translation unit.
+//
+// Access: read on the memory.
 func (s *Server) getUnit(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -324,6 +353,10 @@ func (s *Server) getUnit(w http.ResponseWriter, r *http.Request, me session) {
 	writeJSON(w, http.StatusOK, viewUnit(u))
 }
 
+// updateUnit changes a translation unit. Send the version read (If-Match or
+// ?version=).
+//
+// Access: edit on the memory.
 func (s *Server) updateUnit(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -353,6 +386,9 @@ func (s *Server) updateUnit(w http.ResponseWriter, r *http.Request, me session) 
 	writeJSON(w, http.StatusOK, viewUnit(got))
 }
 
+// deleteUnit deletes a translation unit.
+//
+// Access: edit on the memory.
 func (s *Server) deleteUnit(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -370,6 +406,11 @@ func (s *Server) deleteUnit(w http.ResponseWriter, r *http.Request, me session) 
 }
 
 // importTMX reads a TMX file (the request body) into a memory.
+// ?policy=overwrite replaces translations of sources that are there;
+// ?variants=exact takes only the memory's exact languages, not their variants
+// (en-US for en-GB).
+//
+// Access: edit on the memory.
 func (s *Server) importTMX(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -391,6 +432,9 @@ func (s *Server) importTMX(w http.ResponseWriter, r *http.Request, me session) {
 	}{st.Read, st.Stored, st.Skipped})
 }
 
+// exportTMX sends the whole memory as TMX.
+//
+// Access: read on the memory.
 func (s *Server) exportTMX(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -417,6 +461,10 @@ func parseSince(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return n, true
 }
 
+// memoryChanges lists the memory's changes after ?since= (a change number),
+// oldest first, at most ?limit=.
+//
+// Access: read on the memory.
 func (s *Server) memoryChanges(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleRead)
 	if !ok {

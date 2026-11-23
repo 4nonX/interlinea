@@ -421,6 +421,13 @@ func (v *visibility) sees(ctx context.Context, ev any) (bool, error) {
 // gets; further behind, it is told to read everything again.
 const maxCatchUp = 5000
 
+// events streams the live feed: the changes the person may see in projects,
+// memories, termbases and their account, and presence in projects, as
+// text/event-stream.
+// Reconnect with Last-Event-ID (or ?since=) to get what was missed. A
+// "signedOut" event ends the stream when the sign-in ends.
+//
+// Access: signed in; each event is sent only to those who may see it.
 func (s *Server) events(w http.ResponseWriter, r *http.Request, me session) {
 	rc := http.NewResponseController(w)
 	ctx := r.Context()

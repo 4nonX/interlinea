@@ -142,6 +142,11 @@ type termbaseSummary struct {
 	Role      string   `json:"role"`
 }
 
+// listTermbases lists the termbases the person may read, with their kind,
+// upstreams and the person's role.
+//
+// Access: signed in; each termbase needs read (directly or through a project
+// that uses it).
 func (s *Server) listTermbases(w http.ResponseWriter, r *http.Request, me session) {
 	ctx := r.Context()
 	tbs, err := s.cfg.Termbases.List(ctx)
@@ -180,6 +185,12 @@ type newTermbase struct {
 	Upstreams []string `json:"upstreams,omitempty"`
 }
 
+// createTermbase makes a master termbase, or a project termbase layered over
+// upstream masters (whose languages it gets if none are given). The person who
+// makes it manages it.
+//
+// Access: those who manage termbases (manage on all termbases) and
+// administrators; read on each upstream.
 func (s *Server) createTermbase(w http.ResponseWriter, r *http.Request, me session) {
 	ctx := r.Context()
 	ok, err := s.mayCreate(ctx, me, authdb.KindTermbase)
@@ -263,6 +274,10 @@ func (s *Server) writeTermbase(w http.ResponseWriter, r *http.Request, tb *termd
 	writeJSON(w, status, termbaseDetail{Info: info, Definition: def, Entries: es, Terms: ts, Role: string(role)})
 }
 
+// getTermbase returns a termbase's definition (languages, fields, picklists),
+// size and the person's role.
+//
+// Access: read on the termbase.
 func (s *Server) getTermbase(w http.ResponseWriter, r *http.Request, me session) {
 	tb, role, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -286,6 +301,10 @@ func usesTermbase(name string) func(project.Settings) bool {
 	}
 }
 
+// deleteTermbase deletes a termbase and the grants on it. A termbase a project
+// or template uses is not deleted; the answer names them.
+//
+// Access: manage on the termbase.
 func (s *Server) deleteTermbase(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -314,6 +333,8 @@ func (s *Server) deleteTermbase(w http.ResponseWriter, r *http.Request, me sessi
 
 // renameTermbase renames a termbase, and the grants, projects and
 // templates that refer to it.
+//
+// Access: manage on the termbase.
 func (s *Server) renameTermbase(w http.ResponseWriter, r *http.Request, me session) {
 	tb, role, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -407,6 +428,11 @@ func (s *Server) renameTermbase(w http.ResponseWriter, r *http.Request, me sessi
 	s.writeTermbase(w, r, renamed, role, http.StatusOK)
 }
 
+// setDefinition changes a termbase's languages, fields and picklists. Removing
+// a language or field that entries use is refused: use the languages and
+// fields routes for that.
+//
+// Access: manage on the termbase.
 func (s *Server) setDefinition(w http.ResponseWriter, r *http.Request, me session) {
 	tb, role, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -426,6 +452,9 @@ func (s *Server) setDefinition(w http.ResponseWriter, r *http.Request, me sessio
 	s.writeTermbase(w, r, tb, role, http.StatusOK)
 }
 
+// setUpstreams sets the masters a project termbase is layered over.
+//
+// Access: manage on the termbase; read on each upstream.
 func (s *Server) setUpstreams(w http.ResponseWriter, r *http.Request, me session) {
 	tb, role, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -468,6 +497,10 @@ func (s *Server) termProblem(w http.ResponseWriter, err error) bool {
 	return false
 }
 
+// removeLanguage removes a language from the definition and from every entry,
+// and answers how many entries changed.
+//
+// Access: manage on the termbase.
 func (s *Server) removeLanguage(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -483,6 +516,10 @@ func (s *Server) removeLanguage(w http.ResponseWriter, r *http.Request, me sessi
 	writeJSON(w, http.StatusOK, map[string]int{"entriesChanged": n})
 }
 
+// removeField removes a field from the definition and from every entry, and
+// answers how many entries changed.
+//
+// Access: manage on the termbase.
 func (s *Server) removeField(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -498,6 +535,11 @@ func (s *Server) removeField(w http.ResponseWriter, r *http.Request, me session)
 	writeJSON(w, http.StatusOK, map[string]int{"entriesChanged": n})
 }
 
+// searchEntries finds entries by text in a language (?text=&lang=) and term
+// status (?status=), a page at a time (?limit=&offset=), with the number
+// found.
+//
+// Access: read on the termbase.
 func (s *Server) searchEntries(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -528,6 +570,9 @@ type entryWrite struct {
 	Summary string     `json:"summary"`
 }
 
+// addEntry adds an entry. Who made it and when is the server's to say.
+//
+// Access: edit on the termbase.
 func (s *Server) addEntry(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -550,6 +595,9 @@ func (s *Server) addEntry(w http.ResponseWriter, r *http.Request, me session) {
 	writeJSON(w, http.StatusCreated, got)
 }
 
+// getEntry returns an entry with its version.
+//
+// Access: read on the termbase.
 func (s *Server) getEntry(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -563,6 +611,9 @@ func (s *Server) getEntry(w http.ResponseWriter, r *http.Request, me session) {
 	writeJSON(w, http.StatusOK, e)
 }
 
+// updateEntry replaces an entry. Send the version read (If-Match or ?version=).
+//
+// Access: edit on the termbase.
 func (s *Server) updateEntry(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -587,6 +638,10 @@ func (s *Server) updateEntry(w http.ResponseWriter, r *http.Request, me session)
 	writeJSON(w, http.StatusOK, got)
 }
 
+// deleteEntry deletes an entry, with an optional ?summary= for its history.
+// Deleted entries are listed at /deleted.
+//
+// Access: edit on the termbase.
 func (s *Server) deleteEntry(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -599,6 +654,9 @@ func (s *Server) deleteEntry(w http.ResponseWriter, r *http.Request, me session)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// entryHistory lists every version of an entry, oldest first.
+//
+// Access: read on the termbase.
 func (s *Server) entryHistory(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -612,6 +670,9 @@ func (s *Server) entryHistory(w http.ResponseWriter, r *http.Request, me session
 	writeJSON(w, http.StatusOK, nonNil(vs))
 }
 
+// revertEntry sets an entry back to an earlier version, as a new version.
+//
+// Access: edit on the termbase.
 func (s *Server) revertEntry(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -633,6 +694,9 @@ func (s *Server) revertEntry(w http.ResponseWriter, r *http.Request, me session)
 	writeJSON(w, http.StatusOK, got)
 }
 
+// mergeEntries merges entries into the one kept, and deletes the others.
+//
+// Access: edit on the termbase.
 func (s *Server) mergeEntries(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -655,6 +719,10 @@ func (s *Server) mergeEntries(w http.ResponseWriter, r *http.Request, me session
 	writeJSON(w, http.StatusOK, got)
 }
 
+// duplicates lists groups of entry IDs that share a term in a language
+// (?lang=), or in any language.
+//
+// Access: read on the termbase.
 func (s *Server) duplicates(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -668,6 +736,9 @@ func (s *Server) duplicates(w http.ResponseWriter, r *http.Request, me session) 
 	writeJSON(w, http.StatusOK, nonNil(groups))
 }
 
+// deletedEntries lists deleted entries.
+//
+// Access: read on the termbase.
 func (s *Server) deletedEntries(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -681,6 +752,10 @@ func (s *Server) deletedEntries(w http.ResponseWriter, r *http.Request, me sessi
 	writeJSON(w, http.StatusOK, nonNil(ds))
 }
 
+// termLookup finds the entries that have a term (?text=), case and spacing
+// aside, in a language or its variants (?lang=; empty for all).
+//
+// Access: read on the termbase.
 func (s *Server) termLookup(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -695,6 +770,10 @@ func (s *Server) termLookup(w http.ResponseWriter, r *http.Request, me session) 
 	writeJSON(w, http.StatusOK, nonNil(es))
 }
 
+// layeredEntries returns a project termbase's entries with its masters'
+// entries layered under them: overrides replace, removals hide.
+//
+// Access: read on the termbase.
 func (s *Server) layeredEntries(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -715,6 +794,8 @@ type masterEntry struct {
 
 // overrideEntry copies a master entry into the project termbase, to
 // change it there.
+//
+// Access: edit on the project termbase.
 func (s *Server) overrideEntry(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -736,6 +817,8 @@ func (s *Server) overrideEntry(w http.ResponseWriter, r *http.Request, me sessio
 
 // removeFromProject hides a master entry in the project; merging asks the
 // master's reviewers to delete it there.
+//
+// Access: edit on the project termbase.
 func (s *Server) removeFromProject(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -754,6 +837,9 @@ func (s *Server) removeFromProject(w http.ResponseWriter, r *http.Request, me se
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// removals lists the master entries hidden in a project termbase.
+//
+// Access: read on the termbase.
 func (s *Server) removals(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -776,6 +862,10 @@ var termFormats = map[term.Format]struct{ ext, ct string }{
 	term.FormatXLSX:      {".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
 }
 
+// exportTermbase sends the termbase as a file: ?format=tbx (the default),
+// tbx2, multiterm, csv, tsv or xlsx.
+//
+// Access: read on the termbase.
 func (s *Server) exportTermbase(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -810,6 +900,8 @@ func (s *Server) exportTermbase(w http.ResponseWriter, r *http.Request, me sessi
 // XML, CSV, TSV or Excel) into the termbase. ?match=term|id|none and
 // ?onMatch=merge|overwrite|skip|add say what happens to entries that are
 // there already; ?dryRun=1 reports without changing anything.
+//
+// Access: edit on the termbase.
 func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -882,6 +974,10 @@ func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me sessi
 	writeJSON(w, http.StatusOK, result{ImportReport: ir, Read: rep, Imported: true})
 }
 
+// termbaseChanges lists the termbase's changes after ?since= (a change
+// number), oldest first, at most ?limit=.
+//
+// Access: read on the termbase.
 func (s *Server) termbaseChanges(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -906,6 +1002,9 @@ func (s *Server) termbaseChanges(w http.ResponseWriter, r *http.Request, me sess
 	}{nonNil(cs), more})
 }
 
+// reviewRules returns how merge requests into the termbase are reviewed.
+//
+// Access: read on the termbase.
 func (s *Server) reviewRules(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -919,6 +1018,9 @@ func (s *Server) reviewRules(w http.ResponseWriter, r *http.Request, me session)
 	writeJSON(w, http.StatusOK, rr)
 }
 
+// setReviewRules sets how merge requests into the termbase are reviewed.
+//
+// Access: manage on the termbase.
 func (s *Server) setReviewRules(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -937,6 +1039,10 @@ func (s *Server) setReviewRules(w http.ResponseWriter, r *http.Request, me sessi
 	writeJSON(w, http.StatusOK, rr)
 }
 
+// mergeRequests lists a project termbase's merge requests, or a master's
+// incoming ones, newest first.
+//
+// Access: read on the termbase.
 func (s *Server) mergeRequests(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -953,6 +1059,8 @@ func (s *Server) mergeRequests(w http.ResponseWriter, r *http.Request, me sessio
 // openMergeRequest submits a project termbase's changes to one of its
 // masters for review. It takes editing the project termbase and
 // suggesting in the master.
+//
+// Access: edit on the project termbase and suggest on the master.
 func (s *Server) openMergeRequest(w http.ResponseWriter, r *http.Request, me session) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
 	if !ok {
@@ -1012,6 +1120,9 @@ func (s *Server) openMR(w http.ResponseWriter, r *http.Request, me session, need
 	return mr, true
 }
 
+// getMergeRequest returns a merge request.
+//
+// Access: read on its master.
 func (s *Server) getMergeRequest(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -1052,6 +1163,8 @@ func (s *Server) writeItems(w http.ResponseWriter, r *http.Request, mr *termdb.M
 
 // mergeItems lists the items with a simple query: ?state=, ?reviewer=,
 // ?sort=, ?limit=, ?offset=.
+//
+// Access: read on the master.
 func (s *Server) mergeItems(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -1074,6 +1187,8 @@ func (s *Server) mergeItems(w http.ResponseWriter, r *http.Request, me session) 
 
 // queryMergeItems lists the items a full query (filter, frequencies)
 // selects.
+//
+// Access: read on the master.
 func (s *Server) queryMergeItems(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -1086,6 +1201,11 @@ func (s *Server) queryMergeItems(w http.ResponseWriter, r *http.Request, me sess
 	s.writeItems(w, r, mr, q)
 }
 
+// sampleMergeItems picks up to n waiting items at random from those the
+// filter selects, for a spot check of a large request. The same seed gives
+// the same sample.
+//
+// Access: read on the master.
 func (s *Server) sampleMergeItems(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -1111,6 +1231,9 @@ func (s *Server) sampleMergeItems(w http.ResponseWriter, r *http.Request, me ses
 	writeJSON(w, http.StatusOK, nonNil(items))
 }
 
+// mergeProgress counts a merge request's items by state and by reviewer.
+//
+// Access: read on the master.
 func (s *Server) mergeProgress(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -1124,6 +1247,10 @@ func (s *Server) mergeProgress(w http.ResponseWriter, r *http.Request, me sessio
 	writeJSON(w, http.StatusOK, p)
 }
 
+// decide records a decision on the items a filter selects: approved,
+// approved-with-edits, changes-requested, rejected or postponed.
+//
+// Access: approve on the master.
 func (s *Server) decide(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleApprove)
 	if !ok {
@@ -1152,6 +1279,9 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request, me session) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// mergeReviewers lists the reviewers given part of a merge request.
+//
+// Access: read on the master.
 func (s *Server) mergeReviewers(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleRead)
 	if !ok {
@@ -1167,6 +1297,8 @@ func (s *Server) mergeReviewers(w http.ResponseWriter, r *http.Request, me sessi
 
 // assignReviewer gives a reviewer (a username) part of the request. The
 // reviewer must be able to approve in the master.
+//
+// Access: manage on the master.
 func (s *Server) assignReviewer(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -1201,6 +1333,10 @@ func (s *Server) assignReviewer(w http.ResponseWriter, r *http.Request, me sessi
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// unassignReviewer takes a reviewer (?reviewer=, a username) off a merge
+// request.
+//
+// Access: manage on the master.
 func (s *Server) unassignReviewer(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleManage)
 	if !ok {
@@ -1213,6 +1349,10 @@ func (s *Server) unassignReviewer(w http.ResponseWriter, r *http.Request, me ses
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// closeMergeRequest closes a merge request; items not decided come back in the
+// next one.
+//
+// Access: approve on the master.
 func (s *Server) closeMergeRequest(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleApprove)
 	if !ok {
@@ -1232,6 +1372,9 @@ func (s *Server) closeMergeRequest(w http.ResponseWriter, r *http.Request, me se
 	writeJSON(w, http.StatusOK, got)
 }
 
+// revertMergeItem undoes the decision on an item of an open merge request.
+//
+// Access: approve on the master.
 func (s *Server) revertMergeItem(w http.ResponseWriter, r *http.Request, me session) {
 	mr, ok := s.openMR(w, r, me, authdb.RoleApprove)
 	if !ok {

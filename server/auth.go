@@ -212,6 +212,11 @@ type serverInfo struct {
 	Setup bool `json:"setup"`
 }
 
+// serverInfo says what the server is: its version, the identity provider
+// people can sign in with, and whether it is waiting for its first
+// administrator.
+//
+// Access: anyone.
 func (s *Server) serverInfo(w http.ResponseWriter, r *http.Request) {
 	info := serverInfo{Name: "Interlinea", Version: s.cfg.Version}
 	if s.cfg.OIDC != nil {
@@ -237,7 +242,13 @@ type setupRequest struct {
 	Device     string `json:"device"`
 }
 
-// setup makes the first administrator.
+// setup makes the first administrator, with the setup token the server logged
+// at its first start.
+// It works only while the server has no accounts. Like the other sign-ins it
+// answers with a token, or sets the web app's cookie when asked to
+// (X-Interlinea-Session: cookie).
+//
+// Access: anyone with the setup token; attempts are limited per address.
 func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
 	if wait := s.signinIP.wait(ip); wait > 0 {
@@ -283,6 +294,12 @@ type passwordSignin struct {
 	Device   string `json:"device"`
 }
 
+// signinPassword signs in with a username and password.
+// The answer has a token for the Authorization header, or, when the request
+// has X-Interlinea-Session: cookie, sets the web app's HttpOnly cookie instead
+// and leaves the token out. Attempts are limited per address and per account.
+//
+// Access: anyone.
 func (s *Server) signinPassword(w http.ResponseWriter, r *http.Request) {
 	var req passwordSignin
 	if !readJSON(w, r, &req, maxBody) {
@@ -320,6 +337,10 @@ func (s *Server) signinPassword(w http.ResponseWriter, r *http.Request) {
 	s.issue(w, r, u, req.Device, wantsCookie(r))
 }
 
+// signout ends the sign-in the request was made with, and clears the web app's
+// cookie if it signed in with it.
+//
+// Access: signed in.
 func (s *Server) signout(w http.ResponseWriter, r *http.Request, me session) {
 	if err := s.cfg.Auth.RevokeToken(r.Context(), me.User.ID, me.Token.ID); err != nil {
 		s.fail(w, r, err)
@@ -414,6 +435,13 @@ type oidcStartRequest struct {
 	Device string `json:"device"`
 }
 
+// oidcStart begins a sign-in through the identity provider and answers with
+// the provider's address to open in a browser.
+// The provider sends the browser to the callback, which sends it on to the
+// return address with a one-time code in the fragment (#interlinea-code=...);
+// the app trades the code for a sign-in at /api/auth/exchange.
+//
+// Access: anyone, when the server has an identity provider.
 func (s *Server) oidcStart(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
 	if wait := s.signinIP.wait(ip); wait > 0 {
@@ -444,6 +472,13 @@ func deadEnd(w http.ResponseWriter, msg string) {
 	fmt.Fprintf(w, "<!doctype html><meta charset=utf-8><title>Interlinea sign-in</title><p>%s</p><p>Close this window and sign in again from Interlinea.</p>\n", html.EscapeString(msg))
 }
 
+// oidcCallback takes the browser back from the identity provider and sends it
+// on to the app's return address, with a one-time code (#interlinea-code=), a
+// linked identity (#interlinea-linked=) or an error (#interlinea-error=) in
+// the fragment. A sign-in that expired or was used already gets a page that
+// says so.
+//
+// Access: anyone; the state ties it to a sign-in begun at oidc/start.
 func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	state := q.Get("state")
@@ -576,6 +611,11 @@ func (s *Server) createFromClaims(ctx context.Context, c oidc.Claims) (authdb.Us
 	return authdb.User{}, fmt.Errorf("server: no free username for %q", base)
 }
 
+// exchange trades the one-time code from a provider sign-in for a sign-in: a
+// token, or the web app's cookie when asked (X-Interlinea-Session: cookie).
+// A code works once and for a few minutes.
+//
+// Access: anyone with a code.
 func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
 	if wait := s.signinIP.wait(ip); wait > 0 {
@@ -620,6 +660,10 @@ type meResult struct {
 	Identities []authdb.Identity `json:"identities"`
 }
 
+// me returns the signed-in person's account, roles and linked provider
+// sign-ins.
+//
+// Access: signed in.
 func (s *Server) me(w http.ResponseWriter, r *http.Request, me session) {
 	gs, err := s.cfg.Auth.Grants(r.Context(), me.User.ID)
 	if err != nil {
@@ -642,6 +686,12 @@ func nonNil[T any](xs []T) []T {
 	return xs
 }
 
+// changeOwnPassword sets the signed-in person's password, after checking the
+// current one if they have one.
+// Every other sign-in of theirs ends; this one continues with a new token (or
+// cookie), which the answer carries.
+//
+// Access: signed in.
 func (s *Server) changeOwnPassword(w http.ResponseWriter, r *http.Request, me session) {
 	var req struct {
 		Current string `json:"current"`
@@ -684,6 +734,10 @@ func (s *Server) changeOwnPassword(w http.ResponseWriter, r *http.Request, me se
 	s.issue(w, r, u, me.Token.Name, me.Cookie || wantsCookie(r))
 }
 
+// ownTokens lists the signed-in person's sign-ins (devices), marking the one
+// the request was made with.
+//
+// Access: signed in.
 func (s *Server) ownTokens(w http.ResponseWriter, r *http.Request, me session) {
 	ts, err := s.cfg.Auth.Tokens(r.Context(), me.User.ID)
 	if err != nil {
@@ -701,6 +755,9 @@ func (s *Server) ownTokens(w http.ResponseWriter, r *http.Request, me session) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// revokeOwnToken ends one of the signed-in person's sign-ins.
+//
+// Access: signed in; only their own sign-ins.
 func (s *Server) revokeOwnToken(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -713,6 +770,11 @@ func (s *Server) revokeOwnToken(w http.ResponseWriter, r *http.Request, me sessi
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// linkOwnIdentity begins linking a provider sign-in to the signed-in person's
+// account, and answers with the provider's address to open.
+// The callback sends the browser back with #interlinea-linked= in the fragment.
+//
+// Access: signed in, when the server has an identity provider.
 func (s *Server) linkOwnIdentity(w http.ResponseWriter, r *http.Request, me session) {
 	var req oidcStartRequest
 	if !readJSON(w, r, &req, maxBody) {
@@ -721,6 +783,11 @@ func (s *Server) linkOwnIdentity(w http.ResponseWriter, r *http.Request, me sess
 	s.startFlow(w, r, req.Return, "", me.User.ID, me.by())
 }
 
+// unlinkOwnIdentity removes a provider sign-in (?issuer=&subject=) from the
+// signed-in person's account.
+// An account without a password keeps its last one.
+//
+// Access: signed in.
 func (s *Server) unlinkOwnIdentity(w http.ResponseWriter, r *http.Request, me session) {
 	q := r.URL.Query()
 	if err := s.cfg.Auth.UnlinkIdentity(r.Context(), me.User.ID, q.Get("issuer"), q.Get("subject"), me.by()); err != nil {
@@ -738,6 +805,10 @@ type person struct {
 	Name     string `json:"name"`
 }
 
+// people lists the accounts that are not disabled, by name, to give work to
+// and to name in grants.
+//
+// Access: signed in.
 func (s *Server) people(w http.ResponseWriter, r *http.Request, me session) {
 	us, err := s.cfg.Auth.Users(r.Context())
 	if err != nil {

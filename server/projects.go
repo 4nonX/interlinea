@@ -99,6 +99,8 @@ type catalogTermbase struct {
 // catalogView lists the memories and termbases someone may set up
 // projects with: all of them for those who make projects, otherwise the
 // ones they may read. Role is what they may do with each directly.
+//
+// Access: signed in.
 func (s *Server) catalogView(w http.ResponseWriter, r *http.Request, me session) {
 	ctx := r.Context()
 	all, err := s.mayCreate(ctx, me, authdb.KindProject)
@@ -216,6 +218,10 @@ type projectView struct {
 	Access access `json:"access"`
 }
 
+// listProjects lists the projects the person may see, with their access to
+// each.
+//
+// Access: signed in; each project needs read, or work in it.
 func (s *Server) listProjects(w http.ResponseWriter, r *http.Request, me session) {
 	ctx := r.Context()
 	ps, err := s.cfg.Projects.List(ctx)
@@ -271,6 +277,8 @@ type createProjectRequest struct {
 
 // createProject makes a project with its own memories and termbase. If a
 // step fails, what was made before it is removed again.
+//
+// Access: those who make projects (manage on all projects) and administrators.
 func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me session) {
 	ctx := r.Context()
 	ok, err := s.mayCreate(ctx, me, authdb.KindProject)
@@ -450,6 +458,10 @@ func lookupFold[V any](m map[string]V, name string) (V, bool) {
 	return zero, false
 }
 
+// getProject returns a project: its settings, files and status, and the
+// person's access.
+//
+// Access: read on the project, or work in it.
 func (s *Server) getProject(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -458,6 +470,10 @@ func (s *Server) getProject(w http.ResponseWriter, r *http.Request, me session) 
 	writeJSON(w, http.StatusOK, projectView{Project: p, Access: a})
 }
 
+// updateProjectSettings replaces a project's settings. They are checked as
+// when the project was made. Send the version read (If-Match or ?version=).
+//
+// Access: manage on the project.
 func (s *Server) updateProjectSettings(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -490,6 +506,8 @@ func (s *Server) updateProjectSettings(w http.ResponseWriter, r *http.Request, m
 
 // deleteProject removes a project. Its memories and termbase stay: they
 // may be used by other projects, and are deleted on their own.
+//
+// Access: manage on the project.
 func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -510,6 +528,12 @@ func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request, me sessio
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// addProjectFile adds a file to a project.
+// A translatable file comes with its segments for each target language; the
+// server reads the file itself and refuses segments that are not the file's.
+// Send the version read (If-Match or ?version=).
+//
+// Access: manage on the project.
 func (s *Server) addProjectFile(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -544,6 +568,10 @@ func (s *Server) addProjectFile(w http.ResponseWriter, r *http.Request, me sessi
 	writeJSON(w, http.StatusOK, projectView{Project: got, Access: a})
 }
 
+// removeProjectFile removes a file (?name=) and its segments from a project.
+// Send the version read (If-Match or ?version=).
+//
+// Access: manage on the project.
 func (s *Server) removeProjectFile(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -579,6 +607,9 @@ var contentTypes = map[string]string{
 	"txt":      "text/plain; charset=utf-8",
 }
 
+// projectFileContent sends a project file (?name=) as it was uploaded.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectFileContent(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -599,6 +630,10 @@ func (s *Server) projectFileContent(w http.ResponseWriter, r *http.Request, me s
 	w.Write(f.Data)
 }
 
+// projectSegments returns a file's segments in a target language
+// (?file=&lang=), with their versions.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectSegments(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -621,6 +656,8 @@ type segmentSave struct {
 // saveProjectSegment saves a translation. Editors of the project may
 // save any segment; translators and reviewers those assigned to them. A
 // confirmed translation goes into the memories the project updates.
+//
+// Access: edit on the project, or the segment's assignee.
 func (s *Server) saveProjectSegment(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -704,6 +741,8 @@ func canonicalTarget(p projectdb.Project, lang string) string {
 
 // pretranslateProject fills a target language's empty segments (or all
 // languages') from the project's memories, as its settings say.
+//
+// Access: manage on the project.
 func (s *Server) pretranslateProject(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -856,6 +895,10 @@ func lookup(ctx context.Context, mems []tm.Memory, req lookupRequest) ([]matchVi
 	return out, nil
 }
 
+// projectLookup finds matches for a segment in the memories the project looks
+// up in for the language.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectLookup(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -910,6 +953,10 @@ func concordance(ctx context.Context, mems []tm.Memory, req concordanceRequest) 
 	return out, nil
 }
 
+// projectConcordance searches the memories the project searches with for the
+// language.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectConcordance(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -936,6 +983,8 @@ func (s *Server) projectConcordance(w http.ResponseWriter, r *http.Request, me s
 // with the concordance, as TMX, to the project's people: the apps match
 // against it while translating. Memories the project only updates are
 // not sent.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectMemoryExport(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -977,6 +1026,8 @@ const (
 // looks up in that match its segments in a language: what the apps need
 // to show matches and analyse the project, without the rest of a large
 // memory. Concordance searches go to the server.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectMemoryExtract(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1057,6 +1108,8 @@ type termbaseView struct {
 // on the server: its own (with the masters' entries layered under it)
 // and the masters it uses directly. The apps find terms in segments with
 // them.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectTerminology(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1104,6 +1157,8 @@ func (s *Server) projectTerminology(w http.ResponseWriter, r *http.Request, me s
 
 // addProjectTerm adds a term found while translating where the project's
 // setup puts new terms: its own termbase, or the master in Direct mode.
+//
+// Access: edit on the project, or work in it.
 func (s *Server) addProjectTerm(w http.ResponseWriter, r *http.Request, me session) {
 	p, a, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1144,6 +1199,9 @@ func (s *Server) addProjectTerm(w http.ResponseWriter, r *http.Request, me sessi
 	}{tb.Name(), got})
 }
 
+// projectAssignments lists the work given out in a project.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectAssignments(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1157,6 +1215,9 @@ func (s *Server) projectAssignments(w http.ResponseWriter, r *http.Request, me s
 	writeJSON(w, http.StatusOK, nonNil(as))
 }
 
+// ownAssignments lists the work given to the signed-in person, in all projects.
+//
+// Access: signed in.
 func (s *Server) ownAssignments(w http.ResponseWriter, r *http.Request, me session) {
 	as, err := s.cfg.Projects.AssignmentsOf(r.Context(), me.User.ID)
 	if err != nil {
@@ -1182,6 +1243,10 @@ func (s *Server) assignee(w http.ResponseWriter, r *http.Request, a *projectdb.A
 	return true
 }
 
+// assign gives someone a range of segments of a file and language to translate
+// or review, with an optional due date.
+//
+// Access: manage on the project.
 func (s *Server) assign(w http.ResponseWriter, r *http.Request, me session) {
 	p, acc, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1229,6 +1294,8 @@ func (s *Server) assignmentOf(w http.ResponseWriter, r *http.Request, projectID 
 
 // updateAssignment changes an assignment. Managers change anything; the
 // person it is for only reports it done or not done.
+//
+// Access: manage on the project; the assignee for done.
 func (s *Server) updateAssignment(w http.ResponseWriter, r *http.Request, me session) {
 	p, acc, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1271,6 +1338,9 @@ func (s *Server) updateAssignment(w http.ResponseWriter, r *http.Request, me ses
 	writeJSON(w, http.StatusOK, got)
 }
 
+// unassign takes work back.
+//
+// Access: manage on the project.
 func (s *Server) unassign(w http.ResponseWriter, r *http.Request, me session) {
 	p, acc, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1291,6 +1361,10 @@ func (s *Server) unassign(w http.ResponseWriter, r *http.Request, me session) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// projectPresence lists who has a file of the project open in a language
+// (?file=&lang=), and at which segment.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectPresence(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1305,6 +1379,10 @@ func (s *Server) projectPresence(w http.ResponseWriter, r *http.Request, me sess
 	writeJSON(w, http.StatusOK, nonNil(ps))
 }
 
+// touchPresence says the person is at a segment; others see it until they
+// leave or stop saying so for a while.
+//
+// Access: read on the project, or work in it.
 func (s *Server) touchPresence(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1327,6 +1405,9 @@ func (s *Server) touchPresence(w http.ResponseWriter, r *http.Request, me sessio
 	writeJSON(w, http.StatusOK, got)
 }
 
+// leavePresence says the person has left the project's files.
+//
+// Access: read on the project, or work in it.
 func (s *Server) leavePresence(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1340,6 +1421,10 @@ func (s *Server) leavePresence(w http.ResponseWriter, r *http.Request, me sessio
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// projectChanges lists the project's changes after ?since= (a change number),
+// oldest first, at most ?limit=.
+//
+// Access: read on the project, or work in it.
 func (s *Server) projectChanges(w http.ResponseWriter, r *http.Request, me session) {
 	p, _, ok := s.openProject(w, r, me)
 	if !ok {
@@ -1365,6 +1450,9 @@ func (s *Server) projectChanges(w http.ResponseWriter, r *http.Request, me sessi
 	}{nonNil(cs), more})
 }
 
+// listTemplates lists the project templates.
+//
+// Access: signed in.
 func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request, me session) {
 	ts, err := s.cfg.Projects.Templates(r.Context())
 	if err != nil {
@@ -1374,6 +1462,10 @@ func (s *Server) listTemplates(w http.ResponseWriter, r *http.Request, me sessio
 	writeJSON(w, http.StatusOK, nonNil(ts))
 }
 
+// saveTemplate makes or replaces a project template. Send the version read, 0
+// for a new one (If-Match or ?version=).
+//
+// Access: those who make projects (manage on all projects) and administrators.
 func (s *Server) saveTemplate(w http.ResponseWriter, r *http.Request, me session) {
 	ok, err := s.mayCreate(r.Context(), me, authdb.KindProject)
 	if err != nil {
@@ -1405,6 +1497,9 @@ func (s *Server) saveTemplate(w http.ResponseWriter, r *http.Request, me session
 	writeJSON(w, http.StatusOK, got)
 }
 
+// deleteTemplate deletes a template (?name=).
+//
+// Access: those who make projects and administrators.
 func (s *Server) deleteTemplate(w http.ResponseWriter, r *http.Request, me session) {
 	ok, err := s.mayCreate(r.Context(), me, authdb.KindProject)
 	if err != nil {

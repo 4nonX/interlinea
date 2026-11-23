@@ -156,6 +156,7 @@ func (s *Server) Close() { s.feed.stop() }
 func (s *Server) routes() {
 	// Signing in.
 	s.handle("GET /api/server", s.anyone(s.serverInfo))
+	s.handle("GET /api/openapi.json", s.anyone(s.openAPI))
 	s.handle("POST /api/setup", s.anyone(s.setup))
 	s.handle("POST /api/auth/password", s.anyone(s.signinPassword))
 	s.handle("POST /api/auth/oidc/start", s.anyone(s.oidcStart))
@@ -312,12 +313,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // apiError is the body of every error answer.
 type apiError struct {
-	// Code is stable for the apps: badRequest, signIn, forbidden,
-	// notFound, exists, conflict, invalid, locked, tooMany, tooLarge,
-	// lastAdmin, server.
-	Code    string `json:"code"`
+	// Code is stable for the apps: badRequest, signIn, credentials,
+	// forbidden, notFound, exists, conflict, invalid, badFile, inUse,
+	// locked, closed, decided, needsResolution, notProject, notOnServer,
+	// lastAdmin, tooMany, tooLarge, server.
+	Code string `json:"code"`
+	// Message says what went wrong, for people.
 	Message string `json:"message"`
-	// Problems are a refused setup's problems, by field.
+	// Problems are the problems of a refused request, by field.
 	Problems []project.Problem `json:"problems,omitempty"`
 }
 

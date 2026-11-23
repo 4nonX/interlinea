@@ -24,6 +24,9 @@ jobs:
         run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
       - name: vet
         run: go vet ./...
+      - name: API reference is up to date
+        if: runner.os == 'Linux'
+        run: go run ./cmd/interlinea-apidoc -check
       - name: test
         run: go test ./...
       - name: race

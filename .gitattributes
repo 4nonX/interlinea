@@ -1,0 +1,3 @@
+# Written by cmd/interlinea-apidoc, compared byte for byte in CI.
+server/openapi.json text eol=lf
+docs/api.md text eol=lf

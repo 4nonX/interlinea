@@ -94,3 +94,16 @@ func TestCookieSecureBehindProxy(t *testing.T) {
 		t.Fatalf("cookie %+v", c)
 	}
 }
+
+// The API's description is served, and describes itself.
+func TestOpenAPIServed(t *testing.T) {
+	e := newEnv(t)
+	var doc struct {
+		OpenAPI string                    `json:"openapi"`
+		Paths   map[string]map[string]any `json:"paths"`
+	}
+	e.call("GET", "/api/openapi.json", "", nil, 200, &doc)
+	if doc.OpenAPI != "3.1.0" || doc.Paths["/api/openapi.json"]["get"] == nil || doc.Paths["/api/projects/{id}/segments"]["put"] == nil {
+		t.Fatalf("openapi.json: %s, %d paths", doc.OpenAPI, len(doc.Paths))
+	}
+}

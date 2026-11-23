@@ -7,6 +7,9 @@ import (
 	"github.com/4nonX/interlinea/auth/authdb"
 )
 
+// listUsers lists all accounts.
+//
+// Access: administrators.
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request, me session) {
 	us, err := s.cfg.Auth.Users(r.Context())
 	if err != nil {
@@ -26,6 +29,9 @@ type newUserRequest struct {
 	Admin    bool   `json:"admin"`
 }
 
+// createUser makes an account.
+//
+// Access: administrators.
 func (s *Server) createUser(w http.ResponseWriter, r *http.Request, me session) {
 	var req newUserRequest
 	if !readJSON(w, r, &req, maxBody) {
@@ -39,6 +45,9 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request, me session) 
 	writeJSON(w, http.StatusCreated, u)
 }
 
+// getUser returns an account.
+//
+// Access: administrators.
 func (s *Server) getUser(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -59,6 +68,12 @@ type userPatch struct {
 	Disabled *bool   `json:"disabled"`
 }
 
+// updateUser changes an account's name, email, administrator flag or disabled
+// state; fields left out stay.
+// Disabling an account ends all its sign-ins. Send the version read (If-Match
+// or ?version=).
+//
+// Access: administrators.
 func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -87,6 +102,10 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request, me session) 
 	writeJSON(w, http.StatusOK, u)
 }
 
+// deleteUser deletes an account with its sign-ins, grants and linked
+// identities.
+//
+// Access: administrators.
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -99,6 +118,9 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request, me session) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// setUserPassword sets or removes an account's password and ends its sign-ins.
+//
+// Access: administrators.
 func (s *Server) setUserPassword(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -119,6 +141,9 @@ func (s *Server) setUserPassword(w http.ResponseWriter, r *http.Request, me sess
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// userTokens lists an account's sign-ins.
+//
+// Access: administrators.
 func (s *Server) userTokens(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -136,6 +161,9 @@ func (s *Server) userTokens(w http.ResponseWriter, r *http.Request, me session) 
 	writeJSON(w, http.StatusOK, nonNil(ts))
 }
 
+// revokeUserTokens ends all of an account's sign-ins.
+//
+// Access: administrators.
 func (s *Server) revokeUserTokens(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -148,6 +176,9 @@ func (s *Server) revokeUserTokens(w http.ResponseWriter, r *http.Request, me ses
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// userIdentities lists the provider sign-ins linked to an account.
+//
+// Access: administrators.
 func (s *Server) userIdentities(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -165,6 +196,10 @@ func (s *Server) userIdentities(w http.ResponseWriter, r *http.Request, me sessi
 	writeJSON(w, http.StatusOK, nonNil(ids))
 }
 
+// linkUserIdentity links a provider sign-in (issuer and subject; the issuer
+// defaults to the server's provider) to an account.
+//
+// Access: administrators.
 func (s *Server) linkUserIdentity(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -187,6 +222,10 @@ func (s *Server) linkUserIdentity(w http.ResponseWriter, r *http.Request, me ses
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// unlinkUserIdentity removes a provider sign-in (?issuer=&subject=) from an
+// account.
+//
+// Access: administrators.
 func (s *Server) unlinkUserIdentity(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -200,6 +239,9 @@ func (s *Server) unlinkUserIdentity(w http.ResponseWriter, r *http.Request, me s
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// userGrants lists an account's roles.
+//
+// Access: administrators.
 func (s *Server) userGrants(w http.ResponseWriter, r *http.Request, me session) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
@@ -273,6 +315,10 @@ type grantView struct {
 	Name     string `json:"name"`
 }
 
+// grantsOn lists who has which role on a project, memory or termbase
+// (?kind=&resource=).
+//
+// Access: administrators, and those who manage the resource.
 func (s *Server) grantsOn(w http.ResponseWriter, r *http.Request, me session) {
 	q := r.URL.Query()
 	kind, resource := authdb.Kind(q.Get("kind")), q.Get("resource")
@@ -296,6 +342,10 @@ func (s *Server) grantsOn(w http.ResponseWriter, r *http.Request, me session) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// setGrant gives someone a role on a project, memory, termbase or everything
+// of a kind (resource *).
+//
+// Access: administrators, and those who manage the resource (for one resource).
 func (s *Server) setGrant(w http.ResponseWriter, r *http.Request, me session) {
 	var g authdb.Grant
 	if !readJSON(w, r, &g, maxBody) {
@@ -311,6 +361,9 @@ func (s *Server) setGrant(w http.ResponseWriter, r *http.Request, me session) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// revokeGrant takes a role back (?userId=&kind=&resource=).
+//
+// Access: administrators, and those who manage the resource.
 func (s *Server) revokeGrant(w http.ResponseWriter, r *http.Request, me session) {
 	q := r.URL.Query()
 	kind, resource := authdb.Kind(q.Get("kind")), q.Get("resource")
