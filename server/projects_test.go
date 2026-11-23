@@ -88,7 +88,7 @@ func leaseRequest() createProjectRequest {
 	return createProjectRequest{
 		Settings: s,
 		Files: []fileUpload{
-			{Name: "Mietvertrag.docx", Role: project.Translatable, Format: "docx", Data: []byte("PK lease"), Segments: map[string][]project.Segment{"en-GB": lease, "fr-FR": lease}},
+			{Name: "Mietvertrag.txt", Role: project.Translatable, Format: "txt", Data: []byte("Mietvertrag.\n\nDer Mieter zahlt die Miete. Die Kaution beträgt drei Monatsmieten.\n\nDer Vermieter haftet nicht.\n"), Segments: map[string][]project.Segment{"en-GB": lease, "fr-FR": lease}},
 			{Name: "Styleguide.pdf", Role: project.Reference, Format: "pdf", Data: []byte("%PDF-1.7 guide")},
 		},
 		Memories: []tm.Info{tm2("Mietvertrag Hofmann (en-GB)", "en-GB"), tm2("Mietvertrag Hofmann (fr-FR)", "fr-FR")},
@@ -199,14 +199,14 @@ func TestProjectAccessAndWork(t *testing.T) {
 	// Give out work: Ben translates English s1-s2, Carl the rest and
 	// French; Dora reviews English.
 	var benWork projectdb.Assignment
-	te.call("POST", base+"/assignments", te.pm, projectdb.Assignment{File: "Mietvertrag.docx", TargetLang: "en-GB", FromSegment: "s1", ToSegment: "s2", UserID: te.benID, Task: projectdb.TaskTranslate, Due: "2026-12-01T12:00:00Z"}, 201, &benWork)
+	te.call("POST", base+"/assignments", te.pm, projectdb.Assignment{File: "Mietvertrag.txt", TargetLang: "en-GB", FromSegment: "s1", ToSegment: "s2", UserID: te.benID, Task: projectdb.TaskTranslate, Due: "2026-12-01T12:00:00Z"}, 201, &benWork)
 	if benWork.UserName != "Ben" {
 		t.Fatalf("assigned %+v", benWork)
 	}
-	te.call("POST", base+"/assignments", te.pm, projectdb.Assignment{File: "Mietvertrag.docx", TargetLang: "en-GB", FromSegment: "s3", ToSegment: "s4", UserID: te.carlID, Task: projectdb.TaskTranslate}, 201, nil)
+	te.call("POST", base+"/assignments", te.pm, projectdb.Assignment{File: "Mietvertrag.txt", TargetLang: "en-GB", FromSegment: "s3", ToSegment: "s4", UserID: te.carlID, Task: projectdb.TaskTranslate}, 201, nil)
 	te.call("POST", base+"/assignments", te.pm, projectdb.Assignment{TargetLang: "fr-FR", UserID: te.carlID, Task: projectdb.TaskTranslate}, 201, nil)
 	te.call("POST", base+"/assignments", te.pm, projectdb.Assignment{TargetLang: "en-GB", UserID: te.doraID, Task: projectdb.TaskReview}, 201, nil)
-	if r := te.do("POST", base+"/assignments", te.pm, projectdb.Assignment{File: "Mietvertrag.docx", TargetLang: "en-GB", FromSegment: "s2", ToSegment: "s3", UserID: te.eveID, Task: projectdb.TaskTranslate}); r.status != 422 {
+	if r := te.do("POST", base+"/assignments", te.pm, projectdb.Assignment{File: "Mietvertrag.txt", TargetLang: "en-GB", FromSegment: "s2", ToSegment: "s3", UserID: te.eveID, Task: projectdb.TaskTranslate}); r.status != 422 {
 		t.Fatalf("overlapping work: %d %s", r.status, r.body)
 	}
 	if r := te.do("POST", base+"/assignments", te.pm, projectdb.Assignment{UserID: 999, Task: projectdb.TaskReview}); r.status != 422 || r.err().Problems[0].Field != "user" {
@@ -241,26 +241,26 @@ func TestProjectAccessAndWork(t *testing.T) {
 		t.Fatalf("file %q %v", r.body, r.header)
 	}
 	var stored []projectdb.StoredSegment
-	te.call("GET", base+"/segments?file=Mietvertrag.docx&lang=en-GB", te.ben, nil, 200, &stored)
+	te.call("GET", base+"/segments?file=Mietvertrag.txt&lang=en-GB", te.ben, nil, 200, &stored)
 	if len(stored) != 4 || stored[1].Version != 1 {
 		t.Fatalf("segments %+v", stored)
 	}
 
 	// Ben translates his segments, not Carl's.
 	var saved projectdb.StoredSegment
-	te.call("PUT", segPath(id, "Mietvertrag.docx", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Lease."), Status: project.StatusConfirmed}, 200, &saved)
+	te.call("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Lease."), Status: project.StatusConfirmed}, 200, &saved)
 	if saved.Version != 2 || saved.ChangedBy != "ben" {
 		t.Fatalf("saved %+v", saved)
 	}
-	if r := te.do("PUT", segPath(id, "Mietvertrag.docx", "en-GB", "s3", 1), te.ben, segmentSave{Target: content.Text("Deposit."), Status: project.StatusDraft}); r.status != 403 {
+	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s3", 1), te.ben, segmentSave{Target: content.Text("Deposit."), Status: project.StatusDraft}); r.status != 403 {
 		t.Fatalf("Ben saves Carl's segment: %d", r.status)
 	}
-	if r := te.do("PUT", segPath(id, "Mietvertrag.docx", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Tenancy."), Status: project.StatusDraft}); r.status != 409 || r.err().Code != "conflict" {
+	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Tenancy."), Status: project.StatusDraft}); r.status != 409 || r.err().Code != "conflict" {
 		t.Fatalf("stale save: %d %s", r.status, r.body)
 	}
 	// The reviewer corrects any English segment.
-	te.call("PUT", segPath(id, "Mietvertrag.docx", "en-GB", "s1", 2), te.dora, segmentSave{Target: content.Text("Tenancy agreement."), Status: project.StatusConfirmed}, 200, nil)
-	if r := te.do("PUT", segPath(id, "Mietvertrag.docx", "fr-FR", "s1", 1), te.dora, segmentSave{Target: content.Text("Bail."), Status: project.StatusDraft}); r.status != 403 {
+	te.call("PUT", segPath(id, "Mietvertrag.txt", "en-GB", "s1", 2), te.dora, segmentSave{Target: content.Text("Tenancy agreement."), Status: project.StatusConfirmed}, 200, nil)
+	if r := te.do("PUT", segPath(id, "Mietvertrag.txt", "fr-FR", "s1", 1), te.dora, segmentSave{Target: content.Text("Bail."), Status: project.StatusDraft}); r.status != 403 {
 		t.Fatalf("the English reviewer saves French: %d", r.status)
 	}
 	// Confirmed translations went into the project memory, not the master
@@ -336,9 +336,9 @@ func TestProjectAccessAndWork(t *testing.T) {
 
 	// Presence.
 	var pr projectdb.Presence
-	te.call("PUT", base+"/presence", te.carl, map[string]string{"file": "Mietvertrag.docx", "lang": "fr-FR", "segment": "s2"}, 200, &pr)
+	te.call("PUT", base+"/presence", te.carl, map[string]string{"file": "Mietvertrag.txt", "lang": "fr-FR", "segment": "s2"}, 200, &pr)
 	var present []projectdb.Presence
-	te.call("GET", base+"/presence?file=Mietvertrag.docx&lang=fr-FR", te.dora, nil, 200, &present)
+	te.call("GET", base+"/presence?file=Mietvertrag.txt&lang=fr-FR", te.dora, nil, 200, &present)
 	if len(present) != 1 || present[0].UserName != "Carl" || present[0].Segment != "s2" {
 		t.Fatalf("presence %+v", present)
 	}
@@ -368,7 +368,7 @@ func TestProjectSettingsFilesAndPretranslation(t *testing.T) {
 	}
 	// Editors save, but don't change settings.
 	te.call("PUT", "/api/grants", te.pm, authdb.Grant{UserID: te.carlID, Kind: authdb.KindProject, Resource: fmt.Sprint(p.ID), Role: authdb.RoleEdit}, 204, nil)
-	te.call("PUT", segPath(p.ID, "Mietvertrag.docx", "fr-FR", "s1", 1), te.carl, segmentSave{Target: content.Text("Bail."), Status: project.StatusDraft}, 200, nil)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "fr-FR", "s1", 1), te.carl, segmentSave{Target: content.Text("Bail."), Status: project.StatusDraft}, 200, nil)
 	set := p.Settings
 	set.Due = "2026-12-04T16:00:00Z"
 	if r := te.do("PUT", base+"/settings?version=1", te.carl, set); r.status != 403 {
@@ -384,7 +384,7 @@ func TestProjectSettingsFilesAndPretranslation(t *testing.T) {
 		t.Fatalf("settings with problems: %d %s", r.status, r.body)
 	}
 	// Files.
-	nf := fileUpload{Name: "Nachtrag.docx", Role: project.Translatable, Format: "docx", Data: []byte("PK"),
+	nf := fileUpload{Name: "Nachtrag.txt", Role: project.Translatable, Format: "txt", Data: []byte("Der Mieter zahlt die Miete.\n"),
 		Segments: map[string][]project.Segment{"en-GB": segs("Der Mieter zahlt die Miete."), "fr-FR": segs("Der Mieter zahlt die Miete.")}}
 	te.call("POST", base+"/files?version=2", te.pm, nf, 200, &got)
 	if len(got.Settings.Files) != 3 {
@@ -400,14 +400,14 @@ func TestProjectSettingsFilesAndPretranslation(t *testing.T) {
 		t.Fatalf("filled %+v", filled)
 	}
 	var stored []projectdb.StoredSegment
-	te.call("GET", base+"/segments?file=Nachtrag.docx&lang=en-GB", te.pm, nil, 200, &stored)
+	te.call("GET", base+"/segments?file=Nachtrag.txt&lang=en-GB", te.pm, nil, 200, &stored)
 	if stored[0].Target.Plain() != "The tenant pays the rent." || stored[0].Status != project.StatusDraft {
 		t.Fatalf("pre-translated %+v", stored[0])
 	}
 	if r := te.do("POST", base+"/pretranslate", te.pm, map[string]any{"prepare": project.Prepare{MinScore: 10}}); r.status != 422 {
 		t.Fatalf("bad minimum: %d", r.status)
 	}
-	te.call("DELETE", base+"/files?name=nachtrag.docx&version=3", te.pm, nil, 200, &got)
+	te.call("DELETE", base+"/files?name=nachtrag.txt&version=3", te.pm, nil, 200, &got)
 	if len(got.Settings.Files) != 2 {
 		t.Fatalf("after removal %+v", got.Settings.Files)
 	}

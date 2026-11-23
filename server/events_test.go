@@ -145,7 +145,7 @@ func TestEvents(t *testing.T) {
 		t.Fatalf("Ben's event %+v", c)
 	}
 	last := ""
-	te.call("PUT", segPath(p.ID, "Mietvertrag.docx", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Lease."), Status: project.StatusDraft}, 200, nil)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "en-GB", "s1", 1), te.ben, segmentSave{Target: content.Text("Lease."), Status: project.StatusDraft}, 200, nil)
 	ev := benFeed.until("project")
 	if projectChange(t, ev).Kind != projectdb.ChangeSegment {
 		t.Fatalf("segment event %+v", ev)
@@ -155,15 +155,15 @@ func TestEvents(t *testing.T) {
 		t.Fatalf("event id %q", last)
 	}
 	// Presence comes through at once.
-	te.call("PUT", base+"/presence", te.pm, map[string]string{"file": "Mietvertrag.docx", "lang": "en-GB", "segment": "s2"}, 200, nil)
+	te.call("PUT", base+"/presence", te.pm, map[string]string{"file": "Mietvertrag.txt", "lang": "en-GB", "segment": "s2"}, 200, nil)
 	if ev := benFeed.until("presence"); !strings.Contains(ev.data, fmt.Sprint(p.ID)) {
 		t.Fatalf("presence %+v", ev)
 	}
 
 	// Ben goes offline; what he missed comes when he reconnects.
 	benFeed.cancel()
-	te.call("PUT", segPath(p.ID, "Mietvertrag.docx", "en-GB", "s2", 1), te.pm, segmentSave{Target: content.Text("Rent."), Status: project.StatusDraft}, 200, nil)
-	te.call("PUT", segPath(p.ID, "Mietvertrag.docx", "fr-FR", "s2", 1), te.pm, segmentSave{Target: content.Text("Loyer."), Status: project.StatusDraft}, 200, nil)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "en-GB", "s2", 1), te.pm, segmentSave{Target: content.Text("Rent."), Status: project.StatusDraft}, 200, nil)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "fr-FR", "s2", 1), te.pm, segmentSave{Target: content.Text("Loyer."), Status: project.StatusDraft}, 200, nil)
 	time.Sleep(100 * time.Millisecond)
 	back := te.listen(te.ben, last)
 	got := projectChange(t, back.until("project"))
@@ -175,7 +175,7 @@ func TestEvents(t *testing.T) {
 		t.Fatalf("second missed change %+v", got)
 	}
 	// A new change after the catch-up comes once.
-	te.call("PUT", segPath(p.ID, "Mietvertrag.docx", "en-GB", "s3", 1), te.pm, segmentSave{Target: content.Text("Deposit."), Status: project.StatusDraft}, 200, nil)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "en-GB", "s3", 1), te.pm, segmentSave{Target: content.Text("Deposit."), Status: project.StatusDraft}, 200, nil)
 	if got := projectChange(t, back.until("project")); got.Segment != "s3" {
 		t.Fatalf("live after catch-up %+v", got)
 	}

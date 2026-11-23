@@ -329,7 +329,10 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var pinv *projectdb.InvalidError
 	var ainv *authdb.InvalidError
+	var fp *fileProblem
 	switch {
+	case errors.As(err, &fp):
+		writeError(w, http.StatusUnprocessableEntity, "badFile", fp.msg)
 	case errors.As(err, &pinv):
 		msg := "The settings have problems."
 		if len(pinv.Problems) > 0 {

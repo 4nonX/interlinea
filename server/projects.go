@@ -336,6 +336,10 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me sessio
 	}
 	files := make([]projectdb.NewFile, len(req.Files))
 	for i, f := range req.Files {
+		if err := checkFile(f, set.SourceLang); err != nil {
+			s.fail(w, r, err)
+			return
+		}
 		files[i] = f.newFile()
 	}
 	set.Files = nil
@@ -521,6 +525,10 @@ func (s *Server) addProjectFile(w http.ResponseWriter, r *http.Request, me sessi
 	}
 	var f fileUpload
 	if !readJSON(w, r, &f, maxFileBody) {
+		return
+	}
+	if err := checkFile(f, p.Settings.SourceLang); err != nil {
+		s.fail(w, r, err)
 		return
 	}
 	cat, err := s.catalog(r.Context())
