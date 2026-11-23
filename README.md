@@ -3,8 +3,8 @@
 An open-source translation workspace: CAT editor, terminology, translation
 memory and project workflow in one tool, translation first.
 
-This repository holds the Go core. The native desktop client (Qt 6), the
-server mode and the browser client will build on it.
+This repository holds the Go core and the team server. The native desktop
+client (Qt 6) and the browser client build on them.
 
 ## Status
 
@@ -34,6 +34,8 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `project/projectdb` | Persistent projects in a SQLite file or PostgreSQL: settings, files with their bytes, segments per file and target language with versions that refuse stale saves, target languages added or removed later, pre-translation applied safely, templates, assignments of files, languages or segment ranges to translators and reviewers with due dates (one of each per segment), who has which segment open, change log for syncing |
 | `auth/authdb` | Accounts with Argon2id passwords, OpenID Connect identities, sign-in tokens (only their hashes stored), roles read < suggest < edit < approve < manage on projects, memories, termbases or everything; the last administrator is kept; change log; SQLite or PostgreSQL |
 | `auth/oidc` | OpenID Connect sign-in (Entra ID, Google, Keycloak and others): discovery, authorization code with PKCE, ID token checks (RS256, PS256, ES256 against the provider's keys, issuer, audience, expiry, nonce) |
+| `server` | The team server's HTTP API: sign-in with passwords or an identity provider, accounts and roles, projects with their files, segments, assignments and presence, memories, termbases with their review workflow, a live feed of changes |
+| `cmd/interlinea-server` | The team server: SQLite files or PostgreSQL, the web app at `/`, TLS or a reverse proxy |
 | `cmd/interlinea` | Command-line interface to all of the above |
 | `cmd/interlinea-wasm` | The filters, memories, termbase formats, QA, analysis, project validation and pre-translation compiled to WebAssembly for the browser prototype |
 
@@ -65,6 +67,67 @@ make cross    # binaries for Linux, macOS and Windows (amd64, arm64)
 make wasm     # the core for the browser prototype (prototype/public/core)
 make sample   # regenerate the sample Word document and its extraction
 ```
+
+## Team server
+
+`interlinea-server` keeps projects, memories, termbases and accounts for a
+team. It runs on SQLite files (`-data`, the default) or PostgreSQL
+(`-postgres`, each store in its own schema), and serves the web app from
+`-web`. Every option is also an environment variable (`-addr` is
+`INTERLINEA_ADDR`); `interlinea-server -h` lists them.
+
+```
+docker build -t interlinea-server .
+docker run -p 8080:8080 -v interlinea:/data \
+  -e INTERLINEA_ADMIN_USER=admin -e INTERLINEA_ADMIN_PASSWORD='a long password' interlinea-server
+```
+
+`compose.yaml` runs it with PostgreSQL. Without `INTERLINEA_ADMIN_*`, a server
+with no accounts logs a setup token, and `POST /api/setup` makes the first
+administrator with it.
+
+**Signing in.** `POST /api/auth/password` with a username and password
+returns a token for the `Authorization: Bearer` header; the stores keep only
+its hash. After ten wrong passwords an account waits 15 minutes, and one
+address gets twenty attempts a minute. With `-oidc-issuer` and
+`-oidc-client-id` (Entra ID, Google, Keycloak, any OpenID Connect provider;
+the redirect address is `<public URL>/api/auth/oidc/callback`), the apps
+start a sign-in with `POST /api/auth/oidc/start`, open the address it gives,
+and get a one-time code back in the fragment of their return address (the
+server, an allowed web app, or an app listening on `127.0.0.1`), which
+`POST /api/auth/exchange` turns into a token. Tokens never appear in an
+address. People link their provider sign-in to their account themselves, an
+administrator links it, or `-oidc-create-users` makes accounts (without
+roles) on first sign-in.
+
+**Who may do what.** Roles are read < suggest < edit < approve < manage, on
+one project, memory or termbase, on all of a kind (`*`), or on everything.
+Administrators may do everything; managers decide who may use what they
+manage. Making projects takes manage on all projects; the maker manages the
+project and what was made with it. Work assigned in a project lets people
+see it, save their segments (reviewers correct the translators'), add terms
+to its termbase and look up in its memories, with no grant on the memories
+themselves. What someone may not see answers 404.
+
+**Writes** name the version they were made from (`If-Match` or `?version=`)
+and are refused with 409 `conflict` when someone saved in between. Errors are
+`{"code", "message", "problems": [{"field", "message"}]}`.
+
+| Routes | |
+|---|---|
+| `/api/me`, `/api/people`, `/api/users`, `/api/grants` | the signed-in person, their sign-ins and identities; whom work can go to; accounts (administrators); roles |
+| `/api/catalog`, `/api/templates` | memories and termbases to set projects up with; project templates |
+| `/api/projects/{id}` and below | settings, files (bytes in, originals out), segments, pre-translation, lookup and concordance in the project's memories, its terminology, assignments, presence, change log |
+| `/api/memories/{name}` and below | units, lookup, concordance, TMX import and export, change log |
+| `/api/termbases/{name}` and below | entries, history, revert, merge, duplicates, lookup, the layered view of a project termbase, import and export (TBX, MultiTerm, CSV, TSV, Excel), review rules, merge requests |
+| `/api/merge-requests/{id}` and below | items, samples, progress, decisions, reviewers, closing, reverting |
+| `/api/events` | server-sent events for every change the person may see; reconnecting with `Last-Event-ID` sends what was missed |
+
+Creating a project (`POST /api/projects`) makes its own memories and its
+termbase (layered over the masters, or on its own) with it, and removes
+them again if the project is refused. Memories and termbases a project or
+template uses are not deleted under it, and renaming a termbase renames it
+in their settings.
 
 ## Command line
 

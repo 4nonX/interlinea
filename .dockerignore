@@ -1,0 +1,8 @@
+.git
+bin
+**/node_modules
+prototype/dist
+prototype/public/core
+data
+*.db
+*.test

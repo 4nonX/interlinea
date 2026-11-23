@@ -55,11 +55,31 @@ jobs:
         with:
           go-version-file: go.mod
       - name: vet
-        run: go vet -tags postgres ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb ./internal/pgdriver
+        run: go vet -tags postgres ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb ./internal/pgdriver ./cmd/interlinea-server
       - name: termbases, memories and projects on PostgreSQL
         run: go test -tags postgres -count=1 -v -run 'TestRunsOnPostgres' ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb && go test -tags postgres -count=1 ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb
       - name: race
         run: go test -tags postgres -race -count=1 ./term/termdb ./tm/tmdb ./project/projectdb ./auth/authdb
+      - name: server stores in their schemas
+        run: go test -tags postgres -count=1 -v -run 'TestPostgresSchemas' ./cmd/interlinea-server
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build the server image
+        run: docker build --build-arg VERSION=ci -t interlinea-server:ci .
+      - name: the image starts and answers
+        run: |
+          docker run -d --name il -p 8080:8080 -e INTERLINEA_ADMIN_USER=admin -e INTERLINEA_ADMIN_PASSWORD='a long enough password' interlinea-server:ci
+          for i in $(seq 1 60); do curl -fsS http://localhost:8080/healthz && break; sleep 1; done
+          curl -fsS http://localhost:8080/api/server | grep -q '"name":"Interlinea"'
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '{"username":"admin","password":"a long enough password"}' http://localhost:8080/api/auth/password | grep -q '"token":"il_'
+          curl -fsS http://localhost:8080/ | grep -qi '<html'
+          test "$(docker inspect -f '{{.State.Health.Status}}' il)" != unhealthy
+      - name: server log
+        if: always()
+        run: docker logs il || true
 
   prototype:
     runs-on: ubuntu-latest
