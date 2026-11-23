@@ -206,7 +206,7 @@ export function NewProject({ sample }: { sample?: number }) {
           {doc.error && (
             <p className="detect detect-warn" role="alert">
               <AlertTriangle size={16} aria-hidden="true" />
-              <span>This Word file could not be read: {doc.error}</span>
+              <span>{doc.file} could not be read: {doc.error}</span>
             </p>
           )}
 

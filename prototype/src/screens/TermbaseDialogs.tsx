@@ -118,12 +118,15 @@ export function ConfirmButton({
   onConfirm,
   disabled,
   small = true,
+  action = "Remove",
 }: {
   label: ReactNode;
   confirm: string;
   onConfirm: () => void;
   disabled?: boolean;
   small?: boolean;
+  /** The label of the confirming button. */
+  action?: string;
 }) {
   const [asking, setAsking] = useState(false);
   const yes = useRef<HTMLButtonElement>(null);
@@ -153,7 +156,7 @@ export function ConfirmButton({
           onConfirm();
         }}
       >
-        Remove
+        {action}
       </button>
       <button
         type="button"
@@ -514,6 +517,7 @@ export function SettingsDialog({
               </p>
               <ConfirmButton
                 label="Delete termbase"
+                action="Delete"
                 confirm={`Delete ${tb.name} for good?`}
                 onConfirm={() => {
                   dispatch({ type: "deleteTermbase", termbaseId: tb.id });

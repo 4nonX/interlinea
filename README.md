@@ -202,7 +202,7 @@ that match by primary language only (`de-AT` for `de-DE`).
 
 ## Prototype
 
-`prototype/` is a clickable React prototype (mock data) of project creation,
+`prototype/` is a clickable React prototype (sample data) of project creation,
 termbase setup, the translation editor, terminology management and the
 git-like merge review.
 
@@ -212,6 +212,12 @@ cd prototype
 npm install
 npm run dev
 ```
+
+The prototype saves your work in the browser (IndexedDB) as you go:
+projects with their Word files, translations, termbases, settings and the
+TMX files imported into project memories are there again on the next visit.
+Settings shows whether saving works in this browser and can start again
+from the sample data; `?reset` in the address does the same on load.
 
 Browser tests drive the production build in headless Chrome (found through
 `$CHROME` or on the PATH) and run in CI:

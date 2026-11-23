@@ -787,6 +787,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
               </>
             }
             confirm="Delete this entry and its history?"
+            action="Delete"
             onConfirm={() => {
               dispatch({ type: "deleteEntries", entryIds: [entry.id] });
               notify(`Deleted the entry${head ? ` “${head.text}”` : ""}`);

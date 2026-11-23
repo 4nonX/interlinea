@@ -1,6 +1,8 @@
-import { Cloud } from "lucide-react";
+import { AlertTriangle, Cloud } from "lucide-react";
 import { SERVER } from "../data";
-import { useStore } from "../store";
+import { resetSavedWork, useStore } from "../store";
+import { storageStatus } from "../persist";
+import { ConfirmButton } from "./TermbaseDialogs";
 import { PageHeader } from "../components/ui";
 
 export function Settings() {
@@ -104,17 +106,37 @@ export function Settings() {
         <fieldset className="field">
           <legend className="field-label">Context matches (CM)</legend>
           <label className="choice">
-            <input type="radio" name="ctx" checked={state.contextRule === "previous"} onChange={() => dispatch({ type: "setContextRule", value: "previous" })} />
+            <input
+              type="radio"
+              name="ctx"
+              checked={state.contextRule === "previous"}
+              onChange={() =>
+                dispatch({ type: "setContextRule", value: "previous" })
+              }
+            />
             <span className="choice-body">
-              <span className="choice-title">The segment before also matches</span>
+              <span className="choice-title">
+                The segment before also matches
+              </span>
               <span className="choice-desc">As in Trados Studio.</span>
             </span>
           </label>
           <label className="choice">
-            <input type="radio" name="ctx" checked={state.contextRule === "both"} onChange={() => dispatch({ type: "setContextRule", value: "both" })} />
+            <input
+              type="radio"
+              name="ctx"
+              checked={state.contextRule === "both"}
+              onChange={() =>
+                dispatch({ type: "setContextRule", value: "both" })
+              }
+            />
             <span className="choice-body">
-              <span className="choice-title">The segments before and after also match</span>
-              <span className="choice-desc">Stricter, as memoQ counts 101% matches.</span>
+              <span className="choice-title">
+                The segments before and after also match
+              </span>
+              <span className="choice-desc">
+                Stricter, as memoQ counts 101% matches.
+              </span>
             </span>
           </label>
         </fieldset>
@@ -137,6 +159,47 @@ export function Settings() {
           </li>
         </ul>
       </section>
+
+      <SavedWork />
     </div>
+  );
+}
+
+function SavedWork() {
+  const { dispatch, notify } = useStore();
+  const st = storageStatus();
+  return (
+    <section className="panel" aria-labelledby="s-saved">
+      <h2 id="s-saved" className="panel-title">
+        Saved work
+      </h2>
+      {st.status === "ok" ? (
+        <p className="help">
+          Projects, translations, termbases, imported memories and these
+          settings are saved in this browser as you work, and are here again on
+          your next visit. They stay on this computer.
+        </p>
+      ) : (
+        <p className="detect detect-warn" role="status">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>
+            This browser does not let the prototype save ({st.error}). Your work
+            is kept only until you close the page. Allow site data for this
+            page, or leave private browsing, to keep it.
+          </span>
+        </p>
+      )}
+      <ConfirmButton
+        label="Start again from the sample data"
+        confirm="Delete all your projects, translations and termbase changes?"
+        action="Delete and start again"
+        onConfirm={() => {
+          void resetSavedWork(dispatch).then(() =>
+            notify("Started again from the sample data"),
+          );
+        }}
+        small={false}
+      />
+    </section>
   );
 }

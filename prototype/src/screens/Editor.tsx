@@ -7,7 +7,7 @@ import { isTag, missingTags, plain, sourceKey, wordCount, type Run, type Segment
 import { qa, type QaIssue, type TermHit } from "../editor/match";
 import { buildIndex, checkTerms, recognizeTerms } from "../termio";
 import { analyze, bandOf, scoreDescription, scoreLabel, scoredLookup, type ContextRule, type ScoredMatch } from "../editor/analysis";
-import { concordanceAll, documentMemory, projectMemories, type MemoryInfo } from "../editor/memory";
+import { concordanceAll, documentMemory, persistMemory, projectMemories, type MemoryInfo } from "../editor/memory";
 import { Preview } from "../editor/Preview";
 import { AnalysisTable } from "../components/AnalysisTable";
 import { core, DOCX_TYPE, download, loadCore, mergeDocx, tm } from "../core";
@@ -456,7 +456,8 @@ export function Editor({ projectId }: { projectId: string }) {
               try {
                 const st = tm.importTMX(c, proj.name, new Uint8Array(await f.arrayBuffer()));
                 setMemVersion((v) => v + 1);
-                notify(`Imported ${plural(st.stored, "unit", "units")} from ${f.name}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}`);
+                const kept = await persistMemory(c, proj.name);
+                notify(`Imported ${plural(st.stored, "unit", "units")} from ${f.name}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`);
               } catch (err) {
                 notify(`Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
               }

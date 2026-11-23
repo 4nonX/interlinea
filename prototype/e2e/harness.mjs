@@ -176,13 +176,15 @@ export async function start() {
     await sleep(250);
   };
   /**
-   * Opens a route on a fresh page load, or within the current page with
-   * reload false. Pass reset to start from the sample data again.
+   * Opens a route on a fresh page load, starting from the sample data
+   * (the prototype saves work between visits). keep: true reloads without
+   * resetting, to see what was saved; reload: false changes the route
+   * within the current page.
    */
   let loads = 0;
   const open = async (
     route,
-    { reset = false, wait = 800, reload = true } = {},
+    { keep = false, wait = 800, reload = true } = {},
   ) => {
     if (!reload) {
       await evaluate(`location.hash = ${JSON.stringify(route)}`);
@@ -190,7 +192,7 @@ export async function start() {
       return;
     }
     const q = new URLSearchParams({ load: String(++loads) });
-    if (reset) q.set("reset", "1");
+    if (!keep) q.set("reset", "1");
     await send("Page.navigate", { url: `${base}/?${q}#${route}` });
     await sleep(wait);
   };

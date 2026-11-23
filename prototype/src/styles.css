@@ -3252,3 +3252,11 @@ select.select-auto {
 .lang-block > .btn-tiny {
   justify-self: start;
 }
+
+.boot {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+  margin: 0;
+  color: var(--text-2);
+}
