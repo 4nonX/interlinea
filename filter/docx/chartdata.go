@@ -71,7 +71,7 @@ func translateSharedStrings(wb []byte, labels map[string]string) ([]byte, bool, 
 	var out bytes.Buffer
 	last, n := 0, 0
 	for i := 0; i < len(toks); i++ {
-		st, ok := toks[i].tok.(xml.StartElement)
+		st, ok := toks[i].Tok.(xml.StartElement)
 		if !ok || st.Name.Local != "si" {
 			continue
 		}
@@ -81,25 +81,25 @@ func translateSharedStrings(wb []byte, labels map[string]string) ([]byte, bool, 
 		}
 		i = next - 1
 		var t *node
-		for _, k := range si.kids {
-			if k.isText() {
+		for _, k := range si.Kids {
+			if !k.IsElement() {
 				continue
 			}
-			if k.local != "t" || t != nil {
+			if k.Local != "t" || t != nil {
 				t = nil
 				break
 			}
 			t = k
 		}
-		if t == nil || len(t.end) == 0 {
+		if t == nil || len(t.End) == 0 {
 			continue // rich text or empty: left as it is
 		}
-		target, ok := labels[t.innerText()]
+		target, ok := labels[t.InnerText()]
 		if !ok {
 			continue
 		}
-		textStart := t.off + len(t.start)
-		textEnd := t.off + len(t.raw) - len(t.end)
+		textStart := t.Off + len(t.Start)
+		textEnd := t.Off + len(t.Raw) - len(t.End)
 		out.Write(data[last:textStart])
 		out.WriteString(escapeText(target))
 		last = textEnd

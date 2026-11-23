@@ -367,7 +367,7 @@ func setLang(rpr []byte, w, lang string) string {
 		b.WriteString("<" + w + ":lang")
 		seen := false
 		if old != nil {
-			for _, a := range old.attrs {
+			for _, a := range old.Attrs {
 				v := a.Value
 				if a.Name.Local == which {
 					v, seen = lang, true
@@ -390,29 +390,29 @@ func setLang(rpr []byte, w, lang string) string {
 	}
 	var inner strings.Builder
 	placed := false
-	for _, k := range n.kids {
-		if k.isText() {
+	for _, k := range n.Kids {
+		if !k.IsElement() {
 			continue
 		}
-		if k.local == "lang" {
+		if k.Local == "lang" {
 			inner.WriteString(newLang(k))
 			placed = true
 			continue
 		}
-		if !placed && afterLang[k.local] {
+		if !placed && afterLang[k.Local] {
 			inner.WriteString(newLang(nil))
 			placed = true
 		}
-		inner.Write(k.raw)
+		inner.Write(k.Raw)
 	}
 	if !placed {
 		inner.WriteString(newLang(nil))
 	}
-	open := string(n.start)
-	if len(n.end) == 0 { // <w:rPr/>
+	open := string(n.Start)
+	if len(n.End) == 0 { // <w:rPr/>
 		open = strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(open, ">")), "/") + ">"
 	}
-	return open + inner.String() + "</" + n.prefix + ":" + n.local + ">"
+	return open + inner.String() + "</" + n.Prefix + ":" + n.Local + ">"
 }
 
 // setLangDML sets the lang attribute of DrawingML run properties.
@@ -425,9 +425,9 @@ func setLangDML(rpr []byte, a, lang string) string {
 		return string(rpr)
 	}
 	var b strings.Builder
-	b.WriteString("<" + n.prefix + ":" + n.local)
+	b.WriteString("<" + n.Prefix + ":" + n.Local)
 	seen := false
-	for _, at := range n.attrs {
+	for _, at := range n.Attrs {
 		v := at.Value
 		if at.Name.Space == "" && at.Name.Local == "lang" {
 			v, seen = lang, true
@@ -437,14 +437,14 @@ func setLangDML(rpr []byte, a, lang string) string {
 	if !seen {
 		b.WriteString(` lang="` + escapeAttr(lang) + `"`)
 	}
-	if len(n.end) == 0 {
+	if len(n.End) == 0 {
 		b.WriteString("/>")
 		return b.String()
 	}
 	b.WriteString(">")
-	for _, k := range n.kids {
-		b.Write(k.raw)
+	for _, k := range n.Kids {
+		b.Write(k.Raw)
 	}
-	b.WriteString("</" + n.prefix + ":" + n.local + ">")
+	b.WriteString("</" + n.Prefix + ":" + n.Local + ">")
 	return b.String()
 }

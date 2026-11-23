@@ -23,7 +23,7 @@ func propSet(rpr []byte, dml bool) map[string]string {
 		return out
 	}
 	if dml {
-		for _, a := range n.attrs {
+		for _, a := range n.Attrs {
 			switch a.Name.Local {
 			case "lang", "altLang", "dirty", "err", "noProof", "smtClean", "smtId", "bmk", "kumimoji":
 			default:
@@ -31,50 +31,50 @@ func propSet(rpr []byte, dml bool) map[string]string {
 			}
 		}
 	}
-	for _, k := range n.kids {
-		if k.isText() {
+	for _, k := range n.Kids {
+		if !k.IsElement() {
 			continue
 		}
-		switch k.local {
+		switch k.Local {
 		case "lang", "noProof", "rPrChange", "bCs", "iCs", "szCs", "webHidden":
 			continue
 		case "solidFill":
 			out["color"] = fillColor(k)
 		case "latin":
-			v, _ := k.attr("typeface")
+			v, _ := k.AttrAny("typeface")
 			out["font"] = v
 		case "ea", "cs", "sym":
 			continue
 		case "rFonts":
-			v, ok := k.attr("ascii")
+			v, ok := k.AttrAny("ascii")
 			if !ok {
-				v, _ = k.attr("hAnsi")
+				v, _ = k.AttrAny("hAnsi")
 			}
 			if v == "" {
-				v, _ = k.attr("asciiTheme")
+				v, _ = k.AttrAny("asciiTheme")
 			}
 			out["font"] = v
 		default:
-			v, ok := k.attr("val")
+			v, ok := k.AttrAny("val")
 			if !ok {
 				v = "on"
 			}
-			if hl := k.child("srgbClr"); hl != nil && k.local == "highlight" {
-				v, _ = hl.attr("val")
+			if hl := k.Child("srgbClr"); hl != nil && k.Local == "highlight" {
+				v, _ = hl.AttrAny("val")
 			}
-			out[k.local] = v
+			out[k.Local] = v
 		}
 	}
 	return out
 }
 
 func fillColor(n *node) string {
-	for _, k := range n.kids {
-		if k.isText() {
+	for _, k := range n.Kids {
+		if !k.IsElement() {
 			continue
 		}
-		if v, ok := k.attr("val"); ok {
-			if k.local == "srgbClr" {
+		if v, ok := k.AttrAny("val"); ok {
+			if k.Local == "srgbClr" {
 				return "#" + v
 			}
 			return v

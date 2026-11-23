@@ -99,7 +99,7 @@ func (d *document) parsePart(file string, kind filter.Part, data []byte, cache b
 	var stack []frame
 	paraIndex, labelIndex := 0, 0
 	for i := 0; i < len(toks); i++ {
-		switch t := toks[i].tok.(type) {
+		switch t := toks[i].Tok.(type) {
 		case xml.StartElement:
 			for _, a := range t.Attr {
 				if a.Name.Space == "xmlns" {
@@ -199,8 +199,8 @@ func (d *document) parsePart(file string, kind filter.Part, data []byte, cache b
 
 // addLabel adds a chart's cached category or series name as a unit.
 func (d *document) addLabel(p *part, n *node, id string) {
-	text := n.innerText()
-	if strings.TrimSpace(text) == "" || len(n.end) == 0 {
+	text := n.InnerText()
+	if strings.TrimSpace(text) == "" || len(n.End) == 0 {
 		return
 	}
 	if _, err := strconv.ParseFloat(strings.TrimSpace(text), 64); err == nil {
@@ -208,7 +208,7 @@ func (d *document) addLabel(p *part, n *node, id string) {
 	}
 	block := filter.Block{ID: id, Part: p.kind, File: p.file, Style: "label"}
 	src := content.Text(text)
-	pa := &para{dialect: label, start: n.off, end: n.off + len(n.raw), open: n.start, close: n.end}
+	pa := &para{dialect: label, start: n.Off, end: n.Off + len(n.Raw), open: n.Start, close: n.End}
 	pa.pieces = []piece{{unit: len(d.ext.Units), src: src, ids: map[string]string{}}}
 	d.ext.Units = append(d.ext.Units, filter.Unit{ID: id + "/s1", Block: id, Source: src})
 	d.ext.Blocks = append(d.ext.Blocks, block)
@@ -217,10 +217,10 @@ func (d *document) addLabel(p *part, n *node, id string) {
 }
 
 func (d *document) addParagraph(p *part, n *node, id string, dia dialect, prefix string, ctx walkCtx, textbox, mirror bool) error {
-	if len(n.end) == 0 {
+	if len(n.End) == 0 {
 		return nil // <w:p/>: empty paragraph
 	}
-	pa := &para{dialect: dia, ns: prefix, start: n.off, end: n.off + len(n.raw), open: n.start, close: n.end, mirror: mirror}
+	pa := &para{dialect: dia, ns: prefix, start: n.Off, end: n.Off + len(n.Raw), open: n.Start, close: n.End, mirror: mirror}
 	block := filter.Block{ID: id, Part: p.kind, File: p.file}
 	if textbox {
 		block.Frame = "textbox"
@@ -232,28 +232,28 @@ func (d *document) addParagraph(p *part, n *node, id string, dia dialect, prefix
 	case filter.PartFootnote, filter.PartEndnote, filter.PartComment:
 		block.Note = ctx.note
 	}
-	if ppr := n.child("pPr"); ppr != nil && ppr.prefix == prefix {
-		pa.ppr = ppr.raw
+	if ppr := n.Child("pPr"); ppr != nil && ppr.Prefix == prefix {
+		pa.ppr = ppr.Raw
 		if dia == dml {
-			if v, ok := ppr.attr("algn"); ok {
+			if v, ok := ppr.AttrAny("algn"); ok {
 				block.Align = map[string]string{"ctr": "center", "r": "right", "just": "both", "l": "left"}[v]
 			}
 		} else {
-			if s := ppr.child("pStyle"); s != nil {
-				block.Style, _ = s.attr("val")
+			if s := ppr.Child("pStyle"); s != nil {
+				block.Style, _ = s.AttrAny("val")
 			}
-			if o := ppr.child("outlineLvl"); o != nil {
-				if v, _ := o.attr("val"); v != "" {
+			if o := ppr.Child("outlineLvl"); o != nil {
+				if v, _ := o.AttrAny("val"); v != "" {
 					if lvl, err := strconv.Atoi(v); err == nil && lvl < 9 {
 						block.Heading = lvl + 1
 					}
 				}
 			}
-			if ppr.child("numPr") != nil {
+			if ppr.Child("numPr") != nil {
 				block.List = true
 			}
-			if jc := ppr.child("jc"); jc != nil {
-				block.Align, _ = jc.attr("val")
+			if jc := ppr.Child("jc"); jc != nil {
+				block.Align, _ = jc.AttrAny("val")
 			}
 		}
 	}
@@ -270,7 +270,7 @@ func (d *document) addParagraph(p *part, n *node, id string, dia dialect, prefix
 	if dia == dml {
 		ip.dmlItems(n)
 	} else {
-		ip.walk(n.kids, nil, true)
+		ip.walk(n.Kids, nil, true)
 		ip.flushField()
 	}
 	c, base, ranges := toContent(ip.items, dia == dml, d.styleName)
@@ -478,12 +478,12 @@ func (ip *itemParser) flushField() {
 
 func (ip *itemParser) walk(kids []*node, wraps []*wrapper, top bool) {
 	for _, k := range kids {
-		if k.isText() {
+		if !k.IsElement() {
 			continue // whitespace between elements carries no meaning here
 		}
 		if ip.fieldDepth > 0 {
-			ip.field.Write(k.raw)
-			ip.fieldSpans = append(ip.fieldSpans, k.whole())
+			ip.field.Write(k.Raw)
+			ip.fieldSpans = append(ip.fieldSpans, k.Whole())
 			b, e := countFieldChars(k)
 			ip.fieldDepth += b - e
 			if ip.fieldDepth <= 0 {
@@ -491,57 +491,57 @@ func (ip *itemParser) walk(kids []*node, wraps []*wrapper, top bool) {
 			}
 			continue
 		}
-		if k.prefix != ip.w {
-			ip.placeholder(otherType(k), k.raw, []span{k.whole()}, wraps)
+		if k.Prefix != ip.w {
+			ip.placeholder(otherType(k), k.Raw, []span{k.Whole()}, wraps)
 			continue
 		}
-		switch k.local {
+		switch k.Local {
 		case "pPr":
 			if !top {
-				ip.placeholder("inline", k.raw, []span{k.whole()}, wraps)
+				ip.placeholder("inline", k.Raw, []span{k.Whole()}, wraps)
 			}
 		case "r":
 			ip.run(k, wraps)
 		case "hyperlink":
-			ip.walk(k.kids, withWrap(wraps, &wrapper{typ: "link", desc: "Link", open: string(k.start), close: string(k.end)}), false)
+			ip.walk(k.Kids, withWrap(wraps, &wrapper{typ: "link", desc: "Link", open: string(k.Start), close: string(k.End)}), false)
 		case "sdt":
-			c := k.child("sdtContent")
-			if c == nil || len(c.end) == 0 {
-				ip.placeholder("control", k.raw, []span{k.whole()}, wraps)
+			c := k.Child("sdtContent")
+			if c == nil || len(c.End) == 0 {
+				ip.placeholder("control", k.Raw, []span{k.Whole()}, wraps)
 				continue
 			}
 			// The control's properties stay with its start; its content is text.
-			open := string(k.raw[:c.off-k.off+len(c.start)])
-			ip.walk(c.kids, withWrap(wraps, &wrapper{typ: "control", desc: "Content control", open: open, close: string(c.end) + string(k.end)}), false)
+			open := string(k.Raw[:c.Off-k.Off+len(c.Start)])
+			ip.walk(c.Kids, withWrap(wraps, &wrapper{typ: "control", desc: "Content control", open: open, close: string(c.End) + string(k.End)}), false)
 		case "ins", "moveTo":
 			ip.revisions = true
 			if ip.keepRevisions {
-				ip.walk(k.kids, withWrap(wraps, &wrapper{typ: "insertion", desc: "Tracked insertion", open: string(k.start), close: string(k.end)}), false)
+				ip.walk(k.Kids, withWrap(wraps, &wrapper{typ: "insertion", desc: "Tracked insertion", open: string(k.Start), close: string(k.End)}), false)
 			} else {
-				ip.walk(k.kids, wraps, false)
+				ip.walk(k.Kids, wraps, false)
 			}
 		case "del", "moveFrom":
 			ip.revisions = true
 			if ip.keepRevisions {
-				ip.placeholder("deletion", k.raw, []span{k.whole()}, wraps)
+				ip.placeholder("deletion", k.Raw, []span{k.Whole()}, wraps)
 			}
 		case "smartTag", "customXml", "dir", "bdo":
-			ip.walk(k.kids, wraps, false)
+			ip.walk(k.Kids, wraps, false)
 		case "proofErr":
 			// spelling marks are dropped
 		case "bookmarkStart", "bookmarkEnd", "commentRangeStart", "commentRangeEnd",
 			"permStart", "permEnd", "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd":
-			ip.placeholder("anchor", k.raw, []span{k.whole()}, wraps)
+			ip.placeholder("anchor", k.Raw, []span{k.Whole()}, wraps)
 		case "fldSimple":
-			ip.placeholder("field", k.raw, []span{k.whole()}, wraps)
+			ip.placeholder("field", k.Raw, []span{k.Whole()}, wraps)
 		default:
-			ip.placeholder("inline", k.raw, []span{k.whole()}, wraps)
+			ip.placeholder("inline", k.Raw, []span{k.Whole()}, wraps)
 		}
 	}
 }
 
 func otherType(k *node) string {
-	switch k.local {
+	switch k.Local {
 	case "oMath", "oMathPara":
 		return "math"
 	case "AlternateContent":
@@ -552,15 +552,15 @@ func otherType(k *node) string {
 
 // countFieldChars counts field begin and end markers in an element.
 func countFieldChars(n *node) (begins, ends int) {
-	if n.local == "fldChar" {
-		switch v, _ := n.attr("fldCharType"); v {
+	if n.Local == "fldChar" {
+		switch v, _ := n.AttrAny("fldCharType"); v {
 		case "begin":
 			return 1, 0
 		case "end":
 			return 0, 1
 		}
 	}
-	for _, k := range n.kids {
+	for _, k := range n.Kids {
 		b, e := countFieldChars(k)
 		begins += b
 		ends += e
@@ -569,11 +569,11 @@ func countFieldChars(n *node) (begins, ends int) {
 }
 
 func (ip *itemParser) run(r *node, wraps []*wrapper) {
-	if b, e := countFieldChars(r); b > 0 || e > 0 || r.child("instrText") != nil {
+	if b, e := countFieldChars(r); b > 0 || e > 0 || r.Child("instrText") != nil {
 		if b > 0 {
 			ip.fieldWraps = wraps
-			ip.field.Write(r.raw)
-			ip.fieldSpans = append(ip.fieldSpans, r.whole())
+			ip.field.Write(r.Raw)
+			ip.fieldSpans = append(ip.fieldSpans, r.Whole())
 			ip.fieldDepth = b - e
 			if ip.fieldDepth <= 0 {
 				ip.flushField()
@@ -581,38 +581,38 @@ func (ip *itemParser) run(r *node, wraps []*wrapper) {
 			return
 		}
 		// The end of a field that began in an earlier paragraph.
-		ip.placeholder("field", r.raw, []span{r.whole()}, wraps)
+		ip.placeholder("field", r.Raw, []span{r.Whole()}, wraps)
 		return
 	}
 	var rpr []byte
 	var rprSpan []span
-	if p := r.child("rPr"); p != nil {
-		rpr = p.raw
-		rprSpan = []span{p.whole()}
+	if p := r.Child("rPr"); p != nil {
+		rpr = p.Raw
+		rprSpan = []span{p.Whole()}
 	}
 	wrap := func(c *node) ([]byte, []span) {
 		var b bytes.Buffer
-		b.Write(r.start)
+		b.Write(r.Start)
 		b.Write(rpr)
-		b.Write(c.raw)
-		b.Write(r.end)
-		spans := append([]span{r.startTag()}, rprSpan...)
-		spans = append(spans, c.whole(), r.endTag())
+		b.Write(c.Raw)
+		b.Write(r.End)
+		spans := append([]span{r.StartTag()}, rprSpan...)
+		spans = append(spans, c.Whole(), r.EndTag())
 		return b.Bytes(), spans
 	}
-	for _, c := range r.kids {
-		if c.isText() || c.local == "rPr" {
+	for _, c := range r.Kids {
+		if !c.IsElement() || c.Local == "rPr" {
 			continue
 		}
-		if c.prefix != ip.w {
+		if c.Prefix != ip.w {
 			nat, sp := wrap(c)
 			ip.placeholder(otherType(c), nat, sp, wraps)
 			continue
 		}
 		typ := ""
-		switch c.local {
+		switch c.Local {
 		case "t":
-			ip.text(c.innerText(), rpr, wraps)
+			ip.text(c.InnerText(), rpr, wraps)
 		case "noBreakHyphen":
 			ip.text("‑", rpr, wraps)
 		case "softHyphen":
@@ -621,7 +621,7 @@ func (ip *itemParser) run(r *node, wraps []*wrapper) {
 			typ = "tab"
 		case "br":
 			typ = "lb"
-			if v, _ := c.attr("type"); v == "page" || v == "column" {
+			if v, _ := c.AttrAny("type"); v == "page" || v == "column" {
 				typ = v + "break"
 			}
 		case "cr":
@@ -650,37 +650,37 @@ func (ip *itemParser) run(r *node, wraps []*wrapper) {
 
 // dmlItems reads a DrawingML paragraph (charts, SmartArt).
 func (ip *itemParser) dmlItems(p *node) {
-	for _, k := range p.kids {
-		if k.isText() {
+	for _, k := range p.Kids {
+		if !k.IsElement() {
 			continue
 		}
-		if k.prefix != ip.w {
-			ip.placeholder(otherType(k), k.raw, []span{k.whole()}, nil)
+		if k.Prefix != ip.w {
+			ip.placeholder(otherType(k), k.Raw, []span{k.Whole()}, nil)
 			continue
 		}
-		switch k.local {
+		switch k.Local {
 		case "pPr":
 		case "r":
 			var rpr []byte
-			if p := k.child("rPr"); p != nil {
-				rpr = p.raw
+			if p := k.Child("rPr"); p != nil {
+				rpr = p.Raw
 			}
-			if t := k.child("t"); t != nil {
-				ip.text(t.innerText(), rpr, nil)
+			if t := k.Child("t"); t != nil {
+				ip.text(t.InnerText(), rpr, nil)
 			}
 		case "br":
-			ip.placeholder("lb", k.raw, []span{k.whole()}, nil)
+			ip.placeholder("lb", k.Raw, []span{k.Whole()}, nil)
 		case "fld":
-			nat := string(k.raw)
+			nat := string(k.Raw)
 			desc := "Field"
-			if v, ok := k.attr("type"); ok {
+			if v, ok := k.AttrAny("type"); ok {
 				desc = "Field " + v
 			}
-			ip.items = append(ip.items, item{tag: content.Tag{Kind: content.TagStandalone, Type: "field", Desc: desc, Native: nat}, ranges: []span{k.whole()}})
+			ip.items = append(ip.items, item{tag: content.Tag{Kind: content.TagStandalone, Type: "field", Desc: desc, Native: nat}, ranges: []span{k.Whole()}})
 		case "endParaRPr":
-			ip.placeholder("end", k.raw, []span{k.whole()}, nil)
+			ip.placeholder("end", k.Raw, []span{k.Whole()}, nil)
 		default:
-			ip.placeholder("inline", k.raw, []span{k.whole()}, nil)
+			ip.placeholder("inline", k.Raw, []span{k.Whole()}, nil)
 		}
 	}
 }
