@@ -2,6 +2,7 @@
 #include "testcore.h"
 
 #include <QSignalSpy>
+#include <QTcpServer>
 #include <QTest>
 
 // Waits for a reply's result.
@@ -97,7 +98,14 @@ private slots:
 
     void offline()
     {
-        ApiClient gone(QUrl(QStringLiteral("http://127.0.0.1:1")), QString());
+        // A port that was free a moment ago: nothing listens there.
+        quint16 port = 0;
+        {
+            QTcpServer probe;
+            QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+            port = probe.serverPort();
+        }
+        ApiClient gone(QUrl(QStringLiteral("http://127.0.0.1:%1").arg(port)), QString());
         const ApiResult r = wait(gone.get(QStringLiteral("/api/server")));
         QVERIFY(r.error.offline());
         QVERIFY(!r.error.message.isEmpty());
