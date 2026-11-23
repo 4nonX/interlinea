@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1035,6 +1036,67 @@ func (d *DB) RevokeResource(ctx context.Context, kind Kind, resource, by string)
 	})
 }
 
+// RenameResource moves every grant on a resource to its new name, as
+// when a termbase is renamed. A user with grants on both names keeps the
+// higher role.
+func (d *DB) RenameResource(ctx context.Context, kind Kind, from, to, by string) error {
+	to = strings.TrimSpace(to)
+	if to == "" || to == AnyResource || strings.ContainsRune(to, 0) {
+		return &InvalidError{"resource", "Name the resource."}
+	}
+	if kind == KindAll || !kind.valid() {
+		return &InvalidError{"kind", "Only a project, memory or termbase is renamed."}
+	}
+	if from == to {
+		return nil
+	}
+	return d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
+		rows, err := tx.QueryContext(ctx, `SELECT user_id, resource, role FROM grants WHERE kind = ? AND (resource = ? OR resource = ?)`, string(kind), from, to)
+		if err != nil {
+			return err
+		}
+		best := map[int64]Role{}
+		moved := map[int64]bool{}
+		for rows.Next() {
+			var id int64
+			var res, role string
+			if err := rows.Scan(&id, &res, &role); err != nil {
+				rows.Close()
+				return err
+			}
+			if roleRank[Role(role)] > roleRank[best[id]] {
+				best[id] = Role(role)
+			}
+			if res == from {
+				moved[id] = true
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM grants WHERE kind = ? AND (resource = ? OR resource = ?)`, string(kind), from, to); err != nil {
+			return err
+		}
+		ids := make([]int64, 0, len(best))
+		for id := range best {
+			ids = append(ids, id)
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		for _, id := range ids {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO grants(user_id, kind, resource, role) VALUES (?, ?, ?, ?)`, id, string(kind), to, string(best[id])); err != nil {
+				return err
+			}
+			if moved[id] {
+				if err := logChange(ctx, tx, ChangeGrantSet, id, fmt.Sprintf("%s %s %s (was %s)", kind, to, best[id], from), by, now); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
 func scanGrants(rows *sql.Rows) ([]Grant, error) {
 	defer rows.Close()
 	var out []Grant
@@ -1115,6 +1177,14 @@ type Change struct {
 	Detail string    `json:"detail"`
 	At     time.Time `json:"at"`
 	By     string    `json:"by"`
+}
+
+// LastChange returns the sequence number of the latest change (0 for
+// none).
+func (d *DB) LastChange(ctx context.Context) (int64, error) {
+	var seq int64
+	err := d.sql.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) FROM changes`).Scan(&seq)
+	return seq, err
 }
 
 // Changes returns the log after since, up to limit entries (default

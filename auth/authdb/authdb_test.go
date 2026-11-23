@@ -556,8 +556,64 @@ func TestChangeLog(t *testing.T) {
 	if cs[0].UserID != a.ID || cs[0].By != "setup" || cs[2].Detail != "project 1 edit" || cs[4].Detail != "ben" {
 		t.Fatalf("entries %+v", cs)
 	}
+	if last, err := db.LastChange(ctx); err != nil || last != cs[len(cs)-1].Seq {
+		t.Fatalf("last change %d, %v", last, err)
+	}
 	page, more, _ := db.Changes(ctx, cs[1].Seq, 2)
 	if len(page) != 2 || !more || page[0].Kind != "grant-set" {
 		t.Fatalf("page %+v %v", page, more)
+	}
+}
+
+func TestRenameResource(t *testing.T) {
+	db, _, _ := openTemp(t)
+	ben := mustUser(t, db, NewUser{Username: "ben", Password: "a long password"})
+	carl := mustUser(t, db, NewUser{Username: "carl", Password: "a long password"})
+	dora := mustUser(t, db, NewUser{Username: "dora", Password: "a long password"})
+	for _, g := range []Grant{
+		{UserID: ben.ID, Kind: KindTermbase, Resource: "tb-old", Role: RoleEdit},
+		{UserID: carl.ID, Kind: KindTermbase, Resource: "tb-old", Role: RoleRead},
+		{UserID: carl.ID, Kind: KindTermbase, Resource: "tb-new", Role: RoleApprove},
+		{UserID: dora.ID, Kind: KindMemory, Resource: "tb-old", Role: RoleManage},
+	} {
+		if err := db.SetGrant(ctx, g, "anna"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.RenameResource(ctx, KindTermbase, "tb-old", "tb-new", "anna"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		u    User
+		kind Kind
+		res  string
+		want Role
+	}{
+		{ben, KindTermbase, "tb-new", RoleEdit},
+		{ben, KindTermbase, "tb-old", ""},
+		{carl, KindTermbase, "tb-new", RoleApprove}, // the higher role stays
+		{dora, KindMemory, "tb-old", RoleManage},    // another kind is untouched
+	} {
+		if r, err := db.RoleOn(ctx, c.u, c.kind, c.res); err != nil || r != c.want {
+			t.Errorf("%s on %s %s: %q %v, want %q", c.u.Username, c.kind, c.res, r, err, c.want)
+		}
+	}
+	if on, _ := db.GrantsOn(ctx, KindTermbase, "tb-new"); len(on) != 2 {
+		t.Fatalf("grants on the new name %+v", on)
+	}
+	for _, c := range []struct {
+		kind     Kind
+		from, to string
+	}{
+		{KindAll, "*", "x"},
+		{KindTermbase, "tb-new", " "},
+		{KindTermbase, "tb-new", AnyResource},
+	} {
+		if err := db.RenameResource(ctx, c.kind, c.from, c.to, "anna"); invalidField(err) == "" {
+			t.Errorf("%+v accepted: %v", c, err)
+		}
+	}
+	if err := db.RenameResource(ctx, KindTermbase, "tb-new", "tb-new", "anna"); err != nil {
+		t.Fatal(err)
 	}
 }

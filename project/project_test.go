@@ -67,6 +67,16 @@ func TestValidSetup(t *testing.T) {
 	if ps := Validate(valid(), catalog()); len(ps) != 0 {
 		t.Fatalf("valid setup has problems: %+v", ps)
 	}
+	// A project termbase on the server exists; a local one is the app's.
+	s := valid()
+	s.Terminology.Termbase = "tb-medtech"
+	if ps := Validate(s, catalog()); len(ps) != 0 {
+		t.Fatalf("project termbase on the server: %+v", ps)
+	}
+	s.Terminology.Location, s.Terminology.Termbase = Local, "local-tb-1"
+	if ps := Validate(s, catalog()); len(ps) != 0 {
+		t.Fatalf("local project termbase: %+v", ps)
+	}
 	// Without a catalog only the setup itself is checked.
 	if ps := Validate(valid(), Catalog{}); len(ps) != 0 {
 		t.Fatalf("problems without catalog: %+v", ps)
@@ -124,6 +134,13 @@ func TestValidateProblems(t *testing.T) {
 		{"own with masters", func(s *Settings) { s.Terminology.Mode = Own }, []string{"terminology.masters"}},
 		{"no mode", func(s *Settings) { s.Terminology.Mode = "" }, []string{"terminology.mode"}},
 		{"no location", func(s *Settings) { s.Terminology.Location = "" }, []string{"terminology.location"}},
+		{"missing project termbase", func(s *Settings) { s.Terminology.Termbase = "tb-hofmann" }, []string{"terminology.termbase"}},
+		{"project termbase is a master", func(s *Settings) { s.Terminology.Termbase = "tb-weber" }, []string{"terminology.termbase"}},
+		{"project termbase in direct mode", func(s *Settings) {
+			s.Terminology = Terminology{Mode: Direct, Masters: []string{"tb-weber"}, WriteTo: "tb-weber", Termbase: "tb-medtech"}
+			s.TargetLangs, s.Memories["fr-FR"] = []string{"en-GB"}, nil
+			delete(s.Memories, "fr-FR")
+		}, []string{"terminology.termbase"}},
 		{"bad context rule", func(s *Settings) { s.Analysis.Context = "next" }, []string{"analysis.context"}},
 		{"unknown disabled check", func(s *Settings) { s.QA.Disabled = []qa.Kind{"vibes"} }, []string{"qa.disabled"}},
 		{"unknown enabled check", func(s *Settings) { s.QA.Enabled = []qa.Kind{"vibes"} }, []string{"qa.enabled"}},
@@ -207,7 +224,12 @@ func TestTemplates(t *testing.T) {
 	s := valid()
 	s.QA = QA{Disabled: []qa.Kind{qa.Capitalization}, Enabled: []qa.Kind{qa.LengthRatio}}
 	s.Prepare = Prepare{Pretranslate: true, MinScore: 95, ConfirmContext: true}
+	s.Terminology.Termbase = "tb-medtech"
 	tpl := TemplateFrom("  Weber leases  ", s)
+	if tpl.Terminology.Termbase != "" {
+		t.Fatal("template keeps the project termbase")
+	}
+	s.Terminology.Termbase = ""
 	if tpl.Name != "Weber leases" {
 		t.Fatalf("name %q", tpl.Name)
 	}

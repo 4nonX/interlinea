@@ -92,6 +92,9 @@ type Terminology struct {
 	AddLanguages []string `json:"addLanguages,omitempty"`
 	// Location is where the project termbase is kept (Layered, Own).
 	Location Location `json:"location"`
+	// Termbase is the project termbase's ID once it exists (Layered,
+	// Own); empty until it is made, and in Direct mode.
+	Termbase string `json:"termbase,omitempty"`
 	// AutoUpdate takes in the masters' changes each time the project
 	// opens (Layered). Otherwise they wait until the user updates.
 	AutoUpdate bool `json:"autoUpdate"`
@@ -359,6 +362,17 @@ func Validate(s Settings, cat Catalog) []Problem {
 	if t.Mode != Direct && t.Location != Local && t.Location != Server {
 		add("terminology.location", "Choose where the project termbase is kept.")
 	}
+	switch {
+	case t.Termbase == "":
+	case t.Mode == Direct:
+		add("terminology.termbase", "New terms go into a master, so the project has no termbase of its own.")
+	case masters[t.Termbase]:
+		add("terminology.termbase", "The project termbase can't be one of its masters.")
+	case t.Location == Server && cat.Termbases != nil:
+		if _, ok := cat.Termbases[t.Termbase]; !ok {
+			add("terminology.termbase", "There is no termbase %s.", t.Termbase)
+		}
+	}
 
 	if s.Analysis.Context != "previous" && s.Analysis.Context != "both" {
 		add("analysis.context", "Choose which neighbouring segments make a context match.")
@@ -510,6 +524,10 @@ type Template struct {
 
 // TemplateFrom makes a template of a project's settings.
 func TemplateFrom(name string, s Settings) Template {
+	// The project termbase belongs to the project; a new project makes
+	// its own.
+	t := cloneTerminology(s.Terminology)
+	t.Termbase = ""
 	return Template{
 		Name:          strings.TrimSpace(name),
 		Client:        s.Client,
@@ -517,7 +535,7 @@ func TemplateFrom(name string, s Settings) Template {
 		TargetLangs:   append([]string(nil), s.TargetLangs...),
 		Memories:      cloneMemories(s.Memories),
 		ProjectMemory: s.ProjectMemory,
-		Terminology:   cloneTerminology(s.Terminology),
+		Terminology:   t,
 		Analysis:      s.Analysis,
 		QA:            cloneQA(s.QA),
 		Prepare:       s.Prepare,
