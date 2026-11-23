@@ -41,12 +41,13 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
     }
   }, [r.api, n]);
 
+  const listen = r.listen;
   useEffect(() => {
     void load();
-    return r.listen((e) => {
+    return listen((e) => {
       if ((e.type === "project" && e.change.projectId === n) || (e.type === "presence" && e.projectId === n)) void load();
     });
-  }, [load, r, n]);
+  }, [load, listen, n]);
 
   if (problem && !project)
     return (

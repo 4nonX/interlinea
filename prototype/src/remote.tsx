@@ -718,45 +718,62 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
     };
   }, [conn, api, use, notify, open, refresh, dispatch]);
 
-  const value: Remote = {
-    conn,
-    info,
-    api,
-    live,
-    unsaved,
-    projects,
-    work,
-    people,
-    error,
-    check: serverInfo,
-    signIn: async (url, username, password) => use(await signInWithPassword(url, username, password)),
-    setup: async (url, a) => use(await setUpServer(url, a)),
-    signInWithProvider: async (url) => {
-      const back = `${window.location.origin}${window.location.pathname}`;
-      const to = await providerSignInURL(url, back);
-      try {
-        sessionStorage.setItem(PENDING, url);
-      } catch {
-        // The sign-in can't be finished without session storage.
-      }
-      window.location.assign(to);
-    },
-    signOut: async () => {
-      try {
-        await api?.signOut();
-      } catch {
-        // Signed out here either way.
-      }
-      use(null);
-    },
-    refresh,
-    open,
-    saveSettings,
-    listen: (on) => {
-      listeners.current.add(on);
-      return () => listeners.current.delete(on);
-    },
-  };
+  const signIn = useCallback(
+    async (url: string, username: string, password: string) => use(await signInWithPassword(url, username, password)),
+    [use],
+  );
+  const setup = useCallback(
+    async (url: string, a: Parameters<typeof setUpServer>[1]) => use(await setUpServer(url, a)),
+    [use],
+  );
+  const signInWithProvider = useCallback(async (url: string) => {
+    const back = `${window.location.origin}${window.location.pathname}`;
+    const to = await providerSignInURL(url, back);
+    try {
+      sessionStorage.setItem(PENDING, url);
+    } catch {
+      // The sign-in can't be finished without session storage.
+    }
+    window.location.assign(to);
+  }, []);
+  const signOut = useCallback(async () => {
+    try {
+      await api?.signOut();
+    } catch {
+      // Signed out here either way.
+    }
+    use(null);
+  }, [api, use]);
+  const listen = useCallback((on: (e: FeedEvent) => void) => {
+    listeners.current.add(on);
+    return () => {
+      listeners.current.delete(on);
+    };
+  }, []);
+
+  const value = useMemo<Remote>(
+    () => ({
+      conn,
+      info,
+      api,
+      live,
+      unsaved,
+      projects,
+      work,
+      people,
+      error,
+      check: serverInfo,
+      signIn,
+      setup,
+      signInWithProvider,
+      signOut,
+      refresh,
+      open,
+      saveSettings,
+      listen,
+    }),
+    [conn, info, api, live, unsaved, projects, work, people, error, signIn, setup, signInWithProvider, signOut, refresh, open, saveSettings, listen],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -794,8 +811,12 @@ export function usePresence(project: Project | undefined, fileId: string, lang: 
     return () => {
       off();
       clearInterval(t);
-      void api.leave(n).catch(() => undefined);
     };
   }, [api, n, load, listen]);
+  // Closing the editor takes the mark away.
+  useEffect(() => {
+    if (!api || !n) return;
+    return () => void api.leave(n).catch(() => undefined);
+  }, [api, n]);
   return present;
 }
