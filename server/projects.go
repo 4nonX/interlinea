@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/content"
@@ -1044,6 +1045,7 @@ func (s *Server) addProjectTerm(w http.ResponseWriter, r *http.Request, me sessi
 		return
 	}
 	e.ID = ""
+	e.CreatedAt, e.CreatedBy = time.Time{}, ""
 	got, err := tb.Add(r.Context(), e, me.by(), "Added in project "+p.Settings.Name)
 	if err != nil {
 		s.fail(w, r, err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/content"
@@ -137,8 +138,10 @@ func TestTermbases(t *testing.T) {
 	base := "/api/termbases/Recht"
 	e.call("PUT", "/api/grants", tbm, authdb.Grant{UserID: ben.ID, Kind: authdb.KindTermbase, Resource: "Recht", Role: authdb.RoleEdit}, 204, nil)
 	var s termdb.Stored
-	e.call("POST", base+"/entries", benTok, entryWrite{Entry: entry("Mieter", "tenant"), Summary: "new"}, 201, &s)
-	if s.ID == "" || s.Version != 1 {
+	forged := entry("Mieter", "tenant")
+	forged.CreatedBy, forged.CreatedAt = "someone else", time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+	e.call("POST", base+"/entries", benTok, entryWrite{Entry: forged, Summary: "new"}, 201, &s)
+	if s.ID == "" || s.Version != 1 || s.CreatedBy != "ben" || s.CreatedAt.Year() == 2001 {
 		t.Fatalf("entry %+v", s)
 	}
 	if r := e.do("POST", base+"/entries", benTok, entryWrite{Entry: term.Entry{}}); r.status != 422 {

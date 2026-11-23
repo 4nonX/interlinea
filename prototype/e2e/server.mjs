@@ -92,6 +92,15 @@ export default () =>
       await sleep(400);
       await click("button", "Continue to terminology");
       await sleep(400);
+      // Layered over the client's master, which goes to the server with it.
+      await evaluate("[...document.querySelectorAll('main label')].find(l => l.textContent.includes('Kanzlei Weber') && l.querySelector('input[type=checkbox]')).querySelector('input').click()");
+      await sleep(200);
+      await evaluate("[...document.querySelectorAll('main label')].find(l => l.textContent.includes('Project termbase, then merge into the masters')).querySelector('input').click()");
+      await sleep(200);
+      check(
+        await evaluate("[...document.querySelectorAll('main label')].find(l => l.textContent.includes('Project termbase, then merge into the masters')).querySelector('input').checked && [...document.querySelectorAll('main label')].find(l => l.textContent.includes('Kanzlei Weber') && l.querySelector('input[type=checkbox]')).querySelector('input').checked"),
+        "the project is layered over the master",
+      );
       await click("button", "Continue to review");
       check(await waitFor("!!document.querySelector('.analysis')", 15000), "review analyses the file");
       check((await text()).includes("Where the project is kept"), "signed in, the review asks where the project is kept");

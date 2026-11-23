@@ -531,7 +531,9 @@ func (s *Server) addEntry(w http.ResponseWriter, r *http.Request, me session) {
 	if !readJSON(w, r, &req, maxBody) {
 		return
 	}
+	// Who made it and when is the server's to say.
 	req.Entry.ID = ""
+	req.Entry.CreatedAt, req.Entry.CreatedBy = time.Time{}, ""
 	got, err := tb.Add(r.Context(), req.Entry, me.by(), req.Summary)
 	if err != nil {
 		if !s.termProblem(w, err) {

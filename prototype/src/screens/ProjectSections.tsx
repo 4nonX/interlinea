@@ -650,13 +650,16 @@ export function TerminologySection({
                   <input
                     type="checkbox"
                     checked={chosen}
-                    disabled={t.mode === "own"}
                     onChange={(e) => {
                       onTouched?.("masters");
                       const next = e.target.checked
                         ? [...t.masters, m.id]
                         : t.masters.filter((x) => x !== m.id);
                       set({
+                        // Choosing a master for a project with only its own
+                        // termbase layers the project over it; taking the
+                        // last one away leaves only its own.
+                        mode: next.length === 0 ? "own" : t.mode === "own" ? "layered" : t.mode,
                         masters: next,
                         addLanguages: t.addLanguages.filter((x) =>
                           next.includes(x),
