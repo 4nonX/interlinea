@@ -4,6 +4,8 @@
 #include "connection.h"
 #include "languages.h"
 
+#include "theme.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTimeEdit>
@@ -13,6 +15,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QLocale>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
@@ -92,6 +95,7 @@ QWidget *SettingsEditor::generalTab()
     m_hasDue = new QCheckBox(tr("D&ue"), w);
     m_due = new QDateTimeEdit(QDateTime::currentDateTime().addDays(7), w);
     m_due->setCalendarPopup(true);
+    m_due->setDisplayFormat(QLocale().dateFormat(QLocale::ShortFormat) + QLatin1Char(' ') + QLocale().timeFormat(QLocale::ShortFormat).remove(QStringLiteral(":ss")));
     m_due->setAccessibleName(tr("Due date"));
     m_due->setEnabled(false);
     dueRow->addWidget(m_hasDue);
@@ -135,6 +139,7 @@ QWidget *SettingsEditor::memoriesTab()
     auto *l = new QVBoxLayout(w);
     auto *intro = new QLabel(tr("For each target language: the memories the project looks up matches in, searches with the concordance, and stores confirmed translations in. The first wins a tie."), w);
     intro->setWordWrap(true);
+    Theme::secondary(intro);
     l->addWidget(intro);
     m_projectMemory = new QCheckBox(tr("Give the project a memory of its &own for each language"), w);
     l->addWidget(m_projectMemory);
@@ -218,6 +223,7 @@ QWidget *SettingsEditor::terminologyTab()
     l->addWidget(m_autoUpdate);
     m_termbaseNote = new QLabel(w);
     m_termbaseNote->setWordWrap(true);
+    Theme::secondary(m_termbaseNote);
     l->addWidget(m_termbaseNote);
     auto *problems = problemLabel(w);
     l->addWidget(problems);

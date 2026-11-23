@@ -4,7 +4,10 @@
 #include "connection.h"
 #include "eventfeed.h"
 #include "languages.h"
+#include "progressdelegate.h"
 #include "settingseditor.h"
+
+#include "theme.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -68,21 +71,21 @@ ProjectPage::ProjectPage(Connection *connection, qint64 projectId, QWidget *pare
 {
     setObjectName(QStringLiteral("project"));
     auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(28, 18, 28, 20);
     auto *head = new QHBoxLayout;
     auto *backButton = new QPushButton(tr("← &Projects"), this);
+    backButton->setFlat(true);
     backButton->setAccessibleName(tr("Back to the projects"));
     head->addWidget(backButton);
     m_title = new QLabel(this);
-    QFont f = m_title->font();
-    f.setPointSizeF(f.pointSizeF() * 1.5);
-    f.setWeight(QFont::DemiBold);
-    m_title->setFont(f);
+    Theme::title(m_title);
     head->addWidget(m_title, 1);
     m_delete = new QPushButton(tr("&Delete project…"), this);
     head->addWidget(m_delete);
     layout->addLayout(head);
     m_meta = new QLabel(this);
     m_meta->setWordWrap(true);
+    Theme::secondary(m_meta);
     layout->addWidget(m_meta);
     m_message = new QLabel(this);
     m_message->setWordWrap(true);
@@ -120,8 +123,11 @@ QWidget *ProjectPage::filesTab()
     m_files = new QTreeWidget(w);
     m_files->setAccessibleName(tr("Files and their progress"));
     m_files->setHeaderLabels({tr("File"), tr("Language"), tr("Confirmed"), tr("Words"), tr("Segments")});
+    m_files->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_files->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_files->header()->setStretchLastSection(false);
     m_files->setRootIsDecorated(true);
+    m_files->setItemDelegateForColumn(2, new ProgressDelegate(m_files));
     l->addWidget(m_files, 1);
     auto *row = new QHBoxLayout;
     m_saveTranslated = new QPushButton(tr("Save &translated file…"), w);
@@ -154,6 +160,7 @@ QWidget *ProjectPage::settingsTab()
     l->addWidget(m_editor, 1);
     auto *row = new QHBoxLayout;
     m_saveSettings = new QPushButton(tr("Sa&ve settings"), w);
+    Theme::primary(m_saveSettings);
     m_saveTemplate = new QPushButton(tr("Save as te&mplate…"), w);
     row->addWidget(m_saveSettings);
     row->addWidget(m_saveTemplate);
@@ -175,6 +182,7 @@ QWidget *ProjectPage::analysisTab()
     auto *ll = new QLabel(tr("&Language:"), w);
     ll->setBuddy(m_analysisLang);
     auto *run = new QPushButton(tr("&Analyse"), w);
+    Theme::primary(run);
     m_saveAnalysis = new QPushButton(tr("Save as &CSV…"), w);
     m_saveAnalysis->setEnabled(false);
     row->addWidget(ll);
@@ -184,6 +192,7 @@ QWidget *ProjectPage::analysisTab()
     l->addLayout(row);
     auto *intro = new QLabel(tr("Counts the words to translate by how well the project's memories match them."), w);
     intro->setWordWrap(true);
+    Theme::secondary(intro);
     l->addWidget(intro);
     m_analysisTable = new QTableWidget(0, 5, w);
     m_analysisTable->setAccessibleName(tr("Analysis"));
@@ -321,12 +330,14 @@ void ProjectPage::showProject()
     QStringList targets;
     for (const QJsonValue &t : s.value(QLatin1String("targetLangs")).toArray())
         targets << Languages::name(t.toString());
-    meta << tr("From %1 into %2").arg(Languages::name(s.value(QLatin1String("sourceLang")).toString()), QLocale().createSeparatedList(targets));
+    meta << tr("from %1 into %2").arg(Languages::name(s.value(QLatin1String("sourceLang")).toString()), QLocale().createSeparatedList(targets));
     const QDateTime due = QDateTime::fromString(s.value(QLatin1String("due")).toString(), Qt::ISODate);
     if (due.isValid())
-        meta << tr("due %1").arg(QLocale().toString(due.toLocalTime(), QLocale::ShortFormat));
-    meta << tr("kept on %1").arg(m_conn->displayName());
-    m_meta->setText(meta.join(QStringLiteral(", ")));
+        meta << tr("due %1").arg(Languages::when(due));
+    meta << (m_conn->isLocal() ? tr("kept on this computer") : tr("kept on %1").arg(m_conn->displayName()));
+    QString line = meta.join(QStringLiteral(", "));
+    line[0] = line[0].toUpper();
+    m_meta->setText(line + QLatin1Char('.'));
     const bool manage = manages();
     m_delete->setVisible(manage);
     m_addFiles->setEnabled(manage);
@@ -394,6 +405,7 @@ void ProjectPage::showProgress(const QJsonArray &progress)
                                                      tr("%1 of %2").arg(conf).arg(segs)});
             child->setData(0, Qt::UserRole, name);
             child->setData(1, Qt::UserRole, lang);
+            child->setData(2, ProgressDelegate::ShareRole, segs ? double(conf) / segs : 1.0);
             child->setData(2, Qt::AccessibleTextRole, tr("%1 of %2 segments confirmed").arg(conf).arg(segs));
             if (name == keepFile && lang == keepLang)
                 m_files->setCurrentItem(child);
@@ -700,7 +712,7 @@ void ProjectPage::reloadPeople()
             m_work->setItem(i, 2, cell(a.value(QLatin1String("file")).toString().isEmpty() ? tr("all files") : a.value(QLatin1String("file")).toString()));
             m_work->setItem(i, 3, cell(a.value(QLatin1String("targetLang")).toString().isEmpty() ? tr("all") : a.value(QLatin1String("targetLang")).toString()));
             m_work->setItem(i, 4, cell(range));
-            m_work->setItem(i, 5, cell(due.isValid() ? QLocale().toString(due.toLocalTime(), QLocale::ShortFormat) : tr("the project's")));
+            m_work->setItem(i, 5, cell(due.isValid() ? Languages::when(due) : tr("the project's")));
         }
     });
 }

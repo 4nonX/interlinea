@@ -10,7 +10,7 @@ NavigationRail::NavigationRail(QWidget *parent)
     setIconSize(QSize(20, 20));
     setFrameShape(QFrame::NoFrame);
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    setFixedWidth(180);
+    setFixedWidth(208);
     setSpacing(2);
     connect(this, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *item) {
         if (item)
@@ -22,7 +22,7 @@ void NavigationRail::addPage(const QString &id, const QString &label, const QIco
 {
     auto *item = new QListWidgetItem(icon, label, this);
     item->setData(Qt::UserRole, id);
-    item->setSizeHint(QSize(0, 34));
+    item->setSizeHint(QSize(0, 36));
     if (!shortcutHint.isEmpty())
         item->setToolTip(QStringLiteral("%1 (%2)").arg(label, shortcutHint));
 }

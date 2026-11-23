@@ -4,6 +4,7 @@
 #include "connectionmanager.h"
 #include "eventfeed.h"
 #include "languages.h"
+#include "progressdelegate.h"
 
 #include <QDateTime>
 #include <QJsonArray>
@@ -153,7 +154,7 @@ QVariant ProjectsModel::data(const QModelIndex &index, int role) const
             return QStringLiteral("%1 → %2").arg(src, targets.join(QStringLiteral(", ")));
         }
         case Due:
-            return due.isValid() ? QLocale().toString(due.toLocalTime(), QLocale::ShortFormat) : QString();
+            return due.isValid() ? Languages::when(due) : QString();
         case Progress:
             return segments ? QStringLiteral("%1 %").arg(qRound(100.0 * confirmed / segments)) : QString();
         case Where: {
@@ -162,9 +163,9 @@ QVariant ProjectsModel::data(const QModelIndex &index, int role) const
         }
         }
     }
+    if (role == ProgressDelegate::ShareRole && index.column() == Progress)
+        return segments ? double(confirmed) / segments : QVariant();
     if (role == Qt::AccessibleDescriptionRole && index.column() == Progress)
         return tr("%1 of %2 segments confirmed").arg(confirmed).arg(segments);
-    if (role == Qt::TextAlignmentRole && index.column() == Progress)
-        return int(Qt::AlignRight | Qt::AlignVCenter);
     return {};
 }

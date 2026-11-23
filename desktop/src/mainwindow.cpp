@@ -3,6 +3,8 @@
 #include "connectionmanager.h"
 #include "navigationrail.h"
 
+#include "theme.h"
+
 #include <QAction>
 #include <QCloseEvent>
 #include <QFrame>
@@ -42,13 +44,26 @@ MainWindow::MainWindow(ConnectionManager *manager, QWidget *parent)
     auto *outer = new QHBoxLayout(central);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->setSpacing(0);
-    outer->addWidget(m_rail);
+    // The app's name heads the navigation.
+    auto *side = new QWidget(central);
+    side->setObjectName(QStringLiteral("side"));
+    auto *sl = new QVBoxLayout(side);
+    sl->setContentsMargins(0, 0, 0, 0);
+    sl->setSpacing(0);
+    auto *name = new QLabel(QStringLiteral("Interlinea"), side);
+    name->setObjectName(QStringLiteral("appName"));
+    name->setAutoFillBackground(false);
+    sl->addWidget(name);
+    sl->addWidget(m_rail, 1);
+    side->setFixedWidth(m_rail->width());
+    outer->addWidget(side);
     auto *right = new QVBoxLayout;
     right->setContentsMargins(0, 0, 0, 0);
 
     // Something that stops work (the core not running) is said at the top.
     m_message = new QFrame(central);
     m_message->setFrameShape(QFrame::StyledPanel);
+    m_message->setObjectName(QStringLiteral("message"));
     m_message->setAccessibleName(tr("Message"));
     auto *ml = new QHBoxLayout(m_message);
     m_messageText = new QLabel(m_message);

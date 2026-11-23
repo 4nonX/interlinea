@@ -1,9 +1,11 @@
 #include "connectionmanager.h"
 #include "corelauncher.h"
+#include "icons.h"
 #include "mainwindow.h"
 #include "projectspage.h"
 #include "settingspage.h"
 #include "singleinstance.h"
+#include "theme.h"
 
 #include <QApplication>
 #include <QDir>
@@ -31,6 +33,7 @@ static QString personName()
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    Theme::apply(app);
     QApplication::setOrganizationName(QStringLiteral("Interlinea"));
     QApplication::setOrganizationDomain(QStringLiteral("interlinea.org"));
     QApplication::setApplicationName(QStringLiteral("Interlinea"));
@@ -51,9 +54,9 @@ int main(int argc, char *argv[])
 
     MainWindow window(&connections);
     auto *projects = new ProjectsPage(&connections, &window);
-    window.addPage(QStringLiteral("projects"), QObject::tr("Projects"), app.style()->standardIcon(QStyle::SP_DirIcon), projects,
+    window.addPage(QStringLiteral("projects"), QObject::tr("Projects"), Icons::get(QStringLiteral("projects")), projects,
                    QKeySequence(QStringLiteral("Ctrl+1")));
-    window.addPage(QStringLiteral("settings"), QObject::tr("Settings"), app.style()->standardIcon(QStyle::SP_FileDialogDetailedView),
+    window.addPage(QStringLiteral("settings"), QObject::tr("Settings"), Icons::get(QStringLiteral("settings")),
                    new SettingsPage(&connections, &window), QKeySequence(QStringLiteral("Ctrl+,")));
     QObject::connect(&instance, &SingleInstance::activated, &window, [&window, projects](const QStringList &files) {
         // Documents opened with Interlinea start a project.

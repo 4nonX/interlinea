@@ -5,6 +5,8 @@
 #include "secretstore.h"
 #include "signindialog.h"
 
+#include "theme.h"
+
 #include <QDesktopServices>
 #include <QDir>
 #include <QFormLayout>
@@ -42,12 +44,10 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
 {
     setObjectName(QStringLiteral("settings"));
     auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(28, 22, 28, 20);
+    layout->setSpacing(4);
     auto *heading = new QLabel(tr("Settings"), this);
-    QFont f = heading->font();
-    f.setPointSizeF(f.pointSizeF() * 1.5);
-    f.setWeight(QFont::DemiBold);
-    heading->setFont(f);
-    heading->setAccessibleName(tr("Settings"));
+    Theme::title(heading);
     layout->addWidget(heading);
 
     // Where work is kept.
@@ -55,6 +55,7 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     auto *wl = new QVBoxLayout(where);
     auto *intro = new QLabel(tr("Work on this computer needs no server. Team servers keep a team's projects, memories and termbases."), where);
     intro->setWordWrap(true);
+    Theme::secondary(intro);
     wl->addWidget(intro);
     m_list = new QTreeWidget(where);
     m_list->setObjectName(QStringLiteral("connections"));
@@ -70,9 +71,11 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     m_details->setWordWrap(true);
     m_details->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
     m_details->setAccessibleName(tr("Details"));
+    Theme::secondary(m_details);
     wl->addWidget(m_details);
     auto *buttons = new QHBoxLayout;
     m_add = new QPushButton(tr("&Add team server…"), where);
+    Theme::primary(m_add);
     m_signIn = new QPushButton(tr("Sign &in…"), where);
     m_signOut = new QPushButton(tr("Sign &out"), where);
     m_remove = new QPushButton(tr("&Remove"), where);
@@ -84,6 +87,7 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     wl->addLayout(buttons);
     m_secrets = new QLabel(where);
     m_secrets->setWordWrap(true);
+    Theme::secondary(m_secrets);
     wl->addWidget(m_secrets);
     layout->addWidget(where);
 
@@ -103,6 +107,7 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     yl->addRow(QString(), m_nameStatus);
     auto *nameHelp = new QLabel(tr("Your work on this computer is signed with it, in histories and when you send work to a team."), you);
     nameHelp->setWordWrap(true);
+    Theme::secondary(nameHelp);
     yl->addRow(QString(), nameHelp);
     layout->addWidget(you);
 

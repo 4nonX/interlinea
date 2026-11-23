@@ -42,6 +42,9 @@ add_library(interlinea_app STATIC
     src/newprojectdialog.cpp
     src/projectpage.cpp
     src/projectspage.cpp
+    src/theme.cpp
+    src/icons.cpp
+    src/progressdelegate.cpp
 )
 target_include_directories(interlinea_app PUBLIC src)
 target_compile_definitions(interlinea_app PUBLIC INTERLINEA_VERSION="${INTERLINEA_VERSION}")

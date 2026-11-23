@@ -1,5 +1,7 @@
 #include "signindialog.h"
 
+#include "theme.h"
+
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -68,6 +70,7 @@ void SignInDialog::buildAddressPage()
     form->addRow(m_addressError);
     m_next = new QPushButton(tr("&Continue"), page);
     m_next->setDefault(true);
+    Theme::primary(m_next);
     form->addRow(QString(), m_next);
     connect(m_next, &QPushButton::clicked, this, &SignInDialog::lookUp);
     connect(m_address, &QLineEdit::returnPressed, this, &SignInDialog::lookUp);
@@ -98,6 +101,7 @@ void SignInDialog::buildSignInPage()
     m_signInError = errorLabel(page);
     form->addRow(m_signInError);
     m_signIn = new QPushButton(tr("&Sign in"), page);
+    Theme::primary(m_signIn);
     form->addRow(QString(), m_signIn);
     connect(m_signIn, &QPushButton::clicked, this, &SignInDialog::signIn);
     connect(m_password, &QLineEdit::returnPressed, this, &SignInDialog::signIn);
@@ -133,6 +137,7 @@ void SignInDialog::buildSetupPage()
     m_setupError = errorLabel(page);
     form->addRow(m_setupError);
     m_setUp = new QPushButton(tr("&Make the administrator"), page);
+    Theme::primary(m_setUp);
     form->addRow(QString(), m_setUp);
     connect(m_setUp, &QPushButton::clicked, this, &SignInDialog::setUp);
     m_stack->addWidget(page);

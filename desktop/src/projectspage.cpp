@@ -3,7 +3,10 @@
 #include "connectionmanager.h"
 #include "newprojectdialog.h"
 #include "projectpage.h"
+#include "progressdelegate.h"
 #include "projectsmodel.h"
+
+#include "theme.h"
 
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -26,25 +29,27 @@ ProjectsPage::ProjectsPage(ConnectionManager *manager, QWidget *parent)
 
     auto *list = new QWidget(m_stack);
     auto *l = new QVBoxLayout(list);
+    l->setContentsMargins(28, 22, 28, 20);
+    l->setSpacing(12);
     auto *head = new QHBoxLayout;
     auto *title = new QLabel(tr("Projects"), list);
-    QFont f = title->font();
-    f.setPointSizeF(f.pointSizeF() * 1.5);
-    f.setWeight(QFont::DemiBold);
-    title->setFont(f);
+    Theme::title(title);
     head->addWidget(title, 1);
     m_filter = new QLineEdit(list);
     m_filter->setPlaceholderText(tr("Find a project"));
     m_filter->setAccessibleName(tr("Find a project"));
     m_filter->setClearButtonEnabled(true);
+    m_filter->setMinimumWidth(240);
     head->addWidget(m_filter);
     auto *add = new QPushButton(tr("&New project…"), list);
+    Theme::primary(add);
     m_open = new QPushButton(tr("&Open"), list);
     head->addWidget(add);
     head->addWidget(m_open);
     l->addLayout(head);
     m_empty = new QLabel(list);
     m_empty->setWordWrap(true);
+    Theme::secondary(m_empty);
     l->addWidget(m_empty);
     m_proxy->setSourceModel(m_model);
     m_proxy->setSortRole(ProjectsModel::SortRole);
@@ -60,8 +65,15 @@ ProjectsPage::ProjectsPage(ConnectionManager *manager, QWidget *parent)
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->verticalHeader()->setVisible(false);
+    m_table->verticalHeader()->setDefaultSectionSize(36);
+    m_table->setShowGrid(false);
+    m_table->setFrameShape(QFrame::NoFrame);
+    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(ProjectsModel::Name, QHeaderView::Stretch);
+    m_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_table->horizontalHeader()->setHighlightSections(false);
     m_table->setTabKeyNavigation(false);
+    m_table->setItemDelegateForColumn(ProjectsModel::Progress, new ProgressDelegate(m_table));
     l->addWidget(m_table, 1);
     m_stack->addWidget(list);
 

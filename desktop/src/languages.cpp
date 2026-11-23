@@ -50,6 +50,14 @@ QString label(const QString &tag)
     return n == tag ? tag : QStringLiteral("%1, %2").arg(n, tag);
 }
 
+QString when(const QDateTime &t)
+{
+    const QDateTime l = t.toLocalTime();
+    QString time = QLocale().timeFormat(QLocale::ShortFormat);
+    time.remove(QStringLiteral(":ss"));
+    return QStringLiteral("%1, %2").arg(QLocale().toString(l.date(), QLocale::ShortFormat), l.time().toString(time));
+}
+
 bool samePrimary(const QString &a, const QString &b)
 {
     return a.section(QLatin1Char('-'), 0, 0).compare(b.section(QLatin1Char('-'), 0, 0), Qt::CaseInsensitive) == 0;

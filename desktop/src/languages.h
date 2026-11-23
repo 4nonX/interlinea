@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QComboBox>
+#include <QDateTime>
 #include <QString>
 #include <QStringList>
 
@@ -14,6 +15,8 @@ QString name(const QString &tag);
 QString label(const QString &tag);
 // The tag in canonical form ("de_de" becomes "de-DE"), empty if it isn't one.
 QString normalize(const QString &typed);
+// A date and time as people read them, without seconds.
+QString when(const QDateTime &t);
 // Whether two tags are the same language ("de" and "de-AT" are).
 bool samePrimary(const QString &a, const QString &b);
 }

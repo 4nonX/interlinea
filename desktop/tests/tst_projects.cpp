@@ -7,6 +7,7 @@
 #include "projectspage.h"
 #include "settingseditor.h"
 #include "testcore.h"
+#include "theme.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -17,6 +18,7 @@
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QStandardPaths>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -82,6 +84,7 @@ private slots:
         // A memory to choose in the setup.
         QVERIFY(wait(api->post(QStringLiteral("/api/memories"), QJsonObject{{"name", "Weber DE-EN"}, {"sourceLang", "de-DE"}, {"targetLang", "en-GB"}})).ok());
 
+        Theme::apply(*qApp);
         ProjectsPage page(&m);
         page.show();
 
@@ -161,6 +164,18 @@ private slots:
         button(pp, QStringLiteral("Analyse"))->click();
         auto *table = named<QTableWidget>(pp, QStringLiteral("Analysis"));
         QTRY_VERIFY_WITH_TIMEOUT(table->rowCount() > 1, 10000);
+        // INTERLINEA_SCREENSHOTS keeps pictures of the pages, to look at.
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            page.resize(1200, 760);
+            auto *tabs = pp->findChild<QTabWidget *>();
+            for (int i = 0; i < tabs->count(); ++i) {
+                tabs->setCurrentIndex(i);
+                QTest::qWait(100);
+                page.grab().save(QStringLiteral("%1/project-%2.png").arg(dir).arg(i));
+            }
+            dlg.resize(900, 640);
+            dlg.grab().save(dir + QStringLiteral("/new-project.png"));
+        }
         QCOMPARE(table->item(table->rowCount() - 1, 0)->text(), QStringLiteral("Total"));
         QVERIFY(table->item(table->rowCount() - 1, 2)->text().toInt() >= 20);
     }

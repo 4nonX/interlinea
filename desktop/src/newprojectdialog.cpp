@@ -5,6 +5,8 @@
 #include "languages.h"
 #include "settingseditor.h"
 
+#include "theme.h"
+
 #include <QComboBox>
 #include <QDirIterator>
 #include <QFileDialog>
@@ -46,6 +48,7 @@ NewProjectDialog::NewProjectDialog(ConnectionManager *manager, QWidget *parent)
     dl->addLayout(top);
     auto *intro = new QLabel(tr("Add the documents to translate: Word files, bilingual files (XLIFF, SDLXLIFF, MQXLIFF), Trados packages and text files. Other files travel with the project for reference."), docs);
     intro->setWordWrap(true);
+    Theme::secondary(intro);
     dl->addWidget(intro);
     m_files = new QTreeWidget(docs);
     m_files->setAccessibleName(tr("Documents"));
@@ -72,6 +75,7 @@ NewProjectDialog::NewProjectDialog(ConnectionManager *manager, QWidget *parent)
     langRow->addRow(sl, m_source);
     m_detected = new QLabel(docs);
     m_detected->setWordWrap(true);
+    Theme::secondary(m_detected);
     langRow->addRow(QString(), m_detected);
     dl->addLayout(langRow);
     m_filesError = new QLabel(docs);
@@ -79,6 +83,7 @@ NewProjectDialog::NewProjectDialog(ConnectionManager *manager, QWidget *parent)
     QPalette p = m_filesError->palette();
     p.setColor(QPalette::WindowText, QColor(0xaa, 0x22, 0x19));
     m_filesError->setPalette(p);
+    m_filesError->setProperty("role", QStringLiteral("error"));
     dl->addWidget(m_filesError);
     m_stack->addWidget(docs);
 
@@ -94,6 +99,7 @@ NewProjectDialog::NewProjectDialog(ConnectionManager *manager, QWidget *parent)
     m_back = new QPushButton(tr("&Back"), this);
     m_next = new QPushButton(tr("&Next"), this);
     m_next->setDefault(true);
+    Theme::primary(m_next);
     auto *cancel = new QPushButton(tr("Cancel"), this);
     nav->addWidget(m_back);
     nav->addWidget(m_next);
