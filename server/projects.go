@@ -35,6 +35,7 @@ func (s *Server) projectRoutes() {
 	s.handle("POST /api/projects/{id}/pretranslate", s.signedIn(s.pretranslateProject))
 	s.handle("POST /api/projects/{id}/lookup", s.signedIn(s.projectLookup))
 	s.handle("POST /api/projects/{id}/concordance", s.signedIn(s.projectConcordance))
+	s.handle("GET /api/projects/{id}/memories/{name}/export", s.signedIn(s.projectMemoryExport))
 	s.handle("GET /api/projects/{id}/terminology", s.signedIn(s.projectTerminology))
 	s.handle("POST /api/projects/{id}/terms", s.signedIn(s.addProjectTerm))
 	s.handle("GET /api/projects/{id}/assignments", s.signedIn(s.projectAssignments))
@@ -886,6 +887,40 @@ func (s *Server) projectConcordance(w http.ResponseWriter, r *http.Request, me s
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// projectMemoryExport sends a memory the project looks up in, or searches
+// with the concordance, as TMX, to the project's people: the apps match
+// against it while translating. Memories the project only updates are
+// not sent.
+func (s *Server) projectMemoryExport(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	used := false
+	for _, ms := range p.Settings.Memories {
+		for _, m := range ms {
+			if strings.EqualFold(m.Memory, name) && (m.Lookup || m.Concordance) {
+				used = true
+			}
+		}
+	}
+	if !used {
+		writeError(w, http.StatusNotFound, "notFound", "The project doesn't look up in this memory.")
+		return
+	}
+	m, err := s.cfg.Memories.Memory(r.Context(), name)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-tmx+xml; charset=utf-8")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": m.Info().Name + ".tmx"}))
+	if err := tm.ExportTMX(r.Context(), m, w, "Interlinea server "+s.cfg.Version); err != nil {
+		s.cfg.Log.Error("TMX export failed", "memory", m.Info().Name, "err", err)
+	}
 }
 
 // termbaseView is a termbase with the entries a project sees in it.

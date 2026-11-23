@@ -284,6 +284,14 @@ func TestProjectAccessAndWork(t *testing.T) {
 	if len(hits) != 2 {
 		t.Fatalf("concordance %+v", hits)
 	}
+	// The memories the project looks up in come whole, as TMX.
+	tmx := te.call("GET", base+"/memories/weber%20de-en/export", te.ben, nil, 200, nil)
+	if !strings.Contains(string(tmx.body), "The tenant pays the rent.") {
+		t.Fatalf("memory for the project %s", tmx.body)
+	}
+	if r := te.do("GET", base+"/memories/Elsewhere/export", te.ben, nil); r.status != 404 {
+		t.Fatalf("a memory the project doesn't use: %d", r.status)
+	}
 	if r := te.do("POST", "/api/memories/Weber%20DE-EN/lookup", te.ben, lookupRequest{Source: content.Text("Miete")}); r.status != 404 {
 		t.Fatalf("direct lookup without a grant: %d", r.status)
 	}
