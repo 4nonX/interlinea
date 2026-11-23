@@ -303,7 +303,7 @@ func (t *Termbase) SetReviewRules(ctx context.Context, r ReviewRules, by string)
 	}
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.begin(ctx)
+	tx, err := t.db.sql.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func (t *Termbase) versionAt(ctx context.Context, q querier, entryID string, ver
 		t.id, entryID, version).Scan(&js)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A deleted entry keeps its last state in deleted.
-		err = q.QueryRowContext(ctx, `SELECT entry_json FROM deleted WHERE termbase_id = ? AND entry_id = ? ORDER BY `+t.db.d.deletedOrder()+` DESC LIMIT 1`, t.id, entryID).Scan(&js)
+		err = q.QueryRowContext(ctx, `SELECT entry_json FROM deleted WHERE termbase_id = ? AND entry_id = ? ORDER BY `+deletedOrder(t.db.d)+` DESC LIMIT 1`, t.id, entryID).Scan(&js)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return term.Entry{}, ErrNotFound
@@ -346,7 +346,7 @@ func (t *Termbase) versionAt(ctx context.Context, q querier, entryID string, ver
 func (t *Termbase) OpenMergeRequest(ctx context.Context, master, title, by string, deadline time.Time) (*MergeRequest, error) {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.begin(ctx)
+	tx, err := t.db.sql.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -902,7 +902,7 @@ func (mr *MergeRequest) Decide(ctx context.Context, f Filter, d Decision, by str
 	}
 	mr.db.wmu.Lock()
 	defer mr.db.wmu.Unlock()
-	tx, err := mr.db.sql.begin(ctx)
+	tx, err := mr.db.sql.Begin(ctx)
 	if err != nil {
 		return DecideResult{}, err
 	}
@@ -1170,7 +1170,7 @@ func onlyFields(cs []term.Change, fields []string) bool {
 func (mr *MergeRequest) Close(ctx context.Context, by string) error {
 	mr.db.wmu.Lock()
 	defer mr.db.wmu.Unlock()
-	tx, err := mr.db.sql.begin(ctx)
+	tx, err := mr.db.sql.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -1200,7 +1200,7 @@ func (mr *MergeRequest) Close(ctx context.Context, by string) error {
 func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) error {
 	mr.db.wmu.Lock()
 	defer mr.db.wmu.Unlock()
-	tx, err := mr.db.sql.begin(ctx)
+	tx, err := mr.db.sql.Begin(ctx)
 	if err != nil {
 		return err
 	}

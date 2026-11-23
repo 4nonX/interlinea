@@ -3,7 +3,8 @@ package termdb
 import (
 	"context"
 	"database/sql"
-	"fmt"
+
+	"github.com/4nonX/interlinea/internal/sqlstore"
 )
 
 // pgMigrations are the PostgreSQL schema versions; the same tables as on
@@ -149,38 +150,5 @@ func OpenPostgres(ctx context.Context, sdb *sql.DB) (*DB, error) {
 }
 
 func migratePostgres(ctx context.Context, sdb *sql.DB) error {
-	tx, err := sdb.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("termdb: migrate: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	// One migrating process at a time; the others wait and then find the
-	// schema current.
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(7312)`); err != nil {
-		return fmt.Errorf("termdb: migrate: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS termdb_schema (version INTEGER NOT NULL)`); err != nil {
-		return fmt.Errorf("termdb: migrate: %w", err)
-	}
-	var current int
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM termdb_schema`).Scan(&current); err != nil {
-		return fmt.Errorf("termdb: read schema version: %w", err)
-	}
-	if current > len(pgMigrations) {
-		return fmt.Errorf("termdb: database schema version %d is newer than this program supports (%d)", current, len(pgMigrations))
-	}
-	for v := current; v < len(pgMigrations); v++ {
-		if _, err := tx.ExecContext(ctx, pgMigrations[v]); err != nil {
-			return fmt.Errorf("termdb: migrate to version %d: %w", v+1, err)
-		}
-	}
-	if current < len(pgMigrations) {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM termdb_schema`); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO termdb_schema(version) VALUES ($1)`, len(pgMigrations)); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return sqlstore.MigratePostgres(ctx, sdb, "termdb_schema", migrateLock, pgMigrations)
 }

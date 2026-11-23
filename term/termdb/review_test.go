@@ -513,14 +513,14 @@ func TestMigrateToVersion3(t *testing.T) {
 }
 
 func TestRebind(t *testing.T) {
-	got := postgresDialect.rebind(`SELECT a FROM t WHERE x = ? AND y = '?' AND z IN (?, lower(?))`)
+	got := postgresDialect.Rebind(`SELECT a FROM t WHERE x = ? AND y = '?' AND z IN (?, lower(?))`)
 	if got != `SELECT a FROM t WHERE x = $1 AND y = '?' AND z IN ($2, lower($3))` {
 		t.Fatal(got)
 	}
-	if sqliteDialect.rebind("x = ?") != "x = ?" {
+	if sqliteDialect.Rebind("x = ?") != "x = ?" {
 		t.Fatal("sqlite rebound")
 	}
-	cond, arg := postgresDialect.searchCondition(`50% of_x`)
+	cond, arg := searchCondition(postgresDialect, `50% of_x`)
 	if cond != `search_body ILIKE ? ESCAPE '\'` || arg != `%50\% of\_x%` {
 		t.Fatal(cond, arg)
 	}

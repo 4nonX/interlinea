@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/4nonX/interlinea/internal/sqlitedb"
+	"github.com/4nonX/interlinea/internal/sqlstore"
 	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/term"
 )
@@ -230,7 +231,7 @@ var migrations = []string{
 // processes.
 type DB struct {
 	sql *wdb
-	d   dialect
+	d   sqlstore.Dialect
 	wmu sync.Mutex
 	now func() time.Time
 }
@@ -245,8 +246,8 @@ func Open(path string) (*DB, error) {
 	return newDB(sdb, sqliteDialect), nil
 }
 
-func newDB(sdb *sql.DB, d dialect) *DB {
-	return &DB{sql: &wdb{DB: sdb, d: d}, d: d, now: func() time.Time { return time.Now().UTC() }}
+func newDB(sdb *sql.DB, d sqlstore.Dialect) *DB {
+	return &DB{sql: &wdb{DB: sdb, Dialect: d, LockKey: writeLock}, d: d, now: func() time.Time { return time.Now().UTC() }}
 }
 
 // Close closes the database.
@@ -357,7 +358,7 @@ func (d *DB) create(ctx context.Context, def term.Definition, kind string, upstr
 	}
 	d.wmu.Lock()
 	defer d.wmu.Unlock()
-	tx, err := d.sql.begin(ctx)
+	tx, err := d.sql.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +375,7 @@ func (d *DB) create(ctx context.Context, def term.Definition, kind string, upstr
 	err = tx.QueryRowContext(ctx, `INSERT INTO termbases(name, definition_json, created_at, kind) VALUES (?, ?, ?, ?) RETURNING id`,
 		def.Name, string(js), now.Format(timeLayout), kind).Scan(&id)
 	if err != nil {
-		if d.d.isUnique(err) {
+		if d.d.IsUnique(err) {
 			return nil, ErrExists
 		}
 		return nil, fmt.Errorf("termdb: create termbase: %w", err)
@@ -441,7 +442,7 @@ func (d *DB) Delete(ctx context.Context, name string) error {
 func (d *DB) DeleteBy(ctx context.Context, name, by string) error {
 	d.wmu.Lock()
 	defer d.wmu.Unlock()
-	tx, err := d.sql.begin(ctx)
+	tx, err := d.sql.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -459,7 +460,7 @@ func (d *DB) DeleteBy(ctx context.Context, name, by string) error {
 	if dependents > 0 {
 		return fmt.Errorf("%w: %d project termbases are layered over it", ErrInUse, dependents)
 	}
-	if err := d.d.dropSearch(ctx, tx, `termbase_id = ?`, id); err != nil {
+	if err := dropSearch(ctx, tx, `termbase_id = ?`, id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM termbases WHERE id = ?`, id); err != nil {
@@ -513,7 +514,7 @@ func writeDefinition(ctx context.Context, tx *wtx, id int64, def term.Definition
 		return ErrExists
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE termbases SET definition_json = ?, name = ? WHERE id = ?`, string(js), def.Name, id)
-	if tx.d.isUnique(err) {
+	if tx.Dialect.IsUnique(err) {
 		return ErrExists
 	}
 	return err
@@ -624,7 +625,7 @@ func (t *Termbase) usage(ctx context.Context, q querier) (usage, error) {
 func (t *Termbase) write(ctx context.Context, by string, fn func(tx *wtx, def *term.Definition) error) error {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.begin(ctx)
+	tx, err := t.db.sql.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -950,7 +951,7 @@ func (t *Termbase) index(ctx context.Context, tx *wtx, row int64, e term.Entry) 
 			}
 		}
 	}
-	return tx.d.setSearch(ctx, tx, row, body(e))
+	return setSearch(ctx, tx, row, body(e))
 }
 
 // Get returns an entry by its ID.
@@ -1056,7 +1057,7 @@ func (t *Termbase) deleteEntry(ctx context.Context, tx *wtx, s Stored, by, summa
 	if _, err := tx.ExecContext(ctx, `INSERT INTO deleted(termbase_id, entry_id, at, author, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, t.id, s.ID, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return err
 	}
-	if err := tx.d.dropSearch(ctx, tx, `termbase_id = ? AND entry_id = ?`, t.id, s.ID); err != nil {
+	if err := dropSearch(ctx, tx, `termbase_id = ? AND entry_id = ?`, t.id, s.ID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM entries WHERE termbase_id = ? AND entry_id = ?`, t.id, s.ID); err != nil {
@@ -1067,7 +1068,7 @@ func (t *Termbase) deleteEntry(ctx context.Context, tx *wtx, s Stored, by, summa
 
 // Deleted lists deleted entries, most recent first.
 func (t *Termbase) Deleted(ctx context.Context) ([]Deletion, error) {
-	rows, err := t.db.sql.QueryContext(ctx, `SELECT entry_id, at, author, summary, entry_json FROM deleted WHERE termbase_id = ? ORDER BY at DESC, `+t.db.d.deletedOrder()+` DESC`, t.id)
+	rows, err := t.db.sql.QueryContext(ctx, `SELECT entry_id, at, author, summary, entry_json FROM deleted WHERE termbase_id = ? ORDER BY at DESC, `+deletedOrder(t.db.d)+` DESC`, t.id)
 	if err != nil {
 		return nil, err
 	}
@@ -1178,7 +1179,7 @@ func (t *Termbase) Search(ctx context.Context, q Query) ([]Stored, int, error) {
 	var candidates []Stored
 	var err error
 	if len([]rune(text)) >= 3 {
-		cond, arg := t.db.d.searchCondition(text)
+		cond, arg := searchCondition(t.db.d, text)
 		candidates, err = t.entries(ctx, t.db.sql, cond, arg)
 	} else {
 		candidates, err = t.entries(ctx, t.db.sql, "")
@@ -1267,7 +1268,7 @@ func (t *Termbase) Plan(ctx context.Context, tb *term.Termbase, p term.Policy) (
 	var actions []term.Action
 	var rep ImportReport
 	err := func() error {
-		tx, err := t.db.sql.beginRead(ctx)
+		tx, err := t.db.sql.BeginRead(ctx)
 		if err != nil {
 			return err
 		}

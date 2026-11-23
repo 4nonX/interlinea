@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/4nonX/interlinea/internal/pgdriver"
+	"github.com/4nonX/interlinea/internal/sqlstore"
 )
 
 // With the postgres build tag and INTERLINEA_TEST_POSTGRES set to a
@@ -73,3 +74,20 @@ func reopenPG(t *testing.T, dsn string) *DB {
 }
 
 func isPG(key string) bool { return strings.HasPrefix(key, "postgres") }
+
+// TestRunsOnPostgres makes sure the tagged run really uses PostgreSQL,
+// so a missing or misspelled variable fails CI instead of quietly
+// testing SQLite twice.
+func TestRunsOnPostgres(t *testing.T) {
+	if pgDSN() == "" {
+		t.Fatal("built with the postgres tag but INTERLINEA_TEST_POSTGRES is not set")
+	}
+	db, _ := open(t)
+	if db.d != sqlstore.Postgres {
+		t.Fatalf("dialect = %v", db.d)
+	}
+	var schema string
+	if err := db.sql.QueryRowContext(ctx, `SELECT current_schema()`).Scan(&schema); err != nil || !strings.HasPrefix(schema, "t_") {
+		t.Fatalf("schema = %q, %v", schema, err)
+	}
+}

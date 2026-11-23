@@ -162,7 +162,7 @@ func (t *Termbase) SetUpstreams(ctx context.Context, names []string, by string) 
 	}
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.begin(ctx)
+	tx, err := t.db.sql.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -238,7 +238,7 @@ func setBase(ctx context.Context, tx execer, projectID int64, entryID string, pr
 func (t *Termbase) Override(ctx context.Context, master, entryID, by string) (Stored, error) {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.begin(ctx)
+	tx, err := t.db.sql.Begin(ctx)
 	if err != nil {
 		return Stored{}, err
 	}
@@ -297,7 +297,7 @@ func (t *Termbase) Override(ctx context.Context, master, entryID, by string) (St
 func (t *Termbase) RemoveFromProject(ctx context.Context, master, entryID, by string) error {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
-	tx, err := t.db.sql.begin(ctx)
+	tx, err := t.db.sql.Begin(ctx)
 	if err != nil {
 		return err
 	}
