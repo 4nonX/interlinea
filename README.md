@@ -6,6 +6,14 @@ memory and project workflow in one tool, translation first.
 This repository holds the Go core, the team server, the native desktop app
 (Qt 6) and a browser client.
 
+![The translation editor in the browser client](docs/screenshots/editor.png)
+
+The editor in the browser client: source and target side by side, tags as
+numbered markers, terms from the termbase underlined in the source with
+their translation in the results, checks for the segment, and the
+shortcuts from Trados Studio and memoQ. The desktop app gets the same
+editor in its next stage.
+
 ![The desktop app's project list](docs/screenshots/projects.png)
 
 ## Status
@@ -454,6 +462,9 @@ With `INTERLINEA_SERVER` set to a built `interlinea-server`, they also start
 the team server with the build as its web app and test working on it (CI
 always does).
 
+`npm run screenshots` takes the editor and terminology screenshots in
+`docs/screenshots` again from the production build.
+
 **On a team server.** Settings signs in to a team server (the one serving
 the web app is offered; passwords, or the server's identity provider).
 Projects then lists the projects on the server you may see, with the work
@@ -535,6 +546,8 @@ shown, and "Save XLIFF" writes the file back under its own name with only
 the changed segments and states. A Trados project package (.sdlppx) becomes
 a project with all its files, and "Save return package" writes one .sdlrpx
 with every file translated.
+![Terminology in the browser client](docs/screenshots/terminology.png)
+
 Terminology manages termbases: create, rename and delete them, set their
 languages and fields, add and edit entries, terms and statuses, find and
 merge duplicates, import TBX, MultiTerm XML, Excel and CSV files (with column

@@ -57,7 +57,10 @@ platforms.
 
 Done: 1, 2 and 3. Next: 4, the editor. Until it is in, segments are
 translated in the browser client or in another tool and brought back in a
-bilingual file or return package.
+bilingual file or return package. The browser client's editor is the model
+for the desktop one:
+
+![The editor in the browser client](screenshots/editor.png)
 
 ![The project list](screenshots/projects.png)
 
