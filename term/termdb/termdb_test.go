@@ -14,8 +14,13 @@ import (
 
 var ctx = context.Background()
 
+// open returns an empty database and a key to open it again with
+// reopen: a SQLite file, or a PostgreSQL schema (see postgres_test.go).
 func open(t *testing.T) (*DB, string) {
 	t.Helper()
+	if pgDSN() != "" {
+		return openPG(t)
+	}
 	path := filepath.Join(t.TempDir(), "termbases.db")
 	db, err := Open(path)
 	if err != nil {
@@ -25,6 +30,20 @@ func open(t *testing.T) (*DB, string) {
 	clock := time.Date(2026, 11, 23, 9, 0, 0, 0, time.UTC)
 	db.now = func() time.Time { clock = clock.Add(time.Second); return clock }
 	return db, path
+}
+
+// reopen opens a second handle on the database, as another process
+// would.
+func reopen(t *testing.T, key string) *DB {
+	t.Helper()
+	if isPG(key) {
+		return reopenPG(t, key)
+	}
+	db, err := Open(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db
 }
 
 func ent(id string, langs ...term.Language) term.Entry { return term.Entry{ID: id, Languages: langs} }
@@ -94,10 +113,7 @@ func TestTermbases(t *testing.T) {
 	}
 	// Persistence across opening the file again.
 	db.Close()
-	db2, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db2 := reopen(t, path)
 	defer db2.Close()
 	tb2, err := db2.Termbase(ctx, "Weber Mietrecht")
 	if err != nil {
@@ -385,10 +401,7 @@ func TestImportExportAndMerge(t *testing.T) {
 func TestConcurrentWriters(t *testing.T) {
 	db, path := open(t)
 	tb := create(t, db)
-	db2, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	db2 := reopen(t, path)
 	defer db2.Close()
 	tb2, _ := db2.Termbase(ctx, "Kanzlei Weber")
 	var wg sync.WaitGroup

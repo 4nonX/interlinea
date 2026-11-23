@@ -88,6 +88,9 @@ func TestChangeLog(t *testing.T) {
 // A database written before the change log gets it filled in from the
 // entries' histories.
 func TestChangeLogBackfill(t *testing.T) {
+	if pgDSN() != "" {
+		t.Skip("SQLite migration")
+	}
 	db, path := open(t)
 	m := master(t, db, "Recht")
 	m.Add(ctx, ent("", lng("de-DE", approved("Kaution"))), "eva", "")
@@ -464,6 +467,9 @@ func TestReviewRules(t *testing.T) {
 // A database at schema version 2 (columns named "by", masters as JSON)
 // moves to version 3 without losing anything.
 func TestMigrateToVersion3(t *testing.T) {
+	if pgDSN() != "" {
+		t.Skip("SQLite migration")
+	}
 	path := filepath.Join(t.TempDir(), "v2.db")
 	sdb, err := sqlitedb.Open(path, "termdb", migrations[:2])
 	if err != nil {

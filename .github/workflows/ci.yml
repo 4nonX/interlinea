@@ -32,6 +32,35 @@ jobs:
       - name: build
         run: go build -trimpath -o bin/ ./cmd/...
 
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: interlinea
+          POSTGRES_DB: interlinea
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      INTERLINEA_TEST_POSTGRES: postgres://postgres:interlinea@localhost:5432/interlinea?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: vet
+        run: go vet -tags postgres ./term/termdb ./internal/pgdriver
+      - name: termbases on PostgreSQL
+        run: go test -tags postgres -count=1 ./term/termdb
+      - name: race
+        run: go test -tags postgres -race -count=1 ./term/termdb
+
   prototype:
     runs-on: ubuntu-latest
     defaults:
