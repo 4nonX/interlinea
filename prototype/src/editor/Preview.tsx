@@ -17,7 +17,14 @@ interface Props {
  * footer. Segments without a translation show their source text. The saved
  * file comes from the original and is exact; this view is an approximation.
  */
-export function Preview({ blocks, segments, activeId, sourceLang, targetLang, onPick }: Props) {
+export function Preview({
+  blocks,
+  segments,
+  activeId,
+  sourceLang,
+  targetLang,
+  onPick,
+}: Props) {
   const root = useRef<HTMLDivElement>(null);
   const byBlock = new Map<string, Segment[]>();
   for (const s of segments) {
@@ -28,17 +35,30 @@ export function Preview({ blocks, segments, activeId, sourceLang, targetLang, on
   const counter = { fn: 0 };
 
   useEffect(() => {
-    root.current?.querySelector(".pv-seg.is-active")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    root.current
+      ?.querySelector(".pv-seg.is-active")
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [activeId]);
 
-  const renderBlock = (b: Block) => <BlockView key={b.id} b={b} segs={byBlock.get(b.id) ?? []} activeId={activeId} sourceLang={sourceLang} targetLang={targetLang} onPick={onPick} counter={counter} />;
+  const renderBlock = (b: Block) => (
+    <BlockView
+      key={b.id}
+      b={b}
+      segs={byBlock.get(b.id) ?? []}
+      activeId={activeId}
+      sourceLang={sourceLang}
+      targetLang={targetLang}
+      onPick={onPick}
+      counter={counter}
+    />
+  );
 
   const part = (name: Block["part"]) => blocks.filter((b) => b.part === name);
   const body = part("body");
 
   // Group consecutive table cells into tables.
   const bodyOut: ReactNode[] = [];
-  for (let i = 0; i < body.length; ) {
+  for (let i = 0; i < body.length;) {
     const b = body[i]!;
     if (!b.cell) {
       bodyOut.push(renderBlock(b));
@@ -47,7 +67,8 @@ export function Preview({ blocks, segments, activeId, sourceLang, targetLang, on
     }
     const table = b.cell.table;
     const cells: Block[] = [];
-    while (i < body.length && body[i]!.cell?.table === table) cells.push(body[i++]!);
+    while (i < body.length && body[i]!.cell?.table === table)
+      cells.push(body[i++]!);
     const rows = new Map<number, Map<number, Block[]>>();
     for (const c of cells) {
       const row = rows.get(c.cell!.row) ?? new Map<number, Block[]>();
@@ -81,10 +102,16 @@ export function Preview({ blocks, segments, activeId, sourceLang, targetLang, on
   return (
     <div className="preview" ref={root} lang={targetLang}>
       <div className="pv-page">
-        {header.length > 0 && <div className="pv-header">{header.map(renderBlock)}</div>}
+        {header.length > 0 && (
+          <div className="pv-header">{header.map(renderBlock)}</div>
+        )}
         <div className="pv-body">{bodyOut}</div>
-        {notes.length > 0 && <div className="pv-notes">{notes.map(renderBlock)}</div>}
-        {footer.length > 0 && <div className="pv-footer">{footer.map(renderBlock)}</div>}
+        {notes.length > 0 && (
+          <div className="pv-notes">{notes.map(renderBlock)}</div>
+        )}
+        {footer.length > 0 && (
+          <div className="pv-footer">{footer.map(renderBlock)}</div>
+        )}
       </div>
       {extras.map((x) => (
         <div key={x.title} className="pv-extra">
@@ -116,13 +143,26 @@ function BlockView({
   const cls = ["pv-p"];
   if (b.frame === "textbox") cls.push("pv-frame");
   if (b.style === "label") cls.push("pv-label");
-  if (b.heading) cls.push(b.style === "Title" ? "pv-title" : `pv-h${Math.min(b.heading, 3)}`);
+  if (b.heading)
+    cls.push(
+      b.style === "Title" ? "pv-title" : `pv-h${Math.min(b.heading, 3)}`,
+    );
   if (b.list) cls.push("pv-list");
   if (b.align === "center") cls.push("pv-center");
   if (b.align === "right" || b.align === "end") cls.push("pv-right");
   if (b.align === "both") cls.push("pv-justify");
   const mark = (types: string[] | undefined, where: string) =>
-    (types ?? []).map((t, i) => (t === "footnote" ? <sup key={`${where}${i}`}>{++counter.fn}</sup> : t === "note-mark" ? <sup key={`${where}${i}`}>{b.note}</sup> : t === "field" ? <span key={`${where}${i}`} className="pv-field">#</span> : null));
+    (types ?? []).map((t, i) =>
+      t === "footnote" ? (
+        <sup key={`${where}${i}`}>{++counter.fn}</sup>
+      ) : t === "note-mark" ? (
+        <sup key={`${where}${i}`}>{b.note}</sup>
+      ) : t === "field" ? (
+        <span key={`${where}${i}`} className="pv-field">
+          #
+        </span>
+      ) : null,
+    );
   return (
     <p className={cls.join(" ")}>
       {mark(b.lead, "l")}
@@ -135,9 +175,16 @@ function BlockView({
               className={`pv-seg${s.id === activeId ? " is-active" : ""}${translated ? "" : " is-source"}`}
               lang={translated ? targetLang : sourceLang}
               onClick={() => onPick(s.id)}
-              title={translated ? undefined : "Not translated yet: the source text is used"}
+              title={
+                translated
+                  ? undefined
+                  : "Not translated yet: the source text is used"
+              }
             >
-              <Formatted runs={translated ? s.target : s.source} counter={counter} />
+              <Formatted
+                runs={translated ? s.target : s.source}
+                counter={counter}
+              />
             </span>
           </Fragment>
         );
@@ -148,10 +195,20 @@ function BlockView({
 }
 
 /** Renders runs with the formatting their tags stand for. */
-function Formatted({ runs, counter }: { runs: Run[]; counter: { fn: number } }) {
+function Formatted({
+  runs,
+  counter,
+}: {
+  runs: Run[];
+  counter: { fn: number };
+}) {
   type Frame = { tag: TagRun | null; kids: ReactNode[] };
   const stack: Frame[] = [{ tag: null, kids: [] }];
-  const wrap = (t: TagRun | null, kids: ReactNode[], key: number): ReactNode => {
+  const wrap = (
+    t: TagRun | null,
+    kids: ReactNode[],
+    key: number,
+  ): ReactNode => {
     switch (t?.type) {
       case "bold":
         return <strong key={key}>{kids}</strong>;
@@ -192,7 +249,9 @@ function Formatted({ runs, counter }: { runs: Run[]; counter: { fn: number } }) 
       if (at <= 0) return;
       while (stack.length > at) {
         const f = stack.pop()!;
-        stack[stack.length - 1]!.kids.push(wrap(f.tag, f.kids, i * 100 + stack.length));
+        stack[stack.length - 1]!.kids.push(
+          wrap(f.tag, f.kids, i * 100 + stack.length),
+        );
       }
       return;
     }
@@ -226,7 +285,9 @@ function Formatted({ runs, counter }: { runs: Run[]; counter: { fn: number } }) 
   });
   while (stack.length > 1) {
     const f = stack.pop()!;
-    stack[stack.length - 1]!.kids.push(wrap(f.tag, f.kids, 99999 + stack.length));
+    stack[stack.length - 1]!.kids.push(
+      wrap(f.tag, f.kids, 99999 + stack.length),
+    );
   }
   return <>{stack[0]!.kids}</>;
 }

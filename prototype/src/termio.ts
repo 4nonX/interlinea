@@ -529,9 +529,23 @@ export interface CoreIssue {
 }
 
 interface RecognitionCore {
-  termIndex(name: string, sources: string): { ok: true; value: number } | { ok: false; error: string };
-  termRecognize(name: string, text: string, src: string, tgt: string): { ok: true; value: string } | { ok: false; error: string };
-  termCheck(name: string, sourceText: string, src: string, targetText: string, tgt: string): { ok: true; value: string } | { ok: false; error: string };
+  termIndex(
+    name: string,
+    sources: string,
+  ): { ok: true; value: number } | { ok: false; error: string };
+  termRecognize(
+    name: string,
+    text: string,
+    src: string,
+    tgt: string,
+  ): { ok: true; value: string } | { ok: false; error: string };
+  termCheck(
+    name: string,
+    sourceText: string,
+    src: string,
+    targetText: string,
+    tgt: string,
+  ): { ok: true; value: string } | { ok: false; error: string };
 }
 
 function rc(c: CoreApi): RecognitionCore {
@@ -544,19 +558,49 @@ function rc(c: CoreApi): RecognitionCore {
  * termbase's copy of a master entry) replace the older one, so each concept
  * is offered once.
  */
-export function buildIndex(c: CoreApi, name: string, termbases: Termbase[], entries: Entry[]): number {
-  const shadowed = new Set(entries.filter((e) => e.base && termbases.some((t) => t.id === e.termbaseId)).map((e) => `${e.base!.termbaseId}/${e.base!.entryId}`));
+export function buildIndex(
+  c: CoreApi,
+  name: string,
+  termbases: Termbase[],
+  entries: Entry[],
+): number {
+  const shadowed = new Set(
+    entries
+      .filter((e) => e.base && termbases.some((t) => t.id === e.termbaseId))
+      .map((e) => `${e.base!.termbaseId}/${e.base!.entryId}`),
+  );
   const sources = termbases.map((tb) => ({
     source: tb.id,
-    entries: entries.filter((e) => e.termbaseId === tb.id && !shadowed.has(`${tb.id}/${e.id}`)).map((e) => ({ ...toCoreEntry(e, tb), id: e.id })),
+    entries: entries
+      .filter(
+        (e) => e.termbaseId === tb.id && !shadowed.has(`${tb.id}/${e.id}`),
+      )
+      .map((e) => ({ ...toCoreEntry(e, tb), id: e.id })),
   }));
   return unwrap(rc(c).termIndex(name, JSON.stringify(sources)));
 }
 
-export function recognizeTerms(c: CoreApi, name: string, text: string, src: string, tgt: string): CoreHit[] {
-  return JSON.parse(unwrap(rc(c).termRecognize(name, text, src, tgt))) as CoreHit[];
+export function recognizeTerms(
+  c: CoreApi,
+  name: string,
+  text: string,
+  src: string,
+  tgt: string,
+): CoreHit[] {
+  return JSON.parse(
+    unwrap(rc(c).termRecognize(name, text, src, tgt)),
+  ) as CoreHit[];
 }
 
-export function checkTerms(c: CoreApi, name: string, sourceText: string, src: string, targetText: string, tgt: string): CoreIssue[] {
-  return JSON.parse(unwrap(rc(c).termCheck(name, sourceText, src, targetText, tgt))) as CoreIssue[];
+export function checkTerms(
+  c: CoreApi,
+  name: string,
+  sourceText: string,
+  src: string,
+  targetText: string,
+  tgt: string,
+): CoreIssue[] {
+  return JSON.parse(
+    unwrap(rc(c).termCheck(name, sourceText, src, targetText, tgt)),
+  ) as CoreIssue[];
 }

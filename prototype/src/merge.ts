@@ -37,17 +37,25 @@ function termTexts(e: Entry | undefined, code: LangCode): string[] {
   return (e?.terms[code] ?? []).map((t) => t.text);
 }
 
-export function diffEntries(before: Entry | undefined, after: Entry, langs: LangCode[]): { terms: TermDiff[]; fields: FieldDiff[] } {
+export function diffEntries(
+  before: Entry | undefined,
+  after: Entry,
+  langs: LangCode[],
+): { terms: TermDiff[]; fields: FieldDiff[] } {
   const terms: TermDiff[] = [];
   for (const code of langs) {
     const b = new Set(termTexts(before, code));
     const a = new Set(termTexts(after, code));
     const added = [...a].filter((x) => !b.has(x));
     const removed = [...b].filter((x) => !a.has(x));
-    if (added.length || removed.length) terms.push({ lang: code, added, removed });
+    if (added.length || removed.length)
+      terms.push({ lang: code, added, removed });
   }
   const fields: FieldDiff[] = [];
-  const keys = new Set([...Object.keys(before?.concept ?? {}), ...Object.keys(after.concept)]);
+  const keys = new Set([
+    ...Object.keys(before?.concept ?? {}),
+    ...Object.keys(after.concept),
+  ]);
   for (const k of keys) {
     const bv = before?.concept[k];
     const av = after.concept[k];
@@ -112,7 +120,8 @@ export interface MergeResult {
 }
 
 let seq = 0;
-const newId = (p: string) => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
+const newId = (p: string) =>
+  `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 /** Applies decisions; returns the new master and project entries. */
 export function applyMerge(
@@ -126,10 +135,18 @@ export function applyMerge(
   const master = masterEntries.map((e) => ({ ...e }));
   const project = projectEntries.map((e) => ({ ...e }));
   let merged = 0;
-  const commit = (summary: string): Commit => ({ id: newId("c"), at: ctx.at, by: ctx.by, summary, project: ctx.projectName });
+  const commit = (summary: string): Commit => ({
+    id: newId("c"),
+    at: ctx.at,
+    by: ctx.by,
+    summary,
+    project: ctx.projectName,
+  });
 
   for (const ch of changes) {
-    const decision = decisions[ch.project.id] ?? (ch.kind === "conflict" ? undefined : "accept");
+    const decision =
+      decisions[ch.project.id] ??
+      (ch.kind === "conflict" ? undefined : "accept");
     if (!decision || decision === "skip") continue;
     const pi = project.findIndex((e) => e.id === ch.project.id);
     if (ch.kind === "new") {
@@ -140,9 +157,15 @@ export function applyMerge(
         termbaseId: masterId,
         version: 1,
         base: undefined,
-        history: [...ch.project.history, commit(`Merged from project “${ctx.projectName}”`)],
+        history: [
+          ...ch.project.history,
+          commit(`Merged from project “${ctx.projectName}”`),
+        ],
       });
-      project[pi] = { ...project[pi]!, base: { termbaseId: masterId, entryId: id, version: 1 } };
+      project[pi] = {
+        ...project[pi]!,
+        base: { termbaseId: masterId, entryId: id, version: 1 },
+      };
       merged++;
       continue;
     }
@@ -150,7 +173,13 @@ export function applyMerge(
     const m = master[mi]!;
     if (decision === "keep-master") {
       // The project adopts the master's version; nothing changes on the master.
-      project[pi] = { ...m, id: ch.project.id, termbaseId: ch.project.termbaseId, base: { termbaseId: masterId, entryId: m.id, version: m.version }, history: [...ch.project.history, commit("Adopted master version")] };
+      project[pi] = {
+        ...m,
+        id: ch.project.id,
+        termbaseId: ch.project.termbaseId,
+        base: { termbaseId: masterId, entryId: m.id, version: m.version },
+        history: [...ch.project.history, commit("Adopted master version")],
+      };
       merged++;
       continue;
     }
@@ -159,22 +188,43 @@ export function applyMerge(
     let summary = `Merged changes from project “${ctx.projectName}”`;
     if (decision === "keep-both") {
       terms = {};
-      for (const code of new Set([...Object.keys(m.terms), ...Object.keys(ch.project.terms)])) {
+      for (const code of new Set([
+        ...Object.keys(m.terms),
+        ...Object.keys(ch.project.terms),
+      ])) {
         terms[code] = mergeTerms(m.terms[code], ch.project.terms[code]);
       }
       concept = { ...ch.project.concept, ...m.concept };
       summary = `Merged with project “${ctx.projectName}”, kept both versions`;
     }
-    const updated: Entry = { ...m, terms, concept, version: m.version + 1, history: [...m.history, ...ch.project.history.filter((c) => c.project === ctx.projectName), commit(summary)] };
+    const updated: Entry = {
+      ...m,
+      terms,
+      concept,
+      version: m.version + 1,
+      history: [
+        ...m.history,
+        ...ch.project.history.filter((c) => c.project === ctx.projectName),
+        commit(summary),
+      ],
+    };
     master[mi] = updated;
-    project[pi] = { ...project[pi]!, terms, concept, base: { termbaseId: masterId, entryId: m.id, version: updated.version } };
+    project[pi] = {
+      ...project[pi]!,
+      terms,
+      concept,
+      base: { termbaseId: masterId, entryId: m.id, version: updated.version },
+    };
     merged++;
   }
   return { masterEntries: master, projectEntries: project, merged };
 }
 
 /** Master entries created or changed after the project branched. */
-export function incomingFromMaster(masterEntries: Entry[], branchedAt: string): { created: Entry[]; changed: Entry[] } {
+export function incomingFromMaster(
+  masterEntries: Entry[],
+  branchedAt: string,
+): { created: Entry[]; changed: Entry[] } {
   const created: Entry[] = [];
   const changed: Entry[] = [];
   for (const m of masterEntries) {

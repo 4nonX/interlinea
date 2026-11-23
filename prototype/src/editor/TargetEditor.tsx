@@ -1,4 +1,10 @@
-import { useImperativeHandle, useLayoutEffect, useRef, type KeyboardEvent, type Ref } from "react";
+import {
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  type KeyboardEvent,
+  type Ref,
+} from "react";
 import { normalize, type Run, type TagRun } from "./model";
 
 export interface TargetEditorHandle {
@@ -10,12 +16,28 @@ export interface TargetEditorHandle {
 }
 
 export function tagDescription(t: TagRun): string {
-  const what = t.desc ?? (t.label === "b" ? "bold" : t.label === "fn" ? "footnote" : t.label === "br" ? "line break" : t.label);
-  return t.kind === "open" ? `Tag ${t.id} start, ${what}` : t.kind === "close" ? `Tag ${t.id} end, ${what}` : `Tag ${t.id}, ${what}`;
+  const what =
+    t.desc ??
+    (t.label === "b"
+      ? "bold"
+      : t.label === "fn"
+        ? "footnote"
+        : t.label === "br"
+          ? "line break"
+          : t.label);
+  return t.kind === "open"
+    ? `Tag ${t.id} start, ${what}`
+    : t.kind === "close"
+      ? `Tag ${t.id} end, ${what}`
+      : `Tag ${t.id}, ${what}`;
 }
 
 export function chipText(t: TagRun): string {
-  return t.kind === "open" ? `${t.id}›` : t.kind === "close" ? `‹${t.id}` : `${t.id}`;
+  return t.kind === "open"
+    ? `${t.id}›`
+    : t.kind === "close"
+      ? `‹${t.id}`
+      : `${t.id}`;
 }
 
 function chip(t: TagRun): HTMLElement {
@@ -36,7 +58,8 @@ function chip(t: TagRun): HTMLElement {
 
 function render(el: HTMLElement, runs: Run[]) {
   el.textContent = "";
-  for (const r of runs) el.append(typeof r === "string" ? document.createTextNode(r) : chip(r));
+  for (const r of runs)
+    el.append(typeof r === "string" ? document.createTextNode(r) : chip(r));
 }
 
 function read(el: HTMLElement): Run[] {
@@ -48,7 +71,13 @@ function read(el: HTMLElement): Run[] {
     }
     if (!(n instanceof HTMLElement)) return;
     if (n.dataset.kind) {
-      out.push({ kind: n.dataset.kind as TagRun["kind"], id: n.dataset.id!, label: n.dataset.label ?? "", type: n.dataset.type, desc: n.dataset.desc });
+      out.push({
+        kind: n.dataset.kind as TagRun["kind"],
+        id: n.dataset.id!,
+        label: n.dataset.label ?? "",
+        type: n.dataset.type,
+        desc: n.dataset.desc,
+      });
       return;
     }
     if (n.tagName === "BR") return;
@@ -56,7 +85,9 @@ function read(el: HTMLElement): Run[] {
   };
   el.childNodes.forEach(walk);
   // Browsers insert non-breaking spaces at the edges of editable text.
-  return normalize(out.map((r) => (typeof r === "string" ? r.replace(/ /g, " ") : r)));
+  return normalize(
+    out.map((r) => (typeof r === "string" ? r.replace(/ /g, " ") : r)),
+  );
 }
 
 function caretInside(el: HTMLElement): Range | null {
@@ -90,7 +121,15 @@ interface Props {
  * typing (so input methods and the caret are never disturbed); React only
  * reads it back. Tags are atomic chips that cannot be split or edited.
  */
-export function TargetEditor({ initial, lang, label, describedBy, onChange, onKeyDown, ref }: Props) {
+export function TargetEditor({
+  initial,
+  lang,
+  label,
+  describedBy,
+  onChange,
+  onKeyDown,
+  ref,
+}: Props) {
   const el = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {

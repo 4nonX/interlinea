@@ -16,6 +16,13 @@ export interface PendingDoc {
   warnings?: string[];
   /** A bilingual file (XLIFF): its languages, variant and segments with their translations. */
   bilingual?: Bilingual;
+  /** A Trados project package the bilingual file comes from: the package and the file's path in it. */
+  sdlPackage?: {
+    bytes: Uint8Array;
+    name: string;
+    path: string;
+    files: string[];
+  };
 }
 
 let pending: PendingDoc | null = null;

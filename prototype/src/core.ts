@@ -69,6 +69,12 @@ export interface CoreApi {
   xliffDetect(bytes: Uint8Array): Res<string>;
   xliffExtract(bytes: Uint8Array): Res<string>;
   xliffMerge(bytes: Uint8Array, updates: string): Res<Uint8Array>;
+  sdlPackageOpen(bytes: Uint8Array): Res<string>;
+  sdlPackageRead(bytes: Uint8Array, path: string): Res<Uint8Array>;
+  sdlPackageReturn(
+    bytes: Uint8Array,
+    translated: Record<string, Uint8Array>,
+  ): Res<Uint8Array>;
 }
 
 function unwrap<T>(r: Res<T>): T {
@@ -342,6 +348,42 @@ export async function mergeXliff(
       updates[s.id] = { target: runsToCore(s.target), state: fileState(s) };
   }
   return unwrap(core.xliffMerge(bytes, JSON.stringify(updates)));
+}
+
+/** Trados project packages. */
+export const SDL_PACKAGE_FILE = /\.sdlppx$/i;
+export const SDL_RETURN_TYPE = "application/octet-stream";
+
+export interface SdlPackage {
+  name: string;
+  type: string;
+  guid: string;
+  sourceLang: string;
+  targetLangs: string[];
+  files: { path: string; lang: string; target: boolean; size: number }[];
+  other: number;
+}
+
+export async function openSdlPackage(bytes: Uint8Array): Promise<SdlPackage> {
+  const core = await loadCore();
+  return JSON.parse(unwrap(core.sdlPackageOpen(bytes))) as SdlPackage;
+}
+
+export async function readSdlPackage(
+  bytes: Uint8Array,
+  path: string,
+): Promise<Uint8Array> {
+  const core = await loadCore();
+  return unwrap(core.sdlPackageRead(bytes, path));
+}
+
+/** A return package (.sdlrpx) with the translated file in place of the package's. */
+export async function returnSdlPackage(
+  bytes: Uint8Array,
+  translated: Record<string, Uint8Array>,
+): Promise<Uint8Array> {
+  const core = await loadCore();
+  return unwrap(core.sdlPackageReturn(bytes, translated));
 }
 
 /** Offers bytes as a download. */

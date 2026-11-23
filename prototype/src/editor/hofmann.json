@@ -545,9 +545,7 @@
       "id": "document/p6",
       "part": "body",
       "file": "word/document.xml",
-      "trail": [
-        "footnote"
-      ]
+      "trail": ["footnote"]
     },
     {
       "id": "document/p7",
@@ -726,9 +724,7 @@
       "style": "FootnoteText",
       "styleName": "footnote text",
       "note": "1",
-      "lead": [
-        "note-mark"
-      ]
+      "lead": ["note-mark"]
     },
     {
       "id": "footnotes/p2",
@@ -737,9 +733,7 @@
       "style": "FootnoteText",
       "styleName": "footnote text",
       "note": "2",
-      "lead": [
-        "note-mark"
-      ]
+      "lead": ["note-mark"]
     },
     {
       "id": "header1/p1",
@@ -754,9 +748,7 @@
       "file": "word/footer1.xml",
       "style": "Footer",
       "styleName": "footer",
-      "trail": [
-        "field"
-      ]
+      "trail": ["field"]
     }
   ],
   "format": "docx",

@@ -20,6 +20,7 @@ import {
   CONFIDENT,
   detectLanguage,
   readDocument,
+  readPackageFile,
   type Detection,
 } from "../detect";
 import { extractDocx, XLIFF_FORMAT_NAME, type Extracted } from "../core";
@@ -236,6 +237,11 @@ export function NewProject({ sample }: { sample?: number }) {
         blocks: doc!.bilingual.blocks,
         bytes: doc!.bytes,
         format: "xliff",
+        sdlPackage: doc!.sdlPackage && {
+          bytes: doc!.sdlPackage.bytes,
+          name: doc!.sdlPackage.name,
+          path: doc!.sdlPackage.path,
+        },
       };
     } else if (doc!.bytes) {
       setCreating(true);
@@ -338,7 +344,7 @@ export function NewProject({ sample }: { sample?: number }) {
                   ? plural(doc.words, "word", "words")
                   : "Word count after import"}
                 {doc.bilingual
-                  ? `, ${XLIFF_FORMAT_NAME[doc.bilingual.format] ?? "XLIFF"}, ${bilingualSummary(doc.bilingual.segments)}`
+                  ? `, ${doc.sdlPackage ? `from the Trados package ${doc.sdlPackage.name}` : (XLIFF_FORMAT_NAME[doc.bilingual.format] ?? "XLIFF")}, ${bilingualSummary(doc.bilingual.segments)}`
                   : doc.bytes && ", formatting kept by the Word filter"}
               </div>
             </div>
@@ -365,6 +371,36 @@ export function NewProject({ sample }: { sample?: number }) {
             </p>
           )}
 
+          {doc.sdlPackage && doc.sdlPackage.files.length > 1 && (
+            <div className="field">
+              <label htmlFor="pkg-file">File of the package to translate</label>
+              <select
+                id="pkg-file"
+                value={doc.sdlPackage.path}
+                onChange={async (e) => {
+                  const p = doc.sdlPackage!;
+                  setDoc(
+                    await readPackageFile(
+                      p.name,
+                      p.bytes,
+                      e.target.value,
+                      p.files,
+                    ),
+                  );
+                }}
+              >
+                {doc.sdlPackage.files.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+              <p className="help">
+                A Trados package can hold several files; each becomes its own
+                project, saved back in a return package.
+              </p>
+            </div>
+          )}
           {doc.bilingual ? (
             <div className="field">
               <span className="field-label">Languages</span>

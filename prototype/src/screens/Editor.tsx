@@ -68,6 +68,8 @@ import {
   loadCore,
   mergeDocx,
   mergeXliff,
+  returnSdlPackage,
+  SDL_RETURN_TYPE,
   tm,
   XLIFF_TYPE,
 } from "../core";
@@ -486,15 +488,22 @@ export function Editor({ projectId }: { projectId: string }) {
       if (project.original.format === "xliff") {
         // A bilingual file goes back under its own name, for the tool it came from.
         const out = await mergeXliff(bytes, segments);
-        download(out, project.file, XLIFF_TYPE);
         const open = segments.filter(
           (s) => s.status !== "confirmed" && !s.locked,
         ).length;
-        notify(
-          open
-            ? `Saved ${project.file}. ${plural(open, "segment is", "segments are")} not confirmed yet.`
-            : `Saved ${project.file}`,
-        );
+        const pending = open
+          ? ` ${plural(open, "segment is", "segments are")} not confirmed yet.`
+          : "";
+        const pkg = project.original.sdlPackage;
+        if (pkg) {
+          const rpx = await returnSdlPackage(pkg.bytes, { [pkg.path]: out });
+          const name = pkg.name.replace(/\.sdlppx$/i, "") + ".sdlrpx";
+          download(rpx, name, SDL_RETURN_TYPE);
+          notify(`Saved the return package ${name}.${pending}`);
+          return;
+        }
+        download(out, project.file, XLIFF_TYPE);
+        notify(`Saved ${project.file}.${pending}`);
         return;
       }
       const out = await mergeDocx(bytes, source, target, segments);
@@ -706,9 +715,11 @@ export function Editor({ projectId }: { projectId: string }) {
               <Download size={14} aria-hidden="true" />
               {saving
                 ? "Saving…"
-                : project.original.format === "xliff"
-                  ? "Save XLIFF"
-                  : "Save translated document"}
+                : project.original.sdlPackage
+                  ? "Save return package"
+                  : project.original.format === "xliff"
+                    ? "Save XLIFF"
+                    : "Save translated document"}
             </button>
           )}
         </div>

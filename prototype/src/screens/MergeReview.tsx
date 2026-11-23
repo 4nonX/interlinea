@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { ArrowDownToLine, CheckCircle2, GitMerge } from "lucide-react";
 import type { Entry, Termbase } from "../data";
 import { useStore, useWords } from "../store";
-import { computeChanges, incomingFromMaster, type Change, type ChangeKind, type Decision } from "../merge";
+import {
+  computeChanges,
+  incomingFromMaster,
+  type Change,
+  type ChangeKind,
+  type Decision,
+} from "../merge";
 import { fmtDate, fmtTime, plural } from "../format";
 import { InLang, LangChip, LocationBadge, PageHeader } from "../components/ui";
 
@@ -10,10 +16,16 @@ export function MergeReview({ projectId }: { projectId: string }) {
   const { state } = useStore();
   const w = useWords();
   const project = state.projects.find((p) => p.id === projectId);
-  const masters = (project?.setup.masters ?? []).map((id) => state.termbases.find((t) => t.id === id)!).filter(Boolean);
+  const masters = (project?.setup.masters ?? [])
+    .map((id) => state.termbases.find((t) => t.id === id)!)
+    .filter(Boolean);
   const [masterId, setMasterId] = useState(masters[0]?.id ?? "");
 
-  if (!project || project.setup.mode !== "layered" || !project.setup.projectTermbaseId) {
+  if (
+    !project ||
+    project.setup.mode !== "layered" ||
+    !project.setup.projectTermbaseId
+  ) {
     return (
       <div className="page page-narrow">
         <PageHeader title={w("reviewMerge")} />
@@ -34,7 +46,8 @@ export function MergeReview({ projectId }: { projectId: string }) {
         title={`${w("reviewMerge")}: ${project.name}`}
         description={
           <>
-            New and changed terms from this project go into its master. The master changes only when you merge.
+            New and changed terms from this project go into its master. The
+            master changes only when you merge.
           </>
         }
       >
@@ -46,7 +59,13 @@ export function MergeReview({ projectId }: { projectId: string }) {
       {masters.length > 1 && (
         <div className="tabs" role="tablist" aria-label="Masters">
           {masters.map((m) => (
-            <button key={m.id} type="button" role="tab" aria-selected={m.id === master.id} onClick={() => setMasterId(m.id)}>
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              aria-selected={m.id === master.id}
+              onClick={() => setMasterId(m.id)}
+            >
               {m.name}
             </button>
           ))}
@@ -57,7 +76,13 @@ export function MergeReview({ projectId }: { projectId: string }) {
   );
 }
 
-function MergeIntoMaster({ projectId, master }: { projectId: string; master: Termbase }) {
+function MergeIntoMaster({
+  projectId,
+  master,
+}: {
+  projectId: string;
+  master: Termbase;
+}) {
   const { state, dispatch, notify } = useStore();
   const w = useWords();
   const project = state.projects.find((p) => p.id === projectId)!;
@@ -67,19 +92,37 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
   const projectEntries = state.entries.filter((e) => e.termbaseId === ptbId);
 
   const changes = useMemo(
-    () => computeChanges(projectEntries, master, masterEntries, state.baseSnapshots, branchedAt),
+    () =>
+      computeChanges(
+        projectEntries,
+        master,
+        masterEntries,
+        state.baseSnapshots,
+        branchedAt,
+      ),
     [projectEntries, master, masterEntries, state.baseSnapshots, branchedAt],
   );
-  const incoming = useMemo(() => incomingFromMaster(masterEntries, branchedAt), [masterEntries, branchedAt]);
+  const incoming = useMemo(
+    () => incomingFromMaster(masterEntries, branchedAt),
+    [masterEntries, branchedAt],
+  );
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [filter, setFilter] = useState<ChangeKind | "all">("all");
   const [done, setDone] = useState<number | null>(null);
 
-  const counts = { conflict: 0, changed: 0, new: 0 } as Record<ChangeKind, number>;
+  const counts = { conflict: 0, changed: 0, new: 0 } as Record<
+    ChangeKind,
+    number
+  >;
   for (const c of changes) counts[c.kind]++;
-  const decided = (c: Change): Decision | undefined => decisions[c.project.id] ?? (c.kind === "conflict" ? undefined : "accept");
-  const unresolved = changes.filter((c) => c.kind === "conflict" && !decided(c)).length;
-  const included = changes.filter((c) => decided(c) && decided(c) !== "skip").length;
+  const decided = (c: Change): Decision | undefined =>
+    decisions[c.project.id] ?? (c.kind === "conflict" ? undefined : "accept");
+  const unresolved = changes.filter(
+    (c) => c.kind === "conflict" && !decided(c),
+  ).length;
+  const included = changes.filter(
+    (c) => decided(c) && decided(c) !== "skip",
+  ).length;
   const shown = changes.filter((c) => filter === "all" || c.kind === filter);
 
   const incomingCount = incoming.created.length + incoming.changed.length;
@@ -89,9 +132,13 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
       <div className="panel done">
         <CheckCircle2 size={28} aria-hidden="true" className="done-icon" />
         <h2 className="panel-title" tabIndex={-1} ref={(el) => el?.focus()}>
-          {w("merged")} {plural(done, w("change"), w("changes"))} into {master.name}
+          {w("merged")} {plural(done, w("change"), w("changes"))} into{" "}
+          {master.name}
         </h2>
-        <p>Every merged entry keeps its {w("history").toLowerCase()}: who added it, when, and the sentence it came from.</p>
+        <p>
+          Every merged entry keeps its {w("history").toLowerCase()}: who added
+          it, when, and the sentence it came from.
+        </p>
         <div className="row">
           <a className="btn btn-primary" href={`#/terminology/${master.id}`}>
             Open {master.name}
@@ -111,7 +158,8 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
           <span className="merge-label">From</span>
           <span className="cell-title">{project.name}</span>
           <span className="cell-sub">
-            {w("projectTermbase")} <LocationBadge location={project.setup.location} />
+            {w("projectTermbase")}{" "}
+            <LocationBadge location={project.setup.location} />
           </span>
         </div>
         <GitMerge size={20} aria-hidden="true" className="merge-arrow" />
@@ -119,13 +167,16 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
           <span className="merge-label">Into</span>
           <span className="cell-title">{master.name}</span>
           <span className="cell-sub">
-            Master <LocationBadge location={master.location} server={master.server} />
+            Master{" "}
+            <LocationBadge location={master.location} server={master.server} />
           </span>
         </div>
         <dl className="merge-counts">
           <div>
             <dt>{w("conflict")}s</dt>
-            <dd className={counts.conflict ? "count-conflict" : undefined}>{counts.conflict}</dd>
+            <dd className={counts.conflict ? "count-conflict" : undefined}>
+              {counts.conflict}
+            </dd>
           </div>
           <div>
             <dt>{w("changedEntry")}</dt>
@@ -143,12 +194,17 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
           <ArrowDownToLine size={18} aria-hidden="true" />
           <div className="notice-body">
             <h2 id="incoming-title" className="notice-title">
-              {master.name} has {plural(incomingCount, "change", "changes")} since {fmtDate(branchedAt)}
+              {master.name} has {plural(incomingCount, "change", "changes")}{" "}
+              since {fmtDate(branchedAt)}
             </h2>
             <ul className="incoming">
               {[...incoming.created, ...incoming.changed].map((e) => (
                 <li key={e.id}>
-                  <IncomingItem entry={e} master={master} created={incoming.created.includes(e)} />
+                  <IncomingItem
+                    entry={e}
+                    master={master}
+                    created={incoming.created.includes(e)}
+                  />
                 </li>
               ))}
             </ul>
@@ -157,7 +213,11 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
             type="button"
             className="btn btn-small"
             onClick={() => {
-              dispatch({ type: "updateFromMaster", projectId: project.id, now: new Date().toISOString() });
+              dispatch({
+                type: "updateFromMaster",
+                projectId: project.id,
+                now: new Date().toISOString(),
+              });
               notify(w("updated"));
             }}
           >
@@ -176,9 +236,21 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
           <div className="segmented" role="radiogroup" aria-label="Show">
             {(["all", "conflict", "changed", "new"] as const).map((k) => (
               <label key={k} className="segment">
-                <input type="radio" name="filter" checked={filter === k} onChange={() => setFilter(k)} />
+                <input
+                  type="radio"
+                  name="filter"
+                  checked={filter === k}
+                  onChange={() => setFilter(k)}
+                />
                 <span>
-                  {k === "all" ? "All" : k === "conflict" ? `${w("conflict")}s` : k === "changed" ? w("changedEntry") : "New"} ({k === "all" ? changes.length : counts[k]})
+                  {k === "all"
+                    ? "All"
+                    : k === "conflict"
+                      ? `${w("conflict")}s`
+                      : k === "changed"
+                        ? w("changedEntry")
+                        : "New"}{" "}
+                  ({k === "all" ? changes.length : counts[k]})
                 </span>
               </label>
             ))}
@@ -187,22 +259,40 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
           <ul className="changes">
             {shown.map((c) => (
               <li key={c.project.id}>
-                <ChangeItem change={c} master={master} decision={decided(c)} onDecide={(d) => setDecisions((x) => ({ ...x, [c.project.id]: d }))} />
+                <ChangeItem
+                  change={c}
+                  master={master}
+                  decision={decided(c)}
+                  onDecide={(d) =>
+                    setDecisions((x) => ({ ...x, [c.project.id]: d }))
+                  }
+                />
               </li>
             ))}
           </ul>
 
           <div className="merge-bar">
             <p className="merge-bar-text" aria-live="polite">
-              {unresolved > 0 ? `Resolve ${plural(unresolved, "conflict", "conflicts")} to merge.` : `${plural(included, w("change"), w("changes"))} will be merged. Left-out entries stay in the project.`}
+              {unresolved > 0
+                ? `Resolve ${plural(unresolved, "conflict", "conflicts")} to merge.`
+                : `${plural(included, w("change"), w("changes"))} will be merged. Left-out entries stay in the project.`}
             </p>
             <button
               type="button"
               className="btn btn-primary"
               disabled={unresolved > 0 || included === 0}
               onClick={() => {
-                dispatch({ type: "merge", projectId: project.id, masterId: master.id, changes, decisions, now: new Date().toISOString() });
-                notify(`${w("merged")} ${plural(included, w("change"), w("changes"))} into ${master.name}`);
+                dispatch({
+                  type: "merge",
+                  projectId: project.id,
+                  masterId: master.id,
+                  changes,
+                  decisions,
+                  now: new Date().toISOString(),
+                });
+                notify(
+                  `${w("merged")} ${plural(included, w("change"), w("changes"))} into ${master.name}`,
+                );
                 setDone(included);
               }}
             >
@@ -216,7 +306,15 @@ function MergeIntoMaster({ projectId, master }: { projectId: string; master: Ter
   );
 }
 
-function IncomingItem({ entry, master, created }: { entry: Entry; master: Termbase; created: boolean }) {
+function IncomingItem({
+  entry,
+  master,
+  created,
+}: {
+  entry: Entry;
+  master: Termbase;
+  created: boolean;
+}) {
   const src = master.languages[0]!;
   const last = entry.history[entry.history.length - 1]!;
   return (
@@ -225,7 +323,10 @@ function IncomingItem({ entry, master, created }: { entry: Entry; master: Termba
         {entry.terms[src]?.[0]?.text}
       </InLang>{" "}
       <span className="muted">
-        {created ? "new" : last.summary.charAt(0).toLowerCase() + last.summary.slice(1)}, {last.by}, {fmtDate(last.at)}
+        {created
+          ? "new"
+          : last.summary.charAt(0).toLowerCase() + last.summary.slice(1)}
+        , {last.by}, {fmtDate(last.at)}
       </span>
     </>
   );
@@ -237,7 +338,10 @@ function TermsLine({ entry, code }: { entry: Entry; code: string }) {
   return (
     <InLang code={code}>
       {ts.map((t, i) => (
-        <span key={t.text} className={t.status === "forbidden" ? "term-forbidden" : undefined}>
+        <span
+          key={t.text}
+          className={t.status === "forbidden" ? "term-forbidden" : undefined}
+        >
           {i > 0 && ", "}
           {t.text}
         </span>
@@ -246,17 +350,36 @@ function TermsLine({ entry, code }: { entry: Entry; code: string }) {
   );
 }
 
-function ChangeItem({ change, master, decision, onDecide }: { change: Change; master: Termbase; decision?: Decision; onDecide: (d: Decision) => void }) {
+function ChangeItem({
+  change,
+  master,
+  decision,
+  onDecide,
+}: {
+  change: Change;
+  master: Termbase;
+  decision?: Decision;
+  onDecide: (d: Decision) => void;
+}) {
   const w = useWords();
   const src = master.languages[0]!;
   const head = change.project.terms[src]?.[0]?.text ?? "(no term)";
-  const kindLabel = change.kind === "conflict" ? w("conflict") : change.kind === "changed" ? w("changedEntry") : w("newEntry");
+  const kindLabel =
+    change.kind === "conflict"
+      ? w("conflict")
+      : change.kind === "changed"
+        ? w("changedEntry")
+        : w("newEntry");
   const origin = change.project.history.find((c) => c.segment);
-  const field = (k: string) => master.infoTypes.find((i) => i.id === k)?.name ?? k;
+  const field = (k: string) =>
+    master.infoTypes.find((i) => i.id === k)?.name ?? k;
   const name = `d-${change.project.id}`;
 
   return (
-    <article className={`change change-${change.kind}`} aria-labelledby={`h-${change.project.id}`}>
+    <article
+      className={`change change-${change.kind}`}
+      aria-labelledby={`h-${change.project.id}`}
+    >
       <header className="change-head">
         <h3 id={`h-${change.project.id}`} className="change-title">
           <InLang code={src}>{head}</InLang>
@@ -316,17 +439,22 @@ function ChangeItem({ change, master, decision, onDecide }: { change: Change; ma
             <h4>This project</h4>
             {change.terms.map((t) => (
               <p key={t.lang}>
-                <LangChip code={t.lang} /> <TermsLine entry={change.project} code={t.lang} />
+                <LangChip code={t.lang} />{" "}
+                <TermsLine entry={change.project} code={t.lang} />
               </p>
             ))}
           </div>
           <div className="conflict-side">
             <h4>
-              {master.name}, changed {change.masterHistory[0] ? `by ${change.masterHistory[0].by} on ${fmtDate(change.masterHistory[0].at)}` : "meanwhile"}
+              {master.name}, changed{" "}
+              {change.masterHistory[0]
+                ? `by ${change.masterHistory[0].by} on ${fmtDate(change.masterHistory[0].at)}`
+                : "meanwhile"}
             </h4>
             {change.terms.map((t) => (
               <p key={t.lang}>
-                <LangChip code={t.lang} /> <TermsLine entry={change.master!} code={t.lang} />
+                <LangChip code={t.lang} />{" "}
+                <TermsLine entry={change.master!} code={t.lang} />
               </p>
             ))}
           </div>
@@ -339,25 +467,48 @@ function ChangeItem({ change, master, decision, onDecide }: { change: Change; ma
         </p>
       )}
 
-      <div className="decision" role="radiogroup" aria-label={`Decision for ${head}`}>
+      <div
+        className="decision"
+        role="radiogroup"
+        aria-label={`Decision for ${head}`}
+      >
         {change.kind === "conflict" ? (
           <>
             <label className="check">
-              <input type="radio" name={name} checked={decision === "accept"} onChange={() => onDecide("accept")} />
+              <input
+                type="radio"
+                name={name}
+                checked={decision === "accept"}
+                onChange={() => onDecide("accept")}
+              />
               <span>{w("useProject")}</span>
             </label>
             <label className="check">
-              <input type="radio" name={name} checked={decision === "keep-master"} onChange={() => onDecide("keep-master")} />
+              <input
+                type="radio"
+                name={name}
+                checked={decision === "keep-master"}
+                onChange={() => onDecide("keep-master")}
+              />
               <span>{w("keepMaster")}</span>
             </label>
             <label className="check">
-              <input type="radio" name={name} checked={decision === "keep-both"} onChange={() => onDecide("keep-both")} />
+              <input
+                type="radio"
+                name={name}
+                checked={decision === "keep-both"}
+                onChange={() => onDecide("keep-both")}
+              />
               <span>{w("keepBoth")}, as synonyms</span>
             </label>
           </>
         ) : (
           <label className="check">
-            <input type="checkbox" checked={decision !== "skip"} onChange={(e) => onDecide(e.target.checked ? "accept" : "skip")} />
+            <input
+              type="checkbox"
+              checked={decision !== "skip"}
+              onChange={(e) => onDecide(e.target.checked ? "accept" : "skip")}
+            />
             <span>{w("accept")} in the merge</span>
           </label>
         )}

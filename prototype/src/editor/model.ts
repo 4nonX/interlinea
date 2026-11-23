@@ -19,7 +19,15 @@ export interface TagRun {
 /** A paragraph of the original document (the core's filter.Block). */
 export interface Block {
   id: string;
-  part: "body" | "footnote" | "endnote" | "header" | "footer" | "comment" | "chart" | "diagram";
+  part:
+    | "body"
+    | "footnote"
+    | "endnote"
+    | "header"
+    | "footer"
+    | "comment"
+    | "chart"
+    | "diagram";
   file: string;
   style?: string;
   styleName?: string;
@@ -38,7 +46,13 @@ export interface Block {
 /** A run as the core encodes it (content.Run). */
 export interface CoreRun {
   text?: string;
-  tag?: { kind: TagRun["kind"]; id: string; type?: string; desc?: string; native?: string };
+  tag?: {
+    kind: TagRun["kind"];
+    id: string;
+    type?: string;
+    desc?: string;
+    native?: string;
+  };
 }
 
 /** Short chip labels for the tag types the filter reports. */
@@ -78,11 +92,25 @@ export const TAG_LABELS: Record<string, string> = {
 };
 
 export function coreToRuns(runs: CoreRun[]): Run[] {
-  return runs.map((r) => (r.tag ? { kind: r.tag.kind, id: r.tag.id, label: TAG_LABELS[r.tag.type ?? ""] ?? "x", type: r.tag.type, desc: r.tag.desc } : (r.text ?? "")));
+  return runs.map((r) =>
+    r.tag
+      ? {
+          kind: r.tag.kind,
+          id: r.tag.id,
+          label: TAG_LABELS[r.tag.type ?? ""] ?? "x",
+          type: r.tag.type,
+          desc: r.tag.desc,
+        }
+      : (r.text ?? ""),
+  );
 }
 
 export function runsToCore(runs: Run[]): CoreRun[] {
-  return runs.filter((r) => r !== "").map((r) => (typeof r === "string" ? { text: r } : { tag: { kind: r.kind, id: r.id } }));
+  return runs
+    .filter((r) => r !== "")
+    .map((r) =>
+      typeof r === "string" ? { text: r } : { tag: { kind: r.kind, id: r.id } },
+    );
 }
 
 export type Run = string | TagRun;
@@ -97,7 +125,10 @@ export interface Segment {
   target: Run[];
   status: SegmentStatus;
   /** Where the current target came from, if it was inserted. */
-  origin?: { kind: "tm"; score: number; inserted: string; context?: boolean } | { kind: "copy" } | { kind: "repetition"; from: string };
+  origin?:
+    | { kind: "tm"; score: number; inserted: string; context?: boolean }
+    | { kind: "copy" }
+    | { kind: "repetition"; from: string };
   /** Check results saved when the segment was confirmed (as memoQ and Phrase do). */
   warnings?: { kind: string; text: string }[];
   /** Warnings the translator marked as false alarms. */
@@ -114,17 +145,26 @@ export interface Segment {
 }
 
 /** States of segments in bilingual files, as the core reports them. */
-export type FileState = "new" | "draft" | "translated" | "reviewed" | "final" | "rejected";
+export type FileState =
+  "new" | "draft" | "translated" | "reviewed" | "final" | "rejected";
 
 /** Share of source words in confirmed segments, 0 to 1. */
 export function confirmedShare(segments: Segment[]): number {
   const total = segments.reduce((n, sg) => n + wordCount(sg.source), 0) || 1;
-  return segments.filter((sg) => sg.status === "confirmed").reduce((n, sg) => n + wordCount(sg.source), 0) / total;
+  return (
+    segments
+      .filter((sg) => sg.status === "confirmed")
+      .reduce((n, sg) => n + wordCount(sg.source), 0) / total
+  );
 }
 
 /** Two segments are repetitions when text and tags are identical. */
 export function sourceKey(runs: Run[]): string {
-  return JSON.stringify(normalize(runs).map((r) => (typeof r === "string" ? r.trim().replace(/\s+/g, " ") : tagKey(r))));
+  return JSON.stringify(
+    normalize(runs).map((r) =>
+      typeof r === "string" ? r.trim().replace(/\s+/g, " ") : tagKey(r),
+    ),
+  );
 }
 
 export const isTag = (r: Run): r is TagRun => typeof r !== "string";
@@ -164,9 +204,11 @@ export function wordCount(runs: Run[]): number {
   return plain(runs).match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
 }
 
-const ABBREVIATIONS = /(?:^|\s)(?:z\.\s?B|d\.\s?h|u\.\s?a|bzw|ca|Nr|Abs|Art|vgl|ggf|inkl|Dr|Prof|Str|e\.g|i\.e|Mr|Mrs|Ms|No|etc)\.$/;
+const ABBREVIATIONS =
+  /(?:^|\s)(?:z\.\s?B|d\.\s?h|u\.\s?a|bzw|ca|Nr|Abs|Art|vgl|ggf|inkl|Dr|Prof|Str|e\.g|i\.e|Mr|Mrs|Ms|No|etc)\.$/;
 
-const MONTHS = /^\s+(?:Januar|Jänner|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\b/;
+const MONTHS =
+  /^\s+(?:Januar|Jänner|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\b/;
 
 /**
  * Splits text into sentences for new projects. The real product uses the
@@ -183,7 +225,11 @@ export function segmentText(text: string): string[] {
     const next = text.slice(end);
     if (ABBREVIATIONS.test(candidate)) continue;
     // Ordinals: "am 1. Januar", "im 2. Obergeschoss".
-    if (/\b\d{1,3}\.$/.test(candidate) && (/^\s+\p{Ll}/u.test(next) || MONTHS.test(next))) continue;
+    if (
+      /\b\d{1,3}\.$/.test(candidate) &&
+      (/^\s+\p{Ll}/u.test(next) || MONTHS.test(next))
+    )
+      continue;
     const s = candidate.trim();
     if (s) out.push(s);
     start = end;
@@ -197,24 +243,65 @@ export function segmentText(text: string): string[] {
 // the page as a data URL so the prototype needs no file hosting. Its units come
 // from the core's Word filter (make sample regenerates hofmann.json), so the
 // editor, the preview and "Save translated document" all work on the file.
-const SAMPLE = hofmann as { units: { id: string; block: string; source: CoreRun[] }[]; blocks: Block[] };
+const SAMPLE = hofmann as {
+  units: { id: string; block: string; source: CoreRun[] }[];
+  blocks: Block[];
+};
 
-const tag = (kind: TagRun["kind"], id: string, type: string): TagRun => ({ kind, id, type, label: TAG_LABELS[type] ?? "x" });
-const bold = (id: string, text: string): Run[] => [tag("open", id, "bold"), text, tag("close", id, "bold")];
+const tag = (kind: TagRun["kind"], id: string, type: string): TagRun => ({
+  kind,
+  id,
+  type,
+  label: TAG_LABELS[type] ?? "x",
+});
+const bold = (id: string, text: string): Run[] => [
+  tag("open", id, "bold"),
+  text,
+  tag("close", id, "bold"),
+];
 
 /** Work done before the prototype opens: the first segments are translated. */
 const SAMPLE_WORK: Record<string, { target: Run[]; status: SegmentStatus }> = {
-  "document/p1/s1": { target: ["Residential lease agreement"], status: "confirmed" },
+  "document/p1/s1": {
+    target: ["Residential lease agreement"],
+    status: "confirmed",
+  },
   "document/p2/s1": {
-    target: ["The following lease agreement is concluded between ", ...bold("1", "Mr Jonas Hofmann"), " (landlord) and ", ...bold("2", "Ms Lea Kraus"), " (tenant):"],
+    target: [
+      "The following lease agreement is concluded between ",
+      ...bold("1", "Mr Jonas Hofmann"),
+      " (landlord) and ",
+      ...bold("2", "Ms Lea Kraus"),
+      " (tenant):",
+    ],
     status: "confirmed",
   },
   "document/p3/s1": { target: ["§ 1 Leased property"], status: "confirmed" },
-  "document/p4/s1": { target: ["The flat on the second floor of the building at Lindenstraße 12, 80331 Munich, is let."], status: "confirmed" },
-  "document/p4/s2": { target: ["The leased property comprises three rooms, a kitchen, a bathroom and a cellar room."], status: "confirmed" },
+  "document/p4/s1": {
+    target: [
+      "The flat on the second floor of the building at Lindenstraße 12, 80331 Munich, is let.",
+    ],
+    status: "confirmed",
+  },
+  "document/p4/s2": {
+    target: [
+      "The leased property comprises three rooms, a kitchen, a bathroom and a cellar room.",
+    ],
+    status: "confirmed",
+  },
   "document/p5/s1": { target: ["§ 2 Term of the lease"], status: "confirmed" },
-  "document/p6/s1": { target: ["The tenancy commences on 1 January 2027 and runs for an indefinite period."], status: "confirmed" },
-  "document/p6/s2": { target: ["Termination with notice is governed by the statutory provisions."], status: "draft" },
+  "document/p6/s1": {
+    target: [
+      "The tenancy commences on 1 January 2027 and runs for an indefinite period.",
+    ],
+    status: "confirmed",
+  },
+  "document/p6/s2": {
+    target: [
+      "Termination with notice is governed by the statutory provisions.",
+    ],
+    status: "draft",
+  },
 };
 
 export const HOFMANN_BLOCKS: Block[] = SAMPLE.blocks;
@@ -244,15 +331,49 @@ export interface TmUnit {
 /** Translation memory "Kanzlei Weber (DE-EN)". Synthetic. */
 export const TM_UNITS: TmUnit[] = [
   {
-    source: ["Die monatliche Miete beträgt ", ...bold("1", "980,00 EUR"), " zuzüglich einer Vorauszahlung auf die Betriebskosten in Höhe von ", ...bold("2", "180,00 EUR"), "."],
-    target: ["The monthly rent is ", ...bold("1", "EUR 980.00"), " plus an advance payment on the service charges of ", ...bold("2", "EUR 180.00"), "."],
+    source: [
+      "Die monatliche Miete beträgt ",
+      ...bold("1", "980,00 EUR"),
+      " zuzüglich einer Vorauszahlung auf die Betriebskosten in Höhe von ",
+      ...bold("2", "180,00 EUR"),
+      ".",
+    ],
+    target: [
+      "The monthly rent is ",
+      ...bold("1", "EUR 980.00"),
+      " plus an advance payment on the service charges of ",
+      ...bold("2", "EUR 180.00"),
+      ".",
+    ],
     project: "Mietvertrag Schuster",
     by: "Dan",
     at: "2025-04-22T16:10:00Z",
   },
-  { source: ["Nettokaltmiete"], target: ["Basic rent"], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:11:00Z" },
-  { source: ["Gesamtmiete"], target: ["Total rent"], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:11:30Z" },
-  { source: ["Die Miete ist monatlich im Voraus, spätestens am dritten Werktag eines Monats, zu zahlen."], target: ["The rent is payable monthly in advance, no later than the third working day of each month."], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:12:00Z" },
+  {
+    source: ["Nettokaltmiete"],
+    target: ["Basic rent"],
+    project: "Mietvertrag Schuster",
+    by: "Dan",
+    at: "2025-04-22T16:11:00Z",
+  },
+  {
+    source: ["Gesamtmiete"],
+    target: ["Total rent"],
+    project: "Mietvertrag Schuster",
+    by: "Dan",
+    at: "2025-04-22T16:11:30Z",
+  },
+  {
+    source: [
+      "Die Miete ist monatlich im Voraus, spätestens am dritten Werktag eines Monats, zu zahlen.",
+    ],
+    target: [
+      "The rent is payable monthly in advance, no later than the third working day of each month.",
+    ],
+    project: "Mietvertrag Schuster",
+    by: "Dan",
+    at: "2025-04-22T16:12:00Z",
+  },
   {
     source: ["Über die Betriebskosten wird jährlich abgerechnet."],
     target: ["Service charges are settled annually."],
@@ -262,19 +383,69 @@ export const TM_UNITS: TmUnit[] = [
     by: "Dan",
     at: "2025-03-04T10:40:00Z",
   },
-  { source: ["Der Mieter leistet eine Kaution in Höhe von zwei Nettokaltmieten."], target: ["The tenant shall pay a deposit equal to two months' basic rent."], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:20:00Z" },
-  { source: ["Die Kaution wird nach Beendigung des Mietverhältnisses zurückgezahlt."], target: ["The deposit is repaid after the end of the tenancy."], project: "Mietvertrag Schuster", by: "Eva Brandt", at: "2025-09-18T11:00:00Z" },
-  { source: ["Eine Untervermietung bedarf der Zustimmung des Vermieters."], target: ["Subletting requires the landlord's consent."], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T11:02:00Z" },
-  { source: ["Änderungen dieses Vertrages bedürfen der Schriftform."], target: ["Amendments to this agreement must be made in writing."], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T11:30:00Z" },
   {
-    source: ["Sollte eine Bestimmung dieses Vertrages unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt."],
-    target: ["Should any provision of this agreement be invalid, the validity of the remaining provisions shall remain unaffected."],
+    source: [
+      "Der Mieter leistet eine Kaution in Höhe von zwei Nettokaltmieten.",
+    ],
+    target: ["The tenant shall pay a deposit equal to two months' basic rent."],
+    project: "Mietvertrag Schuster",
+    by: "Dan",
+    at: "2025-04-22T16:20:00Z",
+  },
+  {
+    source: [
+      "Die Kaution wird nach Beendigung des Mietverhältnisses zurückgezahlt.",
+    ],
+    target: ["The deposit is repaid after the end of the tenancy."],
+    project: "Mietvertrag Schuster",
+    by: "Eva Brandt",
+    at: "2025-09-18T11:00:00Z",
+  },
+  {
+    source: ["Eine Untervermietung bedarf der Zustimmung des Vermieters."],
+    target: ["Subletting requires the landlord's consent."],
+    project: "Gewerbemietvertrag Lang",
+    by: "Dan",
+    at: "2025-03-04T11:02:00Z",
+  },
+  {
+    source: ["Änderungen dieses Vertrages bedürfen der Schriftform."],
+    target: ["Amendments to this agreement must be made in writing."],
+    project: "Gewerbemietvertrag Lang",
+    by: "Dan",
+    at: "2025-03-04T11:30:00Z",
+  },
+  {
+    source: [
+      "Sollte eine Bestimmung dieses Vertrages unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt.",
+    ],
+    target: [
+      "Should any provision of this agreement be invalid, the validity of the remaining provisions shall remain unaffected.",
+    ],
     prev: "Änderungen dieses Vertrages bedürfen der Schriftform.",
     project: "Gewerbemietvertrag Lang",
     by: "Dan",
     at: "2025-03-04T11:31:00Z",
   },
-  { source: ["Ort, Datum"], target: ["Place, date"], project: "Gewerbemietvertrag Lang", by: "Dan", at: "2025-03-04T11:40:00Z" },
-  { source: ["Siehe § 536 BGB."], target: ["See section 536 BGB."], project: "Mietvertrag Schuster", by: "Eva Brandt", at: "2025-09-18T11:05:00Z" },
-  { source: ["Mietvertrag Schuster, Entwurf vom 22. April 2025"], target: ["Lease Schuster, draft of 22 April 2025"], project: "Mietvertrag Schuster", by: "Dan", at: "2025-04-22T16:00:00Z" },
+  {
+    source: ["Ort, Datum"],
+    target: ["Place, date"],
+    project: "Gewerbemietvertrag Lang",
+    by: "Dan",
+    at: "2025-03-04T11:40:00Z",
+  },
+  {
+    source: ["Siehe § 536 BGB."],
+    target: ["See section 536 BGB."],
+    project: "Mietvertrag Schuster",
+    by: "Eva Brandt",
+    at: "2025-09-18T11:05:00Z",
+  },
+  {
+    source: ["Mietvertrag Schuster, Entwurf vom 22. April 2025"],
+    target: ["Lease Schuster, draft of 22 April 2025"],
+    project: "Mietvertrag Schuster",
+    by: "Dan",
+    at: "2025-04-22T16:00:00Z",
+  },
 ];

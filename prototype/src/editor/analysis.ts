@@ -12,8 +12,16 @@ type Core = NonNullable<ReturnType<typeof core>>;
 export type Band = "cm" | "rep" | "100" | "95" | "85" | "75" | "50" | "new";
 
 export const BANDS: { id: Band; label: string; hint: string }[] = [
-  { id: "cm", label: "Context match", hint: "100% match whose preceding segment also matches (101%)" },
-  { id: "rep", label: "Repetitions", hint: "Text and tags occur earlier in this document" },
+  {
+    id: "cm",
+    label: "Context match",
+    hint: "100% match whose preceding segment also matches (101%)",
+  },
+  {
+    id: "rep",
+    label: "Repetitions",
+    hint: "Text and tags occur earlier in this document",
+  },
   { id: "100", label: "100%", hint: "Same text and tags as a memory unit" },
   { id: "95", label: "95% to 99%", hint: "" },
   { id: "85", label: "85% to 94%", hint: "" },
@@ -38,7 +46,8 @@ export function scoreLabel(score: number, context = false): string {
 }
 
 export function scoreDescription(score: number, context = false): string {
-  if (context && score === 100) return "Context match (101%): the text and the segment before it match";
+  if (context && score === 100)
+    return "Context match (101%): the text and the segment before it match";
   if (score === 100) return "Exact match (100%)";
   return `Fuzzy match, ${score}%`;
 }
@@ -58,18 +67,33 @@ export interface ScoredMatch {
  * Looks a segment up and marks context matches: Trados compares the
  * segment before ("previous"), memoQ the segments before and after ("both").
  */
-export function scoredLookup(c: Core, memories: MemoryInfo[], segments: Segment[], index: number, rule: ContextRule, min = 70, limit = 3): ScoredMatch[] {
+export function scoredLookup(
+  c: Core,
+  memories: MemoryInfo[],
+  segments: Segment[],
+  index: number,
+  rule: ContextRule,
+  min = 70,
+  limit = 3,
+): ScoredMatch[] {
   const seg = segments[index];
   if (!seg) return [];
   const prev = index > 0 ? plain(segments[index - 1]!.source) : "";
-  const next = index + 1 < segments.length ? plain(segments[index + 1]!.source) : "";
+  const next =
+    index + 1 < segments.length ? plain(segments[index + 1]!.source) : "";
   return lookupAll(c, memories, seg.source, min, limit + 3)
-    .filter((h) => !(h.memory.kind === "document" && h.docSegment === index + 1))
+    .filter(
+      (h) => !(h.memory.kind === "document" && h.docSegment === index + 1),
+    )
     .map((h) => ({
       unit: h,
       score: h.score,
       diff: diffAgainst(seg.source, h.source),
-      context: h.score === 100 && h.prev !== undefined && h.prev === prev && (rule === "previous" || (h.next !== undefined && h.next === next)),
+      context:
+        h.score === 100 &&
+        h.prev !== undefined &&
+        h.prev === prev &&
+        (rule === "previous" || (h.next !== undefined && h.next === next)),
     }))
     .sort((a, b) => Number(b.context) - Number(a.context) || b.score - a.score)
     .slice(0, limit);
@@ -86,14 +110,23 @@ export interface AnalysisRow {
  * then later occurrences of a repeated segment count as repetitions, then
  * the best match decides the band. Matches below 50% count as new.
  */
-export function analyze(c: Core, memories: MemoryInfo[], segments: Segment[], rule: ContextRule): { rows: AnalysisRow[]; words: number; segments: number } {
-  const rows = new Map<Band, AnalysisRow>(BANDS.map((b) => [b.id, { band: b.id, segments: 0, words: 0 }]));
+export function analyze(
+  c: Core,
+  memories: MemoryInfo[],
+  segments: Segment[],
+  rule: ContextRule,
+): { rows: AnalysisRow[]; words: number; segments: number } {
+  const rows = new Map<Band, AnalysisRow>(
+    BANDS.map((b) => [b.id, { band: b.id, segments: 0, words: 0 }]),
+  );
   const seen = new Set<string>();
   let words = 0;
   segments.forEach((s, i) => {
     const w = wordCount(s.source);
     words += w;
-    const best = memories.length ? scoredLookup(c, memories, segments, i, rule, 50, 1)[0] : undefined;
+    const best = memories.length
+      ? scoredLookup(c, memories, segments, i, rule, 50, 1)[0]
+      : undefined;
     const key = sourceKey(s.source);
     let band: Band;
     if (best?.context) band = "cm";

@@ -3,9 +3,18 @@ import { Cloud, HardDrive } from "lucide-react";
 import { lang, type LangCode, type Location, type TermStatus } from "../data";
 import { useStore } from "../store";
 
-export function LocationBadge({ location, server }: { location: Location; server?: string }) {
+export function LocationBadge({
+  location,
+  server,
+}: {
+  location: Location;
+  server?: string;
+}) {
   return location === "server" ? (
-    <span className="badge badge-server" title={server ? `On server ${server}` : "On server"}>
+    <span
+      className="badge badge-server"
+      title={server ? `On server ${server}` : "On server"}
+    >
       <Cloud size={13} aria-hidden="true" />
       Server
     </span>
@@ -17,10 +26,16 @@ export function LocationBadge({ location, server }: { location: Location; server
   );
 }
 
-const STATUS_LABEL: Record<TermStatus, string> = { approved: "Approved", proposed: "Proposed", forbidden: "Forbidden" };
+const STATUS_LABEL: Record<TermStatus, string> = {
+  approved: "Approved",
+  proposed: "Proposed",
+  forbidden: "Forbidden",
+};
 
 export function StatusBadge({ status }: { status: TermStatus }) {
-  return <span className={`status status-${status}`}>{STATUS_LABEL[status]}</span>;
+  return (
+    <span className={`status status-${status}`}>{STATUS_LABEL[status]}</span>
+  );
 }
 
 /** Language code chip. The full name is available to assistive technology. */
@@ -34,7 +49,15 @@ export function LangChip({ code }: { code: LangCode }) {
 }
 
 /** Text in a given language, marked up so screen readers and braille switch tables. */
-export function InLang({ code, children, className }: { code: LangCode; children: ReactNode; className?: string }) {
+export function InLang({
+  code,
+  children,
+  className,
+}: {
+  code: LangCode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <span lang={code} dir={lang(code).dir ?? "auto"} className={className}>
       {children}
@@ -42,7 +65,15 @@ export function InLang({ code, children, className }: { code: LangCode; children
   );
 }
 
-export function PageHeader({ title, children, description }: { title: string; children?: ReactNode; description?: ReactNode }) {
+export function PageHeader({
+  title,
+  children,
+  description,
+}: {
+  title: string;
+  children?: ReactNode;
+  description?: ReactNode;
+}) {
   return (
     <header className="page-header">
       <div>

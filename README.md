@@ -25,6 +25,7 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |
 | `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
 | `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
+| `filter/sdlpackage` | Trados project packages (.sdlppx): languages and bilingual files; return packages (.sdlrpx) with the translated files |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
 | `cmd/interlinea` | Command-line interface to all of the above |
 | `cmd/interlinea-wasm` | The filters, memories and termbase formats compiled to WebAssembly for the browser prototype |
@@ -127,6 +128,15 @@ interlinea xliff extract -json Mietvertrag.mqxliff > segments.json
 interlinea xliff merge -o Mietvertrag.docx.sdlxliff Mietvertrag.docx.sdlxliff updates.json
 ```
 
+Trados project packages:
+
+```
+interlinea package info "Mietvertrag Hofmann.sdlppx"
+interlinea package extract -o work "Mietvertrag Hofmann.sdlppx"
+# translate work/en-GB/*.sdlxliff, then:
+interlinea package return -o "Mietvertrag Hofmann.sdlrpx" "Mietvertrag Hofmann.sdlppx" work
+```
+
 `updates.json` maps segment IDs to `{"target": ..., "state": ...}` (target as
 a plain string or the run array `extract -json` prints) or to a plain string,
 which also sets the state to translated.
@@ -187,6 +197,11 @@ that match by primary language only (`de-AT` for `de-DE`).
   as tags; their deleted text is not translatable. Files in UTF-8 or UTF-16
   are written back in the same encoding. Not read yet: `alt-trans`
   suggestions in XLIFF 1.2 and the XLIFF 2 matches module.
+- Trados packages: a return package holds the package's project file with
+  `PackageType="ReturnPackage"` (every other byte as it was, so Trados
+  matches it to its project) and the package's SDLXLIFF files, the
+  translated ones replaced; memories, termbases and settings are not sent
+  back. memoQ handoff packages (.mqout) are not read yet.
 - Termbases: an entry is one concept with its terms per language, as in
   MultiTerm, memoQ and TBX. Statuses map to TBX `administrativeStatus`
   (approved = preferredTerm, proposed = admittedTerm, forbidden =
@@ -278,7 +293,9 @@ Bilingual files from Trados (.sdlxliff), memoQ (.mqxliff) and other tools
 languages come from the file, translated segments arrive confirmed,
 locked segments are read-only, reviewer approvals and rejections are
 shown, and "Save XLIFF" writes the file back under its own name with only
-the changed segments and states.
+the changed segments and states. A Trados project package (.sdlppx) opens
+one of its files to translate, and "Save return package" writes the
+.sdlrpx.
 Terminology manages termbases: create, rename and delete them, set their
 languages and fields, add and edit entries, terms and statuses, find and
 merge duplicates, import TBX, MultiTerm XML, Excel and CSV files (with column

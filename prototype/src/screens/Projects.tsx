@@ -30,11 +30,19 @@ export function Projects() {
   function pendingChanges(projectId: string): number {
     const p = state.projects.find((x) => x.id === projectId)!;
     if (p.setup.mode !== "layered" || !p.setup.projectTermbaseId) return 0;
-    const pe = state.entries.filter((e) => e.termbaseId === p.setup.projectTermbaseId);
+    const pe = state.entries.filter(
+      (e) => e.termbaseId === p.setup.projectTermbaseId,
+    );
     let n = 0;
     for (const mid of p.setup.masters) {
       const m = state.termbases.find((t) => t.id === mid)!;
-      n += computeChanges(pe, m, state.entries.filter((e) => e.termbaseId === mid), state.baseSnapshots, state.branchedAt[p.id] ?? p.createdAt).length;
+      n += computeChanges(
+        pe,
+        m,
+        state.entries.filter((e) => e.termbaseId === mid),
+        state.baseSnapshots,
+        state.branchedAt[p.id] ?? p.createdAt,
+      ).length;
     }
     return n;
   }
@@ -56,9 +64,16 @@ export function Projects() {
         <Upload size={22} aria-hidden="true" className="dropzone-icon" />
         <div className="dropzone-text">
           <h2 id="dz-title">Start a project from a document</h2>
-          <p>Drop a file here. Interlinea detects the source language and suggests termbases for the client.</p>
+          <p>
+            Drop a file here. Interlinea detects the source language and
+            suggests termbases for the client.
+          </p>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => input.current?.click()}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => input.current?.click()}
+        >
           Choose document
         </button>
         <input
@@ -84,7 +99,12 @@ export function Projects() {
                 type="button"
                 className="btn btn-quiet btn-small"
                 onClick={() => {
-                  setPendingDoc({ file: d.file, words: d.words, text: d.text || null, client: d.client });
+                  setPendingDoc({
+                    file: d.file,
+                    words: d.words,
+                    text: d.text || null,
+                    client: d.client,
+                  });
                   go({ page: "new" });
                 }}
               >
@@ -121,12 +141,17 @@ export function Projects() {
             </thead>
             <tbody>
               {state.projects.map((p) => {
-                const masters = p.setup.masters.map((id) => state.termbases.find((t) => t.id === id)!).filter(Boolean);
+                const masters = p.setup.masters
+                  .map((id) => state.termbases.find((t) => t.id === id)!)
+                  .filter(Boolean);
                 const changes = pendingChanges(p.id);
                 return (
                   <tr key={p.id}>
                     <td>
-                      <a className="cell-title cell-link" href={`#/editor/${p.id}`}>
+                      <a
+                        className="cell-title cell-link"
+                        href={`#/editor/${p.id}`}
+                      >
                         {p.name}
                       </a>
                       <div className="cell-sub">{p.file}</div>
@@ -142,12 +167,18 @@ export function Projects() {
                     </td>
                     <td>
                       <div className="cell-title">
-                        {p.setup.mode === "direct" ? "Writes to master" : p.setup.mode === "own" ? "Own termbase" : w("projectTermbase")}
+                        {p.setup.mode === "direct"
+                          ? "Writes to master"
+                          : p.setup.mode === "own"
+                            ? "Own termbase"
+                            : w("projectTermbase")}
                       </div>
                       <div className="cell-sub">
                         {masters.length > 0 ? (
                           <>
-                            {p.setup.mode === "direct" ? "" : `${w("basedOn")} `}
+                            {p.setup.mode === "direct"
+                              ? ""
+                              : `${w("basedOn")} `}
                             {masters.map((m) => m.name).join(", ")}
                           </>
                         ) : (
@@ -158,7 +189,13 @@ export function Projects() {
                     </td>
                     <td className="num">{fmtNum(p.words)}</td>
                     <td className="num">{Math.round(p.progress * 100)}%</td>
-                    <td>{p.due ? fmtDate(p.due) : <span className="muted">None</span>}</td>
+                    <td>
+                      {p.due ? (
+                        fmtDate(p.due)
+                      ) : (
+                        <span className="muted">None</span>
+                      )}
+                    </td>
                     <td className="cell-action">
                       {changes > 0 && (
                         <a className="btn btn-small" href={`#/merge/${p.id}`}>

@@ -122,6 +122,9 @@ func main() {
 	for k, v := range xliffFuncs() {
 		api[k] = v
 	}
+	for k, v := range packageFuncs() {
+		api[k] = v
+	}
 	js.Global().Set("interlineaCore", api)
 	if cb := js.Global().Get("interlineaCoreReady"); cb.Type() == js.TypeFunction {
 		cb.Invoke()

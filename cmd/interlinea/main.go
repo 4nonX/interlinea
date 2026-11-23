@@ -30,6 +30,7 @@ var commands = []command{
 	{"extract", "list the translatable units of a Word document", runExtract},
 	{"merge", "write a translated copy of a Word document", runMerge},
 	{"xliff", "bilingual XLIFF, SDLXLIFF and MQXLIFF files: info, extract, merge", runXLIFF},
+	{"package", "Trados project packages: info, extract, return package", runPackage},
 	{"term", "termbase files: info, convert (TBX, MultiTerm, CSV, Excel), duplicates", runTerm},
 	{"termbase", "manage stored termbases (create, import, export, search, edit history, ...)", runTermbase},
 	{"version", "print the version", runVersion},

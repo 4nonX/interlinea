@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { BookText, FolderOpen, GitBranch, Settings as SettingsIcon } from "lucide-react";
+import {
+  BookText,
+  FolderOpen,
+  GitBranch,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { StoreProvider, useStore } from "./store";
 import { Toast } from "./components/ui";
 import { Projects } from "./screens/Projects";
@@ -21,9 +26,15 @@ export function parseRoute(hash: string): Route {
   const [page, a, b] = hash.replace(/^#\/?/, "").split("/");
   switch (page) {
     case "new":
-      return a === "sample" && b !== undefined ? { page: "new", sample: Number(b) } : { page: "new" };
+      return a === "sample" && b !== undefined
+        ? { page: "new", sample: Number(b) }
+        : { page: "new" };
     case "terminology":
-      return { page: "terminology", termbaseId: a || undefined, entryId: b || undefined };
+      return {
+        page: "terminology",
+        termbaseId: a || undefined,
+        entryId: b || undefined,
+      };
     case "merge":
       return a ? { page: "merge", projectId: a } : { page: "projects" };
     case "editor":
@@ -82,7 +93,15 @@ function useRoute(): Route {
     window.addEventListener("popstate", onHash);
     // Plain links inside the app navigate through go().
     const onClick = (e: MouseEvent) => {
-      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.shiftKey ||
+        e.altKey
+      )
+        return;
       const a = (e.target as Element | null)?.closest?.("a[href^='#/']");
       if (!a) return;
       e.preventDefault();
@@ -101,11 +120,29 @@ function useRoute(): Route {
 
 function Rail({ route }: { route: Route }) {
   const { state } = useStore();
-  const active = route.page === "new" || route.page === "merge" || route.page === "editor" ? "projects" : route.page;
+  const active =
+    route.page === "new" || route.page === "merge" || route.page === "editor"
+      ? "projects"
+      : route.page;
   const items = [
-    { id: "projects", label: "Projects", icon: FolderOpen, to: { page: "projects" } as Route },
-    { id: "terminology", label: "Terminology", icon: BookText, to: { page: "terminology" } as Route },
-    { id: "settings", label: "Settings", icon: SettingsIcon, to: { page: "settings" } as Route },
+    {
+      id: "projects",
+      label: "Projects",
+      icon: FolderOpen,
+      to: { page: "projects" } as Route,
+    },
+    {
+      id: "terminology",
+      label: "Terminology",
+      icon: BookText,
+      to: { page: "terminology" } as Route,
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: SettingsIcon,
+      to: { page: "settings" } as Route,
+    },
   ];
   return (
     <nav className="rail" aria-label="Main">
@@ -122,7 +159,10 @@ function Rail({ route }: { route: Route }) {
       <ul>
         {items.map(({ id, label, icon: Icon, to }) => (
           <li key={id}>
-            <a href={href(to)} aria-current={active === id ? "page" : undefined}>
+            <a
+              href={href(to)}
+              aria-current={active === id ? "page" : undefined}
+            >
               <Icon size={17} aria-hidden="true" />
               {label}
             </a>
@@ -157,7 +197,9 @@ function Screen({ route }: { route: Route }) {
       // A new sample link starts a fresh flow rather than reusing the open one.
       return <NewProject key={route.sample ?? "file"} sample={route.sample} />;
     case "terminology":
-      return <Terminology termbaseId={route.termbaseId} entryId={route.entryId} />;
+      return (
+        <Terminology termbaseId={route.termbaseId} entryId={route.entryId} />
+      );
     case "merge":
       return <MergeReview projectId={route.projectId} />;
     case "editor":
@@ -175,7 +217,10 @@ function Shell() {
         Skip to content
       </a>
       <Rail route={route} />
-      <main id="main" className={route.page === "editor" ? "main main-editor" : "main"}>
+      <main
+        id="main"
+        className={route.page === "editor" ? "main main-editor" : "main"}
+      >
         <Screen route={route} />
       </main>
       <Toast />

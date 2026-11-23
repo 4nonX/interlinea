@@ -95,6 +95,8 @@ export interface NewProjectInput {
     blocks: Block[];
     bytes: Uint8Array;
     format: "docx" | "xliff";
+    /** The Trados project package the file came from. */
+    sdlPackage?: { bytes: Uint8Array; name: string; path: string };
   };
 }
 
@@ -308,7 +310,11 @@ function reducer(state: State, action: Action): State {
             : undefined,
         blocks: input.extracted?.blocks,
         original: input.extracted
-          ? { bytes: input.extracted.bytes, format: input.extracted.format }
+          ? {
+              bytes: input.extracted.bytes,
+              format: input.extracted.format,
+              sdlPackage: input.extracted.sdlPackage,
+            }
           : undefined,
       };
       return {
