@@ -36,6 +36,12 @@ add_library(interlinea_app STATIC
     src/signindialog.cpp
     src/settingspage.cpp
     src/mainwindow.cpp
+    src/languages.cpp
+    src/projectsmodel.cpp
+    src/settingseditor.cpp
+    src/newprojectdialog.cpp
+    src/projectpage.cpp
+    src/projectspage.cpp
 )
 target_include_directories(interlinea_app PUBLIC src)
 target_compile_definitions(interlinea_app PUBLIC INTERLINEA_VERSION="${INTERLINEA_VERSION}")
@@ -90,7 +96,7 @@ if(INTERLINEA_BUILD_CORE)
 endif()
 
 enable_testing()
-foreach(name apiclient eventfeed secretstore providersignin connections ui)
+foreach(name apiclient eventfeed secretstore providersignin connections ui projects)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_app Qt6::Test)

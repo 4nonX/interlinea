@@ -394,6 +394,15 @@ Access: those who make projects (manage on all projects) and administrators.
 - Answer: 201 Created: [ProjectView](#projectview)
 - Errors: 401, 403, 422 (see [Error](#error))
 
+### `GET /api/projects/defaults`
+
+Returns the settings a new project starts with, its terminology kept on this server.
+
+Access: signed in.
+
+- Answer: 200 OK: [project.Settings](#projectsettings)
+- Errors: 401, 403 (see [Error](#error))
+
 ### `GET /api/projects/{id}`
 
 Returns a project: its settings, files and status, and the person's access.
@@ -615,6 +624,16 @@ Access: manage on the project.
 - Body: {`lang`: string, `prepare`: [project.Prepare](#projectprepare) or null}
 - Answer: 200 OK: list of {`filled`: integer, `lang`: string}
 - Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `GET /api/projects/{id}/progress`
+
+Counts, for each translatable file and target language, the segments and words to translate and how many are confirmed.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path)
+- Answer: 200 OK: list of [FileProgress](#fileprogress)
+- Errors: 401, 403, 404 (see [Error](#error))
 
 ### `POST /api/projects/{id}/qa`
 
@@ -1532,6 +1551,20 @@ apiError is the body of every error answer.
 | `code` | string | Code is stable for the apps: badRequest, signIn, credentials, forbidden, notFound, exists, conflict, invalid, badFile, inUse, locked, closed, decided, needsResolution, notProject, notOnServer, lastAdmin, tooMany, tooLarge, server. |
 | `message` | string | Message says what went wrong, for people. |
 | `problems` | list of [project.Problem](#projectproblem) | Problems are the problems of a refused request, by field. |
+
+### FileProgress
+
+fileProgress is how far a file is in one target language.
+
+| Field | Type | Description |
+|---|---|---|
+| `confirmed` | integer |  |
+| `confirmedWords` | integer |  |
+| `draft` | integer |  |
+| `file` | string |  |
+| `lang` | string |  |
+| `segments` | integer | Segments and Words count what is to translate (not locked); Confirmed and ConfirmedWords what is confirmed, Draft what has a translation not confirmed yet. |
+| `words` | integer |  |
 
 ### FileUpload
 

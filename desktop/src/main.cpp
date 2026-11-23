@@ -1,6 +1,7 @@
 #include "connectionmanager.h"
 #include "corelauncher.h"
 #include "mainwindow.h"
+#include "projectspage.h"
 #include "settingspage.h"
 #include "singleinstance.h"
 
@@ -11,6 +12,7 @@
 #include <QLocale>
 #include <QSettings>
 #include <QStyle>
+#include <QTimer>
 #include <QTranslator>
 
 // The person's name for their account on this computer: the one they gave,
@@ -48,9 +50,17 @@ int main(int argc, char *argv[])
     ConnectionManager connections(&core);
 
     MainWindow window(&connections);
+    auto *projects = new ProjectsPage(&connections, &window);
+    window.addPage(QStringLiteral("projects"), QObject::tr("Projects"), app.style()->standardIcon(QStyle::SP_DirIcon), projects,
+                   QKeySequence(QStringLiteral("Ctrl+1")));
     window.addPage(QStringLiteral("settings"), QObject::tr("Settings"), app.style()->standardIcon(QStyle::SP_FileDialogDetailedView),
                    new SettingsPage(&connections, &window), QKeySequence(QStringLiteral("Ctrl+,")));
-    QObject::connect(&instance, &SingleInstance::activated, &window, [&window](const QStringList &) {
+    QObject::connect(&instance, &SingleInstance::activated, &window, [&window, projects](const QStringList &files) {
+        // Documents opened with Interlinea start a project.
+        if (!files.isEmpty()) {
+            window.showPage(QStringLiteral("projects"));
+            projects->newProject(files);
+        }
         window.showNormal();
         window.raise();
         window.activateWindow();
@@ -59,5 +69,9 @@ int main(int argc, char *argv[])
 
     connections.start();
     window.show();
+    if (app.arguments().size() > 1) {
+        QStringList files = app.arguments().mid(1);
+        QTimer::singleShot(0, projects, [projects, files] { projects->newProject(files); });
+    }
     return app.exec();
 }

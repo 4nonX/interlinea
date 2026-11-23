@@ -254,6 +254,34 @@
         },
         "type": "object"
       },
+      "FileProgress": {
+        "description": "fileProgress is how far a file is in one target language.",
+        "properties": {
+          "confirmed": {
+            "type": "integer"
+          },
+          "confirmedWords": {
+            "type": "integer"
+          },
+          "draft": {
+            "type": "integer"
+          },
+          "file": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "segments": {
+            "description": "Segments and Words count what is to translate (not locked); Confirmed and ConfirmedWords what is confirmed, Draft what has a translation not confirmed yet.",
+            "type": "integer"
+          },
+          "words": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "FileUpload": {
         "description": "fileUpload is a file as the apps send it: the original bytes (base64 in JSON) and, for a file to translate, its segments per target language as the app's filters read them. fileUpload is a file sent to a project.",
         "properties": {
@@ -5713,6 +5741,37 @@
         ]
       }
     },
+    "/api/projects/defaults": {
+      "get": {
+        "description": "Access: signed in.",
+        "operationId": "projectDefaults",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/project.Settings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Returns the settings a new project starts with, its terminology kept on this server.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/api/projects/{id}": {
       "delete": {
         "description": "Its memories and termbase stay: they may be used by other projects, and are deleted on their own.\n\nAccess: manage on the project.",
@@ -6937,6 +6996,54 @@
           }
         },
         "summary": "Fills a target language's empty segments (or all languages') from the project's memories, as its settings say.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/progress": {
+      "get": {
+        "description": "Access: read on the project, or work in it.",
+        "operationId": "projectProgress",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FileProgress"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Counts, for each translatable file and target language, the segments and words to translate and how many are confirmed.",
         "tags": [
           "Projects"
         ]

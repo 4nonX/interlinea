@@ -235,3 +235,21 @@ func TestTradosPackageProject(t *testing.T) {
 		t.Fatalf("package added later: %d %s", r.status, r.body)
 	}
 }
+
+func TestDefaultsAndProgress(t *testing.T) {
+	te := newTeam(t)
+	var set project.Settings
+	te.call("GET", "/api/projects/defaults", te.ben, nil, 200, &set)
+	if !set.ProjectMemory || set.Terminology.Location != project.Server || set.Prepare.MinScore != 100 {
+		t.Fatalf("defaults %+v", set)
+	}
+	p := te.createLease()
+	base := fmt.Sprintf("/api/projects/%d", p.ID)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "en-GB", "s2", 1), te.pm, project.Edit{Target: content.Text("The tenant pays the rent."), Status: project.StatusConfirmed}, 200, nil)
+	te.call("PUT", segPath(p.ID, "Mietvertrag.txt", "en-GB", "s3", 1), te.pm, project.Edit{Target: content.Text("The deposit"), Status: project.StatusDraft}, 200, nil)
+	var prog []fileProgress
+	te.call("GET", base+"/progress", te.pm, nil, 200, &prog)
+	if len(prog) != 2 || prog[0].Lang != "en-GB" || prog[0].Segments != 4 || prog[0].Confirmed != 1 || prog[0].ConfirmedWords != 5 || prog[0].Draft != 1 || prog[0].Words < 13 || prog[1].Confirmed != 0 {
+		t.Fatalf("progress %+v", prog)
+	}
+}

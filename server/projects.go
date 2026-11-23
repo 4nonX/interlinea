@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter/sdlpackage"
@@ -28,7 +29,9 @@ func (s *Server) projectRoutes() {
 	s.handle("POST /api/files/inspect", s.signedIn(s.inspectFile))
 	s.handle("GET /api/projects", s.signedIn(s.listProjects))
 	s.handle("POST /api/projects", s.signedIn(s.createProject))
+	s.handle("GET /api/projects/defaults", s.signedIn(s.projectDefaults))
 	s.handle("GET /api/projects/{id}", s.signedIn(s.getProject))
+	s.handle("GET /api/projects/{id}/progress", s.signedIn(s.projectProgress))
 	s.handle("PUT /api/projects/{id}/settings", s.signedIn(s.updateProjectSettings))
 	s.handle("DELETE /api/projects/{id}", s.signedIn(s.deleteProject))
 	s.handle("POST /api/projects/{id}/files", s.signedIn(s.addProjectFile))
@@ -760,6 +763,78 @@ func keepPackages(cur, sent []project.File) []project.File {
 		out[i] = f
 	}
 	return out
+}
+
+// projectDefaults returns the settings a new project starts with, its
+// terminology kept on this server.
+//
+// Access: signed in.
+func (s *Server) projectDefaults(w http.ResponseWriter, r *http.Request, me session) {
+	set := project.Defaults()
+	set.Terminology.Location = project.Server
+	set.TargetLangs, set.Files = []string{}, []project.File{}
+	writeJSON(w, http.StatusOK, set)
+}
+
+// fileProgress is how far a file is in one target language.
+type fileProgress struct {
+	File string `json:"file"`
+	Lang string `json:"lang"`
+	// Segments and Words count what is to translate (not locked);
+	// Confirmed and ConfirmedWords what is confirmed, Draft what has a
+	// translation not confirmed yet.
+	Segments       int `json:"segments"`
+	Words          int `json:"words"`
+	Confirmed      int `json:"confirmed"`
+	ConfirmedWords int `json:"confirmedWords"`
+	Draft          int `json:"draft"`
+}
+
+// projectProgress counts, for each translatable file and target language,
+// the segments and words to translate and how many are confirmed.
+//
+// Access: read on the project, or work in it.
+func (s *Server) projectProgress(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	out := []fileProgress{}
+	for _, f := range p.Settings.Files {
+		if f.Role != project.Translatable {
+			continue
+		}
+		langs := p.Settings.TargetLangs
+		if f.TargetLang != "" {
+			langs = []string{f.TargetLang}
+		}
+		for _, lang := range langs {
+			segs, err := s.cfg.Projects.Segments(ctx, p.ID, f.Name, lang)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			fp := fileProgress{File: f.Name, Lang: lang}
+			for _, sg := range segs {
+				if sg.Locked {
+					continue
+				}
+				n := analysis.Count(sg.Source).Words
+				fp.Segments++
+				fp.Words += n
+				switch sg.Status {
+				case project.StatusConfirmed:
+					fp.Confirmed++
+					fp.ConfirmedWords += n
+				case project.StatusDraft:
+					fp.Draft++
+				}
+			}
+			out = append(out, fp)
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // contentTypes are the types of the formats the apps store.
