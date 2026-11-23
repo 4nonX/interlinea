@@ -396,6 +396,30 @@ npm run build
 npm run e2e
 ```
 
+With `INTERLINEA_SERVER` set to a built `interlinea-server`, they also start
+the team server with the build as its web app and test working on it (CI
+always does).
+
+**On a team server.** Settings signs in to a team server (the one serving
+the web app is offered; passwords, or the server's identity provider).
+Projects then lists the projects on the server you may see, with the work
+given to you. New project asks, at the review, whether the project is kept
+on this computer or on the server; on the server, memories and master
+termbases it doesn't have yet are uploaded with the project, which gets its
+own memory per language and its project termbase there. A server project's
+page shows its details, files, the work given out (managers give out files,
+languages or segment ranges to translators and reviewers, with due dates;
+everyone reports their own work done) and who is working now.
+
+The editor opens a server project from the server: the original files are
+read here with the same filters, for the preview and the limits and notes of
+bilingual files, and the server's segments give the translations. Segments
+not given to you are read-only and say whose they are. Translations are
+saved on the server as you type and confirm; when someone else saved first,
+their version is shown and you are told. Others' translations, new terms and
+memory units arrive live, and markers show who has which segment open.
+Nothing of a server project is saved in the browser; the sign-in is.
+
 New project starts blank, from a template, or like an earlier project, then
 takes the files and languages, the memories, the terminology and a review,
 each checked by the core's project validation:
