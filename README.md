@@ -33,6 +33,7 @@ Milestone 1: core foundation, the first file filter (Word) and termbase exchange
 | `project` | Project setups: languages, translatable and reference files, memories per target language (lookup, concordance, update, penalty), terminology (project termbase over masters, directly into a master, own), context rule, QA switches, preparation; validation that names the field of every problem; templates; pre-translation from memories as the analysis counts matches |
 | `project/projectdb` | Persistent projects in a SQLite file or PostgreSQL: settings, files with their bytes, segments per file and target language with versions that refuse stale saves, target languages added or removed later, pre-translation applied safely, templates, change log for syncing |
 | `auth/authdb` | Accounts with Argon2id passwords, OpenID Connect identities, sign-in tokens (only their hashes stored), roles read < suggest < edit < approve < manage on projects, memories, termbases or everything; the last administrator is kept; change log; SQLite or PostgreSQL |
+| `auth/oidc` | OpenID Connect sign-in (Entra ID, Google, Keycloak and others): discovery, authorization code with PKCE, ID token checks (RS256, PS256, ES256 against the provider's keys, issuer, audience, expiry, nonce) |
 | `cmd/interlinea` | Command-line interface to all of the above |
 | `cmd/interlinea-wasm` | The filters, memories, termbase formats, QA, analysis, project validation and pre-translation compiled to WebAssembly for the browser prototype |
 

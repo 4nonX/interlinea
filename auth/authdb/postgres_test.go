@@ -77,7 +77,7 @@ func TestRunsOnPostgres(t *testing.T) {
 	if pgDSN() == "" {
 		t.Fatal("built with the postgres tag but INTERLINEA_TEST_POSTGRES is not set")
 	}
-	db, _ := openTemp(t)
+	db, _, _ := openTemp(t)
 	if db.d != sqlstore.Postgres {
 		t.Fatalf("dialect = %v", db.d)
 	}
