@@ -1222,7 +1222,7 @@ export function Editor({
                     ) : isActive ? (
                       <>
                         <TargetEditor
-                          key={s.id}
+                          key={`${s.id}:${s.rev ?? 0}`}
                           ref={editor}
                           initial={s.target}
                           lang={target}

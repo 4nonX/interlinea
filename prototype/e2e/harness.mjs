@@ -10,6 +10,7 @@ import { mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, extname, dirname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { startIdp } from "./idp.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const fixtures = join(here, "fixtures");
@@ -74,6 +75,7 @@ function findChrome() {
  * folder and an administrator, and waits until it answers.
  */
 async function startTeamServer() {
+  const idp = await startIdp();
   const bin = process.env.INTERLINEA_SERVER;
   if (!bin || !existsSync(bin))
     throw new Error("set INTERLINEA_SERVER to a built interlinea-server");
@@ -87,7 +89,10 @@ async function startTeamServer() {
   const log = [];
   const proc = spawn(
     bin,
-    ["-addr", `127.0.0.1:${port}`, "-data", data, "-web", dist, "-public-url", `http://127.0.0.1:${port}`],
+    [
+      "-addr", `127.0.0.1:${port}`, "-data", data, "-web", dist, "-public-url", `http://127.0.0.1:${port}`,
+      "-oidc-issuer", idp.issuer, "-oidc-client-id", idp.clientId, "-oidc-name", "Test IdP", "-oidc-create-users",
+    ],
     {
       env: {
         ...process.env,
@@ -103,13 +108,22 @@ async function startTeamServer() {
   for (let i = 0; i < 300; i++) {
     try {
       if ((await fetch(`${url}/healthz`)).ok)
-        return { url, close: () => proc.kill(), log: () => log.join("") };
+        return {
+          url,
+          idp,
+          close: () => {
+            proc.kill();
+            idp.close();
+          },
+          log: () => log.join(""),
+        };
     } catch {
       // Starting.
     }
     await sleep(100);
   }
   proc.kill();
+  idp.close();
   throw new Error(`the team server did not start:\n${log.join("")}`);
 }
 
@@ -338,6 +352,8 @@ export async function start({ teamServer = false } = {}) {
     downloads,
     fixtures,
     samples,
+    // The team server's test identity provider, with teamServer.
+    idp: team?.idp,
     finish,
   };
 }

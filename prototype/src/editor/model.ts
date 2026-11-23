@@ -137,6 +137,8 @@ export interface Segment {
   locked?: boolean;
   /** Why a locked segment is locked, when not the file ("Assigned to Carl"). */
   lockedReason?: string;
+  /** Counts replacements from the team server, so an open editor shows the new text. */
+  rev?: number;
   /** Longest the translation may be, in characters, as the file says. */
   maxLength?: number;
   /**

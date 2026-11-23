@@ -10,7 +10,7 @@ import { run, call, ADMIN_PASSWORD } from "./harness.mjs";
 export default () =>
   run(
     "Team server",
-    async ({ base, send, evaluate, click, text, body, check, sleep, open, setValue, key, samples, waitFor }) => {
+    async ({ base, send, evaluate, click, text, body, check, sleep, open, setValue, key, samples, waitFor, idp }) => {
       const api = (method, path, token, b) => call(base, method, path, token, b);
       const admin = (await api("POST", "/api/auth/password", null, { username: "anna", password: ADMIN_PASSWORD })).token;
 
@@ -226,6 +226,23 @@ export default () =>
         "the confirmed translation is saved on the server: " + JSON.stringify(saved?.target),
       );
 
+      // Ben types in his second segment while Anna saves it first: Ben is
+      // told, and sees Anna's translation.
+      check(await waitFor("!!document.querySelector('.seg.is-active .target-editor')"), "the next segment is open");
+      await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+      await send("Input.insertText", { text: " Ben's words" });
+      const s2 = (await api("GET", `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}`, admin)).find((x) => x.id === segs[1].id);
+      await api(
+        "PUT",
+        `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}&segment=${s2.id}&version=${s2.version}`,
+        admin,
+        { target: [{ text: "Anna was first" }], status: "draft" },
+      );
+      check(await waitFor("document.body.innerText.includes('changed this segment on the server first')", 10000), "Ben is told someone saved first");
+      check(await waitFor("document.querySelector('.segments').innerText.includes('Anna was first')", 10000), "Ben sees the translation saved first");
+      const kept = (await api("GET", `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}`, admin)).find((x) => x.id === segs[1].id);
+      check(JSON.stringify(kept.target).includes("Anna was first") && kept.changedBy === "anna", "the server keeps the translation saved first");
+
       // Anna translates segment 4 elsewhere: it shows here without reloading.
       const s4 = segs[3];
       await api(
@@ -312,6 +329,20 @@ export default () =>
       await sleep(100);
       await click("section[aria-labelledby=srvmem-title] button", "Search");
       check(await waitFor("document.querySelector('section[aria-labelledby=srvmem-title]').innerText.includes('Tenancy agreement')", 10000), "the memory is searched on the server");
+
+      // Eva signs in through the identity provider: the server makes her an
+      // account (with no roles) on her first sign-in.
+      await open("/settings", { keep: true });
+      await click("button", "Sign out");
+      check(await waitFor("document.querySelector('main').innerText.includes('Sign in with Test IdP')"), "the provider is offered");
+      idp.signInAs({ sub: "eva-1", preferred_username: "eva", name: "Eva Brandt", email: "eva@agentur.example", email_verified: true });
+      await click("button", "Sign in with Test IdP");
+      check(await waitFor("document.querySelector('main')?.innerText.includes('Signed in as Eva Brandt')", 20000), "signed in through the provider");
+      check(!(await evaluate("location.hash")).includes("interlinea-code"), "the one-time code is gone from the address");
+      const eva = (await api("GET", "/api/users", admin)).find((u) => u.username === "eva");
+      check(!!eva && !eva.hasPassword && eva.email === "eva@agentur.example" && !eva.admin, "her account was made, without a password or roles");
+      const ids = await api("GET", `/api/users/${eva.id}/identities`, admin);
+      check(ids.length === 1 && ids[0].subject === "eva-1" && ids[0].issuer === idp.issuer, "linked to her provider sign-in");
 
       // Nothing from the server is kept in the browser.
       await open("/projects", { keep: true });

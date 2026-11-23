@@ -180,6 +180,7 @@ export function qaOf(q: CoreSettings["qa"]) {
 function segmentOf(s: StoredSegment, local?: Segment): Segment {
   return {
     ...(local ?? {}),
+    rev: (local?.rev ?? 0) + 1,
     id: s.id,
     source: coreToRuns(s.source ?? []),
     target: coreToRuns(s.target ?? []),
