@@ -94,6 +94,9 @@ jobs:
       - name: core for the browser
         working-directory: .
         run: make wasm
+      - name: team server for the browser tests
+        working-directory: .
+        run: go build -o bin/interlinea-server ./cmd/interlinea-server
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -104,3 +107,5 @@ jobs:
         run: npm run build
       - name: browser tests
         run: npm run e2e
+        env:
+          INTERLINEA_SERVER: ${{ github.workspace }}/bin/interlinea-server

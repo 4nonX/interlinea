@@ -47,11 +47,28 @@ export async function renameSavedMemory(from: string, to: string) {
   await remove(SAVED + from);
 }
 
+// Memories of team-server projects: loaded from the server's TMX, kept by
+// the server, never saved in the browser.
+const remote = new Set<string>();
+
+/**
+ * Opens a team-server memory in the core from the server's TMX, replacing
+ * what was opened under its name before.
+ */
+export function openRemoteMemory(c: CoreApi, m: TranslationMemory, tmx: Uint8Array | null): void {
+  remote.add(m.name);
+  tm.open(c, m.name, m.sourceLang, m.targetLang);
+  if (tmx) tm.importTMX(c, m.name, tmx);
+  opened.add(m.name);
+}
+
 /** Saves a memory after it changed, so the next visit has it. */
 export async function persistMemory(
   c: CoreApi,
   name: string,
 ): Promise<boolean> {
+  // The server stores what is confirmed in its projects' memories.
+  if (remote.has(name)) return true;
   const bytes = tm.exportTMX(c, name);
   saved.set(name, bytes);
   return save(SAVED + name, bytes);
@@ -129,6 +146,11 @@ export function openMemory(
   projects: Project[],
 ): void {
   if (opened.has(m.name)) return;
+  // A team-server memory not loaded yet: open empty until it is.
+  if (m.remote) {
+    openRemoteMemory(c, m, null);
+    return;
+  }
   tm.open(c, m.name, m.sourceLang, m.targetLang);
   const bytes = saved.get(m.name);
   if (bytes) tm.importTMX(c, m.name, bytes);

@@ -15,6 +15,8 @@ import { chosenFiles, droppedFiles, type ChosenFile } from "../files";
 import { fmtDate, fmtNum, plural } from "../format";
 import { LangChip, LocationBadge, PageHeader } from "../components/ui";
 import { go } from "../App";
+import { remoteId, useRemote } from "../remote";
+import type { ServerProjectSummary } from "../server";
 
 export function Projects() {
   const { state } = useStore();
@@ -161,9 +163,11 @@ export function Projects() {
         </ul>
       </div>
 
+      <ServerProjects />
+
       <section aria-labelledby="recent-title" className="section">
         <h2 id="recent-title" className="section-title">
-          Recent projects
+          On this computer
         </h2>
         <div className="table-wrap">
           <table className="table">
@@ -185,7 +189,7 @@ export function Projects() {
               </tr>
             </thead>
             <tbody>
-              {state.projects.map((p) => {
+              {state.projects.filter((p) => !p.remote).map((p) => {
                 const masters = p.setup.masters
                   .map((id) => state.termbases.find((t) => t.id === id)!)
                   .filter(Boolean);
@@ -284,4 +288,115 @@ function filesLine(p: Project): string {
   return refs
     ? `${first}, ${plural(refs, "reference file", "reference files")}`
     : first;
+}
+
+/** The projects on the team server the signed-in person may see. */
+function ServerProjects() {
+  const r = useRemote();
+  if (!r.conn) return null;
+  const host = new URL(r.conn.url).host;
+  const mine = (p: ServerProjectSummary) => r.work.filter((a) => a.projectId === p.id);
+  return (
+    <section aria-labelledby="server-title" className="section">
+      <h2 id="server-title" className="section-title">
+        On the team server
+      </h2>
+      {r.error && (
+        <p className="error" role="alert">
+          {r.error}
+        </p>
+      )}
+      {r.projects === null ? (
+        <p className="muted" role="status">
+          Loading the projects on {host}…
+        </p>
+      ) : r.projects.length === 0 ? (
+        <p className="muted">
+          No projects on {host} for you yet. Projects you make there, or work
+          given to you, appear here.
+        </p>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col">Project</th>
+                <th scope="col">Languages</th>
+                <th scope="col">Your work</th>
+                <th scope="col" className="num">
+                  Done
+                </th>
+                <th scope="col">Due</th>
+                <th scope="col">
+                  <span className="sr-only">Settings</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.projects.map((p) => {
+                const id = remoteId(p.id);
+                const work = mine(p);
+                const s = p.settings;
+                return (
+                  <tr key={p.id}>
+                    <td>
+                      <a className="cell-title cell-link" href={`#/editor/${id}`}>
+                        {s.name}
+                      </a>
+                      <div className="cell-sub">
+                        {s.client ? `${s.client}, ` : ""}
+                        {plural(s.files.filter((f) => f.role === "translatable").length, "file", "files")}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="lang-pair">
+                        <LangChip code={s.sourceLang} />
+                        <span aria-label="to">→</span>
+                        {s.targetLangs.map((c) => (
+                          <LangChip key={c} code={c} />
+                        ))}
+                      </span>
+                    </td>
+                    <td>
+                      {work.length ? (
+                        <>
+                          <div className="cell-title">
+                            {work.map((a) => (a.task === "translate" ? "Translating" : "Reviewing")).filter((x, i, xs) => xs.indexOf(x) === i).join(" and ")}
+                          </div>
+                          <div className="cell-sub">
+                            {work.map((a) => workScope(a)).join("; ")}
+                            {work.every((a) => a.done) ? ", done" : ""}
+                          </div>
+                        </>
+                      ) : p.access.role === "manage" ? (
+                        "Managing"
+                      ) : p.access.role ? (
+                        <span className="muted">No work given to you</span>
+                      ) : null}
+                    </td>
+                    <td className="num">{p.segments ? Math.round((p.confirmed / p.segments) * 100) : 0}%</td>
+                    <td>{s.due ? fmtDate(s.due) : <span className="muted">None</span>}</td>
+                    <td className="cell-action">
+                      <a className="btn btn-quiet btn-small" href={`#/project/${id}`} aria-label={`Settings of ${s.name}`}>
+                        <Settings2 size={14} aria-hidden="true" />
+                        Settings
+                      </a>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** What part of a project an assignment is: "all files", "Mietvertrag.docx, en-GB, segments s1 to s4". */
+export function workScope(a: { file?: string; targetLang?: string; fromSegment?: string; toSegment?: string; due?: string }): string {
+  const parts = [a.file ?? "all files", a.targetLang ?? "all languages"];
+  if (a.fromSegment) parts.push(a.fromSegment === a.toSegment ? `segment ${a.fromSegment}` : `segments ${a.fromSegment} to ${a.toSegment}`);
+  if (a.due) parts.push(`due ${fmtDate(a.due)}`);
+  return parts.join(", ");
 }

@@ -20,7 +20,7 @@ import {
   type Termbase,
   type TermStatus,
 } from "../data";
-import { useStore, type ImportInput } from "../store";
+import { useLocalStore, type ImportInput } from "../store";
 import { plural } from "../format";
 import { LangChip } from "../components/ui";
 import { go } from "../App";
@@ -52,7 +52,7 @@ import {
 
 /** The loaded core, loading it on first use. */
 export function useCore(): CoreApi | null {
-  const { notify } = useStore();
+  const { notify } = useLocalStore();
   const [c, setC] = useState<CoreApi | null>(() => core());
   useEffect(() => {
     if (c) return;
@@ -190,7 +190,7 @@ export function ExportDialog({
   shown: Entry[];
   onClose: () => void;
 }) {
-  const { notify } = useStore();
+  const { notify } = useLocalStore();
   const c = useCore();
   const [format, setFormat] = useState<TermFormat>("tbx");
   const [scope, setScope] = useState<"all" | "shown">("all");
@@ -307,7 +307,7 @@ export function SettingsDialog({
   tb: Termbase;
   onClose: () => void;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const [name, setName] = useState(tb.name);
   const [addLang, setAddLang] = useState("");
   const entries = state.entries.filter((e) => e.termbaseId === tb.id);
@@ -683,7 +683,7 @@ export function ImportDialog({
   tb?: Termbase;
   onClose: () => void;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const c = useCore();
   const [step, setStep] = useState<Step>("file");
   const [target, setTarget] = useState<"this" | "new">(tb ? "this" : "new");

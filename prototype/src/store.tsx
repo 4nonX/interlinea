@@ -236,7 +236,18 @@ type Action =
     }
   | { type: "importEntries"; input: ImportInput }
   | { type: "toast"; text: string }
-  | { type: "clearToast" };
+  | { type: "clearToast" }
+  | {
+      type: "remoteLoad";
+      project: Project;
+      memories: TranslationMemory[];
+      termbases: Termbase[];
+      entries: Entry[];
+    }
+  | { type: "remoteSegments"; at: SegmentsAt; segments: Segment[] }
+  | { type: "remoteProject"; projectId: string; patch: Partial<Project> }
+  | { type: "remoteEntry"; localId: string; entry: Entry }
+  | { type: "remoteUnload"; projectId?: string };
 
 const initial: State = {
   termbases: INITIAL_TERMBASES,
@@ -266,8 +277,65 @@ function commit(at: string, summary: string): Commit {
   };
 }
 
+/** Whether an entry is in a termbase loaded from the team server. */
+export function remoteEntry(state: Pick<State, "termbases">, e: Entry): boolean {
+  return !!state.termbases.find((t) => t.id === e.termbaseId)?.remote;
+}
+
+/** Takes out what came from the team server: everything, or one project's. */
+function withoutRemote(state: State, projectId?: string): State {
+  const gone = state.projects.filter((p) => p.remote && (!projectId || p.id === projectId));
+  if (!gone.length && projectId) return state;
+  const projects = state.projects.filter((p) => !gone.includes(p));
+  // Memories and termbases stay while another loaded project uses them.
+  const usedMemories = new Set(
+    projects.filter((p) => p.remote).flatMap((p) => Object.values(p.memories).flat().map((m) => m.memory)),
+  );
+  const usedTermbases = new Set(
+    projects.filter((p) => p.remote).flatMap((p) => [...p.setup.masters, p.setup.projectTermbaseId ?? ""]),
+  );
+  const termbases = state.termbases.filter((t) => !t.remote || usedTermbases.has(t.id));
+  const kept = new Set(termbases.map((t) => t.id));
+  return {
+    ...state,
+    projects,
+    memories: state.memories.filter((m) => !m.remote || usedMemories.has(m.name)),
+    termbases,
+    entries: state.entries.filter((e) => kept.has(e.termbaseId)),
+  };
+}
+
 function reducer(state: State, action: Action): State {
   switch (action.type) {
+    case "remoteLoad": {
+      const { project, memories, termbases, entries } = action;
+      const tbIds = new Set(termbases.map((t) => t.id));
+      const names = new Set(memories.map((m) => m.name));
+      const others = state.projects.filter((p) => p.id !== project.id);
+      return {
+        ...state,
+        projects: [{ ...project, progress: projectProgress(project) }, ...others],
+        memories: [...state.memories.filter((m) => !names.has(m.name)), ...memories],
+        termbases: [...state.termbases.filter((t) => !tbIds.has(t.id)), ...termbases],
+        entries: [...state.entries.filter((e) => !tbIds.has(e.termbaseId)), ...entries],
+      };
+    }
+    case "remoteSegments": {
+      const byId = new Map(action.segments.map((sg) => [sg.id, sg]));
+      return withSegments(state, action.at, (segs) => segs.map((sg) => byId.get(sg.id) ?? sg));
+    }
+    case "remoteProject":
+      return {
+        ...state,
+        projects: state.projects.map((p) => (p.id === action.projectId ? { ...p, ...action.patch } : p)),
+      };
+    case "remoteEntry":
+      return {
+        ...state,
+        entries: state.entries.map((e) => (e.id === action.localId ? action.entry : e)),
+      };
+    case "remoteUnload":
+      return withoutRemote(state, action.projectId);
     case "createProject": {
       const { change, now } = action;
       const p = change.project;
@@ -548,6 +616,7 @@ function reducer(state: State, action: Action): State {
           if (
             state.autoPropagate &&
             sg.status !== "confirmed" &&
+            !sg.locked &&
             sourceKey(sg.source) === key
           ) {
             return {
@@ -825,7 +894,9 @@ interface SavedRecord {
 }
 
 function savable(state: State): SavedRecord {
-  const { toast: _toast, ...rest } = state;
+  // What came from the team server is the server's; the browser keeps
+  // only the person's own work.
+  const { toast: _toast, ...rest } = withoutRemote(state);
   return { version: STATE_VERSION, state: rest };
 }
 
@@ -972,6 +1043,28 @@ export function useStore(): Store {
   const s = useContext(Ctx);
   if (!s) throw new Error("useStore outside StoreProvider");
   return s;
+}
+
+const localViews = new WeakMap<State, State>();
+
+/** The state without what came from the team server: the person's own work. */
+export function localView(state: State): State {
+  let v = localViews.get(state);
+  if (!v) {
+    v = { ...withoutRemote(state), toast: state.toast };
+    localViews.set(state, v);
+  }
+  return v;
+}
+
+/**
+ * The store for pages about the person's own work (their memories,
+ * termbases, local projects): server projects and what they use are left
+ * out, so they are not offered for local work.
+ */
+export function useLocalStore(): Store {
+  const s = useStore();
+  return useMemo(() => ({ ...s, state: localView(s.state) }), [s]);
 }
 
 // Wording: the same mechanics, labelled for translators or in git terms.

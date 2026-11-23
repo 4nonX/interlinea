@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Cloud, Upload } from "lucide-react";
-import { LANGUAGES, SERVER, lang, type LangCode } from "../data";
+import { AlertTriangle, Upload } from "lucide-react";
+import { LANGUAGES, lang, type LangCode } from "../data";
 import { resetSavedWork, useStore } from "../store";
 import { core, loadCore, type CoreApi } from "../core";
 import {
@@ -13,6 +13,7 @@ import { fmtNum, plural } from "../format";
 import { storageStatus } from "../persist";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { LangChip, PageHeader } from "../components/ui";
+import { TeamServer } from "./TeamServer";
 import { fmtDate } from "../format";
 
 export function Settings() {
@@ -162,23 +163,7 @@ export function Settings() {
 
       <Dictionaries />
 
-      <section className="panel" aria-labelledby="s-servers">
-        <h2 id="s-servers" className="panel-title">
-          Servers
-        </h2>
-        <ul className="server-list">
-          <li>
-            <Cloud size={18} aria-hidden="true" />
-            <div>
-              <div className="cell-title">{SERVER}</div>
-              <div className="cell-sub">
-                Connected as Dan. Sample server in this prototype.
-              </div>
-            </div>
-            <span className="status status-approved">Connected</span>
-          </li>
-        </ul>
-      </section>
+      <TeamServer />
 
       <SavedWork />
     </div>

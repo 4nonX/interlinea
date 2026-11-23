@@ -135,6 +135,8 @@ export interface Segment {
   ignored?: string[];
   /** Bilingual files (XLIFF): the segment is locked there and cannot be edited. */
   locked?: boolean;
+  /** Why a locked segment is locked, when not the file ("Assigned to Carl"). */
+  lockedReason?: string;
   /** Longest the translation may be, in characters, as the file says. */
   maxLength?: number;
   /**

@@ -127,7 +127,8 @@ export function templateOf(
   };
 }
 
-function coreSettings(d: Omit<Draft, "files"> & { files: Draft["files"] }) {
+/** A setup as the core keeps it. */
+export function coreSettings(d: Omit<Draft, "files"> & { files: Draft["files"] }) {
   const t = d.terminology;
   return {
     name: d.name,

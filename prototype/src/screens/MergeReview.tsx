@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDownToLine, CheckCircle2, GitMerge } from "lucide-react";
 import type { Entry, Termbase } from "../data";
-import { useStore, useWords } from "../store";
+import { useLocalStore, useWords } from "../store";
 import {
   computeChanges,
   incomingFromMaster,
@@ -13,7 +13,7 @@ import { fmtDate, fmtTime, plural } from "../format";
 import { InLang, LangChip, LocationBadge, PageHeader } from "../components/ui";
 
 export function MergeReview({ projectId }: { projectId: string }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const w = useWords();
   const project = state.projects.find((p) => p.id === projectId);
   const masters = (project?.setup.masters ?? [])
@@ -83,7 +83,7 @@ function MergeIntoMaster({
   projectId: string;
   master: Termbase;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const w = useWords();
   const project = state.projects.find((p) => p.id === projectId)!;
   const ptbId = project.setup.projectTermbaseId!;

@@ -68,9 +68,78 @@ function findChrome() {
   throw new Error("Chrome not found: set CHROME to its path");
 }
 
-export async function start() {
-  const server = await serve();
-  const base = `http://127.0.0.1:${server.address().port}`;
+/**
+ * Starts the team server ($INTERLINEA_SERVER, a built interlinea-server)
+ * on a free port with the production build as its web app, a fresh data
+ * folder and an administrator, and waits until it answers.
+ */
+async function startTeamServer() {
+  const bin = process.env.INTERLINEA_SERVER;
+  if (!bin || !existsSync(bin))
+    throw new Error("set INTERLINEA_SERVER to a built interlinea-server");
+  if (!existsSync(join(dist, "index.html")))
+    throw new Error("dist/ is missing: run `make wasm` and `npm run build` first");
+  const probe = createServer();
+  await new Promise((r) => probe.listen(0, "127.0.0.1", r));
+  const port = probe.address().port;
+  await new Promise((r) => probe.close(r));
+  const data = mkdtempSync(join(tmpdir(), "interlinea-srv-"));
+  const log = [];
+  const proc = spawn(
+    bin,
+    ["-addr", `127.0.0.1:${port}`, "-data", data, "-web", dist, "-public-url", `http://127.0.0.1:${port}`],
+    {
+      env: {
+        ...process.env,
+        INTERLINEA_ADMIN_USER: "anna",
+        INTERLINEA_ADMIN_PASSWORD: ADMIN_PASSWORD,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  proc.stdout.on("data", (b) => log.push(String(b)));
+  proc.stderr.on("data", (b) => log.push(String(b)));
+  const url = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < 300; i++) {
+    try {
+      if ((await fetch(`${url}/healthz`)).ok)
+        return { url, close: () => proc.kill(), log: () => log.join("") };
+    } catch {
+      // Starting.
+    }
+    await sleep(100);
+  }
+  proc.kill();
+  throw new Error(`the team server did not start:\n${log.join("")}`);
+}
+
+export const ADMIN_PASSWORD = "a long enough password";
+
+/** Calls the team server's API from the test, as another person would. */
+export async function call(url, method, path, token, body) {
+  const res = await fetch(url + path, {
+    method,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = text;
+  }
+  if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${text}`);
+  return json;
+}
+
+export async function start({ teamServer = false } = {}) {
+  const team = teamServer ? await startTeamServer() : null;
+  const server = team ? null : await serve();
+  const base = team ? team.url : `http://127.0.0.1:${server.address().port}`;
   const port = 9300 + Math.floor(Math.random() * 600);
   const profile = mkdtempSync(join(tmpdir(), "interlinea-e2e-"));
   const downloads = mkdtempSync(join(tmpdir(), "interlinea-dl-"));
@@ -243,7 +312,11 @@ export async function start() {
 
   const finish = () => {
     chrome.kill();
-    server.close();
+    server?.close();
+    if (team) {
+      if (failed) console.log(`team server log:\n${team.log()}`);
+      team.close();
+    }
     return { passed, failed };
   };
   return {
@@ -270,8 +343,8 @@ export async function start() {
 }
 
 /** Runs a test function with a fresh browser and reports its result. */
-export async function run(name, fn) {
-  const h = await start();
+export async function run(name, fn, opts) {
+  const h = await start(opts);
   console.log(`\n# ${name}`);
   try {
     await fn(h);

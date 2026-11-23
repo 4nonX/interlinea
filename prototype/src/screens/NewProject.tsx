@@ -43,10 +43,12 @@ import {
 import { openRefs, persistMemory } from "../editor/memory";
 import { AnalysisTable } from "../components/AnalysisTable";
 import { takePendingDocs, type PendingDoc } from "../draft";
-import { useStore } from "../store";
+import { useLocalStore } from "../store";
 import { fmtDate, fmtNum, plural } from "../format";
 import { LangChip, PageHeader } from "../components/ui";
 import { go } from "../App";
+import { errorText, remoteId, useRemote } from "../remote";
+import { publish } from "../publish";
 import {
   analyzeFiles,
   draftOf,
@@ -129,7 +131,7 @@ function emptyDraft(contextRule: Draft["context"]): Draft {
 }
 
 export function NewProject({ sample }: { sample?: number }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const [docs, setDocs] = useState<DraftDoc[]>(() => {
     const pending = takePendingDocs();
     if (pending.length) return draftDocs(pending);
@@ -168,6 +170,10 @@ export function NewProject({ sample }: { sample?: number }) {
   const [asTemplate, setAsTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [creating, setCreating] = useState(false);
+  const remote = useRemote();
+  // Where the project is kept: here, or shared on the team server.
+  const [where, setWhere] = useState<"here" | "server">("here");
+  const [publishProblem, setPublishProblem] = useState("");
 
   const [c, setC] = useState(() => core());
   useEffect(() => {
@@ -658,6 +664,35 @@ export function NewProject({ sample }: { sample?: number }) {
         ? { bytes: pkgDoc.bytes, name: pkgDoc.name }
         : undefined,
     };
+    if (where === "server" && remote.api && remote.conn) {
+      setPublishProblem("");
+      try {
+        const done = await publish(c, remote.api, {
+          project,
+          draft: full,
+          memories: memoriesNow,
+          termbases: state.termbases,
+          entries: state.entries,
+          projects: state.projects,
+        });
+        if (asTemplate)
+          dispatch({
+            type: "saveTemplate",
+            template: templateOf(`tpl-${Date.now().toString(36)}`, templateName, full, now),
+          });
+        notify(
+          `Created project “${name}” on ${new URL(remote.conn.url).host}` +
+            (done.uploaded.length ? `; uploaded ${done.uploaded.join(", ")}` : "") +
+            (filled ? `; ${plural(filled, "segment", "segments")} pre-translated` : ""),
+        );
+        await remote.refresh();
+        go({ page: "project", projectId: remoteId(done.project.id) });
+      } catch (e) {
+        setPublishProblem(errorText(e));
+        setCreating(false);
+      }
+      return;
+    }
     dispatch({
       type: "createProject",
       change: {
@@ -1307,6 +1342,41 @@ export function NewProject({ sample }: { sample?: number }) {
             )}
           </div>
 
+          {remote.conn && (
+            <fieldset className="field">
+              <legend className="field-label">Where the project is kept</legend>
+              <label className="choice">
+                <input type="radio" name="where" checked={where === "here"} onChange={() => setWhere("here")} />
+                <span className="choice-body">
+                  <span className="choice-title">On this computer</span>
+                  <span className="choice-desc">Only you work on it, in this browser.</span>
+                </span>
+              </label>
+              <label className="choice">
+                <input type="radio" name="where" checked={where === "server"} onChange={() => setWhere("server")} />
+                <span className="choice-body">
+                  <span className="choice-title">On the team server {new URL(remote.conn.url).host}</span>
+                  <span className="choice-desc">
+                    Shared: you give work to translators and reviewers there, and
+                    everyone's translations are saved on the server. Memories and
+                    master termbases the server doesn't have yet are uploaded
+                    with it; the project termbase is kept there.
+                  </span>
+                </span>
+              </label>
+            </fieldset>
+          )}
+
+          {publishProblem && (
+            <div className="notice" role="alert">
+              <AlertTriangle size={18} aria-hidden="true" />
+              <div className="notice-body">
+                <p className="notice-title">The project was not made on the server</p>
+                <p>{publishProblem}</p>
+              </div>
+            </div>
+          )}
+
           {problems.length > 0 && (
             <div className="notice" role="alert">
               <AlertTriangle size={18} aria-hidden="true" />
@@ -1335,7 +1405,7 @@ export function NewProject({ sample }: { sample?: number }) {
               onClick={create}
               disabled={creating || !projectFiles || problems.length > 0}
             >
-              {creating ? "Creating…" : "Create project"}
+              {creating ? "Creating…" : where === "server" ? "Create on the server" : "Create project"}
             </button>
           </div>
         </section>
@@ -1594,7 +1664,7 @@ function whyNot(doc: PendingDoc): string {
 }
 
 function TerminologySummary({ draft }: { draft: Draft }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const t = draft.terminology;
   const names = t.masters
     .map((id) => state.termbases.find((x) => x.id === id)?.name)

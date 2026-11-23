@@ -1893,6 +1893,9 @@ kbd {
 }
 
 .seg-num {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   color: var(--text-3);
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
@@ -3593,4 +3596,78 @@ input.mono {
 .length-counter.is-over {
   color: var(--danger, #b42318);
   font-weight: 600;
+}
+
+/* Team server */
+
+.server-connect {
+  display: flex;
+  align-items: end;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+.server-connect .field {
+  flex: 1;
+}
+
+.server-form {
+  display: grid;
+  gap: var(--s3);
+  max-width: 28rem;
+  margin-bottom: var(--s4);
+}
+
+.server-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.cell-warn {
+  color: var(--warn);
+}
+
+.server-list + .server-list {
+  margin-top: var(--s3);
+}
+
+.seg-presence {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  margin-top: var(--s1);
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--server-bg);
+  color: var(--server);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.server-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2) var(--s3);
+  padding: var(--s2) 0;
+}
+
+.server-file .cell-sub {
+  flex: 1;
+}
+
+.server-project-actions {
+  justify-content: flex-start;
+  border-top: 0;
+  padding-top: 0;
+  margin-bottom: var(--s4);
+}
+
+.plain-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }

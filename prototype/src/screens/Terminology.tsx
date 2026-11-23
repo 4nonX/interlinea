@@ -31,7 +31,7 @@ import {
   type Termbase,
   type TermStatus,
 } from "../data";
-import { useStore, useWords } from "../store";
+import { useLocalStore, useWords } from "../store";
 import { fmtTime, plural } from "../format";
 import {
   InLang,
@@ -59,7 +59,7 @@ export function Terminology({
   termbaseId?: string;
   entryId?: string;
 }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const tb =
     state.termbases.find((t) => t.id === termbaseId) ??
     state.termbases.find((t) => t.kind === "master")!;
@@ -304,7 +304,7 @@ function TermbaseList({
   current: string;
   onImport: () => void;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const w = useWords();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -491,7 +491,7 @@ function TermbaseList({
 }
 
 function ProjectBranchNote({ tb }: { tb: Termbase }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const w = useWords();
   const masters = (tb.basedOn ?? [])
     .map((id) => state.termbases.find((t) => t.id === id)!)
@@ -530,7 +530,7 @@ function headTerm(
 }
 
 function NewEntry({ tb, initial }: { tb: Termbase; initial: string }) {
-  const { dispatch, notify } = useStore();
+  const { dispatch, notify } = useLocalStore();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [code, setCode] = useState<LangCode>(sourceLangOf(tb));
@@ -713,7 +713,7 @@ function EntryRow({
 }
 
 function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const w = useWords();
   const [tab, setTab] = useState<"entry" | "history">("entry");
   const conceptTypes = tb.infoTypes.filter((i) => i.level === "concept");
@@ -1276,7 +1276,7 @@ function AddLanguage({
  * "find duplicates" show them, with a merge into one entry.
  */
 function Duplicates({ tb, entries }: { tb: Termbase; entries: Entry[] }) {
-  const { dispatch, notify } = useStore();
+  const { dispatch, notify } = useLocalStore();
   const c = useCore();
   const [code, setCode] = useState<string>("");
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -1454,7 +1454,7 @@ function FieldRow({
 }
 
 function AddInfoType({ tb }: { tb: Termbase }) {
-  const { dispatch, notify } = useStore();
+  const { dispatch, notify } = useLocalStore();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [scope, setScope] = useState<InfoType["level"]>("concept");

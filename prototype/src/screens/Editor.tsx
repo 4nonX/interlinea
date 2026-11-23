@@ -90,6 +90,13 @@ import {
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
+import { usePresence } from "../remote";
+
+/** Up to two letters of a name, for presence markers. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts[parts.length - 1]![0] ?? "") : "")).toUpperCase() || "?";
+}
 
 const STATUS_TEXT: Record<Segment["status"], string> = {
   new: "Not translated",
@@ -261,6 +268,13 @@ export function Editor({
 
   const active = segments.find((s) => s.id === activeId);
   const index = segments.findIndex((s) => s.id === activeId);
+  // On a team server: who else has which segment open.
+  const present = usePresence(project, file?.id ?? "", target, activeId);
+  const here = useMemo(() => {
+    const m = new Map<string, typeof present>();
+    for (const x of present) m.set(x.segment, [...(m.get(x.segment) ?? []), x]);
+    return m;
+  }, [present]);
   // Term recognition runs in the core; the index is rebuilt when an entry changes.
   const termIndex = useMemo(() => {
     if (!c || !project) return null;
@@ -445,7 +459,7 @@ export function Editor({
       STATUS_TEXT[active.status],
     ];
     const best = matches[0];
-    if (active.locked) parts.push("Locked in the file");
+    if (active.locked) parts.push(active.lockedReason ?? "Locked in the file");
     if (
       state.autoInsert &&
       best &&
@@ -546,7 +560,9 @@ export function Editor({
     if (!active) return;
     if (active.locked) {
       setAnnouncement(
-        "This segment is locked in the file and cannot be changed.",
+        active.lockedReason
+          ? `${active.lockedReason}: this segment is not yours to change.`
+          : "This segment is locked in the file and cannot be changed.",
       );
       return;
     }
@@ -1021,7 +1037,7 @@ export function Editor({
                       <td>{uses.join(", ")}</td>
                       <td className="num">{fmtNum(tm.count(c, name))}</td>
                       <td className="row">
-                        {isProject && (
+                        {isProject && !project?.remote && (
                           <button
                             type="button"
                             className="btn btn-small"
@@ -1161,7 +1177,19 @@ export function Editor({
                   className={`seg seg-${s.status}${isActive ? " is-active" : ""}${s.locked ? " is-locked" : ""}`}
                   aria-current={isActive ? "true" : undefined}
                 >
-                  <span className="seg-num">{n}</span>
+                  <span className="seg-num">
+                    {n}
+                    {(here.get(s.id) ?? []).map((x) => (
+                      <span
+                        key={x.userId}
+                        className="seg-presence"
+                        title={`${x.userName} has this segment open`}
+                        aria-label={`${x.userName} has this segment open`}
+                      >
+                        {initials(x.userName)}
+                      </span>
+                    ))}
+                  </span>
                   <div
                     className="seg-source"
                     lang={source}
@@ -1177,7 +1205,7 @@ export function Editor({
                         ref={lockedView}
                         tabIndex={0}
                         onKeyDown={onKeyDown}
-                        aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. Locked in the file`}
+                        aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. ${s.lockedReason ?? "Locked in the file"}`}
                       >
                         <span className="seg-target-text">
                           {s.target.length ? (
@@ -1187,8 +1215,8 @@ export function Editor({
                           )}
                         </span>
                         <span className="seg-locked-note">
-                          <Lock size={13} aria-hidden="true" /> Locked in the
-                          file
+                          <Lock size={13} aria-hidden="true" />{" "}
+                          {s.lockedReason ?? "Locked in the file"}
                         </span>
                       </div>
                     ) : isActive ? (
@@ -1636,7 +1664,7 @@ function SegmentStatusCell({ s }: { s: Segment }) {
       : undefined;
   const title = [
     STATUS_TEXT[s.status],
-    s.locked ? "Locked in the file" : "",
+    s.locked ? (s.lockedReason ?? "Locked in the file") : "",
     fileNote ?? "",
     ...(s.notes ?? []).map((n) => `Note: ${n}`),
     ...warnings.map((x) => x.text),
@@ -1652,7 +1680,7 @@ function SegmentStatusCell({ s }: { s: Segment }) {
       ) : (
         <CircleDashed size={15} aria-label="Not translated" />
       )}
-      {s.locked && <Lock size={13} aria-label="Locked in the file" />}
+      {s.locked && <Lock size={13} aria-label={s.lockedReason ?? "Locked in the file"} />}
       {fileNote && (
         <span className={`seg-file-state seg-file-${s.file!.state}`}>
           {s.file!.state === "rejected"

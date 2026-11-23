@@ -276,6 +276,17 @@ function values(
   return out.length ? out : undefined;
 }
 
+/** A termbase's fields as the core lists them, as the prototype's info types. */
+export function infoTypesFromCore(fields: CoreField[] | null | undefined): InfoType[] {
+  return (fields ?? []).map((f) => ({
+    id: slug(f.name) || f.name,
+    name: f.name,
+    level: LEVEL_FROM_CORE[f.level] ?? "concept",
+    kind: f.kind === "picklist" ? "picklist" : "text",
+    values: f.values,
+  }));
+}
+
 /** A prototype entry as the core sees it. The ID is the file's own ID when the entry was imported. */
 export function toCoreEntry(e: Entry, tb: Termbase): CoreEntry {
   const names = new Map(tb.infoTypes.map((i) => [i.id, i.name]));

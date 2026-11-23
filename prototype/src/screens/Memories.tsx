@@ -7,7 +7,7 @@ import {
   type TranslationMemory,
 } from "../data";
 import { core, download, loadCore, tm, type CoreApi } from "../core";
-import { useStore } from "../store";
+import { useLocalStore } from "../store";
 import {
   dropMemory,
   openMemory,
@@ -19,7 +19,7 @@ import { LangChip, PageHeader } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
 
 export function Memories() {
-  const { state, notify } = useStore();
+  const { state, notify } = useLocalStore();
   const [c, setC] = useState(() => core());
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -98,7 +98,7 @@ function MemoryTable({
   memories: TranslationMemory[];
   onChange: () => void;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const input = useRef<HTMLInputElement>(null);
   const [importInto, setImportInto] = useState("");
   if (!memories.length) return <p className="muted">No memory yet.</p>;
@@ -260,7 +260,7 @@ function NewMemoryForm({
   c: CoreApi;
   onCreated: () => void;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [source, setSource] = useState<LangCode>("de-DE");

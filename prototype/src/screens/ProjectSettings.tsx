@@ -19,7 +19,7 @@ import {
   type TranslationMemory,
 } from "../data";
 import { core, download, loadCore, tm, type CoreApi } from "../core";
-import { useStore } from "../store";
+import { useLocalStore } from "../store";
 import { confirmedShare } from "../editor/model";
 import {
   dropMemory,
@@ -62,7 +62,7 @@ import { fmtNum, plural } from "../format";
 import { go } from "../App";
 
 export function ProjectSettings({ projectId }: { projectId: string }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const project = state.projects.find((p) => p.id === projectId);
   if (!project)
     return (
@@ -80,7 +80,7 @@ export function ProjectSettings({ projectId }: { projectId: string }) {
 }
 
 function SettingsForm({ project }: { project: Project }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const [c, setC] = useState(() => core());
   useEffect(() => {
     if (c) return;
@@ -733,7 +733,7 @@ function ProjectMemoryTransfer({
   c: CoreApi;
   project: Project;
 }) {
-  const { state, notify } = useStore();
+  const { state, notify } = useLocalStore();
   const [targetOf, setTargetOf] = useState<Record<string, string>>({});
   const own = project.targetLangs
     .map((t) => projectMemoryOf(project, t, state.memories))
@@ -827,7 +827,7 @@ function PretranslateNow({
   project: Project;
   unsaved: boolean;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const ready =
     project.prepare.minScore >= 50 && project.prepare.minScore <= 100;
   return (
@@ -897,7 +897,7 @@ function SaveAsTemplate({
   project: Project;
   unsaved: boolean;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state, dispatch, notify } = useLocalStore();
   const [name, setName] = useState(
     project.client ? `${project.client}` : project.name,
   );

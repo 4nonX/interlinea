@@ -130,6 +130,8 @@ export interface Termbase {
   infoTypes: InfoType[];
   /** Entries that exist on the server but are not part of this prototype's data. */
   extraEntries?: number;
+  /** A termbase of a team-server project, loaded from the server: never saved in the browser. */
+  remote?: boolean;
 }
 
 export type SetupMode = "layered" | "own" | "direct";
@@ -191,6 +193,8 @@ export interface TranslationMemory {
    * the sample project, and projects saved before projects had memories.
    */
   seedFromProject?: boolean;
+  /** A memory a team-server project uses, loaded from the server: never saved in the browser. */
+  remote?: boolean;
 }
 
 /** A check of the project's own, as the core's QA runs it. */
@@ -272,6 +276,20 @@ export interface Project {
   progress: number;
   /** The Trados package the project came from, to save one return package. */
   sdlPackage?: { bytes: Uint8Array; name: string };
+  /** A project on the team server: opened from there, saved there, never in the browser. */
+  remote?: RemoteProject;
+}
+
+/** Where a project on the team server is, and what the signed-in person may do. */
+export interface RemoteProject {
+  /** The server's number for the project. */
+  id: number;
+  /** The settings' version, for changing them. */
+  version: number;
+  role: "" | "read" | "suggest" | "edit" | "approve" | "manage";
+  assigned: boolean;
+  /** The server's name for each file, by the prototype's file ID. */
+  files: Record<string, string>;
 }
 
 /** What a new project can start from: everything but name, files and dates. */

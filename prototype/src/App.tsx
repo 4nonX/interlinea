@@ -7,6 +7,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { StoreProvider, useStore } from "./store";
+import { RemoteProvider, errorText, serverNumber, useRemote } from "./remote";
 import { Toast } from "./components/ui";
 import { Projects } from "./screens/Projects";
 import { NewProject } from "./screens/NewProject";
@@ -16,6 +17,7 @@ import { Settings } from "./screens/Settings";
 import { Editor } from "./screens/Editor";
 import { ProjectSettings } from "./screens/ProjectSettings";
 import { Memories } from "./screens/Memories";
+import { ServerProjectPage } from "./screens/ServerProjectPage";
 
 export type Route =
   | { page: "projects" }
@@ -242,20 +244,86 @@ function Screen({ route }: { route: Route }) {
       return <MergeReview projectId={route.projectId} />;
     case "editor":
       return (
-        <Editor
-          key={`${route.projectId}/${route.fileId ?? ""}/${route.lang ?? ""}`}
-          projectId={route.projectId}
-          fileId={route.fileId}
-          lang={route.lang}
-        />
+        <ServerProject projectId={route.projectId}>
+          <Editor
+            key={`${route.projectId}/${route.fileId ?? ""}/${route.lang ?? ""}`}
+            projectId={route.projectId}
+            fileId={route.fileId}
+            lang={route.lang}
+          />
+        </ServerProject>
       );
     case "project":
-      return <ProjectSettings projectId={route.projectId} />;
+      return (
+        <ServerProject projectId={route.projectId}>
+          {serverNumber(route.projectId) === null ? (
+            <ProjectSettings projectId={route.projectId} />
+          ) : (
+            <ServerProjectPage projectId={route.projectId} />
+          )}
+        </ServerProject>
+      );
     case "memories":
       return <Memories />;
     case "settings":
       return <Settings />;
   }
+}
+
+/**
+ * A project on the team server is opened from there before its page
+ * shows; a project on this computer shows at once.
+ */
+function ServerProject({ projectId, children }: { projectId: string; children: React.ReactNode }) {
+  const { state } = useStore();
+  const r = useRemote();
+  const n = serverNumber(projectId);
+  const loaded = state.projects.some((p) => p.id === projectId);
+  const [problem, setProblem] = useState("");
+  useEffect(() => {
+    if (n === null || !r.conn) return;
+    let live = true;
+    setProblem("");
+    // Opened fresh each time, so the translations are the server's latest.
+    r.open(n).catch((e: unknown) => live && setProblem(errorText(e)));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [n, r.conn]);
+  if (n === null) return <>{children}</>;
+  if (!r.conn)
+    return (
+      <div className="page page-narrow">
+        <div className="empty">
+          <p className="empty-title">This project is on a team server</p>
+          <p>
+            Sign in to the server in <a href="#/settings">Settings</a> to open it.
+          </p>
+        </div>
+      </div>
+    );
+  if (problem)
+    return (
+      <div className="page page-narrow">
+        <div className="empty">
+          <p className="empty-title">The project could not be opened</p>
+          <p className="error" role="alert">
+            {problem}
+          </p>
+          <p>
+            <a href="#/projects">Back to the projects</a>
+          </p>
+        </div>
+      </div>
+    );
+  if (!loaded)
+    return (
+      <p className="boot" role="status">
+        Opening the project from {new URL(r.conn.url).host}…
+      </p>
+    );
+  return <>{children}</>;
 }
 
 function Shell() {
@@ -280,7 +348,9 @@ function Shell() {
 export function App() {
   return (
     <StoreProvider>
-      <Shell />
+      <RemoteProvider>
+        <Shell />
+      </RemoteProvider>
     </StoreProvider>
   );
 }

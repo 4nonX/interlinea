@@ -17,7 +17,7 @@ import {
   type SpellDictionary,
   type TranslationMemory,
 } from "../data";
-import { useStore, useWords } from "../store";
+import { useLocalStore, useWords } from "../store";
 import { tm, type CoreApi } from "../core";
 import { openMemory, openNewMemory } from "../editor/memory";
 import {
@@ -184,7 +184,7 @@ export function MemoriesSection({
   /** The project being edited, if it exists already. */
   projectId?: string;
 }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const all = useMemo(
     () => [
       ...state.memories.filter((m) => !m.projectId),
@@ -590,7 +590,7 @@ export function TerminologySection({
   /** The project exists: its project termbase is in place. */
   existing?: boolean;
 }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const w = useWords();
   const t = draft.terminology;
   const masters = state.termbases.filter((x) => x.kind === "master");
@@ -927,7 +927,7 @@ export function ChecksSection({
   targetLangs: LangCode[];
   problems: Problem[];
 }) {
-  const { state } = useStore();
+  const { state } = useLocalStore();
   const kinds = c ? qaKinds(c) : [];
   const [word, setWord] = useState("");
   const spellingOn = kinds.some((k) => k.kind === "spelling" && checkOn(qa, k));
