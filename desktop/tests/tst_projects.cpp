@@ -106,6 +106,11 @@ private slots:
         auto *source = named<LanguageCombo>(dlg.findChild<QStackedWidget *>()->widget(0), QStringLiteral("Source language"));
         QCOMPARE(source->language(), QStringLiteral("de-DE"));
 
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            dlg.resize(900, 640);
+            QTest::qWait(100);
+            dlg.grab().save(dir + QStringLiteral("/new-project-documents.png"));
+        }
         button(&dlg, QStringLiteral("Next"))->click();
         auto *editor = dlg.findChild<SettingsEditor *>();
         QTRY_VERIFY_WITH_TIMEOUT(editor->isVisible(), 10000);
@@ -173,8 +178,6 @@ private slots:
                 QTest::qWait(100);
                 page.grab().save(QStringLiteral("%1/project-%2.png").arg(dir).arg(i));
             }
-            dlg.resize(900, 640);
-            dlg.grab().save(dir + QStringLiteral("/new-project.png"));
         }
         QCOMPARE(table->item(table->rowCount() - 1, 0)->text(), QStringLiteral("Total"));
         QVERIFY(table->item(table->rowCount() - 1, 2)->text().toInt() >= 20);

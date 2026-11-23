@@ -210,11 +210,13 @@ void apply(QApplication &app)
     // Fusion draws the same on every system, so the sheet looks the same.
     app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     setFont(app);
-    g_dark = systemDark();
+    // INTERLINEA_THEME=light or dark sets it; otherwise the system does.
+    const QString forced = qEnvironmentVariable("INTERLINEA_THEME");
+    g_dark = forced.isEmpty() ? systemDark() : forced == QLatin1String("dark");
     polish(app);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, &app, [&app](Qt::ColorScheme s) {
-        if (s == Qt::ColorScheme::Unknown)
+        if (s == Qt::ColorScheme::Unknown || !qEnvironmentVariable("INTERLINEA_THEME").isEmpty())
             return;
         g_dark = s == Qt::ColorScheme::Dark;
         polish(app);

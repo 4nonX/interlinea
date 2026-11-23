@@ -55,7 +55,11 @@ platforms.
 
 ## Stages
 
-Done: 1 and 2.
+Done: 1, 2 and 3. Next: 4, the editor. Until it is in, segments are
+translated in the browser client or in another tool and brought back in a
+bilingual file or return package.
+
+![The project list](screenshots/projects.png)
 
 1. **Core.** `cmd/interlinea-core`: the server code in local mode (one
    account, loopback only, Host check against DNS rebinding, a handshake on
@@ -94,6 +98,41 @@ Done: 1 and 2.
 8. **Release.** Accessibility review with NVDA, VoiceOver and Orca; German
    translation complete; installers (MSI on Windows, a signed-ready DMG on
    macOS, AppImage and a Flatpak manifest on Linux) built in CI.
+
+## Look
+
+The app uses Qt's Fusion style with a style sheet built from the tokens in
+`DESIGN.md`, in a light and a dark variant that follow the system's
+setting. `INTERLINEA_THEME=light` or `dark` sets one. Under a high contrast
+setting, or with `INTERLINEA_NATIVE_STYLE=1`, the app leaves the
+platform's own style alone.
+
+| | |
+|---|---|
+| ![Files of a project](screenshots/project-files.png) | ![Analysis of a project](screenshots/project-analysis.png) |
+| ![New project from documents](screenshots/new-project.png) | ![The project list in the dark variant](screenshots/projects-dark.png) |
+
+## Tests
+
+`ctest` runs the app's tests on the offscreen platform against a real core:
+the API client, the live feed, the keychain, sign-in with an identity
+provider, connections, the window and its accessible names, projects. The
+end-to-end test (`tst_endtoend`) also needs a team server and its
+administrator:
+
+```
+INTERLINEA_TEAM_SERVER=http://127.0.0.1:18080 \
+INTERLINEA_TEAM_USER=anna INTERLINEA_TEAM_PASSWORD='a long enough password' \
+ctest --test-dir build/desktop -R endtoend
+```
+
+It makes a project on this computer and one on the team server, adds
+files, fills them from memories, runs the analysis, saves translated files
+and return packages, and checks that each step shows in the app. CI runs it
+on Linux against a server it starts.
+
+`INTERLINEA_SCREENSHOTS=<folder>` makes `tst_projects` save the
+screenshots of the project page and the New project dialog used here.
 
 ## Conventions
 

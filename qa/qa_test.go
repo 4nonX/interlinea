@@ -399,7 +399,7 @@ func TestReport(t *testing.T) {
 	if !strings.Contains(h, "QA report: Mietvertrag.docx") || !strings.Contains(h, "2 errors, 0 warnings") || !strings.Contains(h, "Empty translation") {
 		t.Fatalf("html: %s", h)
 	}
-	if strings.Contains(h, "—") {
+	if strings.Contains(h, "\u2014") {
 		t.Fatal("em dash in report")
 	}
 	j, _ := r.JSON()

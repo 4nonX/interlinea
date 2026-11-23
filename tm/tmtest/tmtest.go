@@ -230,13 +230,13 @@ func testLookupPrefersRecent(t *testing.T, newMemory Factory) {
 func testLookupShortAndCJK(t *testing.T, newMemory Factory) {
 	m := newMemory(t, tm.Info{Name: "ja", SourceLang: "ja-JP", TargetLang: "de-DE"})
 	add(t, m, "契約は来月に始まります。", "Der Vertrag beginnt nächsten Monat.")
-	add(t, m, "—", "—")
+	add(t, m, "\u2014", "\u2014")
 	add(t, m, "OK", "OK")
 	ms := lookup(t, m, "契約は来年に始まります。", tm.LookupOptions{MinScore: 60})
 	if len(ms) != 1 || ms[0].Score >= 100 || ms[0].Score < 60 {
 		t.Fatalf("CJK fuzzy = %v", scores(ms))
 	}
-	if ms := lookup(t, m, "—", tm.LookupOptions{}); len(ms) != 1 || ms[0].Score != 100 {
+	if ms := lookup(t, m, "\u2014", tm.LookupOptions{}); len(ms) != 1 || ms[0].Score != 100 {
 		t.Fatalf("punctuation only = %v", scores(ms))
 	}
 	if ms := lookup(t, m, "OK", tm.LookupOptions{}); len(ms) != 1 || ms[0].Score != 100 {

@@ -3,12 +3,33 @@
 An open-source translation workspace: CAT editor, terminology, translation
 memory and project workflow in one tool, translation first.
 
-This repository holds the Go core and the team server. The native desktop
-client (Qt 6) and the browser client build on them.
+This repository holds the Go core, the team server, the native desktop app
+(Qt 6) and a browser client.
+
+![The desktop app's project list](docs/screenshots/projects.png)
 
 ## Status
 
-Milestone 1: core foundation, the first file filter (Word) and termbase exchange.
+Work in progress, not yet released.
+
+- **Core:** file filters for Word, XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF,
+  Trados packages and plain text; translation memories; termbases with
+  TBX, MultiTerm, CSV and Excel exchange; QA, spelling, analysis and
+  pre-translation. Done and tested.
+- **Team server:** accounts and roles, password and OpenID Connect
+  sign-in, projects, memories, termbases with review, a live feed of
+  changes, backups. API reference in [docs/api.md](docs/api.md), running
+  guide in [docs/running.md](docs/running.md).
+- **Desktop app:** works without a server and connects to team servers.
+  Projects are done: the list, new projects from documents, files,
+  settings, analysis, pre-translation, translated files and return
+  packages. The editor, memory and termbase management, account
+  administration and installers come next ([docs/desktop.md](docs/desktop.md)).
+- **Browser client:** the prototype in `prototype/`, with the editor and
+  terminology management, running against the team server or on its own
+  with the core compiled to WebAssembly.
+
+The Go packages:
 
 | Package | What it does |
 |---|---|
@@ -77,7 +98,11 @@ make sample   # regenerate the sample Word document and its extraction
 with its core (`interlinea-core`) keeping the person's work in SQLite files
 in the app's data folder, and connects to team servers. Sign-ins to team
 servers are kept in the system's keychain. See [docs/desktop.md](docs/desktop.md)
-for the plan and its stages.
+for the plan, its stages and more screenshots.
+
+| | |
+|---|---|
+| ![Files of a project](docs/screenshots/project-files.png) | ![Analysis of a project](docs/screenshots/project-analysis.png) |
 
 ```
 cmake -S desktop -B build/desktop      # needs Qt 6.4 or later and Go

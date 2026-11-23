@@ -155,7 +155,7 @@ func TestWeightsAndReports(t *testing.T) {
 	if !strings.Contains(h, "no translation memory (word count only)") || !strings.Contains(h, "<td>25.0%</td><td>1.0</td>") {
 		t.Fatalf("html: %s", h)
 	}
-	if strings.Contains(h, "—") {
+	if strings.Contains(h, "\u2014") {
 		t.Fatal("em dash")
 	}
 	if _, err := r.JSON(); err != nil {
