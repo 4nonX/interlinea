@@ -119,14 +119,21 @@ func tmAdd(args []js.Value) (any, error) {
 	return n, nil
 }
 
-// tmLookup(name, sourceJSON, minScore, limit) -> JSON [{score, unit...}]
+// tmLookup(name, sourceJSON, minScore, limit, penalty?) -> JSON [{score,
+// unit...}]; with a penalty, scores are lowered by it (tm.Penalized).
 func tmLookup(args []js.Value) (any, error) {
-	if len(args) != 4 {
-		return nil, fmt.Errorf("tmLookup(name, source, min, limit)")
+	if len(args) != 4 && len(args) != 5 {
+		return nil, fmt.Errorf("tmLookup(name, source, min, limit, penalty)")
 	}
-	m, err := memory(args[0].String())
+	mm, err := memory(args[0].String())
 	if err != nil {
 		return nil, err
+	}
+	var m tm.Memory = mm
+	if len(args) == 5 {
+		if m, err = tm.Penalized(mm, args[4].Int()); err != nil {
+			return nil, err
+		}
 	}
 	var src content.Content
 	if err := src.UnmarshalJSON([]byte(args[1].String())); err != nil {

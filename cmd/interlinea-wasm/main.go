@@ -10,7 +10,8 @@
 //
 // plus translation memory (tm*, see tm.go), termbase (term*, see
 // term.go), XLIFF, package, spelling and QA (spell*, qa*, see qa.go)
-// functions.
+// functions, and project setups, analysis and pre-translation (see
+// project.go).
 //
 // Build: make wasm
 package main
@@ -112,7 +113,7 @@ func main() {
 	api := map[string]any{
 		"extract": js.FuncOf(extract),
 		"merge":   js.FuncOf(merge),
-		"version": "4",
+		"version": "5",
 	}
 	for k, v := range tmFuncs() {
 		api[k] = v
@@ -127,6 +128,9 @@ func main() {
 		api[k] = v
 	}
 	for k, v := range qaFuncs() {
+		api[k] = v
+	}
+	for k, v := range projectFuncs() {
 		api[k] = v
 	}
 	js.Global().Set("interlineaCore", api)
