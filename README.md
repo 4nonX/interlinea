@@ -84,11 +84,16 @@ docker run -p 8080:8080 -v interlinea:/data \
 
 `compose.yaml` runs it with PostgreSQL. Without `INTERLINEA_ADMIN_*`, a server
 with no accounts logs a setup token, and `POST /api/setup` makes the first
-administrator with it.
+administrator with it. [docs/running.md](docs/running.md) covers HTTPS and
+reverse proxies, identity providers, backups (`interlinea-server backup`),
+upgrades and sizing; [docs/api.md](docs/api.md) is the API reference, also
+served as OpenAPI 3.1 at `/api/openapi.json`.
 
 **Signing in.** `POST /api/auth/password` with a username and password
 returns a token for the `Authorization: Bearer` header; the stores keep only
-its hash. After ten wrong passwords an account waits 15 minutes, and one
+its hash. The web app the server serves asks for an HttpOnly cookie instead
+(`X-Interlinea-Session: cookie`), so the browser keeps no token; requests
+signed in with it carry the `X-Interlinea` header. After ten wrong passwords an account waits 15 minutes, and one
 address gets twenty attempts a minute. With `-oidc-issuer` and
 `-oidc-client-id` (Entra ID, Google, Keycloak, any OpenID Connect provider;
 the redirect address is `<public URL>/api/auth/oidc/callback`), the apps
@@ -125,7 +130,10 @@ and are refused with 409 `conflict` when someone saved in between. Errors are
 
 Creating a project (`POST /api/projects`) makes its own memories and its
 termbase (layered over the masters, or on its own) with it, and removes
-them again if the project is refused. Memories and termbases a project or
+them again if the project is refused. The apps send a translatable file with
+its segments; the server reads Word and XLIFF files itself and refuses
+segments that are not the file's (and checks that a text file's segments
+are its text), keeping the file's own source text and locks. Memories and termbases a project or
 template uses are not deleted under it, and renaming a termbase renames it
 in their settings.
 

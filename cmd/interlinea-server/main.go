@@ -41,6 +41,14 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(healthcheck(os.Args[2:]))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "backup" {
+		err := backup(os.Args[2:], os.Stdout, os.Stderr)
+		if err != nil && !errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(os.Stderr, "interlinea-server backup:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(context.Background(), os.Args[1:], os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "interlinea-server:", err)
 		os.Exit(1)
@@ -120,6 +128,7 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: interlinea-server [options]")
 		fmt.Fprintln(stderr, "       interlinea-server healthcheck [addr]")
+		fmt.Fprintln(stderr, "       interlinea-server backup [-data folder] new-folder")
 		fmt.Fprintln(stderr)
 		fs.PrintDefaults()
 		fmt.Fprintln(stderr, `
