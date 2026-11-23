@@ -155,7 +155,8 @@ setup page makes the first administrator with it.`)
 	return o, nil
 }
 
-// withSchema points a PostgreSQL connection string at a schema.
+// withSchema points a PostgreSQL connection string at a schema. public
+// stays on the path: extensions the stores use (pg_trgm) live there.
 func withSchema(dsn, schema string) (string, error) {
 	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
 		u, err := url.Parse(dsn)
@@ -163,11 +164,11 @@ func withSchema(dsn, schema string) (string, error) {
 			return "", fmt.Errorf("the PostgreSQL connection string is not a valid URL")
 		}
 		q := u.Query()
-		q.Set("search_path", schema)
+		q.Set("search_path", schema+",public")
 		u.RawQuery = q.Encode()
 		return u.String(), nil
 	}
-	return dsn + " search_path=" + schema, nil
+	return dsn + " search_path=" + schema + ",public", nil
 }
 
 // storeSchemas name the PostgreSQL schema of each store.
@@ -211,6 +212,13 @@ func openStores(ctx context.Context, o options, log *slog.Logger) (server.Stores
 	admin, err := pgdriver.Open(ctx, o.postgres)
 	if err != nil {
 		return st, nil, err
+	}
+	// Memories and termbases search with pg_trgm. Made here in public,
+	// it is seen from every store's schema; made by the first store, it
+	// would sit in that store's schema.
+	if _, err := admin.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`); err != nil {
+		admin.Close()
+		return st, nil, fmt.Errorf("make the pg_trgm extension (the database user needs the right to, once): %w", err)
 	}
 	for _, s := range storeSchemas {
 		if _, err := admin.ExecContext(ctx, `CREATE SCHEMA IF NOT EXISTS `+s); err != nil {

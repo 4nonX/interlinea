@@ -14,11 +14,11 @@ import (
 
 func TestWithSchema(t *testing.T) {
 	got, err := withSchema("postgres://u:p@db:5432/interlinea?sslmode=disable", "interlinea_projects")
-	if err != nil || !strings.Contains(got, "search_path=interlinea_projects") || !strings.Contains(got, "sslmode=disable") {
+	if err != nil || !strings.Contains(got, "search_path=interlinea_projects%2Cpublic") || !strings.Contains(got, "sslmode=disable") {
 		t.Fatalf("%s %v", got, err)
 	}
 	got, _ = withSchema("host=db dbname=interlinea", "interlinea_memories")
-	if got != "host=db dbname=interlinea search_path=interlinea_memories" {
+	if got != "host=db dbname=interlinea search_path=interlinea_memories,public" {
 		t.Fatal(got)
 	}
 	if _, err := withSchema("postgres://%zz", "x"); err == nil {
