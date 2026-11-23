@@ -10,6 +10,7 @@
 package termdb
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -40,6 +41,40 @@ var (
 )
 
 const timeLayout = time.RFC3339Nano
+
+// Kinds of termbase.
+const (
+	kindMaster  = "master"
+	kindProject = "project"
+)
+
+// Kinds of change in the change log.
+const (
+	ChangeCreated         = "created"
+	ChangeChanged         = "changed"
+	ChangeDeleted         = "deleted"
+	ChangeTermbaseCreated = "termbase-created"
+	ChangeTermbaseChanged = "termbase-changed"
+	ChangeTermbaseDeleted = "termbase-deleted"
+)
+
+// execer runs statements inside a transaction or on the database.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// logChange appends a change to the change log in the same transaction
+// as the change itself, so the log never misses or invents one. An empty
+// tbName is the termbase's current name.
+func logChange(ctx context.Context, tx execer, tbID int64, tbName, entryID string, version int, kind, by, summary string, now time.Time) error {
+	_, err := tx.ExecContext(ctx, `INSERT INTO changes(termbase_id, termbase, entry_id, version, kind, at, by, summary)
+		VALUES (?, COALESCE(NULLIF(?, ''), (SELECT name FROM termbases WHERE id = ?), ''), ?, ?, ?, ?, ?, ?)`,
+		tbID, tbName, tbID, entryID, version, kind, now.Format(timeLayout), by, summary)
+	if err != nil {
+		return fmt.Errorf("termdb: change log: %w", err)
+	}
+	return nil
+}
 
 var migrations = []string{
 	// Version 1: termbases, entries with their versions, a term index for
@@ -93,6 +128,84 @@ var migrations = []string{
 	);
 	CREATE INDEX deleted_by_termbase ON deleted(termbase_id, at);
 	CREATE VIRTUAL TABLE entries_fts USING fts5(body, tokenize='trigram');`,
+
+	// Version 2: the change log every client syncs from, project
+	// termbases layered over masters, and merge requests with a review
+	// state per entry.
+	`ALTER TABLE termbases ADD COLUMN kind TEXT NOT NULL DEFAULT 'master';
+	ALTER TABLE termbases ADD COLUMN upstreams_json TEXT NOT NULL DEFAULT '[]';
+	ALTER TABLE termbases ADD COLUMN rules_json TEXT NOT NULL DEFAULT '{}';
+	ALTER TABLE entries ADD COLUMN base_termbase INTEGER;
+	ALTER TABLE entries ADD COLUMN base_entry TEXT;
+	ALTER TABLE entries ADD COLUMN base_version INTEGER;
+	ALTER TABLE entries ADD COLUMN base_synced INTEGER;
+	CREATE TABLE changes (
+		seq         INTEGER PRIMARY KEY AUTOINCREMENT,
+		termbase_id INTEGER NOT NULL,
+		termbase    TEXT NOT NULL,
+		entry_id    TEXT NOT NULL DEFAULT '',
+		version     INTEGER NOT NULL DEFAULT 0,
+		kind        TEXT NOT NULL,
+		at          TEXT NOT NULL,
+		by          TEXT NOT NULL,
+		summary     TEXT NOT NULL
+	);
+	CREATE INDEX changes_by_termbase ON changes(termbase_id, seq);
+	INSERT INTO changes(termbase_id, termbase, entry_id, version, kind, at, by, summary)
+		SELECT termbase_id, termbase, entry_id, version, kind, at, by, summary FROM (
+			SELECT e.termbase_id, t.name AS termbase, e.entry_id, v.version, CASE WHEN v.version = 1 THEN 'created' ELSE 'changed' END AS kind, v.at, v.by, v.summary
+			FROM versions v JOIN entries e ON e.id = v.entry_row JOIN termbases t ON t.id = e.termbase_id
+			UNION ALL
+			SELECT d.termbase_id, t.name, d.entry_id, 0, 'deleted', d.at, d.by, d.summary
+			FROM deleted d JOIN termbases t ON t.id = d.termbase_id
+		) ORDER BY at;
+	CREATE TABLE project_removals (
+		project_id    INTEGER NOT NULL REFERENCES termbases(id) ON DELETE CASCADE,
+		base_termbase INTEGER NOT NULL,
+		base_entry    TEXT NOT NULL,
+		base_version  INTEGER NOT NULL,
+		at            TEXT NOT NULL,
+		by            TEXT NOT NULL,
+		PRIMARY KEY (project_id, base_termbase, base_entry)
+	);
+	CREATE TABLE merge_requests (
+		id         INTEGER PRIMARY KEY,
+		project_id INTEGER NOT NULL REFERENCES termbases(id) ON DELETE CASCADE,
+		target_id  INTEGER NOT NULL REFERENCES termbases(id) ON DELETE CASCADE,
+		title      TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		created_by TEXT NOT NULL,
+		deadline   TEXT NOT NULL DEFAULT '',
+		state      TEXT NOT NULL DEFAULT 'open',
+		closed_at  TEXT NOT NULL DEFAULT ''
+	);
+	CREATE TABLE merge_items (
+		id              INTEGER PRIMARY KEY,
+		request_id      INTEGER NOT NULL REFERENCES merge_requests(id) ON DELETE CASCADE,
+		entry_id        TEXT NOT NULL,
+		project_version INTEGER NOT NULL,
+		kind            TEXT NOT NULL,
+		base_entry      TEXT NOT NULL DEFAULT '',
+		base_version    INTEGER NOT NULL DEFAULT 0,
+		author          TEXT NOT NULL DEFAULT '',
+		changed_at      TEXT NOT NULL,
+		state           TEXT NOT NULL DEFAULT 'waiting',
+		reviewer        TEXT NOT NULL DEFAULT '',
+		decided_at      TEXT NOT NULL DEFAULT '',
+		comment         TEXT NOT NULL DEFAULT '',
+		rule            TEXT NOT NULL DEFAULT '',
+		result_entry    TEXT NOT NULL DEFAULT '',
+		result_version  INTEGER NOT NULL DEFAULT 0,
+		master_before   INTEGER NOT NULL DEFAULT 0,
+		UNIQUE (request_id, kind, entry_id)
+	);
+	CREATE INDEX merge_items_by_request ON merge_items(request_id, state);
+	CREATE TABLE merge_assignments (
+		request_id  INTEGER NOT NULL REFERENCES merge_requests(id) ON DELETE CASCADE,
+		reviewer    TEXT NOT NULL,
+		filter_json TEXT NOT NULL,
+		PRIMARY KEY (request_id, reviewer)
+	);`,
 }
 
 // DB is an open database file. It is safe for concurrent use; writes are
@@ -200,20 +313,43 @@ func cleanDefinition(def term.Definition) (term.Definition, error) {
 	return def, nil
 }
 
-// Create adds a new, empty termbase.
+// Create adds a new, empty master termbase.
 func (d *DB) Create(ctx context.Context, def term.Definition) (*Termbase, error) {
+	return d.CreateBy(ctx, def, "")
+}
+
+// CreateBy is Create, recording who created the termbase.
+func (d *DB) CreateBy(ctx context.Context, def term.Definition, by string) (*Termbase, error) {
 	def, err := cleanDefinition(def)
 	if err != nil {
 		return nil, err
 	}
+	return d.create(ctx, def, kindMaster, nil, by)
+}
+
+// create inserts a termbase of the kind, with its upstreams (projects).
+func (d *DB) create(ctx context.Context, def term.Definition, kind string, upstreams []int64, by string) (*Termbase, error) {
 	js, err := json.Marshal(def)
 	if err != nil {
 		return nil, err
 	}
+	ups, err := json.Marshal(upstreams)
+	if err != nil {
+		return nil, err
+	}
+	if upstreams == nil {
+		ups = []byte("[]")
+	}
 	d.wmu.Lock()
 	defer d.wmu.Unlock()
-	res, err := d.sql.ExecContext(ctx, `INSERT INTO termbases(name, definition_json, created_at) VALUES (?, ?, ?)`,
-		def.Name, string(js), d.now().Format(timeLayout))
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer sqlitedb.Rollback(tx)
+	now := d.now()
+	res, err := tx.ExecContext(ctx, `INSERT INTO termbases(name, definition_json, created_at, kind, upstreams_json) VALUES (?, ?, ?, ?, ?)`,
+		def.Name, string(js), now.Format(timeLayout), kind, string(ups))
 	if err != nil {
 		if sqlitedb.IsUnique(err) {
 			return nil, ErrExists
@@ -222,6 +358,12 @@ func (d *DB) Create(ctx context.Context, def term.Definition) (*Termbase, error)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
+		return nil, err
+	}
+	if err := logChange(ctx, tx, id, def.Name, "", 0, ChangeTermbaseCreated, by, "Created the termbase", now); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &Termbase{db: d, id: id, name: def.Name}, nil
@@ -267,8 +409,14 @@ func (d *DB) List(ctx context.Context) ([]Summary, error) {
 	return out, rows.Err()
 }
 
-// Delete removes a termbase with all its entries and their history.
+// Delete removes a termbase with all its entries and their history. A
+// master that project termbases are layered over cannot be deleted.
 func (d *DB) Delete(ctx context.Context, name string) error {
+	return d.DeleteBy(ctx, name, "")
+}
+
+// DeleteBy is Delete, recording who deleted the termbase.
+func (d *DB) DeleteBy(ctx context.Context, name, by string) error {
 	d.wmu.Lock()
 	defer d.wmu.Unlock()
 	tx, err := d.sql.BeginTx(ctx, nil)
@@ -285,7 +433,17 @@ func (d *DB) Delete(ctx context.Context, name string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM entries_fts WHERE rowid IN (SELECT id FROM entries WHERE termbase_id = ?)`, id); err != nil {
 		return err
 	}
+	var dependents int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM termbases t, json_each(t.upstreams_json) u WHERE u.value = ?`, id).Scan(&dependents); err != nil {
+		return err
+	}
+	if dependents > 0 {
+		return fmt.Errorf("%w: %d project termbases are layered over it", ErrInUse, dependents)
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM termbases WHERE id = ?`, id); err != nil {
+		return err
+	}
+	if err := logChange(ctx, tx, id, strings.TrimSpace(name), "", 0, ChangeTermbaseDeleted, by, "Deleted the termbase", d.now()); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -334,7 +492,12 @@ func writeDefinition(ctx context.Context, tx *sql.Tx, id int64, def term.Definit
 
 // Rename gives the termbase a new name.
 func (t *Termbase) Rename(ctx context.Context, name string) error {
-	return t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	return t.RenameBy(ctx, name, "")
+}
+
+// RenameBy is Rename, recording who renamed the termbase.
+func (t *Termbase) RenameBy(ctx context.Context, name, by string) error {
+	return t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		def.Name = strings.TrimSpace(name)
 		if def.Name == "" {
 			return errors.New("termdb: a termbase needs a name")
@@ -349,7 +512,12 @@ func (t *Termbase) Rename(ctx context.Context, name string) error {
 // be dropped this way: that is what RemoveLanguage and RemoveField do, as
 // they change the entries too.
 func (t *Termbase) SetDefinition(ctx context.Context, def term.Definition) error {
-	return t.write(ctx, func(tx *sql.Tx, cur *term.Definition) error {
+	return t.SetDefinitionBy(ctx, def, "")
+}
+
+// SetDefinitionBy is SetDefinition, recording who changed it.
+func (t *Termbase) SetDefinitionBy(ctx context.Context, def term.Definition, by string) error {
+	return t.write(ctx, by, func(tx *sql.Tx, cur *term.Definition) error {
 		def.Name = cur.Name
 		clean, err := cleanDefinition(def)
 		if err != nil {
@@ -423,8 +591,8 @@ func (t *Termbase) usage(ctx context.Context, q querier) (usage, error) {
 }
 
 // write runs fn on the definition inside a write transaction and stores
-// the result.
-func (t *Termbase) write(ctx context.Context, fn func(tx *sql.Tx, def *term.Definition) error) error {
+// the result; by is who made a change to the definition.
+func (t *Termbase) write(ctx context.Context, by string, fn func(tx *sql.Tx, def *term.Definition) error) error {
 	t.db.wmu.Lock()
 	defer t.db.wmu.Unlock()
 	tx, err := t.db.sql.BeginTx(ctx, nil)
@@ -436,11 +604,17 @@ func (t *Termbase) write(ctx context.Context, fn func(tx *sql.Tx, def *term.Defi
 	if err != nil {
 		return err
 	}
+	before, _ := json.Marshal(def)
 	if err := fn(tx, &def); err != nil {
 		return err
 	}
-	if err := writeDefinition(ctx, tx, t.id, def); err != nil {
-		return err
+	if after, _ := json.Marshal(def); !bytes.Equal(before, after) {
+		if err := writeDefinition(ctx, tx, t.id, def); err != nil {
+			return err
+		}
+		if err := logChange(ctx, tx, t.id, def.Name, "", 0, ChangeTermbaseChanged, by, "Changed the termbase's languages, fields or name", t.db.now()); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -451,7 +625,7 @@ func (t *Termbase) write(ctx context.Context, fn func(tx *sql.Tx, def *term.Defi
 func (t *Termbase) RemoveLanguage(ctx context.Context, lang, by string) (int, error) {
 	lang = term.NormalizeLang(lang)
 	changed := 0
-	err := t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		var keep []string
 		for _, l := range def.Languages {
 			if !strings.EqualFold(l, lang) {
@@ -498,7 +672,7 @@ func (t *Termbase) RemoveLanguage(ctx context.Context, lang, by string) (int, er
 // entries changed.
 func (t *Termbase) RemoveField(ctx context.Context, name, by string) (int, error) {
 	changed := 0
-	err := t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		var keep []term.Field
 		for _, f := range def.Fields {
 			if !strings.EqualFold(f.Name, name) {
@@ -633,7 +807,7 @@ func addDefinitionFor(def *term.Definition, e term.Entry) bool {
 // its definition.
 func (t *Termbase) Add(ctx context.Context, e term.Entry, by, summary string) (Stored, error) {
 	var out Stored
-	err := t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		p, err := prepare(e, *def)
 		if err != nil {
 			return err
@@ -706,6 +880,9 @@ func (t *Termbase) insert(ctx context.Context, tx *sql.Tx, e term.Entry, by, sum
 		summary = "Created"
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, by, summary, entry_json) VALUES (?, 1, ?, ?, ?, ?)`, row, now.Format(timeLayout), by, summary, string(js)); err != nil {
+		return Stored{}, err
+	}
+	if err := logChange(ctx, tx, t.id, "", e.ID, 1, ChangeCreated, by, summary, now); err != nil {
 		return Stored{}, err
 	}
 	return Stored{Entry: e, Version: 1}, nil
@@ -781,7 +958,7 @@ func (t *Termbase) get(ctx context.Context, q querier, id string) (Stored, int64
 // the entry changed since, ErrConflict is returned and nothing is written.
 func (t *Termbase) Update(ctx context.Context, e term.Entry, version int, by, summary string) (Stored, error) {
 	var out Stored
-	err := t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		p, err := prepare(e, *def)
 		if err != nil {
 			return err
@@ -820,13 +997,16 @@ func (t *Termbase) update(ctx context.Context, tx *sql.Tx, e term.Entry, version
 	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, by, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, row, next, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return Stored{}, err
 	}
+	if err := logChange(ctx, tx, t.id, "", e.ID, next, ChangeChanged, by, summary, now); err != nil {
+		return Stored{}, err
+	}
 	return Stored{Entry: e, Version: next}, nil
 }
 
 // DeleteEntry deletes an entry. The deletion and the entry's last state
 // are kept (see Deleted).
 func (t *Termbase) DeleteEntry(ctx context.Context, id, by, summary string) error {
-	return t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	return t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		s, _, err := t.get(ctx, tx, id)
 		if err != nil {
 			return err
@@ -849,8 +1029,10 @@ func (t *Termbase) deleteEntry(ctx context.Context, tx *sql.Tx, s Stored, by, su
 	if _, err := tx.ExecContext(ctx, `DELETE FROM entries_fts WHERE rowid = (SELECT id FROM entries WHERE termbase_id = ? AND entry_id = ?)`, t.id, s.ID); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `DELETE FROM entries WHERE termbase_id = ? AND entry_id = ?`, t.id, s.ID)
-	return err
+	if _, err := tx.ExecContext(ctx, `DELETE FROM entries WHERE termbase_id = ? AND entry_id = ?`, t.id, s.ID); err != nil {
+		return err
+	}
+	return logChange(ctx, tx, t.id, "", s.ID, s.Version, ChangeDeleted, by, summary, now)
 }
 
 // Deleted lists deleted entries, most recent first.
@@ -1131,7 +1313,7 @@ func (t *Termbase) plan(ctx context.Context, q querier, def *term.Definition, tb
 // entries' history.
 func (t *Termbase) Import(ctx context.Context, tb *term.Termbase, p term.Policy, by, source string) (ImportReport, error) {
 	var rep ImportReport
-	err := t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		actions, r, _, err := t.plan(ctx, tx, def, tb, p)
 		if err != nil {
 			return err
@@ -1185,7 +1367,7 @@ func (t *Termbase) Import(ctx context.Context, tb *term.Termbase, p term.Policy,
 // others are deleted. The history of the kept entry records the merge.
 func (t *Termbase) Merge(ctx context.Context, keepID string, others []string, by string) (Stored, error) {
 	var out Stored
-	err := t.write(ctx, func(tx *sql.Tx, def *term.Definition) error {
+	err := t.write(ctx, by, func(tx *sql.Tx, def *term.Definition) error {
 		keep, _, err := t.get(ctx, tx, keepID)
 		if err != nil {
 			return err
