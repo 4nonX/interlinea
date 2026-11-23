@@ -8,6 +8,16 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network Test)
 
+# Newer macOS SDKs have no AGL framework, which Qt's OpenGL wrapper still
+# names; nothing in the app uses it.
+if(APPLE AND TARGET WrapOpenGL::WrapOpenGL)
+    get_target_property(gl_libs WrapOpenGL::WrapOpenGL INTERFACE_LINK_LIBRARIES)
+    if(gl_libs)
+        list(FILTER gl_libs EXCLUDE REGEX "AGL")
+        set_target_properties(WrapOpenGL::WrapOpenGL PROPERTIES INTERFACE_LINK_LIBRARIES "${gl_libs}")
+    endif()
+endif()
+
 option(INTERLINEA_BUILD_CORE "Build interlinea-core with Go next to the app" ON)
 set(INTERLINEA_VERSION "${PROJECT_VERSION}" CACHE STRING "Version shown by the app")
 
