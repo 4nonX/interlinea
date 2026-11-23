@@ -17,6 +17,14 @@ export { unwrap };
 
 export type { Block };
 
+/** A Hunspell dictionary found in a LibreOffice extension or ZIP file. */
+export interface SpellBundle {
+  name: string;
+  locales: string[];
+  aff: Uint8Array;
+  dic: Uint8Array;
+}
+
 interface CoreUnit {
   id: string;
   block: string;
@@ -26,6 +34,8 @@ interface CoreUnit {
   locked?: boolean;
   match?: number;
   notes?: string[];
+  /** Longest the translation may be, in characters (XLIFF maxwidth). */
+  maxLength?: number;
 }
 
 interface CoreExtraction {
@@ -77,6 +87,14 @@ export interface CoreApi {
     translated: Record<string, Uint8Array>,
   ): Res<Uint8Array>;
   qaKinds(): Res<string>;
+  spellArchive(bytes: Uint8Array): Res<SpellBundle[]>;
+  spellLoad(
+    name: string,
+    aff: Uint8Array,
+    dic: Uint8Array,
+    extraWords: string,
+  ): Res<string>;
+  spellDrop(name: string): Res<boolean>;
   qaCheck(segments: string, options: string): Res<string>;
   projectDefaults(): Res<string>;
   projectValidate(settings: string, catalog: string): Res<string>;
@@ -322,6 +340,7 @@ export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
         status: editorStatus(u.state, target),
         locked: u.locked || undefined,
         notes: u.notes,
+        maxLength: u.maxLength || undefined,
         file: {
           state: u.state ?? "new",
           target: JSON.stringify(u.target ?? []),

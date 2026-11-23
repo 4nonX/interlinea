@@ -127,4 +127,6 @@ export interface TermHit {
 export interface QaIssue {
   kind: string;
   text: string;
+  /** The text the check is about (the misspelled word). */
+  found?: string;
 }

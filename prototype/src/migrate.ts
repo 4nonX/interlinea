@@ -168,6 +168,7 @@ export function migrateV1(old: V1State): {
       projects,
       memories,
       templates: [],
+      dictionaries: [],
       baseSnapshots: old.baseSnapshots,
       branchedAt: old.branchedAt,
       gitWords: old.gitWords,

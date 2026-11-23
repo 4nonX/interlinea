@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+  <file original="hinweise.html" source-language="de-DE" target-language="en-GB" datatype="html">
+    <body>
+      <trans-unit id="u1" maxwidth="30" size-unit="char">
+        <source>Der Mieter zahlt monatlich.</source>
+        <target state="translated">The tenant pays monthly.</target>
+      </trans-unit>
+      <trans-unit id="u2">
+        <source>Die Kaution ist fällig.</source>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

@@ -131,20 +131,30 @@ function SettingsForm({ project }: { project: Project }) {
     removed.size > 0 ||
     created.length > 0;
 
-  // Memory settings exist only for the project's target languages.
+  // Memory and dictionary settings exist only for the project's target languages.
   useEffect(() => {
     setDraft((d) => {
       const keys = Object.keys(d.memories);
-      if (
+      const memoriesFit =
         keys.length === d.targetLangs.length &&
-        d.targetLangs.every((t) => keys.includes(t))
-      )
-        return d;
+        d.targetLangs.every((t) => keys.includes(t));
+      const dictsFit = Object.keys(d.qa.dictionaries).every((l) =>
+        d.targetLangs.includes(l),
+      );
+      if (memoriesFit && dictsFit) return d;
       return {
         ...d,
         memories: Object.fromEntries(
           d.targetLangs.map((t) => [t, d.memories[t] ?? []]),
         ),
+        qa: {
+          ...d.qa,
+          dictionaries: Object.fromEntries(
+            Object.entries(d.qa.dictionaries).filter(([l]) =>
+              d.targetLangs.includes(l),
+            ),
+          ),
+        },
       };
     });
   }, [draft.targetLangs]);
@@ -154,6 +164,7 @@ function SettingsForm({ project }: { project: Project }) {
     const ps = validate(c, full, {
       memories: [...state.memories, ...created.map((n) => n.memory)],
       termbases: state.termbases,
+      dictionaries: state.dictionaries,
     });
     if (
       state.projects.some(
@@ -187,6 +198,7 @@ function SettingsForm({ project }: { project: Project }) {
     JSON.stringify(full),
     state.memories,
     state.termbases,
+    state.dictionaries,
     state.projects,
     created,
     added,
@@ -587,6 +599,8 @@ function SettingsForm({ project }: { project: Project }) {
         </h2>
         <ChecksSection
           c={c}
+          targetLangs={draft.targetLangs}
+          problems={problems}
           qa={draft.qa}
           setQa={(qa) => setDraft((d) => ({ ...d, qa }))}
           context={draft.context}

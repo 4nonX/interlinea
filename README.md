@@ -348,14 +348,20 @@ each checked by the core's project validation:
 - master termbases suggested for the client; a master lacking a project
   language gains it only when you choose so; where new terms go; where the
   project termbase is kept; whether master changes come in on opening;
-- the core's quality checks to run, the context match rule, pre-translation
+- the core's quality checks to run, a spelling dictionary per target language,
+  words always spelled right, rules of the project's own (regular
+  expressions), the context match rule, pre-translation
   (lowest match, which matches are confirmed), the core's analysis per target
   language, and saving the settings as a template.
 
 Every choice can be changed later on the project's settings page, which also
 adds and removes files and target languages, adds a project memory's units to
 a main memory, pre-translates again, saves a template and deletes the
-project. Memories lists all memories with their units and users, creates,
+project. Settings adds Hunspell spelling dictionaries (LibreOffice .oxt, ZIP,
+or .aff and .dic files) for the core's spell checker. In the editor a spelling
+warning offers the dictionary's suggestions and adding the word to the
+project's words, and a segment with a length limit from its file (XLIFF
+maxwidth) counts its characters. Memories lists all memories with their units and users, creates,
 imports into, exports and deletes them. Sample documents and a deep link per
 sample (`#/new/sample/0` to `4`) show language detection, including the
 fallback for files without readable text.

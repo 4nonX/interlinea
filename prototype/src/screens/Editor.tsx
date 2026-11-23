@@ -58,6 +58,7 @@ import {
   storeConfirmed,
   unitOf,
 } from "../editor/memory";
+import { dictionaryLoaded, ensureDictionary } from "../editor/spelling";
 import {
   analyzeFiles,
   checkSegment,
@@ -318,6 +319,35 @@ export function Editor({
     [active, c, memories, index, segments, context, memVersion],
   );
   // The core's checks, as the project switches them.
+  // The spelling dictionary of this language, loaded into the core once.
+  const dictName = project?.qa.dictionaries[target] ?? "";
+  const [dictReady, setDictReady] = useState("");
+  useEffect(() => {
+    if (!c || !dictName) return;
+    if (dictionaryLoaded(dictName)) {
+      setDictReady(dictName);
+      return;
+    }
+    let live = true;
+    ensureDictionary(c, dictName).then(
+      (ok) => {
+        if (!live) return;
+        if (ok) setDictReady(dictName);
+        else
+          notify(
+            `The dictionary ${dictName} is no longer saved in this browser, so spelling is not checked. Add it again under Settings.`,
+          );
+      },
+      (e: unknown) =>
+        live &&
+        notify(
+          `The dictionary ${dictName} could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+    );
+    return () => {
+      live = false;
+    };
+  }, [c, dictName, notify]);
   const issues = useMemo((): QaIssue[] => {
     if (!active || !c || !project || !plain(active.target).trim()) return [];
     return checkSegment(
@@ -328,14 +358,28 @@ export function Editor({
       target,
       project.qa,
       termIndex?.name,
+      dictReady === dictName ? dictName : "",
     ).map((i) => ({
       kind: i.kind,
+      found: i.found,
       text:
         i.kind === "tags-missing"
           ? `${i.message} Press F9 to insert the next one.`
-          : i.message,
+          : i.kind === "spelling" && i.suggestions?.length
+            ? `${i.message} Perhaps ${i.suggestions.slice(0, 3).join(", ")}.`
+            : i.message,
     }));
-  }, [active, segments, c, project, termIndex, source, target]);
+  }, [
+    active,
+    segments,
+    c,
+    project,
+    termIndex,
+    source,
+    target,
+    dictReady,
+    dictName,
+  ]);
   const allIssues = useMemo<QaIssue[]>(() => {
     if (!active) return [];
     const extra: QaIssue[] = [];
@@ -1148,16 +1192,24 @@ export function Editor({
                         </span>
                       </div>
                     ) : isActive ? (
-                      <TargetEditor
-                        key={s.id}
-                        ref={editor}
-                        initial={s.target}
-                        lang={target}
-                        label={`Translation of segment ${n}, ${lang(target).name}`}
-                        describedBy="seg-help"
-                        onChange={(runs) => setTarget(runs)}
-                        onKeyDown={onKeyDown}
-                      />
+                      <>
+                        <TargetEditor
+                          key={s.id}
+                          ref={editor}
+                          initial={s.target}
+                          lang={target}
+                          label={`Translation of segment ${n}, ${lang(target).name}`}
+                          describedBy="seg-help"
+                          onChange={(runs) => setTarget(runs)}
+                          onKeyDown={onKeyDown}
+                        />
+                        {s.maxLength ? (
+                          <LengthCounter
+                            length={[...plain(s.target)].length}
+                            max={s.maxLength}
+                          />
+                        ) : null}
+                      </>
                     ) : (
                       <button
                         type="button"
@@ -1270,6 +1322,35 @@ export function Editor({
                         >
                           <AlertTriangle size={14} aria-hidden="true" />
                           <span className="issue-text">{q.text}</span>
+                          {q.kind === "spelling" && q.found && (
+                            <button
+                              type="button"
+                              className="btn btn-quiet btn-tiny"
+                              onClick={() => {
+                                const qa = {
+                                  ...project.qa,
+                                  words: [
+                                    ...new Set([...project.qa.words, q.found!]),
+                                  ],
+                                };
+                                dispatch({
+                                  type: "updateProject",
+                                  change: {
+                                    project: { ...project, qa },
+                                    addLanguages: [],
+                                    addMemories: [],
+                                    removeMemories: [],
+                                  },
+                                });
+                                notify(
+                                  `“${q.found}” is spelled right in this project from now on`,
+                                );
+                              }}
+                              aria-label={`Add ${q.found} to the project's words`}
+                            >
+                              Add to the project's words
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btn-quiet btn-tiny"
@@ -1950,5 +2031,19 @@ function CaptureForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** Characters used against the file's limit for the translation. */
+function LengthCounter({ length, max }: { length: number; max: number }) {
+  const over = length > max;
+  return (
+    <span
+      className={`length-counter${over ? " is-over" : ""}`}
+      aria-live="polite"
+    >
+      {length} of {max} characters
+      {over ? `, ${length - max} too many` : ""}
+    </span>
   );
 }

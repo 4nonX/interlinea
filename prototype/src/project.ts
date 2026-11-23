@@ -15,6 +15,7 @@ import {
   type ProjectFile,
   type QaSettings,
   type SetupMode,
+  type SpellDictionary,
   type Template,
   type Termbase,
   type TranslationMemory,
@@ -159,6 +160,7 @@ function coreSettings(d: Omit<Draft, "files"> & { files: Draft["files"] }) {
 export interface CatalogSource {
   memories: TranslationMemory[];
   termbases: Termbase[];
+  dictionaries: SpellDictionary[];
 }
 
 function catalog(s: CatalogSource) {
@@ -175,6 +177,9 @@ function catalog(s: CatalogSource) {
       s.termbases
         .filter((t) => t.kind === "master")
         .map((t) => [t.id, t.languages]),
+    ),
+    dictionaries: Object.fromEntries(
+      s.dictionaries.map((d) => [d.name, d.lang]),
     ),
   };
 }
@@ -450,11 +455,14 @@ export interface CoreIssue {
   severity: string;
   message: string;
   found?: string;
+  /** Spelling: the dictionary's suggestions, best first. */
+  suggestions?: string[];
 }
 
 /**
  * The core's checks of one segment's translation. The file's other
- * segments go along, so consistency with them is checked too.
+ * segments go along, so consistency with them is checked too. dictionary
+ * is the name of a spelling dictionary loaded in the core, or empty.
  */
 export function checkSegment(
   c: CoreApi,
@@ -464,6 +472,7 @@ export function checkSegment(
   targetLang: LangCode,
   q: QaSettings,
   termIndex?: string,
+  dictionary?: string,
 ): CoreIssue[] {
   const issues = JSON.parse(
     unwrap(
@@ -475,6 +484,7 @@ export function checkSegment(
               id: s.id,
               source: runsToCore(s.source),
               target: runsToCore(s.target),
+              maxLength: s.maxLength ?? 0,
             })),
         ),
         JSON.stringify({
@@ -482,7 +492,10 @@ export function checkSegment(
           targetLang,
           disabled: q.disabled,
           enabled: q.enabled,
+          rules: q.rules,
+          spellIgnore: q.words,
           termIndex: termIndex ?? "",
+          dictionary: dictionary ?? "",
         }),
       ),
     ),

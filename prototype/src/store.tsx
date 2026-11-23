@@ -22,6 +22,7 @@ import {
   renameSavedMemory,
 } from "./editor/memory";
 import { migrateV1 } from "./migrate";
+import { forgetDictionaries } from "./editor/spelling";
 import {
   BASE_SNAPSHOTS,
   BRANCHED_AT,
@@ -38,9 +39,11 @@ import {
   type InfoType,
   type LangCode,
   type Project,
+  type SpellDictionary,
   type Template,
   type Termbase,
   type TranslationMemory,
+  DEFAULT_QA,
 } from "./data";
 import { applyMerge, type Change, type Decision } from "./merge";
 import {
@@ -85,6 +88,7 @@ export interface State {
   projects: Project[];
   memories: TranslationMemory[];
   templates: Template[];
+  dictionaries: SpellDictionary[];
   baseSnapshots: Record<string, Entry>;
   branchedAt: Record<string, string>;
   gitWords: boolean;
@@ -142,6 +146,8 @@ type Action =
   | { type: "createMemory"; memory: TranslationMemory }
   | { type: "deleteMemory"; name: string }
   | { type: "saveTemplate"; template: Template }
+  | { type: "addDictionary"; dictionary: SpellDictionary }
+  | { type: "deleteDictionary"; name: string }
   | { type: "deleteTemplate"; templateId: string }
   | {
       type: "merge";
@@ -238,6 +244,7 @@ const initial: State = {
   projects: INITIAL_PROJECTS,
   memories: INITIAL_MEMORIES,
   templates: [],
+  dictionaries: [],
   baseSnapshots: BASE_SNAPSHOTS,
   branchedAt: BRANCHED_AT,
   gitWords: false,
@@ -372,6 +379,21 @@ function reducer(state: State, action: Action): State {
               t.id === action.template.id ? action.template : t,
             )
           : [...state.templates, action.template],
+      };
+    case "addDictionary":
+      return {
+        ...state,
+        dictionaries: [
+          ...state.dictionaries.filter(
+            (d) => d.name !== action.dictionary.name,
+          ),
+          action.dictionary,
+        ],
+      };
+    case "deleteDictionary":
+      return {
+        ...state,
+        dictionaries: state.dictionaries.filter((d) => d.name !== action.name),
       };
     case "deleteTemplate":
       return {
@@ -821,6 +843,24 @@ function looksValid(s: unknown): s is SavedState {
   );
 }
 
+/**
+ * Settings added since the state was saved get their defaults: the
+ * dictionaries list, and the rules, dictionaries and words of each
+ * project's and template's checks.
+ */
+function withDefaults(s: SavedState): SavedState {
+  const qa = <T extends { qa: Partial<typeof DEFAULT_QA> }>(x: T) => ({
+    ...x,
+    qa: { ...DEFAULT_QA, ...x.qa },
+  });
+  return {
+    ...s,
+    dictionaries: s.dictionaries ?? [],
+    projects: s.projects.map(qa),
+    templates: s.templates.map(qa),
+  };
+}
+
 /** Masters that gain the languages they lack, as the user chose. */
 function withLanguages(
   termbases: Termbase[],
@@ -844,6 +884,7 @@ function loadSaved(): Promise<SavedState | null> {
     if (takeResetRequest()) {
       await clearAll();
       forgetMemories();
+      forgetDictionaries();
       return null;
     }
     const rec = await load<SavedRecord>("state");
@@ -858,7 +899,7 @@ function loadSaved(): Promise<SavedState | null> {
         await renameSavedMemory(from, to);
       state = m.state;
     } else if (rec?.version === STATE_VERSION && looksValid(rec.state)) {
-      state = rec.state;
+      state = withDefaults(rec.state);
     }
     await preloadMemories();
     return state;
@@ -872,6 +913,7 @@ export async function resetSavedWork(
 ): Promise<void> {
   await clearAll();
   forgetMemories();
+  forgetDictionaries();
   dispatch({ type: "resetAll" });
 }
 

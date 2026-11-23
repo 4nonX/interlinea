@@ -193,6 +193,18 @@ export interface TranslationMemory {
   seedFromProject?: boolean;
 }
 
+/** A check of the project's own, as the core's QA runs it. */
+export interface QaRule {
+  name: string;
+  /** Only where the source matches this (regular expression). */
+  source?: string;
+  /** What the translation must or must not match (regular expression). */
+  target: string;
+  mode: "must" | "must-not" | "count";
+  severity?: "error" | "warning";
+  message?: string;
+}
+
 export interface QaSettings {
   /** Core checks turned off that are on by default. */
   disabled: string[];
@@ -200,6 +212,20 @@ export interface QaSettings {
   enabled: string[];
   /** Warn when a fuzzy match is confirmed unchanged. */
   uneditedFuzzy: boolean;
+  rules: QaRule[];
+  /** Spelling dictionary per target language, by name. */
+  dictionaries: Record<LangCode, string>;
+  /** Words always spelled right in this project. */
+  words: string[];
+}
+
+/** A Hunspell spelling dictionary. Its files are saved in the browser. */
+export interface SpellDictionary {
+  name: string;
+  /** The language it spells. */
+  lang: LangCode;
+  words: number;
+  addedAt: string;
 }
 
 export interface PrepareSettings {
@@ -274,6 +300,9 @@ export const DEFAULT_QA: QaSettings = {
   disabled: [],
   enabled: [],
   uneditedFuzzy: true,
+  rules: [],
+  dictionaries: {},
+  words: [],
 };
 
 export const DEFAULT_PREPARE: PrepareSettings = {
@@ -317,6 +346,7 @@ export function freshCopy(segments: Segment[]): Segment[] {
     target: [],
     status: "new" as const,
     locked: s.locked,
+    maxLength: s.maxLength,
   }));
 }
 

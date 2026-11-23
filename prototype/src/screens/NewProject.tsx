@@ -63,6 +63,7 @@ import {
 import {
   ChecksSection,
   checksOn,
+  withDictionaries,
   MemoriesSection,
   PrepareSection,
   Problems,
@@ -159,6 +160,7 @@ export function NewProject({ sample }: { sample?: number }) {
     masters: false,
     location: false,
     memories: false,
+    checks: false,
   });
   const touch = (k: keyof typeof touched) =>
     setTouched((t) => (t[k] ? t : { ...t, [k]: true }));
@@ -317,6 +319,22 @@ export function NewProject({ sample }: { sample?: number }) {
     state.memories,
   ]);
 
+  // Each target language spells with the dictionary that fits it, until
+  // the user sets the checks; languages the project lost lose theirs.
+  useEffect(() => {
+    setDraft((d) => {
+      const kept = Object.fromEntries(
+        Object.entries(d.qa.dictionaries).filter(([l]) =>
+          d.targetLangs.includes(l),
+        ),
+      );
+      let qa = { ...d.qa, dictionaries: kept };
+      if (!touched.checks)
+        qa = withDictionaries(qa, d.targetLangs, state.dictionaries);
+      return JSON.stringify(qa) === JSON.stringify(d.qa) ? d : { ...d, qa };
+    });
+  }, [draft.targetLangs, touched.checks, state.dictionaries]);
+
   // Masters for the client are suggested until the user chooses.
   useEffect(() => {
     if (touched.masters || start.kind !== "blank") return;
@@ -402,6 +420,7 @@ export function NewProject({ sample }: { sample?: number }) {
     const ps = validate(c, full, {
       memories: [...state.memories, ...created.map((n) => n.memory)],
       termbases: state.termbases,
+      dictionaries: state.dictionaries,
     });
     if (
       state.projects.some(
@@ -443,6 +462,7 @@ export function NewProject({ sample }: { sample?: number }) {
     JSON.stringify(full),
     state.memories,
     state.termbases,
+    state.dictionaries,
     state.projects,
     state.templates,
     created,
@@ -1182,8 +1202,13 @@ export function NewProject({ sample }: { sample?: number }) {
             </summary>
             <ChecksSection
               c={c}
+              targetLangs={draft.targetLangs}
+              problems={problems}
               qa={draft.qa}
-              setQa={(qa) => setDraft((d) => ({ ...d, qa }))}
+              setQa={(qa) => {
+                touch("checks");
+                setDraft((d) => ({ ...d, qa }));
+              }}
               context={draft.context}
               setContext={(context) => setDraft((d) => ({ ...d, context }))}
             />

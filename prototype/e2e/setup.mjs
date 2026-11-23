@@ -18,6 +18,7 @@ export default () =>
       sleep,
       open,
       setValue,
+      key,
       fixtures,
       samples,
       waitFor,
@@ -380,6 +381,122 @@ export default () =>
       check(
         errors.length === 0,
         "no console errors after migration: " + errors.join(" | "),
+      );
+
+      // Spelling with a dictionary added in Settings, a rule of the
+      // project's own, and the length limit an XLIFF file sets.
+      await open("/settings", { wait: 600 });
+      await setFiles("input[accept*='.oxt']", [
+        `${fixtures}/en_GB.aff`,
+        `${fixtures}/en_GB.dic`,
+      ]);
+      check(
+        await waitFor(
+          "document.body.innerText.includes('Found in the files') && document.getElementById('dl-0')?.value === 'en-GB'",
+        ),
+        "dictionary found, its language read from the file name",
+      );
+      await click("button", "Add 1 dictionary");
+      check(
+        await waitFor("document.body.innerText.includes('12 words')"),
+        "dictionary loaded by the core and listed",
+      );
+      await open("/new", { keep: true, wait: 600 });
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFiles("input[type=file][multiple]:not([webkitdirectory])", [
+        `${fixtures}/Hinweise.xlf`,
+      ]);
+      await waitFor(
+        "document.querySelectorAll('.file-table tbody tr').length === 1",
+      );
+      await click("button", "Continue to memories");
+      await sleep(300);
+      await click("button", "Continue to terminology");
+      await sleep(300);
+      await click("button", "Continue to review");
+      await waitFor("!!document.querySelector('.analysis')");
+      await click("summary", "Checks and context matches");
+      await sleep(200);
+      check(
+        (await evaluate("document.getElementById('dict-en-GB')?.value")) ===
+          "en_GB",
+        "the dictionary for English is chosen by itself",
+      );
+      await click("button", "Add a rule");
+      await sleep(150);
+      await setValue("#rule-0-name", "No contractions");
+      await setValue("#rule-0-target", "(");
+      await sleep(400);
+      check(
+        (await text()).includes(
+          'Rule "No contractions": error parsing regexp',
+        ) &&
+          (await evaluate(
+            "[...document.querySelectorAll('button')].find(b => b.textContent === 'Create project').disabled",
+          )),
+        "a pattern the core can't compile is refused",
+      );
+      await setValue("#rule-0-target", "n't");
+      await setValue("#rule-0-msg", "Write it out in full.");
+      await sleep(400);
+      await click("button", "Create project");
+      check(
+        await waitFor("!!document.querySelector('.editor .seg')", 15000),
+        "XLIFF project opens",
+      );
+      await evaluate(
+        "[...document.querySelectorAll('.seg')][0].querySelector('.seg-target-view, .target-editor').click()",
+      );
+      await sleep(400);
+      check(
+        (await evaluate(
+          "document.querySelector('.length-counter')?.textContent",
+        )) === "24 of 30 characters",
+        "the file's length limit is counted",
+      );
+      await key("a", "KeyA", 65, 2);
+      await send("Input.insertText", {
+        text: "The tenant doesn't payz the rent monthly.",
+      });
+      check(
+        await waitFor("[...document.querySelectorAll('.issue')].length >= 3"),
+        "checks run",
+      );
+      const qaText = await evaluate(
+        "[...document.querySelectorAll('.issue')].map(i => i.textContent).join(' | ')",
+      );
+      check(
+        qaText.includes("“payz” is not in the dictionary. Perhaps pays") &&
+          qaText.includes("Write it out in full.") &&
+          qaText.includes("at most 30 are allowed") &&
+          (await evaluate(
+            "document.querySelector('.length-counter').classList.contains('is-over')",
+          )),
+        "spelling, the project's rule and the length limit flagged: " + qaText,
+      );
+      check(
+        !qaText.includes("“tenant”") && !qaText.includes("“monthly”"),
+        "words in the dictionary pass",
+      );
+      await click("button", "Add to the project's words");
+      check(
+        await waitFor(
+          "![...document.querySelectorAll('.issue')].some(i => i.textContent.includes('payz'))",
+        ),
+        "a word added to the project's words passes",
+      );
+      await click("a", "Project settings");
+      await sleep(600);
+      check(
+        (await evaluate(
+          "[...document.querySelectorAll('.word-list .tag')].map(t => t.textContent).join()",
+        )) === "payz",
+        "the project's words are in its settings",
+      );
+      check(
+        errors.length === 0,
+        "no console errors with spelling: " + errors.join(" | "),
       );
     },
   );

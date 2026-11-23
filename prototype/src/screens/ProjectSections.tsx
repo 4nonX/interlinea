@@ -12,7 +12,9 @@ import {
   type MemorySetting,
   type PrepareSettings,
   type Project,
+  type QaRule,
   type QaSettings,
+  type SpellDictionary,
   type TranslationMemory,
 } from "../data";
 import { useStore, useWords } from "../store";
@@ -856,42 +858,90 @@ export function TerminologySection({
   );
 }
 
-/**
- * Checks that need what the prototype doesn't have: a spelling dictionary,
- * rules of your own, or length limits from the file. They are not offered
- * rather than offered and silently never run.
- */
-const NOT_IN_PROTOTYPE = ["spelling", "rule", "length"];
-
-/** How many of the offered checks are on. */
+/** How many of the checks are on. */
 export function checksOn(
   c: CoreApi,
   qa: QaSettings,
 ): { on: number; of: number } {
-  const kinds = qaKinds(c).filter((k) => !NOT_IN_PROTOTYPE.includes(k.kind));
+  const kinds = qaKinds(c);
   return {
     on: kinds.filter((k) => checkOn(qa, k)).length + (qa.uneditedFuzzy ? 1 : 0),
     of: kinds.length + 1,
   };
 }
 
-/** Quality checks the editor runs, and how context matches are counted. */
+/** Dictionaries that spell a language: the same region first, then the language. */
+export function dictionariesFor(
+  all: SpellDictionary[],
+  l: LangCode,
+): SpellDictionary[] {
+  return all
+    .filter((d) => primary(d.lang) === primary(l))
+    .sort((a, b) => Number(b.lang === l) - Number(a.lang === l));
+}
+
+/** Each target language gets the dictionary that fits it best, where it has none. */
+export function withDictionaries(
+  qa: QaSettings,
+  targets: LangCode[],
+  all: SpellDictionary[],
+): QaSettings {
+  const dictionaries: Record<LangCode, string> = {};
+  for (const t of targets) {
+    const set = qa.dictionaries[t];
+    const best = dictionariesFor(all, t)[0]?.name;
+    if (set && all.some((d) => d.name === set)) dictionaries[t] = set;
+    else if (best) dictionaries[t] = best;
+  }
+  return JSON.stringify(dictionaries) === JSON.stringify(qa.dictionaries)
+    ? qa
+    : { ...qa, dictionaries };
+}
+
+const NEW_RULE: QaRule = {
+  name: "",
+  target: "",
+  mode: "must-not",
+  severity: "warning",
+};
+
+/**
+ * Quality checks the editor runs: the core's checks, the spelling
+ * dictionary for each target language, the project's own words and
+ * rules, and how context matches are counted.
+ */
 export function ChecksSection({
   c,
   qa,
   setQa,
   context,
   setContext,
+  targetLangs,
+  problems,
 }: {
   c: CoreApi | null;
   qa: QaSettings;
   setQa: (q: QaSettings) => void;
   context: Draft["context"];
   setContext: (r: Draft["context"]) => void;
+  targetLangs: LangCode[];
+  problems: Problem[];
 }) {
-  const kinds = c
-    ? qaKinds(c).filter((k) => !NOT_IN_PROTOTYPE.includes(k.kind))
-    : [];
+  const { state } = useStore();
+  const kinds = c ? qaKinds(c) : [];
+  const [word, setWord] = useState("");
+  const spellingOn = kinds.some((k) => k.kind === "spelling" && checkOn(qa, k));
+  const addWord = () => {
+    const w = word.trim();
+    if (!w || qa.words.includes(w)) return;
+    setQa({ ...qa, words: [...qa.words, w] });
+    setWord("");
+  };
+  const setRule = (i: number, patch: Partial<QaRule>) =>
+    setQa({
+      ...qa,
+      rules: qa.rules.map((r, j) => (j === i ? { ...r, ...patch } : r)),
+    });
   return (
     <>
       <fieldset className="field">
@@ -941,7 +991,13 @@ export function ChecksSection({
                   />
                   <span>
                     {k.name}
-                    <span className="check-desc">{k.description}</span>
+                    <span className="check-desc">
+                      {k.description}
+                      {k.kind === "length" &&
+                        " Limits come from the file (XLIFF maxwidth); Word files have none."}
+                      {k.kind === "spelling" && " With the dictionaries below."}
+                      {k.kind === "rule" && " The rules below."}
+                    </span>
                   </span>
                 </label>
               </li>
@@ -965,10 +1021,225 @@ export function ChecksSection({
             </li>
           </ul>
         )}
+      </fieldset>
+
+      <fieldset className="field">
+        <legend>Spelling</legend>
+        {!spellingOn && <p className="muted">The spelling check is off.</p>}
+        <ul className="dict-list">
+          {targetLangs.map((t) => {
+            const fit = dictionariesFor(state.dictionaries, t);
+            const id = `dict-${t}`;
+            return (
+              <li key={t} className="field-row-inline">
+                <label htmlFor={id}>{lang(t).name}</label>
+                <select
+                  id={id}
+                  className="select-small"
+                  value={qa.dictionaries[t] ?? ""}
+                  disabled={!spellingOn}
+                  onChange={(e) => {
+                    const dictionaries = { ...qa.dictionaries };
+                    if (e.target.value) dictionaries[t] = e.target.value;
+                    else delete dictionaries[t];
+                    setQa({ ...qa, dictionaries });
+                  }}
+                >
+                  <option value="">
+                    {fit.length
+                      ? "No spelling check"
+                      : "No dictionary for this language"}
+                  </option>
+                  {fit.map((d) => (
+                    <option key={d.name} value={d.name}>
+                      {d.name} ({lang(d.lang).name})
+                    </option>
+                  ))}
+                </select>
+                <Problems
+                  messages={problemsAt(problems, `qa.dictionaries.${t}`)}
+                />
+              </li>
+            );
+          })}
+        </ul>
         <p className="help">
-          Spelling, rules of your own and length limits from the file come with
-          the desktop app, which loads dictionaries, rule sets and file limits.
+          Dictionaries are added once under <a href="#/settings">Settings</a>,
+          from a LibreOffice extension (.oxt) or .aff and .dic files.
         </p>
+        <div className="field">
+          <span className="field-label" id="words-label">
+            Words always spelled right in this project
+          </span>
+          {qa.words.length > 0 && (
+            <ul className="word-list" aria-labelledby="words-label">
+              {qa.words.map((w) => (
+                <li key={w} className="tag">
+                  {w}
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Remove ${w}`}
+                    onClick={() =>
+                      setQa({ ...qa, words: qa.words.filter((x) => x !== w) })
+                    }
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="add-lang">
+            <label htmlFor="add-word" className="sr-only">
+              Add a word
+            </label>
+            <input
+              id="add-word"
+              value={word}
+              onChange={(e) => setWord(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addWord();
+                }
+              }}
+              placeholder="A name or term"
+            />
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!word.trim()}
+              onClick={addWord}
+            >
+              <Plus size={14} aria-hidden="true" />
+              Add
+            </button>
+          </div>
+          <Problems messages={problemsAt(problems, "qa.words")} />
+        </div>
+      </fieldset>
+
+      <fieldset className="field">
+        <legend>Rules of your own</legend>
+        <p className="help">
+          Regular expressions the translation must or must not match, only where
+          the source matches one if you give it, or must match as often as the
+          source matches.
+        </p>
+        {qa.rules.map((r, i) => {
+          const id = `rule-${i}`;
+          return (
+            <div
+              key={i}
+              className="rule"
+              role="group"
+              aria-label={r.name || `Rule ${i + 1}`}
+            >
+              <div className="field-grid">
+                <div className="field">
+                  <label htmlFor={`${id}-name`}>Name</label>
+                  <input
+                    id={`${id}-name`}
+                    value={r.name}
+                    onChange={(e) => setRule(i, { name: e.target.value })}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor={`${id}-mode`}>The translation</label>
+                  <select
+                    id={`${id}-mode`}
+                    value={r.mode}
+                    onChange={(e) =>
+                      setRule(i, { mode: e.target.value as QaRule["mode"] })
+                    }
+                  >
+                    <option value="must-not">must not match</option>
+                    <option value="must">must match</option>
+                    <option value="count">
+                      must match as often as the source
+                    </option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor={`${id}-target`}>Translation pattern</label>
+                  <input
+                    id={`${id}-target`}
+                    className="mono"
+                    value={r.target}
+                    onChange={(e) => setRule(i, { target: e.target.value })}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor={`${id}-source`}>
+                    Source pattern{" "}
+                    <span className="optional">
+                      {r.mode === "count" ? "needed" : "optional"}
+                    </span>
+                  </label>
+                  <input
+                    id={`${id}-source`}
+                    className="mono"
+                    value={r.source ?? ""}
+                    onChange={(e) =>
+                      setRule(i, { source: e.target.value || undefined })
+                    }
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor={`${id}-sev`}>Shown as</label>
+                  <select
+                    id={`${id}-sev`}
+                    value={r.severity ?? "warning"}
+                    onChange={(e) =>
+                      setRule(i, {
+                        severity: e.target.value as "error" | "warning",
+                      })
+                    }
+                  >
+                    <option value="warning">Warning</option>
+                    <option value="error">Error</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor={`${id}-msg`}>
+                    Message <span className="optional">optional</span>
+                  </label>
+                  <input
+                    id={`${id}-msg`}
+                    value={r.message ?? ""}
+                    onChange={(e) =>
+                      setRule(i, { message: e.target.value || undefined })
+                    }
+                  />
+                </div>
+              </div>
+              <Problems messages={problemsAt(problems, `qa.rules[${i}]`)} />
+              <button
+                type="button"
+                className="btn btn-quiet btn-small"
+                onClick={() =>
+                  setQa({ ...qa, rules: qa.rules.filter((_, j) => j !== i) })
+                }
+              >
+                <X size={14} aria-hidden="true" />
+                Remove rule
+              </button>
+            </div>
+          );
+        })}
+        <div>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() =>
+              setQa({ ...qa, rules: [...qa.rules, { ...NEW_RULE }] })
+            }
+          >
+            <Plus size={14} aria-hidden="true" />
+            Add a rule
+          </button>
+        </div>
       </fieldset>
     </>
   );
