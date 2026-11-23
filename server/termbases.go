@@ -200,6 +200,14 @@ func (s *Server) createTermbase(w http.ResponseWriter, r *http.Request, me sessi
 				return
 			}
 		}
+		if len(req.Definition.Languages) == 0 {
+			cat, err := s.catalog(ctx)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			req.Definition.Languages = mastersLanguages(cat, req.Upstreams)
+		}
 		tb, err = s.cfg.Termbases.CreateProject(ctx, req.Definition, req.Upstreams, me.by())
 	} else {
 		if len(req.Definition.Languages) == 0 {

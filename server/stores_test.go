@@ -235,7 +235,11 @@ func TestMergeRequests(t *testing.T) {
 	ben, benTok := e.user("ben", false)
 	rita, ritaTok := e.user("rita", false)
 	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Recht", Languages: []string{"de-DE", "en-GB"}}}, 201, nil)
-	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Hofmann"}, Upstreams: []string{"Recht"}}, 201, nil)
+	var hof termbaseDetail
+	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Hofmann"}, Upstreams: []string{"Recht"}}, 201, &hof)
+	if len(hof.Definition.Languages) != 2 {
+		t.Fatalf("a layered termbase has its master's languages: %+v", hof.Definition)
+	}
 	for _, g := range []authdb.Grant{
 		{UserID: ben.ID, Kind: authdb.KindTermbase, Resource: "Hofmann", Role: authdb.RoleEdit},
 		{UserID: ben.ID, Kind: authdb.KindTermbase, Resource: "Recht", Role: authdb.RoleSuggest},

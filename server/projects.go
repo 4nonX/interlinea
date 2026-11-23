@@ -364,8 +364,12 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me sessio
 	if req.Termbase != nil {
 		def := *req.Termbase
 		def.Name = set.Terminology.Termbase
-		if len(def.Languages) == 0 && set.Terminology.Mode == project.Own {
-			def.Languages = append([]string{set.SourceLang}, set.TargetLangs...)
+		if len(def.Languages) == 0 {
+			if set.Terminology.Mode == project.Own {
+				def.Languages = append([]string{set.SourceLang}, set.TargetLangs...)
+			} else {
+				def.Languages = mastersLanguages(cat, set.Terminology.Masters)
+			}
 		}
 		var err error
 		if set.Terminology.Mode == project.Layered {
@@ -409,6 +413,23 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me sessio
 		return
 	}
 	writeJSON(w, http.StatusCreated, projectView{Project: p, Access: a})
+}
+
+// mastersLanguages is every language of the masters, in their order: a
+// layered project termbase has the languages of what it is layered over.
+func mastersLanguages(cat project.Catalog, masters []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range masters {
+		langs, _ := lookupFold(cat.Termbases, m)
+		for _, l := range langs {
+			if !seen[strings.ToLower(l)] {
+				seen[strings.ToLower(l)] = true
+				out = append(out, l)
+			}
+		}
+	}
+	return out
 }
 
 // lookupFold finds a name in a map ignoring case, as the stores compare

@@ -123,7 +123,7 @@ func TestCreateProject(t *testing.T) {
 	}
 	var tb termbaseDetail
 	te.call("GET", "/api/termbases/Mietvertrag%20Hofmann", te.pm, nil, 200, &tb)
-	if tb.Kind != "project" || len(tb.Upstreams) != 1 || tb.Upstreams[0] != "tb-weber" || tb.Role != "manage" {
+	if tb.Kind != "project" || len(tb.Upstreams) != 1 || tb.Upstreams[0] != "tb-weber" || tb.Role != "manage" || len(tb.Definition.Languages) != 3 {
 		t.Fatalf("project termbase %+v", tb)
 	}
 	// The same project again: the name is taken, and nothing is left over.

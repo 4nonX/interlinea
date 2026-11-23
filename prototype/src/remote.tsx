@@ -443,7 +443,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
               kind,
               location: "server",
               server: host,
-              languages: v.definition.languages,
+              languages: v.definition.languages?.length ? v.definition.languages : [s.sourceLang, ...s.targetLangs],
               client: s.client,
               basedOn: kind === "project" ? (v.upstreams ?? []).map(termbaseId) : undefined,
               projectId: kind === "project" ? id : undefined,
@@ -509,13 +509,20 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       const info = await api.termbase(name);
       const infoTypes = infoTypesFromCore(info.definition.fields as never);
       const ids = new Map(infoTypes.map((i) => [i.name, i.id]));
+      // A layered termbase without languages of its own has its masters'.
+      let languages = info.definition.languages ?? [];
+      if (!languages.length)
+        for (const u of info.upstreams ?? []) {
+          const up = await api.termbase(u).catch(() => null);
+          for (const l of up?.definition.languages ?? []) if (!languages.includes(l)) languages = [...languages, l];
+        }
       const tb: Termbase = {
         id: termbaseId(info.name),
         name: info.name,
         kind: info.kind,
         location: "server",
         server: new URL(conn.url).host,
-        languages: info.definition.languages,
+        languages,
         basedOn: info.kind === "project" ? (info.upstreams ?? []).map(termbaseId) : undefined,
         infoTypes,
         remote: true,

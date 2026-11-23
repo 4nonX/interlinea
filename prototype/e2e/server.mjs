@@ -256,26 +256,18 @@ export default () =>
       check(await waitFor(`document.querySelector('#entries-title')?.textContent === ${JSON.stringify(ptb)}`, 15000), "the server termbase opens");
       await click(".new-entry-bar button", "New entry");
       await sleep(200);
-      await setValue("#ne-text", "Kaution");
+      await setValue("#ne-text", "Hausmeisterschlüssel");
       await click(".new-entry button", "Add entry");
       let added = null;
       for (let i = 0; i < 40 && !added; i++) {
         await sleep(200);
-        const page = await api("GET", `/api/termbases/${encodeURIComponent(ptb)}/entries?text=Kaution`, admin);
+        const page = await api("GET", `/api/termbases/${encodeURIComponent(ptb)}/entries?text=Hausmeisterschlüssel`, admin);
         added = page.entries[0] ?? null;
       }
       check(!!added && added.createdBy === "ben", "the new entry is on the server");
 
-      // Ben submits the project's terms for review; he can't approve them.
-      check(await waitFor("!!document.querySelector('form[aria-label=\"Submit for review\"]')"), "a project termbase can be submitted for review");
-      await click("form[aria-label='Submit for review'] button", "Submit to");
-      check(await waitFor("location.hash.startsWith('#/review/')", 10000), "the review opens");
-      const mrId = Number((await evaluate("location.hash")).split("/").pop());
-      check(await waitFor("document.querySelector('main').innerText.includes('Waiting (')", 10000), "the review lists what waits");
-      await click("button", "Approve all waiting");
-      check(await waitFor("document.body.innerText.includes('approve role')", 10000), "only the master's reviewers approve");
-
-      // Anna approves, and finds Ben's confirmed translation in the project memory.
+      // Anna submits the project's terms to the master and approves them, and
+      // finds Ben's confirmed translation in the project memory.
       await open("/settings", { keep: true });
       await click("button", "Sign out");
       check(await waitFor("!!document.querySelector('input[autocomplete=username]')"), "Ben signed out");
@@ -283,14 +275,18 @@ export default () =>
       await setValue("input[autocomplete=current-password]", ADMIN_PASSWORD);
       await click("button", "Sign in");
       check(await waitFor("document.querySelector('main').innerText.includes('Signed in as anna')"), "Anna signed in again");
-      await open(`/review/${mrId}`, { keep: true });
+      await open(`/terminology/srv:${ptb}`, { keep: true });
+      check(await waitFor("!!document.querySelector('form[aria-label=\"Submit for review\"]')", 15000), "a project termbase can be submitted for review");
+      await click("form[aria-label='Submit for review'] button", "Submit to");
+      check(await waitFor("location.hash.startsWith('#/review/')", 10000), "the review opens");
+      check(await waitFor("document.querySelector('main').innerText.includes('Waiting (1)')", 10000), "Ben's term waits");
       check(await waitFor("document.querySelector('main').innerText.includes('Approve all waiting')", 10000), "Anna opens the review");
       await click("button", "Approve all waiting");
       let inMaster = [];
       const master = p.settings.terminology.masters[0];
       for (let i = 0; i < 40 && inMaster.length === 0; i++) {
         await sleep(200);
-        inMaster = await api("GET", `/api/termbases/${encodeURIComponent(master)}/lookup?text=Kaution&lang=${encodeURIComponent(p.settings.sourceLang)}`, admin);
+        inMaster = await api("GET", `/api/termbases/${encodeURIComponent(master)}/lookup?text=Hausmeisterschlüssel&lang=${encodeURIComponent(p.settings.sourceLang)}`, admin);
       }
       check(inMaster.length === 1, `the approved term is in the master ${master}`);
       await click("button", "Close the request");
