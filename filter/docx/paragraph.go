@@ -7,10 +7,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	parag "github.com/4nonX/interlinea/filter/para"
 )
 
 // dialect is the markup a paragraph is written in.
@@ -149,9 +149,29 @@ func (d *document) parsePart(file string, kind filter.Part, data []byte, cache b
 					}
 				}
 			}
+			// A table on a slide: its cells hold DrawingML paragraphs.
+			if a != "" && t.Name.Space == a {
+				switch t.Name.Local {
+				case "tbl":
+					ctx.tableDepth++
+					if ctx.tableDepth == 1 {
+						ctx.table++
+						ctx.row = -1
+					}
+				case "tr":
+					if ctx.tableDepth == 1 {
+						ctx.row++
+						ctx.col = -1
+					}
+				case "tc":
+					if ctx.tableDepth == 1 {
+						ctx.col++
+					}
+				}
+			}
 			isW := w != "" && t.Name.Space == w && t.Name.Local == "p"
 			isA := a != "" && t.Name.Space == a && t.Name.Local == "p"
-			isLabel := c != "" && t.Name.Space == c && t.Name.Local == "v" && f.strCache
+			isLabel := c != "" && t.Name.Space == c && t.Name.Local == "v" && f.strCache && !d.noLabels
 			if (isW || isA || isLabel) && !ctx.skip {
 				n, _, err := build(data, toks, i)
 				if err != nil {
@@ -191,6 +211,9 @@ func (d *document) parsePart(file string, kind filter.Part, data []byte, cache b
 				case "footnote", "endnote", "comment":
 					ctx.note, ctx.skip = "", false
 				}
+			}
+			if a := prefixes[nsDML]; a != "" && t.Name.Space == a && t.Name.Local == "tbl" {
+				ctx.tableDepth--
 			}
 		}
 	}
@@ -275,8 +298,8 @@ func (d *document) addParagraph(p *part, n *node, id string, dia dialect, prefix
 	}
 	c, base, ranges := toContent(ip.items, dia == dml, d.styleName)
 	pa.base, pa.ranges = base, ranges
-	c, pa.prefix, pa.suffix = stripEdges(c)
-	if !hasText(c) {
+	c, pa.prefix, pa.suffix = parag.StripEdges(c)
+	if !parag.HasText(c) {
 		return nil // nothing to translate; the paragraph is copied as it is
 	}
 	block.Revisions = ip.revisions
@@ -297,7 +320,7 @@ func (d *document) addParagraph(p *part, n *node, id string, dia dialect, prefix
 			pa.pieces = append(pa.pieces, pc)
 			continue
 		}
-		src, ids := renumber(pc.gap)
+		src, ids := parag.Renumber(pc.gap)
 		sig = append(sig, src.String())
 		if mirror {
 			pa.pieces = append(pa.pieces, piece{unit: -2, src: src, ids: ids})
@@ -808,77 +831,13 @@ func toContent(items []item, isDML bool, styleName func(string) string) (content
 	return c, base, ranges
 }
 
-// stripEdges moves tags at the paragraph edges out of the translatable
-// content: standalone tags before the first or after the last text, and a
-// pair of tags that encloses everything.
-func stripEdges(c content.Content) (body, prefix, suffix content.Content) {
-	body = c
-	prefix, suffix = content.Content{}, content.Content{}
-	for changed := true; changed; {
-		changed = false
-		for len(body) > 0 && body[0].IsTag() && body[0].Tag.Kind == content.TagStandalone {
-			prefix = append(prefix, body[0])
-			body = body[1:]
-			changed = true
-		}
-		for len(body) > 0 && body[len(body)-1].IsTag() && body[len(body)-1].Tag.Kind == content.TagStandalone {
-			suffix = append(content.Content{body[len(body)-1]}, suffix...)
-			body = body[:len(body)-1]
-			changed = true
-		}
-		if len(body) >= 2 && body[0].IsTag() && body[0].Tag.Kind == content.TagOpen {
-			last := body[len(body)-1]
-			if last.IsTag() && last.Tag.Kind == content.TagClose && last.Tag.ID == body[0].Tag.ID {
-				prefix = append(prefix, body[0])
-				suffix = append(content.Content{last}, suffix...)
-				body = body[1 : len(body)-1]
-				changed = true
-			}
-		}
-	}
-	return body, prefix, suffix
-}
-
-func hasText(c content.Content) bool {
-	for _, r := range c {
-		if !r.IsTag() && strings.TrimFunc(r.Text, unicode.IsSpace) != "" {
-			return true
-		}
-	}
-	return false
-}
-
 // splitParagraph cuts paragraph content into units and gaps. A sentence
 // break inside a pair of tags is not used, so tags never cross units.
 func (d *document) splitParagraph(c content.Content) []piece {
-	breaks := d.seg.Breaks(c.Plain())
-	var ok []int
-	for _, b := range breaks {
-		depth, pos := 0, 0
-		for _, r := range c {
-			if !r.IsTag() {
-				pos += len(r.Text)
-				continue
-			}
-			switch r.Tag.Kind {
-			case content.TagOpen:
-				if pos < b {
-					depth++
-				}
-			case content.TagClose:
-				if pos <= b {
-					depth--
-				}
-			}
-		}
-		if depth == 0 {
-			ok = append(ok, b)
-		}
-	}
 	var out []piece
-	for _, part := range cut(c, ok) {
-		lead, mid, trail := trimSpace(part)
-		if !hasText(mid) {
+	for _, part := range parag.Cut(c, parag.Breaks(d.seg, c)) {
+		lead, mid, trail := parag.TrimSpace(part)
+		if !parag.HasText(mid) {
 			out = appendGap(out, part)
 			continue
 		}
@@ -898,97 +857,4 @@ func appendGap(ps []piece, g content.Content) []piece {
 		return ps
 	}
 	return append(ps, piece{unit: -1, gap: g.Clone()})
-}
-
-// cut splits content at plain-text offsets without losing anything. Close
-// tags at a cut stay with the left part; open and standalone tags go right.
-func cut(c content.Content, at []int) []content.Content {
-	var out []content.Content
-	cur := content.Content{}
-	pos, k := 0, 0
-	flush := func() {
-		out = append(out, cur)
-		cur = content.Content{}
-		k++
-	}
-	for _, r := range c {
-		if r.IsTag() {
-			if k < len(at) && pos == at[k] && r.Tag.Kind != content.TagClose {
-				flush()
-			}
-			cur = cur.AppendTag(*r.Tag)
-			continue
-		}
-		s := r.Text
-		for s != "" {
-			if k < len(at) && pos == at[k] {
-				flush()
-				continue
-			}
-			n := len(s)
-			if k < len(at) && at[k]-pos < n {
-				n = at[k] - pos
-			}
-			cur = cur.Append(s[:n])
-			s = s[n:]
-			pos += n
-		}
-	}
-	for k < len(at) && pos >= at[k] {
-		flush()
-	}
-	return append(out, cur)
-}
-
-// trimSpace moves whitespace at the start and end of a part into gaps.
-func trimSpace(c content.Content) (lead, mid, trail content.Content) {
-	mid = c.Clone()
-	lead, trail = content.Content{}, content.Content{}
-	if len(mid) > 0 && !mid[0].IsTag() {
-		t := mid[0].Text
-		s := strings.TrimLeftFunc(t, unicode.IsSpace)
-		if s != t {
-			lead = content.Text(t[:len(t)-len(s)])
-			if s == "" {
-				mid = mid[1:]
-			} else {
-				mid[0].Text = s
-			}
-		}
-	}
-	if n := len(mid); n > 0 && !mid[n-1].IsTag() {
-		t := mid[n-1].Text
-		s := strings.TrimRightFunc(t, unicode.IsSpace)
-		if s != t {
-			trail = content.Text(t[len(s):])
-			if s == "" {
-				mid = mid[:n-1]
-			} else {
-				mid[n-1].Text = s
-			}
-		}
-	}
-	return lead, mid, trail
-}
-
-// renumber gives the tags of a unit IDs from 1 in order of appearance and
-// returns the map from the new IDs to the paragraph's.
-func renumber(c content.Content) (content.Content, map[string]string) {
-	ids := map[string]string{}
-	back := map[string]string{}
-	out := c.Clone()
-	for i := range out {
-		if !out[i].IsTag() {
-			continue
-		}
-		t := out[i].Tag
-		id, ok := ids[t.ID]
-		if !ok {
-			id = strconv.Itoa(len(ids) + 1)
-			ids[t.ID] = id
-			back[id] = t.ID
-		}
-		t.ID = id
-	}
-	return out, back
 }

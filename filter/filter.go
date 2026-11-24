@@ -18,6 +18,13 @@ const (
 	PartComment  Part = "comment"
 	PartChart    Part = "chart"
 	PartDiagram  Part = "diagram"
+	// PartNotes is the speaker notes of a slide.
+	PartNotes Part = "notes"
+	// PartAttribute is text kept in an attribute of the markup, such as
+	// the alternative text of a picture in a web page.
+	PartAttribute Part = "attribute"
+	// PartMeta is text about the document, such as a web page's title.
+	PartMeta Part = "meta"
 )
 
 // Cell locates a block inside a table: the table's number in its part (from

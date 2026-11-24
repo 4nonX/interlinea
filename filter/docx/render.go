@@ -9,6 +9,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/internal/xmlraw"
 )
 
 // render rebuilds the part with translated paragraphs. Bytes outside the
@@ -95,6 +96,9 @@ func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Transl
 			rw.dir = "rtl"
 		}
 		ppr = []byte(setParaDirection(ppr, pa.ns, rw.dir == "rtl"))
+	}
+	if lang != "" && pa.dialect == dml && pa.translated(d, tr) {
+		ppr = []byte(setParaDirectionDML(ppr, pa.ns, langtag.RTL(lang)))
 	}
 	out.Write(ppr)
 	// The edges and the gaps use the paragraph's own tag IDs.
@@ -560,4 +564,39 @@ func setParaDirection(ppr []byte, w string, rtl bool) string {
 		open = strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(open, ">")), "/") + ">"
 	}
 	return open + inner.String() + "</" + n.Prefix + ":" + n.Local + ">"
+}
+
+// setParaDirectionDML turns a DrawingML paragraph around when its
+// translation reads the other way: rtl is set or cleared, and an alignment
+// to one side moves to the other, as PowerPoint does when the direction of
+// a paragraph is changed. A paragraph that already reads the right way is
+// left as it is.
+func setParaDirectionDML(ppr []byte, a string, rtl bool) string {
+	if len(ppr) == 0 {
+		if !rtl {
+			return ""
+		}
+		return "<" + a + `:pPr algn="r" rtl="1"/>`
+	}
+	n, err := parseFragment(ppr)
+	if err != nil {
+		return string(ppr)
+	}
+	was := n.Get("rtl") == "1" || n.Get("rtl") == "true"
+	if was == rtl {
+		return string(ppr)
+	}
+	start := n.Start
+	switch algn, has := n.Attr("algn"); {
+	case algn == "l", !has && rtl:
+		start = xmlraw.SetAttr(start, "algn", "r")
+	case algn == "r":
+		start = xmlraw.SetAttr(start, "algn", "l")
+	}
+	if rtl {
+		start = xmlraw.SetAttr(start, "rtl", "1")
+	} else {
+		start = xmlraw.SetAttr(start, "rtl", "0")
+	}
+	return string(start) + string(ppr[len(n.Start):])
 }

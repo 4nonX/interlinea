@@ -97,6 +97,8 @@ type document struct {
 	ext    filter.Extraction
 	sigs   map[string]*para // source signature -> first paragraph with it
 	labels []labelRef
+	// noLabels leaves the names a chart shows from its data unread.
+	noLabels bool
 }
 
 // labelRef points at a chart label unit, for updating the chart's data.
@@ -125,19 +127,107 @@ var (
 	diagramDraw = regexp.MustCompile(`^word/diagrams/drawing\d*\.xml$`)
 )
 
+// kind is the family of the package: a Word document or a presentation.
+type kind int
+
+const (
+	wordDocument kind = iota
+	presentation
+)
+
 func parse(data []byte, lang string, opts Options) (*document, error) {
+	return parseAs(data, lang, opts, wordDocument)
+}
+
+func parseAs(data []byte, lang string, opts Options, k kind) (*document, error) {
+	notThis := ErrNotDocx
+	if k == presentation {
+		notThis = ErrNotPresentation
+	}
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrNotDocx, err)
+		return nil, fmt.Errorf("%w: %v", notThis, err)
 	}
 	d := &document{zr: zr, opts: opts, seg: segment.New(nil, lang), sigs: map[string]*para{}}
 	main, err := mainPart(zr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", notThis, err)
 	}
-	if b, err := readFile(zr, path.Join(path.Dir(main), "styles.xml")); err == nil {
-		d.styles = parseStyles(b)
+	mainData, err := readFile(zr, main)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", notThis, err)
 	}
+	want := "document"
+	if k == presentation {
+		want = "presentation"
+	}
+	if rootName(mainData) != want {
+		return nil, notThis
+	}
+	var files []partRef
+	if k == presentation {
+		files, err = slideParts(zr, main, mainData)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if b, err := readFile(zr, path.Join(path.Dir(main), "styles.xml")); err == nil {
+			d.styles = parseStyles(b)
+		}
+		files = wordParts(zr, main)
+	}
+	for _, f := range files {
+		b, err := readFile(zr, f.name)
+		if err != nil {
+			if f.kind == filter.PartBody {
+				return nil, err
+			}
+			continue // a missing optional part is left as it is
+		}
+		p, err := d.parsePart(f.name, f.kind, b, f.cache)
+		if err != nil {
+			if f.kind == filter.PartBody {
+				return nil, fmt.Errorf("%s could not be read: %w", f.name, err)
+			}
+			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%s could not be read and is kept unchanged: %v", f.name, err))
+			continue
+		}
+		d.parts = append(d.parts, p)
+	}
+	d.resolveMirrors()
+	revised := 0
+	for _, b := range d.ext.Blocks {
+		if b.Revisions {
+			revised++
+		}
+	}
+	if revised > 0 {
+		if opts.KeepRevisions {
+			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%d paragraphs contain tracked changes. They are kept as tags: keep the insertion tags around the translation of the inserted text.", revised))
+		} else {
+			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%d paragraphs contain tracked changes. Translated paragraphs keep them accepted: inserted text stays, deleted text is removed.", revised))
+		}
+	}
+	return d, nil
+}
+
+// rootName is the local name of a part's root element.
+func rootName(data []byte) string {
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return ""
+		}
+		if se, ok := tok.(xml.StartElement); ok {
+			return se.Name.Local
+		}
+	}
+}
+
+// wordParts lists the parts of a Word document with text: the body, then
+// the notes, comments, headers and footers, then charts and diagrams.
+func wordParts(zr *zip.Reader, main string) []partRef {
 	files := []partRef{{main, filter.PartBody, false}}
 	rels, _ := readRels(zr, main)
 	groups := map[filter.Part][]string{}
@@ -177,39 +267,7 @@ func parse(data []byte, lang string, opts Options) (*document, error) {
 	for _, n := range drawings {
 		files = append(files, partRef{n, filter.PartDiagram, true})
 	}
-	for _, f := range files {
-		b, err := readFile(zr, f.name)
-		if err != nil {
-			if f.kind == filter.PartBody {
-				return nil, err
-			}
-			continue // a missing optional part is left as it is
-		}
-		p, err := d.parsePart(f.name, f.kind, b, f.cache)
-		if err != nil {
-			if f.kind == filter.PartBody {
-				return nil, fmt.Errorf("docx: %s: %w", f.name, err)
-			}
-			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%s could not be read and is kept unchanged: %v", f.name, err))
-			continue
-		}
-		d.parts = append(d.parts, p)
-	}
-	d.resolveMirrors()
-	revised := 0
-	for _, b := range d.ext.Blocks {
-		if b.Revisions {
-			revised++
-		}
-	}
-	if revised > 0 {
-		if opts.KeepRevisions {
-			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%d paragraphs contain tracked changes. They are kept as tags: keep the insertion tags around the translation of the inserted text.", revised))
-		} else {
-			d.ext.Warnings = append(d.ext.Warnings, fmt.Sprintf("%d paragraphs contain tracked changes. Translated paragraphs keep them accepted: inserted text stays, deleted text is removed.", revised))
-		}
-	}
-	return d, nil
+	return files
 }
 
 // mainPart finds the main document part through the package relationships.
@@ -226,7 +284,7 @@ func mainPart(zr *zip.Reader) (string, error) {
 	return "", ErrNotDocx
 }
 
-type rel struct{ typ, target string }
+type rel struct{ id, typ, target string }
 
 // readRels reads the relationships of a part ("" for the package) and
 // returns targets resolved to package paths. External targets are skipped.
@@ -243,6 +301,7 @@ func readRels(zr *zip.Reader, partName string) ([]rel, error) {
 	}
 	var x struct {
 		Rels []struct {
+			ID     string `xml:"Id,attr"`
 			Type   string `xml:"Type,attr"`
 			Target string `xml:"Target,attr"`
 			Mode   string `xml:"TargetMode,attr"`
@@ -262,7 +321,7 @@ func readRels(zr *zip.Reader, partName string) ([]rel, error) {
 		} else {
 			t = path.Join(base, t)
 		}
-		out = append(out, rel{typ: r.Type, target: t})
+		out = append(out, rel{id: r.ID, typ: r.Type, target: t})
 	}
 	return out, nil
 }

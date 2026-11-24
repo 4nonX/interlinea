@@ -11,9 +11,10 @@ type (
 )
 
 var (
-	tokenize      = xmlraw.Tokenize
-	build         = xmlraw.Build
-	parseFragment = xmlraw.ParseFragment
-	escapeText    = xmlraw.EscapeText
-	escapeAttr    = xmlraw.EscapeAttr
+	tokenize         = xmlraw.Tokenize
+	build            = xmlraw.Build
+	parseFragment    = xmlraw.ParseFragment
+	parseFragmentDoc = xmlraw.Parse
+	escapeText       = xmlraw.EscapeText
+	escapeAttr       = xmlraw.EscapeAttr
 )
