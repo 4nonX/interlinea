@@ -4601,6 +4601,58 @@
         "tags": [
           "The signed-in person"
         ]
+      },
+      "post": {
+        "description": "The token is in the answer once and can't be read again; it is listed with the person's sign-ins and ended there.\n\nAccess: signed in.",
+        "operationId": "createOwnToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "days": {
+                    "description": "Days is how long the token lasts (default 90, at most 366).",
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Makes an access token for a program that works as the signed-in person: an assistant on the MCP endpoint, a script on the API.",
+        "tags": [
+          "The signed-in person"
+        ]
       }
     },
     "/api/me/tokens/{id}": {

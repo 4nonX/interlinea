@@ -186,6 +186,18 @@ Access: signed in.
 - Answer: 200 OK: list of {`createdAt`: string (date-time), `current`: boolean, `expiresAt`: string (date-time), `id`: integer, `lastUsed`: string (date-time), `name`: string, `userId`: integer}
 - Errors: 401, 403 (see [Error](#error))
 
+### `POST /api/me/tokens`
+
+Makes an access token for a program that works as the signed-in person: an assistant on the MCP endpoint, a script on the API.
+
+The token is in the answer once and can't be read again; it is listed with the person's sign-ins and ended there.
+
+Access: signed in.
+
+- Body: {`days`: integer, `name`: string}
+- Answer: 201 Created: map of any
+- Errors: 401, 403, 422 (see [Error](#error))
+
 ### `DELETE /api/me/tokens/{id}`
 
 Ends one of the signed-in person's sign-ins.

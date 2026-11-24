@@ -57,6 +57,15 @@ client and the desktop app, with installers and a server image.
   and Word output; Thai, Lao, Khmer and Burmese counted and matched by
   character.
 
+### Other programs
+
+- An MCP endpoint (`/mcp`) on the team server and the desktop's core, for
+  AI assistants and other programs that speak the Model Context
+  Protocol: projects, segments with their tags, memory and concordance
+  search, terms, saving translations and comments, each with the rights
+  of the person whose token the program carries.
+- Access tokens for programs, made and ended by their owner.
+
 ### Terminology
 
 - Termbases with fields at entry, language and term level, picklists,
