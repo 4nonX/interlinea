@@ -87,3 +87,52 @@ func BenchmarkLookup10k(b *testing.B) {
 		m.Lookup(ctx, q, LookupOptions{})
 	}
 }
+
+func TestInMemoryChangeAndDelete(t *testing.T) {
+	m, err := NewInMemory(Info{Name: "Recht", SourceLang: "de-DE", TargetLang: "en-GB"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := m.Add(ctx, Unit{Source: content.Text("Die Kaution ist fällig."), Target: content.Text("The deposit is due."), CreatedBy: "dan"}, KeepBoth)
+	b, _ := m.Add(ctx, Unit{Source: content.Text("Der Mieter zahlt die Miete."), Target: content.Text("The tenant pays the rent."), CreatedBy: "dan"}, KeepBoth)
+	c, _ := m.Add(ctx, Unit{Source: content.Text("Die Miete steigt."), Target: content.Text("The rent rises."), CreatedBy: "dan"}, KeepBoth)
+
+	// A translation is changed; who made the unit stays.
+	got, err := m.SetTarget(ctx, b.ID, content.Text("The tenant shall pay the rent."), "eva")
+	if err != nil || got.Target.Plain() != "The tenant shall pay the rent." || got.CreatedBy != "dan" || got.ChangedBy != "eva" {
+		t.Fatalf("changed: %+v %v", got, err)
+	}
+	if _, err := m.SetTarget(ctx, b.ID, content.Content{}, "eva"); !errors.Is(err, ErrEmptyTarget) {
+		t.Fatalf("an empty translation: %v", err)
+	}
+	if _, err := m.SetTarget(ctx, 999, content.Text("x"), "eva"); !errors.Is(err, ErrNoUnit) {
+		t.Fatalf("a unit that is not there: %v", err)
+	}
+	if ms, _ := m.Lookup(ctx, content.Text("Der Mieter zahlt die Miete."), LookupOptions{MinScore: 100}); len(ms) != 1 || ms[0].Unit.Target.Plain() != "The tenant shall pay the rent." {
+		t.Fatalf("lookup after the change: %+v", ms)
+	}
+
+	// A unit is deleted; the others are still found, by match and by search.
+	if err := m.Delete(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Delete(ctx, a.ID); !errors.Is(err, ErrNoUnit) {
+		t.Fatalf("deleted twice: %v", err)
+	}
+	if n, _ := m.Count(ctx); n != 2 {
+		t.Fatalf("count %d", n)
+	}
+	if ms, _ := m.Lookup(ctx, content.Text("Die Kaution ist fällig."), LookupOptions{MinScore: 100}); len(ms) != 0 {
+		t.Fatalf("the deleted unit still matches: %+v", ms)
+	}
+	if ms, _ := m.Lookup(ctx, content.Text("Die Miete steigt."), LookupOptions{MinScore: 100}); len(ms) != 1 || ms[0].Unit.ID != c.ID {
+		t.Fatalf("lookup after the deletion: %+v", ms)
+	}
+	if us, _ := m.Concordance(ctx, "Miete", ConcordanceOptions{}); len(us) != 2 {
+		t.Fatalf("search after the deletion: %+v", us)
+	}
+	// A new unit does not take the deleted one's ID.
+	if d, _ := m.Add(ctx, Unit{Source: content.Text("Neu."), Target: content.Text("New.")}, KeepBoth); d.ID <= c.ID {
+		t.Fatalf("ID of a new unit: %d", d.ID)
+	}
+}

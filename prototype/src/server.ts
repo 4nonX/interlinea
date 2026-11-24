@@ -442,6 +442,21 @@ export interface MergeAssignment {
   scope: MergeFilter;
 }
 
+/** A unit of a memory on the server. */
+export interface ServerUnit {
+  id: number;
+  source: CoreRun[];
+  target: CoreRun[];
+  createdBy?: string;
+  createdAt?: string;
+  changedBy?: string;
+  changedAt?: string;
+  usageCount?: number;
+  attributes?: Record<string, string>;
+  notes?: string[];
+  version: number;
+}
+
 export interface CatalogMemory {
   name: string;
   sourceLang: string;
@@ -591,11 +606,18 @@ export function client(conn: Connection) {
     memories: () => get<(CatalogMemory & { createdAt: string; role: Role })[]>("/api/memories"),
     deleteMemory: (name: string) => send<void>("DELETE", `/api/memories/${encodeURIComponent(name)}`),
     memoryConcordance: (name: string, query: string, inTarget: boolean) =>
-      send<{ memory: string; unit: { id: number; source: CoreRun[]; target: CoreRun[]; changedBy?: string; changedAt?: string } }[]>(
-        "POST",
-        `/api/memories/${encodeURIComponent(name)}/concordance`,
-        { query, inTarget, limit: 50 },
+      send<{ memory: string; unit: ServerUnit }[]>("POST", `/api/memories/${encodeURIComponent(name)}/concordance`, { query, inTarget, limit: 50 }),
+    /** With overwrite, the unit replaces the other translations of its source. */
+    addUnit: (name: string, source: CoreRun[], target: CoreRun[], overwrite: boolean) =>
+      send<ServerUnit>("POST", `/api/memories/${encodeURIComponent(name)}/units${overwrite ? "?policy=overwrite" : ""}`, { source, target }),
+    updateUnit: (name: string, u: ServerUnit, target: CoreRun[]) =>
+      send<ServerUnit>(
+        "PUT",
+        `/api/memories/${encodeURIComponent(name)}/units/${u.id}`,
+        { source: u.source, target, attributes: u.attributes, notes: u.notes },
+        u.version,
       ),
+    deleteUnit: (name: string, id: number) => send<void>("DELETE", `/api/memories/${encodeURIComponent(name)}/units/${id}`),
     exportMemory: async (name: string) =>
       new Uint8Array(await (await call(`/api/memories/${encodeURIComponent(name)}/export`)).arrayBuffer()),
     // Termbases on the server.

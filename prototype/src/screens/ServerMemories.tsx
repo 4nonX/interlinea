@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Download, Search, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Download, Upload } from "lucide-react";
 import { useStore } from "../store";
 import { errorText, useRemote } from "../remote";
-import { allows, ApiError, type CatalogMemory, type Role } from "../server";
+import { allows, ApiError, type CatalogMemory, type Role, type ServerUnit } from "../server";
+import { MemoryUnits, SavedElsewhere, type UnitsBackend } from "./MemoryUnits";
 import { download } from "../core";
-import { coreToRuns } from "../editor/model";
 import { fmtDate, fmtNum } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
@@ -13,7 +13,6 @@ import { LANGUAGES } from "../data";
 
 type ServerMemory = CatalogMemory & { createdAt: string; role: Role };
 
-const plain = (runs: ReturnType<typeof coreToRuns>) => runs.filter((r) => typeof r === "string").join("");
 
 /**
  * The memories on the team server the signed-in person may read: their
@@ -122,20 +121,26 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
   const r = useRemote();
   const api = r.api!;
   const input = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
-  const [inTarget, setInTarget] = useState(false);
-  const [hits, setHits] = useState<Awaited<ReturnType<typeof api.memoryConcordance>> | null>(null);
   const edit = allows(m.role, "edit");
   const manage = allows(m.role, "manage");
-
-  async function search(e: FormEvent) {
-    e.preventDefault();
-    try {
-      setHits(await api.memoryConcordance(m.name, query, inTarget));
-    } catch (err) {
-      notify(errorText(err));
-    }
-  }
+  const backend = useMemo<UnitsBackend>(
+    () => ({
+      search: async (query, inTarget) => (await api.memoryConcordance(m.name, query, inTarget)).map((h) => h.unit),
+      add: async (source, target, overwrite) => {
+        await api.addUnit(m.name, [{ text: source }], [{ text: target }], overwrite);
+      },
+      change: async (u, target) => {
+        try {
+          await api.updateUnit(m.name, u as ServerUnit, target);
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 409) throw new SavedElsewhere();
+          throw e;
+        }
+      },
+      remove: (u) => api.deleteUnit(m.name, u.id),
+    }),
+    [api, m.name],
+  );
 
   async function importTMX(f: File) {
     try {
@@ -155,48 +160,7 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
         <h3 id="srvmem-title" className="panel-title">
           {m.name}
         </h3>
-        <form className="role-add" onSubmit={search} aria-label={`Search ${m.name}`}>
-          <label className="field">
-            <span className="field-label">Search the units</span>
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={inTarget} onChange={(e) => setInTarget(e.target.checked)} /> In the translations
-          </label>
-          <button type="submit" className="btn" disabled={!query.trim()}>
-            <Search size={15} aria-hidden="true" /> Search
-          </button>
-        </form>
-        {hits && (
-          hits.length === 0 ? (
-            <p className="muted">Nothing found.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">
-                    <LangChip code={m.sourceLang} />
-                  </th>
-                  <th scope="col">
-                    <LangChip code={m.targetLang} />
-                  </th>
-                  <th scope="col">Changed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hits.map((h) => (
-                  <tr key={h.unit.id}>
-                    <td>{plain(coreToRuns(h.unit.source))}</td>
-                    <td>{plain(coreToRuns(h.unit.target))}</td>
-                    <td className="cell-sub">
-                      {[h.unit.changedBy, h.unit.changedAt && fmtDate(h.unit.changedAt)].filter(Boolean).join(", ")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        )}
+        <MemoryUnits name={m.name} sourceLang={m.sourceLang} targetLang={m.targetLang} edit={edit} backend={backend} notify={notify} onChanged={onChanged} />
         <div className="server-actions">
           <button
             type="button"

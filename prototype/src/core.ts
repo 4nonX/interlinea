@@ -59,7 +59,9 @@ export interface CoreApi {
     options?: string,
   ): Res<Uint8Array>;
   tmOpen(name: string, source: string, target: string): Res<boolean>;
-  tmAdd(name: string, units: string): Res<number>;
+  tmAdd(name: string, units: string, overwrite?: boolean): Res<number>;
+  tmSetTarget(name: string, id: number, target: string, by: string): Res<string>;
+  tmDelete(name: string, id: number): Res<boolean>;
   tmLookup(
     name: string,
     source: string,
@@ -125,6 +127,8 @@ export interface MemUnit {
   target: CoreRun[];
   createdBy?: string;
   createdAt?: string;
+  changedBy?: string;
+  changedAt?: string;
   attributes?: Record<string, string>;
   score?: number;
 }
@@ -133,8 +137,16 @@ export const tm = {
   open(c: CoreApi, name: string, source: string, target: string) {
     unwrap(c.tmOpen(name, source, target));
   },
-  add(c: CoreApi, name: string, units: MemUnit[]) {
-    return unwrap(c.tmAdd(name, JSON.stringify(units)));
+  /** With overwrite, a unit replaces the other translations of its source. */
+  add(c: CoreApi, name: string, units: MemUnit[], overwrite = false) {
+    return unwrap(c.tmAdd(name, JSON.stringify(units), overwrite));
+  },
+  /** Changes a unit's translation; the rest of the unit stays. */
+  setTarget(c: CoreApi, name: string, id: number, target: CoreRun[], by: string): MemUnit {
+    return JSON.parse(unwrap(c.tmSetTarget(name, id, JSON.stringify(target), by))) as MemUnit;
+  },
+  remove(c: CoreApi, name: string, id: number) {
+    unwrap(c.tmDelete(name, id));
   },
   /** Matches of at least min percent; scores lowered by the memory's penalty. */
   lookup(

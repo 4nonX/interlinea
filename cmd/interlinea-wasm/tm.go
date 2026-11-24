@@ -29,6 +29,8 @@ type jsUnit struct {
 	Target     content.Content   `json:"target"`
 	CreatedBy  string            `json:"createdBy,omitempty"`
 	CreatedAt  string            `json:"createdAt,omitempty"`
+	ChangedBy  string            `json:"changedBy,omitempty"`
+	ChangedAt  string            `json:"changedAt,omitempty"`
 	Attributes map[string]string `json:"attributes,omitempty"`
 	Score      int               `json:"score,omitempty"`
 }
@@ -37,6 +39,10 @@ func toJS(u tm.Unit, score int) jsUnit {
 	out := jsUnit{ID: u.ID, Source: u.Source, Target: u.Target, CreatedBy: u.CreatedBy, Score: score}
 	if !u.CreatedAt.IsZero() {
 		out.CreatedAt = u.CreatedAt.UTC().Format(time.RFC3339)
+	}
+	out.ChangedBy = u.ChangedBy
+	if !u.ChangedAt.IsZero() {
+		out.ChangedAt = u.ChangedAt.UTC().Format(time.RFC3339)
 	}
 	if len(u.Attributes) > 0 {
 		out.Attributes = map[string]string{}
@@ -89,10 +95,16 @@ func tmOpen(args []js.Value) (any, error) {
 	return true, nil
 }
 
-// tmAdd(name, unitsJSON): adds units ([{source, target, createdBy, createdAt, attributes}]).
+// tmAdd(name, unitsJSON, overwrite?): adds units ([{source, target,
+// createdBy, createdAt, attributes}]). With overwrite, a unit replaces the
+// other translations of its source; without, they are kept beside it.
 func tmAdd(args []js.Value) (any, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("tmAdd(name, units)")
+	if len(args) != 2 && len(args) != 3 {
+		return nil, fmt.Errorf("tmAdd(name, units, overwrite)")
+	}
+	policy := tm.KeepBoth
+	if len(args) == 3 && args[2].Bool() {
+		policy = tm.Overwrite
 	}
 	m, err := memory(args[0].String())
 	if err != nil {
@@ -111,7 +123,8 @@ func tmAdd(args []js.Value) (any, error) {
 		for k, v := range u.Attributes {
 			tu.Attributes = append(tu.Attributes, tm.Attribute{Name: k, Value: v})
 		}
-		if _, err := m.Add(context.Background(), tu, tm.KeepBoth); err != nil {
+		tu.ChangedBy = u.CreatedBy
+		if _, err := m.Add(context.Background(), tu, policy); err != nil {
 			return nil, err
 		}
 		n++
@@ -170,6 +183,39 @@ func tmConcordance(args []js.Value) (any, error) {
 	return jsonOut(out)
 }
 
+// tmSetTarget(name, id, targetJSON, by) -> JSON unit: changes a unit's
+// translation.
+func tmSetTarget(args []js.Value) (any, error) {
+	if len(args) != 4 {
+		return nil, fmt.Errorf("tmSetTarget(name, id, target, by)")
+	}
+	m, err := memory(args[0].String())
+	if err != nil {
+		return nil, err
+	}
+	var target content.Content
+	if err := target.UnmarshalJSON([]byte(args[2].String())); err != nil {
+		return nil, err
+	}
+	u, err := m.SetTarget(context.Background(), int64(args[1].Int()), target, args[3].String())
+	if err != nil {
+		return nil, err
+	}
+	return jsonOut(toJS(u, 0))
+}
+
+// tmDelete(name, id): deletes a unit.
+func tmDelete(args []js.Value) (any, error) {
+	if len(args) != 2 {
+		return nil, fmt.Errorf("tmDelete(name, id)")
+	}
+	m, err := memory(args[0].String())
+	if err != nil {
+		return nil, err
+	}
+	return true, m.Delete(context.Background(), int64(args[1].Int()))
+}
+
 // tmCount(name)
 func tmCount(args []js.Value) (any, error) {
 	m, err := memory(args[0].String())
@@ -221,6 +267,8 @@ func tmFuncs() map[string]any {
 		"tmLookup":      guard(tmLookup),
 		"tmConcordance": guard(tmConcordance),
 		"tmCount":       guard(tmCount),
+		"tmSetTarget":   guard(tmSetTarget),
+		"tmDelete":      guard(tmDelete),
 		"tmImportTMX":   guard(tmImportTMX),
 		"tmExportTMX":   guard(tmExportTMX),
 	}

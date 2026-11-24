@@ -435,6 +435,41 @@ export default () =>
       await click("section[aria-labelledby=srvmem-title] button", "Search");
       check(await waitFor("document.querySelector('section[aria-labelledby=srvmem-title]').innerText.includes('Tenancy agreement')", 10000), "the memory is searched on the server");
 
+      // The units of a memory on the server: a unit is added, found, its translation
+      // changed, and the unit deleted.
+      {
+        const panel = "section[aria-labelledby=srvmem-title]";
+        await click(`${panel} button`, "Add a unit");
+        check(await waitFor("!!document.querySelector('dialog[open] textarea')"), "server memory: the dialog for a new unit opens");
+        check(await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.includes('Add the unit')).disabled"), "server memory: a unit needs its sentence and translation");
+        await evaluate(
+          `(() => { const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); }; const ts = document.querySelectorAll('dialog[open] textarea'); set(ts[0], "Die Hausordnung gilt."); set(ts[1], "The house rules apply."); return true; })()`,
+        );
+        await sleep(100);
+        await click("dialog[open] button", "Add the unit");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Added the unit to')", 10000), "server memory: the unit is added");
+        await setValue(`${panel} input[type=search]`, "Hausordnung");
+        if (await evaluate(`document.querySelector(${JSON.stringify(panel)} + ' input[type=checkbox]').checked`))
+          await evaluate(`document.querySelector(${JSON.stringify(panel)} + ' input[type=checkbox]').click()`);
+        await sleep(100);
+        await click(`${panel} button`, "Search");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes("The house rules apply.")`, 10000), "server memory: the new unit is found");
+        await click(`${panel} table button`, "Change");
+        check(await waitFor("!!document.querySelector('dialog[open] .unit-target .target-editor')"), "server memory: the unit opens to be changed");
+        check((await evaluate("document.querySelector('dialog[open] .unit-source').innerText")).includes("Die Hausordnung gilt."), "server memory: its sentence is shown to read");
+        await evaluate("(() => { const el = document.querySelector('dialog[open] .unit-target .target-editor'); el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return document.execCommand('insertText', false, ' Geändert.'); })()");
+        await sleep(100);
+        await click("dialog[open] button", "Save");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Saved the unit')", 10000), "server memory: the changed translation is saved");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes('Geändert.')`, 10000), "server memory: the search shows the changed translation");
+        await evaluate(`document.querySelector(${JSON.stringify(panel)} + ' table .cell-action .row > button:last-child').click()`);
+        await sleep(150);
+        check((await text()).includes("Delete this unit?"), "server memory: deleting a unit asks first");
+        await click(`${panel} table .confirm button`, "Delete");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Deleted the unit')", 10000), "server memory: the unit is deleted");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)}).innerText.includes('Nothing found.')`, 10000), "server memory: and no longer found");
+      }
+
       // Eva signs in through the identity provider: the server makes her an
       // account (with no roles) on her first sign-in.
       await open("/settings", { keep: true });

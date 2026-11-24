@@ -123,6 +123,8 @@ var (
 	ErrEmptySource = errors.New("tm: unit has an empty source")
 	ErrEmptyTarget = errors.New("tm: unit has an empty target")
 	ErrInvalidInfo = errors.New("tm: memory needs a name and valid source and target languages")
+	// ErrNoUnit means the memory has no unit with the ID.
+	ErrNoUnit = errors.New("tm: no such unit")
 )
 
 // ValidateInfo checks a memory description and normalizes its language tags.

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus, Trash2, Upload } from "lucide-react";
 import {
   LANGUAGES,
@@ -16,6 +16,8 @@ import {
   persistMemory,
 } from "../editor/memory";
 import { ConfirmButton } from "./TermbaseDialogs";
+import { MemoryUnits, type UnitsBackend } from "./MemoryUnits";
+import { USER } from "../data";
 import { LangChip, PageHeader } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
 
@@ -41,6 +43,10 @@ export function Memories() {
 
   const main = state.memories.filter((m) => !m.projectId);
   const own = state.memories.filter((m) => m.projectId);
+  // The memory whose units are shown, under both lists.
+  const [open, setOpen] = useState<string | null>(null);
+  const current = state.memories.find((m) => m.name === open);
+  const toggle = (name: string) => setOpen((o) => (o === name ? null : name));
 
   return (
     <div className="page">
@@ -63,6 +69,8 @@ export function Memories() {
               key={version}
               c={c}
               memories={main}
+              open={open}
+              onOpen={toggle}
               onChange={() => setVersion((v) => v + 1)}
             />
             <NewMemoryForm c={c} onCreated={() => setVersion((v) => v + 1)} />
@@ -81,12 +89,58 @@ export function Memories() {
                 key={version}
                 c={c}
                 memories={own}
+                open={open}
+                onOpen={toggle}
                 onChange={() => setVersion((v) => v + 1)}
               />
             </section>
           )}
+          {current && <LocalMemory key={current.name} c={c} memory={current} onChanged={() => setVersion((v) => v + 1)} />}
         </>
       )}
+    </div>
+  );
+}
+
+/** The units of a memory on this computer, kept by the core in the page. */
+function LocalMemory({ c, memory: m, onChanged }: { c: CoreApi; memory: TranslationMemory; onChanged: () => void }) {
+  const { state, notify } = useLocalStore();
+  const backend = useMemo<UnitsBackend>(() => {
+    openMemory(c, m, state.projects);
+    const saved = async () => {
+      if (!(await persistMemory(c, m.name))) notify("It is kept only until you close this page: this browser does not allow saving");
+    };
+    return {
+      search: async (query, inTarget) =>
+        tm.concordance(c, m.name, query, inTarget, 50).map((u) => ({
+          ...u,
+          id: u.id ?? 0,
+          changedBy: u.changedBy ?? u.createdBy,
+          changedAt: u.changedAt ?? u.createdAt,
+        })),
+      add: async (source, target, overwrite) => {
+        tm.add(c, m.name, [{ source: [{ text: source }], target: [{ text: target }], createdBy: USER, createdAt: new Date().toISOString() }], overwrite);
+        await saved();
+      },
+      change: async (u, target) => {
+        tm.setTarget(c, m.name, u.id, target, USER);
+        await saved();
+      },
+      remove: async (u) => {
+        tm.remove(c, m.name, u.id);
+        await saved();
+      },
+    };
+    // The projects only say where a project memory starts from.
+  }, [c, m.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="server-detail">
+      <section className="panel" aria-labelledby="localmem-title">
+        <h3 id="localmem-title" className="panel-title">
+          {m.name}
+        </h3>
+        <MemoryUnits name={m.name} sourceLang={m.sourceLang} targetLang={m.targetLang} edit backend={backend} notify={notify} onChanged={onChanged} />
+      </section>
     </div>
   );
 }
@@ -94,10 +148,14 @@ export function Memories() {
 function MemoryTable({
   c,
   memories,
+  open,
+  onOpen,
   onChange,
 }: {
   c: CoreApi;
   memories: TranslationMemory[];
+  open: string | null;
+  onOpen: (name: string) => void;
   onChange: () => void;
 }) {
   const { state, dispatch, notify } = useLocalStore();
@@ -165,6 +223,14 @@ function MemoryTable({
                   </td>
                   <td>
                     <span className="row">
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-small"
+                        aria-label={m.name === open ? `Close ${m.name}` : `Open ${m.name}`}
+                        onClick={() => onOpen(m.name)}
+                      >
+                        {m.name === open ? "Close" : "Open"}
+                      </button>
                       {!m.projectId && (
                         <button
                           type="button"

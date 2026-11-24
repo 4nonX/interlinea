@@ -211,6 +211,64 @@ func (m *InMemory) Concordance(ctx context.Context, query string, opts Concordan
 	return out, nil
 }
 
+// SetTarget changes a unit's translation; its source and everything else
+// stay. ErrNoUnit if there is no unit with the ID.
+func (m *InMemory) SetTarget(ctx context.Context, id int64, target content.Content, by string) (Unit, error) {
+	if err := ctx.Err(); err != nil {
+		return Unit{}, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.units {
+		if m.units[i].ID != id {
+			continue
+		}
+		changed := m.units[i]
+		changed.Target = target.Clone()
+		if err := ValidateUnit(changed); err != nil {
+			return Unit{}, err
+		}
+		changed.ChangedAt = m.now()
+		if by != "" {
+			changed.ChangedBy = by
+		}
+		m.units[i] = changed
+		return cloneUnit(changed), nil
+	}
+	return Unit{}, ErrNoUnit
+}
+
+// Delete removes a unit. ErrNoUnit if there is no unit with the ID.
+func (m *InMemory) Delete(ctx context.Context, id int64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	at := -1
+	for i := range m.units {
+		if m.units[i].ID == id {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return ErrNoUnit
+	}
+	m.units = append(m.units[:at], m.units[at+1:]...)
+	// The indexes hold positions, which moved.
+	m.byKey = map[string][]int{}
+	m.index = map[string][]int{}
+	for i, u := range m.units {
+		key := SourceKey(u.Source)
+		m.byKey[key] = append(m.byKey[key], i)
+		for _, tok := range SearchTerms(u.Source) {
+			m.index[tok] = append(m.index[tok], i)
+		}
+	}
+	return nil
+}
+
 // Count implements Memory.
 func (m *InMemory) Count(ctx context.Context) (int, error) {
 	if err := ctx.Err(); err != nil {

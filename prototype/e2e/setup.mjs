@@ -308,6 +308,46 @@ export default () =>
           t.includes("Weber DE-FR"),
         "project memories deleted with the project, main memories kept",
       );
+
+      await evaluate(
+        "[...document.querySelectorAll('tr')].find(r => r.querySelector('th')?.textContent.includes('Weber DE-FR')).querySelector('button').click()",
+      );
+      check(await waitFor("document.querySelector('#localmem-title')?.textContent === 'Weber DE-FR'"), "a memory on this computer opens");
+
+      // The units of a memory on this computer: a unit is added, found, its translation
+      // changed, and the unit deleted.
+      {
+        const panel = "section[aria-labelledby=localmem-title]";
+        await click(`${panel} button`, "Add a unit");
+        check(await waitFor("!!document.querySelector('dialog[open] textarea')"), "local memory: the dialog for a new unit opens");
+        check(await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.includes('Add the unit')).disabled"), "local memory: a unit needs its sentence and translation");
+        await evaluate(
+          `(() => { const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); }; const ts = document.querySelectorAll('dialog[open] textarea'); set(ts[0], "Die Hausordnung gilt."); set(ts[1], "Le r\u00e8glement int\u00e9rieur s'applique."); return true; })()`,
+        );
+        await sleep(100);
+        await click("dialog[open] button", "Add the unit");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Added the unit to')", 10000), "local memory: the unit is added");
+        await setValue(`${panel} input[type=search]`, "Hausordnung");
+        if (await evaluate(`document.querySelector(${JSON.stringify(panel)} + ' input[type=checkbox]').checked`))
+          await evaluate(`document.querySelector(${JSON.stringify(panel)} + ' input[type=checkbox]').click()`);
+        await sleep(100);
+        await click(`${panel} button`, "Search");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes("Le r\u00e8glement int\u00e9rieur s'applique.")`, 10000), "local memory: the new unit is found");
+        await click(`${panel} table button`, "Change");
+        check(await waitFor("!!document.querySelector('dialog[open] .unit-target .target-editor')"), "local memory: the unit opens to be changed");
+        check((await evaluate("document.querySelector('dialog[open] .unit-source').innerText")).includes("Die Hausordnung gilt."), "local memory: its sentence is shown to read");
+        await evaluate("(() => { const el = document.querySelector('dialog[open] .unit-target .target-editor'); el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return document.execCommand('insertText', false, ' Geändert.'); })()");
+        await sleep(100);
+        await click("dialog[open] button", "Save");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Saved the unit')", 10000), "local memory: the changed translation is saved");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes('Geändert.')`, 10000), "local memory: the search shows the changed translation");
+        await evaluate(`document.querySelector(${JSON.stringify(panel)} + ' table .cell-action .row > button:last-child').click()`);
+        await sleep(150);
+        check((await text()).includes("Delete this unit?"), "local memory: deleting a unit asks first");
+        await click(`${panel} table .confirm button`, "Delete");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Deleted the unit')", 10000), "local memory: the unit is deleted");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)}).innerText.includes('Nothing found.')`, 10000), "local memory: and no longer found");
+      }
       check(
         errors.length === 0,
         "no console errors in setup: " + errors.join(" | "),
