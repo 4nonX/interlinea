@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -287,6 +288,28 @@ func TestDefinitionChanges(t *testing.T) {
 	h, _ := tb.History(ctx, "c1")
 	if h[len(h)-1].Summary != "Removed the language en-GB" {
 		t.Fatalf("history: %+v", h)
+	}
+	n, err = tb.RenameField(ctx, "definition", "Meaning", "Dan")
+	if err != nil || n != 1 {
+		t.Fatalf("rename field: %d %v", n, err)
+	}
+	if e, _ := tb.Get(ctx, "c1"); len(e.Fields) != 1 || e.Fields[0].Field != "Meaning" {
+		t.Fatalf("renamed field in the entry: %+v", e.Fields)
+	}
+	if def, _ := tb.Definition(ctx); !hasField(def.Fields, "Meaning") || hasField(def.Fields, "definition") {
+		t.Fatalf("renamed field in the definition: %+v", def.Fields)
+	}
+	if h, _ := tb.History(ctx, "c1"); !strings.Contains(h[len(h)-1].Summary, "Renamed the field") {
+		t.Fatalf("history after renaming: %+v", h[len(h)-1])
+	}
+	if _, err := tb.RenameField(ctx, "Meaning", " ", "Dan"); err == nil {
+		t.Fatal("a field was renamed to nothing")
+	}
+	if _, err := tb.RenameField(ctx, "nothing", "Other", "Dan"); err == nil {
+		t.Fatal("a field that is not there was renamed")
+	}
+	if _, err := tb.RenameField(ctx, "meaning", "definition", "Dan"); err != nil {
+		t.Fatalf("rename back: %v", err)
 	}
 	n, err = tb.RemoveField(ctx, "definition", "Dan")
 	if err != nil || n != 1 {

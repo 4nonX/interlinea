@@ -54,6 +54,10 @@ add_library(interlinea_app STATIC
     src/webui.cpp
     src/accesspanel.cpp
     src/memoriespage.cpp
+    src/termbasedialogs.cpp
+    src/termdata.cpp
+    src/terminologypage.cpp
+    src/words.cpp
 )
 target_include_directories(interlinea_app PUBLIC src)
 target_compile_definitions(interlinea_app PUBLIC INTERLINEA_VERSION="${INTERLINEA_VERSION}")
@@ -108,7 +112,7 @@ if(INTERLINEA_BUILD_CORE)
 endif()
 
 enable_testing()
-foreach(name apiclient eventfeed secretstore providersignin connections ui projects editor memories endtoend)
+foreach(name apiclient eventfeed secretstore providersignin connections ui projects editor memories terminology endtoend)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_app Qt6::Test)

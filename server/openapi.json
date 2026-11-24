@@ -818,6 +818,10 @@
       "TermFileInspection": {
         "description": "termFileInspection says what a termbase file holds.",
         "properties": {
+          "dropped": {
+            "description": "Dropped counts the entries ?languages= leaves without a term, and Sample names the first entries that stay, by their first terms.",
+            "type": "integer"
+          },
           "fields": {
             "items": {
               "$ref": "#/components/schemas/term.Field"
@@ -850,6 +854,12 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "type": "array"
+          },
+          "sample": {
+            "items": {
+              "type": "string"
             },
             "type": "array"
           },
@@ -8976,6 +8986,79 @@
         "tags": [
           "Termbases"
         ]
+      },
+      "post": {
+        "description": "Access: read on the termbase.",
+        "operationId": "exportEntries",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "entries": {
+                    "description": "Entries are the IDs of the entries to send.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Sends chosen entries of the termbase as a file, in the formats of the export: those a search shows, for one.",
+        "tags": [
+          "Termbases"
+        ]
       }
     },
     "/api/termbases/{name}/fields/{field}": {
@@ -9033,6 +9116,79 @@
           }
         },
         "summary": "Removes a field from the definition and from every entry, and answers how many entries changed.",
+        "tags": [
+          "Termbases"
+        ]
+      },
+      "put": {
+        "description": "Access: manage on the termbase.",
+        "operationId": "renameField",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The field's ID.",
+            "in": "path",
+            "name": "field",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Renames a field in the definition and in every entry, and answers how many entries changed.",
         "tags": [
           "Termbases"
         ]
@@ -9966,7 +10122,7 @@
     },
     "/api/termfiles/inspect": {
       "post": {
-        "description": "?mapping= (JSON) reads a spreadsheet with a column mapping of your own. Nothing is kept.\n\nAccess: signed in.",
+        "description": "?mapping= (JSON) reads a spreadsheet with a column mapping of your own, and ?languages= (a JSON object) says which language each of the file's goes under, as for an import. Nothing is kept.\n\nAccess: signed in.",
         "operationId": "inspectTermFile",
         "parameters": [
           {
@@ -9986,6 +10142,13 @@
           {
             "in": "query",
             "name": "mapping",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "languages",
             "schema": {
               "type": "string"
             }

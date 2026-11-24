@@ -220,6 +220,70 @@ QFrame#segmented QPushButton { border: 0; border-radius: 6px; background: transp
 QFrame#segmented QPushButton:checked { background: @surface; color: @text; }
 QFrame#segmented QPushButton:focus { border: 2px solid @accent; padding: 1px 8px; }
 
+/* Terminology (.workspace, .pane, .tb-link, .entry-row, .tabs, .term) */
+QFrame[role="pane"] { background: @surface; border: 1px solid @border; border-radius: 10px; }
+QFrame[role="paneHead"], QFrame[role="paneBar"], QFrame[role="tabs"] { background: transparent; border: 0; border-bottom: 1px solid @border; }
+QFrame[role="paneForm"] { background: @surface2; border: 0; border-bottom: 1px solid @border; }
+QFrame[role="formTop"] { background: transparent; border: 0; border-top: 1px solid @border; }
+QLabel[role="paneTitle"] { font-size: 16px; font-weight: 600; color: @text; }
+QLabel[role="groupTitle"] { color: @text3; font-size: 13px; font-weight: 600; }
+QLabel[role="tbName"] { font-weight: 600; }
+QLabel[role="tbCount"] { color: @text3; font-size: 12px; }
+QLabel[role="missing"] { color: @text3; font-style: italic; }
+QLabel[role="langTitle"] { font-size: 14px; font-weight: 600; }
+QLabel[role="termText"] { font-size: 16px; font-weight: 600; }
+QLabel[role="entryTerm"] { font-weight: 600; }
+QLabel[role="small2"] { color: @text2; font-size: 13px; }
+QLabel[role="historySummary"] { font-weight: 600; }
+QLabel[role="emptyTitle"] { font-weight: 600; color: @text; }
+QLabel[role="dialogTitle"] { font-size: 17px; font-weight: 600; color: @text; }
+QLabel[role="settingsTitle"] { font-size: 14px; font-weight: 600; }
+QLabel[role="dangerTitle"] { font-size: 14px; font-weight: 600; color: @danger; }
+QLabel[role="planCount"] { font-size: 18px; font-weight: 600; }
+QLabel[role="planLabel"] { color: @text2; font-size: 12px; }
+QDialog[role="dialog"] { background: @surface; }
+QFrame[role="tbLink"], QFrame[role="dupEntry"] { border: 0; border-radius: 6px; background: transparent; }
+QFrame[role="tbLink"]:hover, QFrame[role="dupEntry"]:hover { background: @surface2; }
+QFrame[role="tbLink"][current="true"] { background: @accentWeak; }
+QFrame[role="tbLink"]:focus, QFrame[role="dupEntry"]:focus { border: 2px solid @accent; }
+QFrame[role="tbLink"] QLabel, QFrame[role="dupEntry"] QLabel { background: transparent; }
+QFrame[role="term"] { background: @surface2; border: 0; border-radius: 6px; }
+QFrame[role="term"] QLabel { background: transparent; }
+QFrame[role="box"] { background: @surface; border: 1px solid @border; border-radius: 6px; }
+QFrame[role="line"] { background: @border; border: 0; max-height: 1px; min-height: 1px; }
+QFrame[role="historyItem"] { border: 0; border-left: 2px solid @border; background: transparent; }
+QFrame[role="quote"] { background: @surface2; border: 0; border-radius: 6px; }
+QFrame[note="warn"] { background: @warnBg; border: 0; border-radius: 6px; }
+QFrame[note="ok"] { background: @okBg; border: 0; border-radius: 6px; }
+QFrame[note="info"] { background: @surface2; border: 0; border-radius: 6px; }
+QPushButton[tab] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: @text2; font-weight: 600; padding: 10px 8px 8px 8px; }
+QPushButton[tab="small"] { font-size: 13px; }
+QPushButton[tab]:hover { background: transparent; color: @text; }
+QPushButton[tab]:checked { border-bottom: 2px solid @accent; color: @text; }
+QPushButton[tab]:focus { border: 0; border-bottom: 2px solid @accent; padding: 10px 8px 8px 8px; color: @accentText; }
+QPushButton[tab]:disabled { color: dim(@text2); background: transparent; }
+QPushButton[chipButton="true"] { padding: 2px 8px; min-height: 14px; border: 1px solid @border; border-radius: 10px; background: @surface; color: @text2; font-size: 12px; }
+QPushButton[chipButton="true"]:hover { border-color: @borderStrong; }
+QPushButton[iconButton="true"] { border: 0; border-radius: 4px; background: transparent; padding: 0; min-height: 22px; max-height: 22px; min-width: 22px; max-width: 22px; }
+QPushButton[iconButton="true"]:hover { background: rgba(127,140,160,0.18); }
+QPushButton[iconButton="true"]:focus { border: 2px solid @accent; padding: 0; }
+QPushButton[link="true"] { border: 0; background: transparent; color: @accentText; padding: 0; min-height: 0; text-align: left; font-size: 13px; }
+QPushButton[link="true"]:hover { text-decoration: underline; background: transparent; }
+QPushButton[link="true"]:focus { border: 0; padding: 0; text-decoration: underline; }
+QLabel[stepNum] { border: 1px solid @borderStrong; border-radius: 11px; font-size: 12px; color: @text3; }
+QLabel[stepNum="current"] { background: @accent; border-color: @accent; color: #ffffff; }
+QLabel[stepNum="done"] { border-color: transparent; color: @ok; }
+QLabel[stepName] { color: @text3; font-size: 13px; font-weight: 500; }
+QLabel[stepName="current"] { color: @text; font-weight: 600; }
+QLineEdit[small="true"] { padding: 2px 8px; min-height: 18px; font-size: 13px; }
+QLineEdit[small="true"]:focus { padding: 1px 7px; }
+QLineEdit[invalid="true"] { border-color: @danger; }
+QListView#entryList { border: 0; border-radius: 0; background: transparent; }
+QListView#entryList:focus { border: 0; }
+QListView#entryList::item { padding: 0; border: 0; }
+QScrollArea[role="paneScroll"], QWidget[role="paneBody"] { background: transparent; border: 0; }
+QTableWidget#webTable[inDialog="true"] { border-radius: 6px; }
+
 /* The editor */
 QFrame#editorBar { background: @surface; border: 0; border-bottom: 1px solid @border; }
 QProgressBar#track { background: @track; border: 0; border-radius: 3px; max-height: 6px; min-height: 6px; }

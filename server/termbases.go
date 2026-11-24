@@ -30,6 +30,7 @@ func (s *Server) termbaseRoutes() {
 	s.handle("PUT /api/termbases/{name}/upstreams", s.signedIn(s.setUpstreams))
 	s.handle("DELETE /api/termbases/{name}/languages/{lang}", s.signedIn(s.removeLanguage))
 	s.handle("DELETE /api/termbases/{name}/fields/{field}", s.signedIn(s.removeField))
+	s.handle("PUT /api/termbases/{name}/fields/{field}", s.signedIn(s.renameField))
 	s.handle("GET /api/termbases/{name}/entries", s.signedIn(s.searchEntries))
 	s.handle("POST /api/termbases/{name}/entries", s.signedIn(s.addEntry))
 	s.handle("GET /api/termbases/{name}/entries/{eid}", s.signedIn(s.getEntry))
@@ -46,6 +47,7 @@ func (s *Server) termbaseRoutes() {
 	s.handle("POST /api/termbases/{name}/removals", s.signedIn(s.removeFromProject))
 	s.handle("GET /api/termbases/{name}/removals", s.signedIn(s.removals))
 	s.handle("GET /api/termbases/{name}/export", s.signedIn(s.exportTermbase))
+	s.handle("POST /api/termbases/{name}/export", s.signedIn(s.exportEntries))
 	s.handle("POST /api/termbases/{name}/import", s.signedIn(s.importTermbase))
 	s.handle("POST /api/termfiles/inspect", s.signedIn(s.inspectTermFile))
 	s.handle("GET /api/termbases/{name}/changes", s.signedIn(s.termbaseChanges))
@@ -230,10 +232,8 @@ func (s *Server) createTermbase(w http.ResponseWriter, r *http.Request, me sessi
 		}
 		tb, err = s.cfg.Termbases.CreateProject(ctx, req.Definition, req.Upstreams, me.by())
 	} else {
-		if len(req.Definition.Languages) == 0 {
-			invalid(w, "definition.languages", "Choose the termbase's languages.")
-			return
-		}
+		// A master may start without languages: they are added as terms
+		// are, or by an import.
 		tb, err = s.cfg.Termbases.CreateBy(ctx, req.Definition, me.by())
 	}
 	if err != nil {
@@ -498,6 +498,31 @@ func (s *Server) termProblem(w http.ResponseWriter, err error) bool {
 		return true
 	}
 	return false
+}
+
+// renameField renames a field in the definition and in every entry, and
+// answers how many entries changed.
+//
+// Access: manage on the termbase.
+func (s *Server) renameField(w http.ResponseWriter, r *http.Request, me session) {
+	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleManage)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	n, err := tb.RenameField(r.Context(), r.PathValue("field"), req.Name, me.by())
+	if err != nil {
+		if !s.termProblem(w, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"entriesChanged": n})
 }
 
 // removeLanguage removes a language from the definition and from every entry,
@@ -870,6 +895,30 @@ var termFormats = map[term.Format]struct{ ext, ct string }{
 //
 // Access: read on the termbase.
 func (s *Server) exportTermbase(w http.ResponseWriter, r *http.Request, me session) {
+	s.sendTermbase(w, r, me, nil)
+}
+
+// exportEntries sends chosen entries of the termbase as a file, in the
+// formats of the export: those a search shows, for one.
+//
+// Access: read on the termbase.
+func (s *Server) exportEntries(w http.ResponseWriter, r *http.Request, me session) {
+	var req struct {
+		// Entries are the IDs of the entries to send.
+		Entries []string `json:"entries"`
+	}
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	if len(req.Entries) == 0 {
+		invalid(w, "entries", "Say which entries to export.")
+		return
+	}
+	s.sendTermbase(w, r, me, req.Entries)
+}
+
+// sendTermbase writes the termbase, or the entries named, as a file.
+func (s *Server) sendTermbase(w http.ResponseWriter, r *http.Request, me session, only []string) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
 		return
@@ -887,6 +936,19 @@ func (s *Server) exportTermbase(w http.ResponseWriter, r *http.Request, me sessi
 	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	if only != nil {
+		want := map[string]bool{}
+		for _, id := range only {
+			want[id] = true
+		}
+		var kept []term.Entry
+		for _, e := range full.Entries {
+			if want[e.ID] {
+				kept = append(kept, e)
+			}
+		}
+		full.Entries = kept
 	}
 	data, err := term.Write(full, f)
 	if err != nil {
@@ -914,6 +976,38 @@ type termFileInspection struct {
 	Read      term.Report  `json:"read"`
 	Languages []string     `json:"languages"`
 	Fields    []term.Field `json:"fields"`
+	// Dropped counts the entries ?languages= leaves without a term, and
+	// Sample names the first entries that stay, by their first terms.
+	Dropped int      `json:"dropped,omitempty"`
+	Sample  []string `json:"sample"`
+}
+
+// termLanguages reads ?languages= (a JSON object: which language each
+// language of a file goes under, "" to leave one out) and applies it.
+func termLanguages(w http.ResponseWriter, r *http.Request, in *term.Termbase) (dropped int, ok bool) {
+	v := r.URL.Query().Get("languages")
+	if v == "" {
+		return 0, true
+	}
+	to := map[string]string{}
+	if err := json.Unmarshal([]byte(v), &to); err != nil {
+		invalid(w, "languages", "The languages are not a JSON object: "+err.Error())
+		return 0, false
+	}
+	for from, code := range to {
+		if code == "" {
+			continue
+		}
+		norm, err := langtag.Normalize(code)
+		if err != nil {
+			invalid(w, "languages", fmt.Sprintf("%q is not a language tag.", code))
+			return 0, false
+		}
+		to[from] = norm
+	}
+	in.Entries, dropped = term.Remap(in.Entries, to)
+	in.Definition = term.InferDefinition(in.Name, in.Entries)
+	return dropped, true
 }
 
 // termFilePreviewRows is how many rows of a spreadsheet an inspection shows.
@@ -937,7 +1031,8 @@ func termMapping(w http.ResponseWriter, r *http.Request) (*term.Mapping, bool) {
 // ?filename=) and says what it holds: its format, entries, terms, languages
 // and fields, and for spreadsheets the first rows with what each column is
 // taken for. ?mapping= (JSON) reads a spreadsheet with a column mapping of
-// your own. Nothing is kept.
+// your own, and ?languages= (a JSON object) says which language each of
+// the file's goes under, as for an import. Nothing is kept.
 //
 // Access: signed in.
 func (s *Server) inspectTermFile(w http.ResponseWriter, r *http.Request, me session) {
@@ -958,7 +1053,7 @@ func (s *Server) inspectTermFile(w http.ResponseWriter, r *http.Request, me sess
 	if !ok {
 		return
 	}
-	out := termFileInspection{Format: f, Tabular: f.IsTabular(), Languages: []string{}, Fields: []term.Field{}}
+	out := termFileInspection{Format: f, Tabular: f.IsTabular(), Languages: []string{}, Fields: []term.Field{}, Sample: []string{}}
 	if out.Tabular {
 		rows, err := term.Rows(f, data)
 		if err != nil {
@@ -988,8 +1083,18 @@ func (s *Server) inspectTermFile(w http.ResponseWriter, r *http.Request, me sess
 		return
 	}
 	out.Name, out.Read = in.Name, rep
+	// The languages listed are the file's own, whatever they are mapped to.
 	out.Languages = nonNil(in.FileLanguages())
+	if out.Dropped, ok = termLanguages(w, r, in); !ok {
+		return
+	}
 	out.Fields = nonNil(in.Fields)
+	for _, e := range in.Entries {
+		if len(out.Sample) == importPlanRows {
+			break
+		}
+		out.Sample = append(out.Sample, e.Label())
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -1045,26 +1150,9 @@ func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me sessi
 		invalid(w, "file", "The file could not be read: "+err.Error())
 		return
 	}
-	dropped := 0
-	if v := q.Get("languages"); v != "" {
-		to := map[string]string{}
-		if err := json.Unmarshal([]byte(v), &to); err != nil {
-			invalid(w, "languages", "The languages are not a JSON object: "+err.Error())
-			return
-		}
-		for from, code := range to {
-			if code == "" {
-				continue
-			}
-			norm, err := langtag.Normalize(code)
-			if err != nil {
-				invalid(w, "languages", fmt.Sprintf("%q is not a language tag.", code))
-				return
-			}
-			to[from] = norm
-		}
-		in.Entries, dropped = term.Remap(in.Entries, to)
-		in.Definition = term.InferDefinition(in.Name, in.Entries)
+	dropped, ok := termLanguages(w, r, in)
+	if !ok {
+		return
 	}
 	switch st := q.Get("status"); st {
 	case "":

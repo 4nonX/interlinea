@@ -1168,6 +1168,28 @@ Access: read on the termbase.
 - Answer: 200 OK: `application/octet-stream`
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `POST /api/termbases/{name}/export`
+
+Sends chosen entries of the termbase as a file, in the formats of the export: those a search shows, for one.
+
+Access: read on the termbase.
+
+- Parameters: `name` (path), `format` (query)
+- Body: {`entries`: list of string}
+- Answer: 200 OK: `application/octet-stream`
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `PUT /api/termbases/{name}/fields/{field}`
+
+Renames a field in the definition and in every entry, and answers how many entries changed.
+
+Access: manage on the termbase.
+
+- Parameters: `name` (path), `field` (path)
+- Body: {`name`: string}
+- Answer: 200 OK: map of integer
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `DELETE /api/termbases/{name}/fields/{field}`
 
 Removes a field from the definition and from every entry, and answers how many entries changed.
@@ -1470,11 +1492,11 @@ Access: signed in; each event is sent only to those who may see it.
 
 Reads a termbase file (the request body, named by ?filename=) and says what it holds: its format, entries, terms, languages and fields, and for spreadsheets the first rows with what each column is taken for.
 
-?mapping= (JSON) reads a spreadsheet with a column mapping of your own. Nothing is kept.
+?mapping= (JSON) reads a spreadsheet with a column mapping of your own, and ?languages= (a JSON object) says which language each of the file's goes under, as for an import. Nothing is kept.
 
 Access: signed in.
 
-- Parameters: `format` (query), `filename` (query), `mapping` (query)
+- Parameters: `format` (query), `filename` (query), `mapping` (query), `languages` (query)
 - Body: the file's bytes
 - Answer: 200 OK: [TermFileInspection](#termfileinspection)
 - Errors: 401, 403, 422 (see [Error](#error))
@@ -1829,6 +1851,7 @@ termFileInspection says what a termbase file holds.
 
 | Field | Type | Description |
 |---|---|---|
+| `dropped` | integer | Dropped counts the entries ?languages= leaves without a term, and Sample names the first entries that stay, by their first terms. |
 | `fields` | list of [term.Field](#termfield) |  |
 | `format` | [term.Format](#termformat) |  |
 | `languages` | list of string |  |
@@ -1836,6 +1859,7 @@ termFileInspection says what a termbase file holds.
 | `name` | string | Name is the termbase's name in the file, if it has one. |
 | `read` | [term.Report](#termreport) |  |
 | `rows` | list of list of string | Rows are the first rows of a spreadsheet, Total how many it has, and Mapping what each column was read as: the guess, or the one sent. |
+| `sample` | list of string |  |
 | `tabular` | boolean | Tabular is set for spreadsheets, whose columns need a mapping. |
 | `total` | integer |  |
 

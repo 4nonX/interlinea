@@ -240,6 +240,58 @@ void draw(QPainter &p, const QString &name)
         path.lineTo(3.5, 21);
         path.lineTo(4.5, 16.5);
         path.closeSubpath();
+    } else if (name == QLatin1String("refresh")) {
+        path.arcMoveTo(QRectF(4, 4, 16, 16), 30);
+        path.arcTo(QRectF(4, 4, 16, 16), 30, 300);
+        path.moveTo(20, 4);
+        path.lineTo(20, 9);
+        path.lineTo(15, 9);
+    } else if (name == QLatin1String("git-branch")) {
+        path.addEllipse(QPointF(6, 5.5), 2.5, 2.5);
+        path.addEllipse(QPointF(6, 18.5), 2.5, 2.5);
+        path.addEllipse(QPointF(18, 7), 2.5, 2.5);
+        path.moveTo(6, 8);
+        path.lineTo(6, 16);
+        path.moveTo(18, 9.5);
+        path.cubicTo(18, 13, 12, 12, 6, 16);
+    } else if (name == QLatin1String("git-pull-request")) {
+        path.addEllipse(QPointF(6, 6), 2.5, 2.5);
+        path.addEllipse(QPointF(6, 18), 2.5, 2.5);
+        path.addEllipse(QPointF(18, 18), 2.5, 2.5);
+        path.moveTo(6, 8.5);
+        path.lineTo(6, 15.5);
+        path.moveTo(18, 15.5);
+        path.lineTo(18, 9);
+        path.cubicTo(18, 7, 17, 6, 15, 6);
+        path.lineTo(12, 6);
+        path.moveTo(14, 3.5);
+        path.lineTo(11.5, 6);
+        path.lineTo(14, 8.5);
+    } else if (name == QLatin1String("sliders")) {
+        path.moveTo(4, 7);
+        path.lineTo(12, 7);
+        path.moveTo(17, 7);
+        path.lineTo(20, 7);
+        path.addEllipse(QPointF(14.5, 7), 2.5, 2.5);
+        path.moveTo(4, 17);
+        path.lineTo(7, 17);
+        path.moveTo(12, 17);
+        path.lineTo(20, 17);
+        path.addEllipse(QPointF(9.5, 17), 2.5, 2.5);
+    } else if (name == QLatin1String("file-up")) {
+        path.moveTo(14, 3);
+        path.lineTo(6, 3);
+        path.lineTo(6, 21);
+        path.lineTo(18, 21);
+        path.lineTo(18, 7);
+        path.lineTo(14, 3);
+        path.lineTo(14, 7);
+        path.lineTo(18, 7);
+        path.moveTo(12, 18);
+        path.lineTo(12, 11);
+        path.moveTo(9, 14);
+        path.lineTo(12, 11);
+        path.lineTo(15, 14);
     } else if (name == QLatin1String("history")) {
         path.arcMoveTo(QRectF(3.5, 3.5, 17, 17), 160);
         path.arcTo(QRectF(3.5, 3.5, 17, 17), 160, -340);

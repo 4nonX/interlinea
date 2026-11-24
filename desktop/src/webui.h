@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDialog>
 #include <QFrame>
 #include <QScrollArea>
 #include <QJsonArray>
@@ -135,6 +136,120 @@ public:
 private:
     QString m_last;
     QTimer *m_timer;
+};
+
+// A box that is clicked as a link is (.tb-link, .entry-row, .dup-entry):
+// focusable, Enter and Space press it, and "current" marks the one shown.
+class Clickable : public QFrame {
+    Q_OBJECT
+public:
+    Clickable(const char *role, QWidget *parent);
+    void setCurrent(bool current);
+    bool isCurrent() const { return property("current").toBool(); }
+signals:
+    void clicked();
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void keyPressEvent(QKeyEvent *e) override;
+};
+
+// .tabs: tabs over a line, the chosen one underlined in blue. small is
+// .tabs-small.
+class Tabs : public QFrame {
+    Q_OBJECT
+public:
+    Tabs(const QString &label, QWidget *parent, bool small = false);
+    QPushButton *add(const QString &text, const QString &icon = QString());
+    void setText(int index, const QString &text);
+    void setEnabledAt(int index, bool enabled);
+    int current() const { return m_current; }
+    void setCurrent(int index);
+    QPushButton *tab(int index) const { return m_tabs.value(index); }
+signals:
+    void changed(int index);
+
+private:
+    QBoxLayout *m_row;
+    QList<QPushButton *> m_tabs;
+    int m_current = 0;
+    bool m_small;
+};
+
+// .segmented: a few choices side by side, one of them chosen.
+class Segmented : public QFrame {
+    Q_OBJECT
+public:
+    Segmented(const QString &label, const QStringList &choices, QWidget *parent);
+    int current() const { return m_current; }
+    void setCurrent(int index);
+    QPushButton *segment(int index) const { return m_segments.value(index); }
+signals:
+    void changed(int index);
+
+private:
+    QList<QPushButton *> m_segments;
+    int m_current = 0;
+};
+
+// .stepper: the numbered steps of a wizard.
+class Stepper : public QWidget {
+    Q_OBJECT
+public:
+    Stepper(QWidget *parent);
+    void setSteps(const QStringList &names, int current);
+    QStringList steps() const { return m_names; }
+    int current() const { return m_current; }
+
+private:
+    QBoxLayout *m_row;
+    QStringList m_names;
+    int m_current = 0;
+};
+
+// Two states of one part, such as a button and the form it opens: only
+// the one shown takes room.
+class Switcher : public QWidget {
+    Q_OBJECT
+public:
+    explicit Switcher(QWidget *parent);
+    // Adds a state; the first added is shown.
+    void add(QWidget *state);
+    int current() const { return m_current; }
+    void setCurrent(int index);
+signals:
+    void changed(int index);
+
+private:
+    QList<QWidget *> m_states;
+    int m_current = 0;
+};
+
+// .detect: a note with an icon, kind "warn", "ok" or "info".
+QFrame *note(const QString &text, const QString &kind, QWidget *parent);
+
+// .dialog: a window over the page with its title (17 px, 600) and 24 px
+// around its parts, which are 12 px apart; 640 wide, or 920 (.dialog-wide).
+// Its buttons sit in a row at the bottom right.
+class Dialog : public QDialog {
+    Q_OBJECT
+public:
+    Dialog(const QString &title, QWidget *parent, bool wide = false);
+    QVBoxLayout *body() const { return m_body; }
+    void setTitle(const QString &title);
+    QString title() const;
+    // The row of buttons at the bottom; add them left to right.
+    QBoxLayout *buttons();
+    // A red line over the buttons, hidden while empty.
+    void setError(const QString &text);
+    QString error() const;
+
+private:
+    QLabel *m_title;
+    QVBoxLayout *m_body;
+    QVBoxLayout *m_outer;
+    QLabel *m_error;
+    QBoxLayout *m_buttons = nullptr;
 };
 
 // .dropzone: a dashed box that takes dropped files and folders.

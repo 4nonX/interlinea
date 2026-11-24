@@ -1,0 +1,787 @@
+// The Terminology page against the app's own core: termbases, entries with
+// their terms, fields and history, search, duplicates, the import wizard,
+// export and the termbase's settings.
+#include "apiclient.h"
+#include "connection.h"
+#include "connectionmanager.h"
+#include "eventfeed.h"
+#include "languages.h"
+#include "termbasedialogs.h"
+#include "termdata.h"
+#include "terminologypage.h"
+#include "testcore.h"
+#include "theme.h"
+#include "webui.h"
+#include "words.h"
+
+#include <QApplication>
+#include <QComboBox>
+#include <QFile>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListView>
+#include <QPlainTextEdit>
+#include <QPushButton>
+#include <QRadioButton>
+#include <QSettings>
+#include <QSignalSpy>
+#include <QStandardPaths>
+#include <QTableWidget>
+#include <QTemporaryDir>
+#include <QTest>
+
+static ApiResult wait(ApiReply *reply)
+{
+    QSignalSpy spy(reply, &ApiReply::finished);
+    if (!spy.wait(20000))
+        return {};
+    return spy.first().first().value<ApiResult>();
+}
+
+// Whether a widget is there to be seen under root: neither it nor anything
+// it sits in was hidden. A widget just made counts, though it is drawn
+// only on the next turn of the event loop.
+static bool there(const QWidget *w, const QWidget *root)
+{
+    for (; w; w = w->parentWidget()) {
+        if (w->isHidden() && w->testAttribute(Qt::WA_WState_ExplicitShowHide))
+            return false;
+        if (w == root)
+            return true;
+    }
+    return true;
+}
+
+template <typename T>
+static T *byName(QWidget *root, const QString &objectName)
+{
+    for (T *w : root->findChildren<T *>(objectName)) {
+        if (there(w, root))
+            return w;
+    }
+    return nullptr;
+}
+
+template <typename T>
+static T *named(QWidget *root, const QString &accessibleName)
+{
+    for (T *w : root->findChildren<T *>()) {
+        if (w->accessibleName() == accessibleName && there(w, root))
+            return w;
+    }
+    return nullptr;
+}
+
+static QPushButton *button(QWidget *root, const QString &text)
+{
+    for (QPushButton *b : root->findChildren<QPushButton *>()) {
+        if (b->text() == text && there(b, root))
+            return b;
+    }
+    return nullptr;
+}
+
+static QLabel *label(QWidget *root, const QString &text)
+{
+    for (QLabel *l : root->findChildren<QLabel *>()) {
+        if (l->text() == text && there(l, root))
+            return l;
+    }
+    return nullptr;
+}
+
+static QLabel *labelWith(QWidget *root, const QString &part)
+{
+    for (QLabel *l : root->findChildren<QLabel *>()) {
+        if (l->text().contains(part) && there(l, root))
+            return l;
+    }
+    return nullptr;
+}
+
+static void choose(QComboBox *box, const QVariant &data)
+{
+    const int i = box->findData(data);
+    QVERIFY2(i >= 0, qPrintable(QStringLiteral("no choice %1").arg(data.toString())));
+    box->setCurrentIndex(i);
+    emit box->activated(i);
+}
+
+static QString cell(QTableWidget *table, int row, int column)
+{
+    return table && table->item(row, column) ? table->item(row, column)->data(Qt::AccessibleTextRole).toString() : QString();
+}
+
+class TestTerminology : public QObject {
+    Q_OBJECT
+private slots:
+    void initTestCase()
+    {
+        qRegisterMetaType<ApiResult>("ApiResult");
+        QStandardPaths::setTestModeEnabled(true);
+        QCoreApplication::setOrganizationName(QStringLiteral("InterlineaTests"));
+        QCoreApplication::setApplicationName(QStringLiteral("tst_terminology"));
+        QSettings().clear();
+        qputenv("INTERLINEA_SECRETS_FILE", m_tmp.filePath(QStringLiteral("sign-ins.json")).toUtf8());
+        Theme::apply(*qApp);
+    }
+
+    void entryData()
+    {
+        // Changing an entry's parts, as the page does before saving.
+        QJsonObject e;
+        e = TermData::withTerms(e, QStringLiteral("de-DE"), QJsonArray{QJsonObject{{"text", "Kaution"}, {"status", "approved"}}});
+        e = TermData::withTerms(e, QStringLiteral("en-GB"), QJsonArray{QJsonObject{{"text", "deposit"}}, QJsonObject{{"text", "security deposit"}, {"status", "forbidden"}}});
+        QCOMPARE(TermData::languages(e), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+        QCOMPARE(TermData::head(e, QStringLiteral("en-GB")), QStringLiteral("deposit"));
+        QString in;
+        QCOMPARE(TermData::head(e, QStringLiteral("fr-FR"), &in), QStringLiteral("Kaution"));
+        QCOMPARE(in, QStringLiteral("de-DE"));
+        QVERIFY(TermData::hasTerm(TermData::terms(e, QStringLiteral("en-GB")), QStringLiteral(" Deposit ")));
+        QVERIFY(!TermData::hasTerm(TermData::terms(e, QStringLiteral("en-GB")), QStringLiteral("deposit"), 0));
+        QVERIFY(TermData::hasStatus(e, QStringLiteral("proposed")));
+        QVERIFY(TermData::hasStatus(e, QStringLiteral("forbidden")));
+        e = TermData::withEntryField(e, QStringLiteral("Definition"), QStringLiteral("Sicherheit des Mieters"));
+        e = TermData::withLanguageField(e, QStringLiteral("en-GB"), QStringLiteral("Note"), QStringLiteral("UK usage"));
+        e = TermData::withTermField(e, QStringLiteral("en-GB"), 1, QStringLiteral("Usage"), QStringLiteral("avoid"));
+        QCOMPARE(TermData::value(e.value("fields").toArray(), QStringLiteral("Definition")), QStringLiteral("Sicherheit des Mieters"));
+        QCOMPARE(TermData::value(TermData::language(e, QStringLiteral("en-GB")).value("fields").toArray(), QStringLiteral("Note")), QStringLiteral("UK usage"));
+        QCOMPARE(TermData::value(TermData::terms(e, QStringLiteral("en-GB"))[1].toObject().value("fields").toArray(), QStringLiteral("Usage")), QStringLiteral("avoid"));
+        QVERIFY(TermData::searchText(e).contains(QStringLiteral("sicherheit")));
+        e = TermData::withEntryField(e, QStringLiteral("Definition"), QString());
+        QVERIFY(e.value("fields").toArray().isEmpty());
+        // A language left without terms and fields goes.
+        e = TermData::withTerms(e, QStringLiteral("de-DE"), {});
+        QCOMPARE(TermData::languages(e), QStringList({QStringLiteral("en-GB")}));
+        e = TermData::withTerms(e, QStringLiteral("en-GB"), {});
+        QCOMPARE(TermData::languages(e), QStringList({QStringLiteral("en-GB")}));
+        QCOMPARE(TermData::entries(1), QStringLiteral("1 entry"));
+        QCOMPARE(TermData::termCount(2), QStringLiteral("2 terms"));
+    }
+
+    void words()
+    {
+        Words::setGit(false);
+        QCOMPARE(Words::get("reviewMerge"), QStringLiteral("Review and merge"));
+        QCOMPARE(Words::get("basedOn"), QStringLiteral("Based on"));
+        Words::setGit(true);
+        QCOMPARE(Words::get("reviewMerge"), QStringLiteral("Diff and merge"));
+        QCOMPARE(Words::get("history"), QStringLiteral("Log"));
+        Words::setGit(false);
+    }
+
+    void parts()
+    {
+        Web::Tabs tabs(QStringLiteral("Views"), nullptr);
+        tabs.add(QStringLiteral("One"));
+        tabs.add(QStringLiteral("Two"));
+        QSignalSpy changed(&tabs, &Web::Tabs::changed);
+        tabs.tab(1)->click();
+        QCOMPARE(tabs.current(), 1);
+        QCOMPARE(changed.size(), 1);
+        QVERIFY(tabs.tab(1)->isChecked() && !tabs.tab(0)->isChecked());
+        tabs.tab(1)->click();
+        QCOMPARE(changed.size(), 1);
+        QVERIFY(tabs.tab(1)->isChecked());
+
+        Web::Segmented seg(QStringLiteral("Store on"), {QStringLiteral("Local"), QStringLiteral("Server")}, nullptr);
+        QSignalSpy picked(&seg, &Web::Segmented::changed);
+        seg.segment(1)->click();
+        QCOMPARE(seg.current(), 1);
+        QCOMPARE(picked.size(), 1);
+
+        Web::Stepper steps(nullptr);
+        steps.setSteps({QStringLiteral("File"), QStringLiteral("Languages"), QStringLiteral("Review")}, 1);
+        QCOMPARE(steps.current(), 1);
+        QCOMPARE(steps.steps().size(), 3);
+
+        Web::Clickable link("tbLink", nullptr);
+        QSignalSpy clicked(&link, &Web::Clickable::clicked);
+        link.show();
+        QTest::keyClick(&link, Qt::Key_Return);
+        QTest::mouseClick(&link, Qt::LeftButton);
+        QCOMPARE(clicked.size(), 2);
+        link.setCurrent(true);
+        QVERIFY(link.isCurrent());
+    }
+
+    void terminology()
+    {
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        const QString here = m.local()->id();
+
+        TerminologyPage page(&m);
+        page.resize(1360, 900);
+        page.show();
+        QSignalSpy loaded(&page, &TerminologyPage::loaded);
+        QSignalSpy saved(&page, &TerminologyPage::saved);
+        QTRY_VERIFY_WITH_TIMEOUT(label(&page, QStringLiteral("No termbase yet. Make a master on the left, or import a termbase file.")), 15000);
+        QVERIFY(label(&page, QStringLiteral("Masters")));
+        QVERIFY(label(&page, QStringLiteral("Project termbases")));
+
+        // A new master with two languages.
+        QVERIFY(button(&page, QStringLiteral("New master")));
+        button(&page, QStringLiteral("New master"))->click();
+        QLineEdit *name = nullptr;
+        QTRY_VERIFY((name = byName<QLineEdit>(&page, QStringLiteral("newMasterName"))));
+        QVERIFY(!button(&page, QStringLiteral("Create master"))->isEnabled());
+        name->setText(QStringLiteral("Kanzlei Weber"));
+        QVERIFY(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")));
+        choose(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")), QStringLiteral("de-DE"));
+        QTRY_VERIFY(button(&page, QStringLiteral("German (Germany) ×")));
+        choose(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")), QStringLiteral("fr-FR"));
+        choose(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")), QStringLiteral("en-GB"));
+        QTRY_VERIFY(button(&page, QStringLiteral("French (France) ×")));
+        button(&page, QStringLiteral("French (France) ×"))->click();
+        QTRY_VERIFY(!button(&page, QStringLiteral("French (France) ×")));
+        QCOMPARE(byName<QLineEdit>(&page, QStringLiteral("newMasterName"))->text(), QStringLiteral("Kanzlei Weber"));
+        QTRY_VERIFY(button(&page, QStringLiteral("Create master")) && button(&page, QStringLiteral("Create master"))->isEnabled());
+        button(&page, QStringLiteral("Create master"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Kanzlei Weber"), 10000);
+        QTRY_VERIFY(label(&page, QStringLiteral("No entries yet")));
+        QCOMPARE(page.message(), QStringLiteral("Created master “Kanzlei Weber”"));
+        QCOMPARE(page.languages(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+        QVERIFY(byName<Web::Clickable>(&page, QStringLiteral("tb:%1:Kanzlei Weber").arg(here))->isCurrent());
+        QCOMPARE(byName<QLabel>(&page, QStringLiteral("entryCount"))->text(), QStringLiteral("0 entries"));
+        QVERIFY(button(&page, QStringLiteral("Settings")));
+        QVERIFY(!button(&page, QStringLiteral("Reload")));
+        QVERIFY(!button(&page, QStringLiteral("Export"))->isEnabled());
+
+        // A first entry, named by its first term.
+        byName<QPushButton>(&page, QStringLiteral("newEntry"))->click();
+        QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newEntryText")));
+        QVERIFY(!byName<QPushButton>(&page, QStringLiteral("addEntry"))->isEnabled());
+        byName<QLineEdit>(&page, QStringLiteral("newEntryText"))->setText(QStringLiteral("Kaution"));
+        QCOMPARE(byName<QComboBox>(&page, QStringLiteral("newEntryLanguage"))->currentData().toString(), QStringLiteral("de-DE"));
+        choose(byName<QComboBox>(&page, QStringLiteral("newEntryStatus")), QStringLiteral("approved"));
+        byName<QPushButton>(&page, QStringLiteral("addEntry"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 1, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Added “Kaution”"));
+        QTRY_COMPARE(byName<QLabel>(&page, QStringLiteral("entryTitle"))->text(), QStringLiteral("Kaution"));
+        const QString id = page.entryId();
+        QVERIFY(!id.isEmpty());
+        QVERIFY(byName<QPushButton>(&page, QStringLiteral("newEntry")));
+        auto *list = page.findChild<QListView *>(QStringLiteral("entryList"));
+        QCOMPARE(list->model()->rowCount(), 1);
+        QCOMPARE(list->model()->index(0, 0).data().toString(), QStringLiteral("German (Germany): Kaution; English (United Kingdom): missing"));
+        QVERIFY(label(&page, QStringLiteral("No term yet")));
+        QVERIFY(button(&page, QStringLiteral("Add a synonym")) && button(&page, QStringLiteral("Add a term")));
+
+        // Terms: a translation, a synonym, none twice.
+        const auto addTerm = [&](const QString &lang, const QString &text, const QString &status) {
+            QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("addTerm:%1").arg(lang)));
+            byName<QPushButton>(&page, QStringLiteral("addTerm:%1").arg(lang))->click();
+            QLineEdit *t = nullptr;
+            QTRY_VERIFY((t = byName<QLineEdit>(&page, QStringLiteral("newTerm:%1").arg(lang))));
+            t->setText(text);
+            QWidget *form = t->parentWidget();
+            choose(named<QComboBox>(form, QStringLiteral("Status")), status);
+            QVERIFY(button(form, QStringLiteral("Add"))->isEnabled());
+            button(form, QStringLiteral("Add"))->click();
+        };
+        addTerm(QStringLiteral("en-GB"), QStringLiteral("deposit"), QStringLiteral("approved"));
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::terms(page.entry(id), QStringLiteral("en-GB")).size(), 1, 10000);
+        QTRY_VERIFY(!page.busy());
+        addTerm(QStringLiteral("en-GB"), QStringLiteral("security deposit"), QStringLiteral("proposed"));
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::terms(page.entry(id), QStringLiteral("en-GB")).size(), 2, 10000);
+        QTRY_VERIFY(!page.busy());
+        QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("addTerm:en-GB")));
+        byName<QPushButton>(&page, QStringLiteral("addTerm:en-GB"))->click();
+        QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB")));
+        byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->setText(QStringLiteral("Deposit"));
+        QTRY_VERIFY(label(&page, QStringLiteral("This entry already has “Deposit”.")));
+        QVERIFY(!button(byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->parentWidget(), QStringLiteral("Add"))->isEnabled());
+        button(byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->parentWidget(), QStringLiteral("Cancel"))->click();
+        QCOMPARE(list->model()->index(0, 0).data().toString(), QStringLiteral("German (Germany): Kaution; English (United Kingdom): deposit, security deposit"));
+
+        // A term's status, its text, and taking it out.
+        QWidget *second = nullptr;
+        QTRY_VERIFY((second = byName<QFrame>(&page, QStringLiteral("term:en-GB:1"))));
+        choose(named<QComboBox>(second, QStringLiteral("Status of security deposit")), QStringLiteral("forbidden"));
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::terms(page.entry(id), QStringLiteral("en-GB"))[1].toObject().value("status").toString(), QStringLiteral("forbidden"), 10000);
+        QTRY_VERIFY(!page.busy());
+        QTRY_VERIFY((second = byName<QFrame>(&page, QStringLiteral("term:en-GB:1"))) && label(second, QStringLiteral("Forbidden")));
+        // A forbidden term is not what the list names the entry by.
+        QCOMPARE(list->model()->index(0, 0).data().toString(), QStringLiteral("German (Germany): Kaution; English (United Kingdom): deposit, security deposit"));
+        named<QPushButton>(second, QStringLiteral("Edit security deposit"))->click();
+        QLineEdit *draft = nullptr;
+        QTRY_VERIFY((draft = named<QLineEdit>(second, QStringLiteral("Term"))));
+        draft->setText(QStringLiteral("deposit"));
+        QTRY_VERIFY(label(second, QStringLiteral("This entry already has “deposit” in English (United Kingdom).")));
+        QVERIFY(!button(second, QStringLiteral("Save"))->isEnabled());
+        draft->setText(QStringLiteral("rent deposit"));
+        QVERIFY(button(second, QStringLiteral("Save"))->isEnabled());
+        button(second, QStringLiteral("Save"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::terms(page.entry(id), QStringLiteral("en-GB"))[1].toObject().value("text").toString(), QStringLiteral("rent deposit"), 10000);
+        QTRY_VERIFY(!page.busy());
+        addTerm(QStringLiteral("de-DE"), QStringLiteral("Mietsicherheit"), QStringLiteral("proposed"));
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::terms(page.entry(id), QStringLiteral("de-DE")).size(), 2, 10000);
+        QTRY_VERIFY(!page.busy());
+        QWidget *synonym = nullptr;
+        QTRY_VERIFY((synonym = byName<QFrame>(&page, QStringLiteral("term:de-DE:1"))));
+        auto *remove = synonym->findChild<Web::ConfirmButton *>();
+        QVERIFY(remove);
+        remove->button()->click();
+        QVERIFY(label(synonym, QStringLiteral("Remove “Mietsicherheit”?")));
+        remove->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::terms(page.entry(id), QStringLiteral("de-DE")).size(), 1, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Removed “Mietsicherheit”"));
+        QTRY_VERIFY(!page.busy());
+
+        // Fields: one for the whole entry, one for each term.
+        const auto addField = [&](const QString &fieldName, int scope) {
+            QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("addField")));
+            byName<QPushButton>(&page, QStringLiteral("addField"))->click();
+            QLineEdit *f = nullptr;
+            QTRY_VERIFY((f = byName<QLineEdit>(&page, QStringLiteral("newFieldName"))));
+            f->setText(fieldName);
+            QWidget *form = f->parentWidget();
+            form->findChildren<QRadioButton *>().at(scope)->setChecked(true);
+            QVERIFY(button(form, QStringLiteral("Add field"))->isEnabled());
+            button(form, QStringLiteral("Add field"))->click();
+        };
+        addField(QStringLiteral("Definition"), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(page.fields().size(), 1, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Added field “Definition” to Kanzlei Weber"));
+        addField(QStringLiteral("Usage"), 2);
+        QTRY_COMPARE_WITH_TIMEOUT(page.fields().size(), 2, 10000);
+        byName<QPushButton>(&page, QStringLiteral("addField"))->click();
+        QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newFieldName")));
+        byName<QLineEdit>(&page, QStringLiteral("newFieldName"))->setText(QStringLiteral("definition"));
+        QCOMPARE(byName<QLabel>(&page, QStringLiteral("newFieldHint"))->text(), QStringLiteral("Kanzlei Weber already has “Definition”."));
+        QVERIFY(!button(&page, QStringLiteral("Add field"))->isEnabled());
+        byName<QLineEdit>(&page, QStringLiteral("newFieldName"))->setText(QStringLiteral("Usa"));
+        QCOMPARE(byName<QLabel>(&page, QStringLiteral("newFieldHint"))->text(), QStringLiteral("Did you mean the existing field “Usage”?"));
+        button(byName<QLineEdit>(&page, QStringLiteral("newFieldName"))->parentWidget(), QStringLiteral("Cancel"))->click();
+
+        QPlainTextEdit *definition = nullptr;
+        QTRY_VERIFY((definition = named<QPlainTextEdit>(&page, QStringLiteral("Definition"))));
+        definition->setFocus();
+        definition->setPlainText(QStringLiteral("Sicherheit, die der Mieter leistet"));
+        QLineEdit *usage = named<QLineEdit>(byName<QFrame>(&page, QStringLiteral("term:en-GB:0")), QStringLiteral("Usage"));
+        QVERIFY(usage);
+        usage->setFocus();
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::value(page.entry(id).value("fields").toArray(), QStringLiteral("Definition")), QStringLiteral("Sicherheit, die der Mieter leistet"), 10000);
+        // A value typed stays where it is: the entry is not drawn again.
+        QVERIFY(named<QLineEdit>(byName<QFrame>(&page, QStringLiteral("term:en-GB:0")), QStringLiteral("Usage")) == usage);
+        usage->setText(QStringLiteral("tenancy law"));
+        emit usage->editingFinished();
+        QTRY_COMPARE_WITH_TIMEOUT(TermData::value(TermData::terms(page.entry(id), QStringLiteral("en-GB"))[0].toObject().value("fields").toArray(), QStringLiteral("Usage")),
+                                  QStringLiteral("tenancy law"), 10000);
+        QTRY_VERIFY(!page.busy());
+        // What the page shows is what the core has.
+        const ApiResult stored = wait(api->get(QStringLiteral("/api/termbases/Kanzlei%20Weber/entries/") + id));
+        QVERIFY(stored.ok());
+        QCOMPARE(TermData::forSaving(stored.object()), TermData::forSaving(page.entry(id)));
+        QCOMPARE(stored.object().value("version").toInt(), page.entry(id).value("version").toInt());
+        QVERIFY(labelWith(&page, QStringLiteral("Last changed ")));
+
+        // The history, newest first.
+        auto *tabs = byName<Web::Tabs>(&page, QStringLiteral("entryTabs"));
+        QCOMPARE(tabs->tab(1)->text(), QStringLiteral("History (%1)").arg(page.entry(id).value("version").toInt()));
+        QSignalSpy history(&page, &TerminologyPage::historyShown);
+        tabs->tab(1)->click();
+        QTRY_COMPARE_WITH_TIMEOUT(history.size(), 1, 10000);
+        QWidget *log = byName<QWidget>(&page, QStringLiteral("history"));
+        QVERIFY(log);
+        QList<QLabel *> lines;
+        for (QLabel *l : log->findChildren<QLabel *>()) {
+            if (l->property("role").toString() == QLatin1String("historySummary"))
+                lines << l;
+        }
+        QCOMPARE(lines.size(), page.entry(id).value("version").toInt());
+        QCOMPARE(lines.first()->text(), QStringLiteral("Set Usage of “deposit”"));
+        QCOMPARE(lines.last()->text(), QStringLiteral("Created"));
+        byName<Web::Tabs>(&page, QStringLiteral("entryTabs"))->tab(0)->click();
+
+        // More entries; the search and the status filter.
+        const auto addEntry = [&](const QString &de, const QString &en) {
+            const QJsonObject e{{"languages", QJsonArray{QJsonObject{{"lang", "de-DE"}, {"terms", QJsonArray{QJsonObject{{"text", de}, {"status", "approved"}}}}},
+                                                          QJsonObject{{"lang", "en-GB"}, {"terms", QJsonArray{QJsonObject{{"text", en}, {"status", "proposed"}}}}}}}};
+            const ApiResult r = wait(api->post(QStringLiteral("/api/termbases/Kanzlei%20Weber/entries"), QJsonObject{{"entry", e}}));
+            return r.ok() ? r.object().value("id").toString() : QString();
+        };
+        QVERIFY(!addEntry(QStringLiteral("Nebenkosten"), QStringLiteral("service charge")).isEmpty());
+        QVERIFY(!addEntry(QStringLiteral("Mietsicherheit"), QStringLiteral("deposit")).isEmpty());
+        // What others add is shown without asking.
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 3, 15000);
+        QTRY_COMPARE(byName<QLabel>(&page, QStringLiteral("entryCount"))->text(), QStringLiteral("3 entries"));
+        QCOMPARE(page.entryId(), id);
+        page.setQuery(QStringLiteral("neben"));
+        QCOMPARE(page.shown().size(), 1);
+        QCOMPARE(list->model()->rowCount(), 1);
+        // The entry shown stays; the list only narrows.
+        QCOMPARE(page.entryId(), id);
+        page.setQuery(QStringLiteral("mieter leistet"));
+        QCOMPARE(page.shown().size(), 1);
+        page.setQuery(QStringLiteral("nichts davon"));
+        QVERIFY(label(&page, QStringLiteral("Nothing matches “nichts davon”")));
+        button(&page, QStringLiteral("Clear search"))->click();
+        QCOMPARE(list->model()->rowCount(), 3);
+        page.setStatus(QStringLiteral("forbidden"));
+        QCOMPARE(page.shown().size(), 1);
+        page.setStatus(QString());
+        list->setCurrentIndex(list->model()->index(1, 0));
+        QTRY_COMPARE(byName<QLabel>(&page, QStringLiteral("entryTitle"))->text(), QStringLiteral("Nebenkosten"));
+        page.selectEntry(id);
+        QCOMPARE(byName<QLabel>(&page, QStringLiteral("entryTitle"))->text(), QStringLiteral("Kaution"));
+
+        // Duplicates: two entries share "deposit".
+        QSignalSpy dups(&page, &TerminologyPage::duplicatesShown);
+        page.setView(1);
+        QTRY_COMPARE_WITH_TIMEOUT(dups.size(), 1, 10000);
+        QCOMPARE(page.findChildren<QFrame *>(QStringLiteral("duplicateGroup")).size(), 1);
+        choose(byName<QComboBox>(&page, QStringLiteral("duplicateLanguage")), QStringLiteral("de-DE"));
+        QTRY_COMPARE_WITH_TIMEOUT(dups.size(), 2, 10000);
+        QVERIFY(byName<QLabel>(&page, QStringLiteral("noDuplicates")));
+        QVERIFY(label(&page, QStringLiteral("No two entries share a term in German (Germany).")));
+        choose(byName<QComboBox>(&page, QStringLiteral("duplicateLanguage")), QString());
+        QTRY_COMPARE_WITH_TIMEOUT(dups.size(), 3, 10000);
+        QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("notDuplicates")));
+        byName<QPushButton>(&page, QStringLiteral("notDuplicates"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(dups.size(), 4, 10000);
+        QVERIFY(byName<QLabel>(&page, QStringLiteral("noDuplicates")));
+        // Leaving the list and coming back shows them again.
+        page.setView(0);
+        page.setView(1);
+        QTRY_VERIFY_WITH_TIMEOUT(byName<QPushButton>(&page, QStringLiteral("mergeDuplicates")), 10000);
+        byName<QPushButton>(&page, QStringLiteral("mergeDuplicates"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 2, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Merged 2 entries into one"));
+        // The older entry is kept and has the other's terms.
+        QCOMPARE(page.entryId(), id);
+        QCOMPARE(TermData::terms(page.entry(id), QStringLiteral("de-DE")).size(), 2);
+        page.setView(0);
+
+        // Export: all entries as TBX, then those the search shows as CSV.
+        ExportDialog *exp = page.exportDialog();
+        QVERIFY(exp);
+        QCOMPARE(exp->title(), QStringLiteral("Export Kanzlei Weber"));
+        QCOMPARE(exp->exportButton()->text(), QStringLiteral("Export 2 entries"));
+        QVERIFY(!label(exp, QStringLiteral("<b>Entries</b>")));
+        QCOMPARE(exp->fileName(), QStringLiteral("Kanzlei Weber.tbx"));
+        const QString tbxFile = m_tmp.filePath(QStringLiteral("out.tbx"));
+        exp->exportTo(tbxFile);
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Exported 2 entries to out.tbx"), 10000);
+        {
+            QFile f(tbxFile);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            const QByteArray data = f.readAll();
+            QVERIFY(data.contains("<tbx") && data.contains("Nebenkosten") && data.contains("rent deposit"));
+        }
+        page.setQuery(QStringLiteral("Nebenkosten"));
+        exp = page.exportDialog();
+        QVERIFY(button(exp, QStringLiteral("All 2 entries")) == nullptr);
+        QVERIFY(exp->findChild<QRadioButton *>() != nullptr);
+        exp->setFormat(QStringLiteral("csv"));
+        exp->setShownOnly(true);
+        QCOMPARE(exp->exportButton()->text(), QStringLiteral("Export 1 entry"));
+        QCOMPARE(exp->fileName(), QStringLiteral("Kanzlei Weber.csv"));
+        const QString csvFile = m_tmp.filePath(QStringLiteral("out.csv"));
+        exp->exportTo(csvFile);
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Exported 1 entry to out.csv"), 10000);
+        {
+            QFile f(csvFile);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            const QByteArray data = f.readAll();
+            QVERIFY(data.contains("Nebenkosten") && !data.contains("Kaution"));
+        }
+        page.setQuery(QString());
+
+        // Import a spreadsheet into the termbase: columns, languages, review.
+        const QString sheet = m_tmp.filePath(QStringLiteral("Mietrecht-Liste.csv"));
+        {
+            QFile f(sheet);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("Deutsch,Englisch,Quelle\nKaution,deposit; tenancy deposit,BGB\nHausordnung,house rules,\nBetriebskosten,operating costs,BetrKV\n,,ohne Benennung\n");
+        }
+        ImportDialog *imp = page.importDialog(false);
+        QSignalSpy ready(imp, &ImportDialog::ready);
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy(), 10000);
+        QCOMPARE(imp->title(), QStringLiteral("Import into Kanzlei Weber"));
+        QCOMPARE(imp->stepper()->steps(), QStringList({QStringLiteral("File"), QStringLiteral("Languages"), QStringLiteral("Review")}));
+        QVERIFY(byName<QRadioButton>(imp, QStringLiteral("intoThis"))->isChecked());
+        QVERIFY(!imp->nextButton()->isVisibleTo(imp));
+        imp->chooseFile(sheet);
+        QTRY_COMPARE_WITH_TIMEOUT(imp->step(), ImportDialog::Columns, 10000);
+        QCOMPARE(imp->stepper()->steps().size(), 4);
+        QCOMPARE(imp->stepper()->current(), 1);
+        QVERIFY(labelWith(imp, QStringLiteral("Mietrecht-Liste.csv: 4 rows of entries.")));
+        // The guess: German and English terms, and a field.
+        QCOMPARE(byName<QComboBox>(imp, QStringLiteral("role:0"))->currentData().toString(), QStringLiteral("term"));
+        QCOMPARE(byName<QComboBox>(imp, QStringLiteral("lang:0"))->currentData().toString().left(2), QStringLiteral("de"));
+        QCOMPARE(byName<QComboBox>(imp, QStringLiteral("role:2"))->currentData().toString(), QStringLiteral("field"));
+        QCOMPARE(byName<QLineEdit>(imp, QStringLiteral("field:2"))->text(), QStringLiteral("Quelle"));
+        // Without a column of terms there is nothing to import.
+        choose(byName<QComboBox>(imp, QStringLiteral("role:0")), QStringLiteral("ignore"));
+        choose(byName<QComboBox>(imp, QStringLiteral("role:1")), QStringLiteral("ignore"));
+        QTRY_VERIFY(byName<QLabel>(imp, QStringLiteral("columnsProblem")));
+        QVERIFY(!imp->nextButton()->isEnabled());
+        choose(byName<QComboBox>(imp, QStringLiteral("role:0")), QStringLiteral("term"));
+        choose(byName<QComboBox>(imp, QStringLiteral("lang:0")), QStringLiteral("de-DE"));
+        choose(byName<QComboBox>(imp, QStringLiteral("role:1")), QStringLiteral("term"));
+        choose(byName<QComboBox>(imp, QStringLiteral("lang:1")), QStringLiteral("en-GB"));
+        QTRY_VERIFY(imp->nextButton()->isEnabled());
+        byName<QLineEdit>(imp, QStringLiteral("field:2"))->setText(QStringLiteral("Source"));
+        imp->next();
+        QTRY_COMPARE_WITH_TIMEOUT(imp->step(), ImportDialog::LanguagesStep, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy(), 10000);
+        QCOMPARE(byName<QLabel>(imp, QStringLiteral("fileSummary"))->text(), QStringLiteral("CSV: 3 entries, 7 terms, 1 rows without terms skipped."));
+        QCOMPARE(imp->fileLanguages(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+        QCOMPARE(imp->mappedTo(QStringLiteral("en-GB")), QStringLiteral("en-GB"));
+        QCOMPARE(byName<QLabel>(imp, QStringLiteral("newFields"))->text(), QStringLiteral("New fields: Source (entry)."));
+        // Leaving a language out leaves entries out only if none is left.
+        imp->mapLanguage(QStringLiteral("de-DE"), QString());
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy(), 10000);
+        QVERIFY(!byName<QFrame>(imp, QStringLiteral("dropped")));
+        imp->mapLanguage(QStringLiteral("en-GB"), QString());
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy() && byName<QFrame>(imp, QStringLiteral("dropped")), 10000);
+        QVERIFY(!imp->nextButton()->isEnabled());
+        imp->mapLanguage(QStringLiteral("de-DE"), QStringLiteral("de-DE"));
+        imp->mapLanguage(QStringLiteral("en-GB"), QStringLiteral("en-GB"));
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy() && imp->nextButton()->isEnabled(), 10000);
+        byName<QRadioButton>(imp, QStringLiteral("fallbackProposed"))->setChecked(true);
+        imp->next();
+        QTRY_VERIFY_WITH_TIMEOUT(imp->step() == ImportDialog::Review && !imp->busy() && !imp->plan().isEmpty(), 10000);
+        // Kaution is there already: its new synonym and source are merged.
+        QCOMPARE(imp->plan().value("added").toInt(), 2);
+        QCOMPARE(imp->plan().value("merged").toInt(), 1);
+        auto *planTable = byName<QTableWidget>(imp, QStringLiteral("plan"));
+        QVERIFY(planTable);
+        QCOMPARE(planTable->rowCount(), 3);
+        QCOMPARE(cell(planTable, 0, 0), QStringLiteral("Kaution, deposit, tenancy deposit"));
+        QCOMPARE(cell(planTable, 0, 1), QStringLiteral("Merged"));
+        QVERIFY(cell(planTable, 0, 2).startsWith(QStringLiteral("Kaution")));
+        QCOMPARE(cell(planTable, 1, 1), QStringLiteral("New"));
+        QCOMPARE(cell(planTable, 1, 2), QStringLiteral("none"));
+        QVERIFY(byName<QRadioButton>(imp, QStringLiteral("match:term"))->isChecked());
+        // Keeping what is there leaves Kaution as it is.
+        byName<QRadioButton>(imp, QStringLiteral("onMatch:skip"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy() && imp->plan().value("merged").toInt() == 0, 10000);
+        QCOMPARE(imp->plan().value("skipped").toInt() + imp->plan().value("unchanged").toInt(), 1);
+        // Adding everything makes a second Kaution.
+        byName<QRadioButton>(imp, QStringLiteral("match:none"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy() && imp->plan().value("added").toInt() == 3, 10000);
+        QVERIFY(!byName<QRadioButton>(imp, QStringLiteral("onMatch:merge")));
+        imp->setPolicy(QStringLiteral("term"), QStringLiteral("de-DE"), QStringLiteral("merge"));
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy() && imp->plan().value("merged").toInt() == 1, 10000);
+        QCOMPARE(byName<QComboBox>(imp, QStringLiteral("matchLanguage"))->currentData().toString(), QStringLiteral("de-DE"));
+        // Back and forth keeps what was chosen.
+        imp->back();
+        QCOMPARE(imp->step(), ImportDialog::LanguagesStep);
+        QVERIFY(byName<QRadioButton>(imp, QStringLiteral("fallbackProposed"))->isChecked());
+        imp->next();
+        QTRY_VERIFY_WITH_TIMEOUT(imp->step() == ImportDialog::Review && !imp->busy() && imp->nextButton()->isEnabled(), 10000);
+        QCOMPARE(imp->nextButton()->text(), QStringLiteral("Import"));
+        imp->next();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Imported Mietrecht-Liste.csv into Kanzlei Weber: 2 added, 1 merged"), 15000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 4, 10000);
+        QCOMPARE(TermData::terms(page.entry(id), QStringLiteral("en-GB")).size(), 3);
+        QCOMPARE(TermData::terms(page.entry(id), QStringLiteral("en-GB"))[2].toObject().value("status").toString(), QStringLiteral("proposed"));
+        QCOMPARE(TermData::value(page.entry(id).value("fields").toArray(), QStringLiteral("Source")), QStringLiteral("BGB"));
+        QTRY_COMPARE(page.fields().size(), 3);
+
+        // Import a MultiTerm termbase file as a new master.
+        const QString sdltb = QFINDTESTDATA("../../term/testdata/orchard.sdltb");
+        QVERIFY2(!sdltb.isEmpty(), "the made-up MultiTerm termbase is missing");
+        imp = page.importDialog(true);
+        QCOMPARE(imp->title(), QStringLiteral("Import a termbase"));
+        QVERIFY(!byName<QRadioButton>(imp, QStringLiteral("intoThis")));
+        QVERIFY(byName<QLineEdit>(imp, QStringLiteral("newName")));
+        imp->chooseFile(sdltb);
+        QTRY_VERIFY_WITH_TIMEOUT(imp->step() == ImportDialog::LanguagesStep && !imp->busy(), 15000);
+        QCOMPARE(byName<QLineEdit>(imp, QStringLiteral("newName")), nullptr);
+        QCOMPARE(byName<QLabel>(imp, QStringLiteral("fileSummary"))->text(), QStringLiteral("MultiTerm termbase: 5 entries, 15 terms."));
+        QCOMPARE(imp->fileLanguages().size(), 5);
+        // MultiTerm's "EN" goes under a listed English.
+        QVERIFY(imp->mappedTo(QStringLiteral("en")).startsWith(QStringLiteral("en")));
+        imp->mapLanguage(QStringLiteral("en"), QStringLiteral("en-GB"));
+        imp->mapLanguage(QStringLiteral("de"), QStringLiteral("de-DE"));
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy(), 10000);
+        imp->next();
+        QTRY_VERIFY_WITH_TIMEOUT(imp->step() == ImportDialog::Review && !imp->plan().isEmpty(), 10000);
+        QCOMPARE(imp->plan().value("added").toInt(), 5);
+        QVERIFY(!byName<QRadioButton>(imp, QStringLiteral("match:term")));
+        QCOMPARE(byName<QTableWidget>(imp, QStringLiteral("plan"))->rowCount(), 5);
+        imp->next();
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("orchard"), 15000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 5, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Imported orchard.sdltb into orchard: 5 added"));
+        QVERIFY(page.languages().contains(QStringLiteral("ja")) || page.languages().contains(QStringLiteral("ja-JP")));
+        QTRY_VERIFY(byName<Web::Clickable>(&page, QStringLiteral("tb:%1:orchard").arg(here)));
+        // A file that is no termbase says so and stays on the first step.
+        const QString notes = m_tmp.filePath(QStringLiteral("notes.xml"));
+        {
+            QFile f(notes);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("<html><body>Nothing here</body></html>");
+        }
+        imp = page.importDialog(false);
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy(), 10000);
+        imp->chooseFile(notes);
+        QTRY_VERIFY_WITH_TIMEOUT(!imp->busy() && imp->error().startsWith(QStringLiteral("notes.xml could not be read: ")), 10000);
+        QCOMPARE(imp->step(), ImportDialog::File);
+        imp->reject();
+
+        // The termbase list: both masters with their counts; open the first.
+        Web::Clickable *weber = byName<Web::Clickable>(&page, QStringLiteral("tb:%1:Kanzlei Weber").arg(here));
+        QVERIFY(weber && !weber->isCurrent());
+        QVERIFY(weber->accessibleName().contains(QStringLiteral("4 entries")));
+        QTest::mouseClick(weber, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Kanzlei Weber"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 4, 10000);
+
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            page.selectEntry(id);
+            QTest::qWait(300);
+            page.grab().save(dir + QStringLiteral("/terminology.png"));
+        }
+
+        // Settings: name, languages, fields, deleting.
+        TermbaseSettingsDialog *set = page.settingsDialog();
+        QVERIFY(set);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy(), 10000);
+        QVERIFY(byName<QWidget>(set, QStringLiteral("language:de-DE")));
+        QVERIFY(label(byName<QWidget>(set, QStringLiteral("language:en-GB")), QStringLiteral("6 terms")));
+        auto *fieldsTable = byName<QTableWidget>(set, QStringLiteral("fieldsTable"));
+        QVERIFY(fieldsTable);
+        QCOMPARE(fieldsTable->rowCount(), 3);
+        QCOMPARE(cell(fieldsTable, 0, 0), QStringLiteral("Definition"));
+        QCOMPARE(cell(fieldsTable, 0, 1), QStringLiteral("Entry"));
+        QCOMPARE(cell(fieldsTable, 0, 3), QStringLiteral("1"));
+        QCOMPARE(cell(fieldsTable, 1, 1), QStringLiteral("Term"));
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(200);
+            set->grab().save(dir + QStringLiteral("/terminology-settings.png"));
+        }
+        // A new language.
+        QVERIFY(!byName<QPushButton>(set, QStringLiteral("addLanguageButton"))->isEnabled());
+        byName<QComboBox>(set, QStringLiteral("addLanguage"))->setCurrentIndex(byName<QComboBox>(set, QStringLiteral("addLanguage"))->findData(QStringLiteral("fr-FR")));
+        byName<QPushButton>(set, QStringLiteral("addLanguageButton"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QWidget>(set, QStringLiteral("language:fr-FR")), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added French (France)"), 10000);
+        // A field becomes a list to pick from, with its values.
+        choose(byName<QComboBox>(set, QStringLiteral("fieldKind:Source")), QStringLiteral("picklist"));
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QLineEdit>(set, QStringLiteral("fieldValues:Source")), 10000);
+        byName<QLineEdit>(set, QStringLiteral("fieldValues:Source"))->setText(QStringLiteral("BGB; BetrKV; BGB;"));
+        emit byName<QLineEdit>(set, QStringLiteral("fieldValues:Source"))->editingFinished();
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QLineEdit>(set, QStringLiteral("fieldValues:Source")) &&
+                                     byName<QLineEdit>(set, QStringLiteral("fieldValues:Source"))->text() == QStringLiteral("BGB; BetrKV"),
+                                 10000);
+        // Renaming a field renames it in the entries.
+        byName<QLineEdit>(set, QStringLiteral("fieldName:Usage"))->setText(QStringLiteral("Register"));
+        emit byName<QLineEdit>(set, QStringLiteral("fieldName:Usage"))->editingFinished();
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QLineEdit>(set, QStringLiteral("fieldName:Register")), 10000);
+        QCOMPARE(cell(byName<QTableWidget>(set, QStringLiteral("fieldsTable")), 1, 3), QStringLiteral("1"));
+        // Removing a field asks first and says what goes with it.
+        {
+            auto *t = byName<QTableWidget>(set, QStringLiteral("fieldsTable"));
+            auto *rm = t->cellWidget(0, 4)->findChild<Web::ConfirmButton *>();
+            QVERIFY(rm);
+            rm->button()->click();
+            QVERIFY(label(t, QStringLiteral("Remove “Definition” and 1 value?")));
+            rm->yes()->click();
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Removed the field “Definition”"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QTableWidget>(set, QStringLiteral("fieldsTable")) && byName<QTableWidget>(set, QStringLiteral("fieldsTable"))->rowCount() == 2, 10000);
+        // Removing a language takes its terms.
+        {
+            auto *rm = byName<QWidget>(set, QStringLiteral("language:fr-FR"))->findChild<Web::ConfirmButton *>();
+            rm->button()->click();
+            QVERIFY(label(set, QStringLiteral("Remove French (France)?")));
+            rm->yes()->click();
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Removed French (France)"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && !byName<QWidget>(set, QStringLiteral("language:fr-FR")), 10000);
+        // A new name, on leaving the field.
+        byName<QLineEdit>(set, QStringLiteral("termbaseName"))->setText(QStringLiteral("Weber Mietrecht"));
+        emit byName<QLineEdit>(set, QStringLiteral("termbaseName"))->editingFinished();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Renamed to “Weber Mietrecht”"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy(), 10000);
+        byName<QPushButton>(set, QStringLiteral("done"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Weber Mietrecht"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(byName<QLabel>(&page, QStringLiteral("termbaseTitle")) && byName<QLabel>(&page, QStringLiteral("termbaseTitle"))->text() == QStringLiteral("Weber Mietrecht"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 4, 10000);
+        // The page shows the renamed field and the list of values.
+        QTRY_VERIFY(named<QComboBox>(&page, QStringLiteral("Source")));
+        QCOMPARE(named<QComboBox>(&page, QStringLiteral("Source"))->count(), 3);
+        QVERIFY(named<QLineEdit>(byName<QFrame>(&page, QStringLiteral("term:en-GB:0")), QStringLiteral("Register")));
+        const ApiResult after = wait(api->get(QStringLiteral("/api/termbases/Weber%20Mietrecht/entries/") + id));
+        QCOMPARE(TermData::value(TermData::terms(after.object(), QStringLiteral("en-GB"))[0].toObject().value("fields").toArray(), QStringLiteral("Register")), QStringLiteral("tenancy law"));
+
+        // Deleting an entry asks, then shows the next.
+        auto *del = byName<Web::ConfirmButton>(&page, QStringLiteral("deleteEntry"));
+        QVERIFY(del);
+        del->button()->click();
+        QVERIFY(label(&page, QStringLiteral("Delete this entry and its history?")));
+        del->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 3, 10000);
+        QVERIFY(page.message().startsWith(QStringLiteral("Deleted the entry “")));
+        QVERIFY(page.entry(id).isEmpty());
+        QTRY_VERIFY(!page.entryId().isEmpty() && page.entryId() != id);
+
+        // Deleting the termbase, from its settings.
+        set = page.settingsDialog();
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<Web::ConfirmButton>(set, QStringLiteral("deleteTermbase")), 10000);
+        QVERIFY(labelWith(set, QStringLiteral("Deletes 3 entries and their history.")));
+        auto *gone = byName<Web::ConfirmButton>(set, QStringLiteral("deleteTermbase"));
+        gone->button()->click();
+        QVERIFY(label(set, QStringLiteral("Delete Weber Mietrecht for good?")));
+        gone->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted Weber Mietrecht"), 10000);
+        // The other master is shown instead.
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("orchard"), 10000);
+        QTRY_VERIFY(!byName<Web::Clickable>(&page, QStringLiteral("tb:%1:Weber Mietrecht").arg(here)));
+        QVERIFY(saved.size() > 0);
+    }
+
+    void savingMeetsAnotherChange()
+    {
+        // Someone else saves the entry first: the change here is refused,
+        // said, and what the core has is shown.
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Shared"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}})).ok());
+        const QJsonObject e{{"languages", QJsonArray{QJsonObject{{"lang", "de-DE"}, {"terms", QJsonArray{QJsonObject{{"text", "Miete"}, {"status", "approved"}}}}}}}};
+        const ApiResult made = wait(api->post(QStringLiteral("/api/termbases/Shared/entries"), QJsonObject{{"entry", e}}));
+        QVERIFY(made.ok());
+        const QString id = made.object().value("id").toString();
+
+        TerminologyPage page(&m);
+        page.resize(1280, 800);
+        page.show();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 1, 15000);
+        QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("addTerm:en-GB")));
+        // The page still has version 1 when the entry changes underneath.
+        QJsonObject theirs = TermData::forSaving(made.object());
+        theirs = TermData::withTerms(theirs, QStringLiteral("en-GB"), QJsonArray{QJsonObject{{"text", "rent"}, {"status", "approved"}}});
+        m.local()->feed()->blockSignals(true);
+        QVERIFY(wait(api->put(QStringLiteral("/api/termbases/Shared/entries/") + id, QJsonObject{{"entry", theirs}, {"summary", "Added by a colleague"}}, 1)).ok());
+        byName<QPushButton>(&page, QStringLiteral("addTerm:en-GB"))->click();
+        QLineEdit *t = nullptr;
+        QTRY_VERIFY((t = byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))));
+        t->setText(QStringLiteral("rental"));
+        button(t->parentWidget(), QStringLiteral("Add"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(page.message().startsWith(QStringLiteral("The entry was not saved: ")), 10000);
+        m.local()->feed()->blockSignals(false);
+        // Their term is shown, not the one refused.
+        QTRY_VERIFY_WITH_TIMEOUT(TermData::terms(page.entry(id), QStringLiteral("en-GB")).size() == 1 &&
+                                     TermData::terms(page.entry(id), QStringLiteral("en-GB"))[0].toObject().value("text").toString() == QStringLiteral("rent"),
+                                 10000);
+        QCOMPARE(page.entry(id).value("version").toInt(), 2);
+        QTRY_VERIFY(!page.busy());
+    }
+
+private:
+    QTemporaryDir m_tmp;
+};
+
+QTEST_MAIN(TestTerminology)
+#include "tst_terminology.moc"

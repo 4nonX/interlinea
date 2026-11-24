@@ -55,7 +55,7 @@ platforms.
 
 ## Stages
 
-Done: 1 to 5. Next: 6, terminology. The editor, the project list and the
+Done: 1 to 5, and the Terminology page of 6. Next: review and merge. The editor, the project list and the
 Memories page are laid out as the same screens of the browser client, which
 is the model for every page; the project page, the new project dialog and
 Settings still have their first layout and follow. The browser client's

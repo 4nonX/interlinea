@@ -750,6 +750,68 @@ func (t *Termbase) RemoveField(ctx context.Context, name, by string) (int, error
 	return changed, err
 }
 
+// RenameField renames a field in the termbase and in every entry that has
+// a value for it, recording the change in each entry's history. It returns
+// how many entries changed.
+func (t *Termbase) RenameField(ctx context.Context, name, to, by string) (int, error) {
+	to = strings.TrimSpace(to)
+	if to == "" {
+		return 0, errors.New("termdb: the field needs a name")
+	}
+	changed := 0
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
+		at := -1
+		for i, f := range def.Fields {
+			if strings.EqualFold(f.Name, name) {
+				at = i
+			} else if strings.EqualFold(f.Name, to) {
+				return fmt.Errorf("termdb: the termbase already has a field %q", f.Name)
+			}
+		}
+		if at < 0 {
+			return fmt.Errorf("termdb: the termbase has no field %q", name)
+		}
+		if def.Fields[at].Name == to {
+			return nil
+		}
+		def.Fields[at].Name = to
+		entries, err := t.entries(ctx, tx, "")
+		if err != nil {
+			return err
+		}
+		now := t.db.now()
+		rename := func(vs []term.Value) bool {
+			hit := false
+			for i := range vs {
+				if strings.EqualFold(vs[i].Field, name) {
+					vs[i].Field = to
+					hit = true
+				}
+			}
+			return hit
+		}
+		for _, s := range entries {
+			e := s.Entry
+			hit := rename(e.Fields)
+			for i := range e.Languages {
+				hit = rename(e.Languages[i].Fields) || hit
+				for j := range e.Languages[i].Terms {
+					hit = rename(e.Languages[i].Terms[j].Fields) || hit
+				}
+			}
+			if !hit {
+				continue
+			}
+			changed++
+			if _, err := t.update(ctx, tx, e, s.Version, by, fmt.Sprintf("Renamed the field %q to %q", name, to), now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return changed, err
+}
+
 // Count returns the number of entries and terms.
 func (t *Termbase) Count(ctx context.Context) (entries, terms int, err error) {
 	err = t.db.sql.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM entries WHERE termbase_id = ?), (SELECT COUNT(*) FROM terms WHERE termbase_id = ?)`, t.id, t.id).Scan(&entries, &terms)

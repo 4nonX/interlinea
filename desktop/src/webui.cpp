@@ -8,7 +8,9 @@
 #include <QDragEnterEvent>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QMimeData>
 #include <QPushButton>
 #include <QScrollArea>
@@ -274,6 +276,18 @@ void Table::clearRows()
 
 void Table::fit()
 {
+    // What the cells hold is styled before it is measured.
+    for (int r = 0; r < rowCount(); ++r) {
+        for (int c = 0; c < columnCount(); ++c) {
+            if (QWidget *w = cellWidget(r, c)) {
+                w->ensurePolished();
+                for (QWidget *child : w->findChildren<QWidget *>())
+                    child->ensurePolished();
+                if (w->layout())
+                    w->layout()->invalidate();
+            }
+        }
+    }
     for (int c = 0; c < columnCount(); ++c) {
         if (horizontalHeader()->sectionResizeMode(c) != QHeaderView::Stretch)
             resizeColumnToContents(c);
@@ -566,6 +580,277 @@ void DropZone::dropEvent(QDropEvent *e)
         e->acceptProposedAction();
         emit dropped(paths);
     }
+}
+
+Clickable::Clickable(const char *role, QWidget *parent)
+    : QFrame(parent)
+{
+    Theme::role(this, role);
+    setFocusPolicy(Qt::StrongFocus);
+    setCursor(Qt::PointingHandCursor);
+    setAttribute(Qt::WA_Hover);
+    setProperty("current", false);
+}
+
+void Clickable::setCurrent(bool current)
+{
+    if (isCurrent() == current)
+        return;
+    setProperty("current", current);
+    style()->unpolish(this);
+    style()->polish(this);
+}
+
+void Clickable::mouseReleaseEvent(QMouseEvent *e)
+{
+    if (e->button() == Qt::LeftButton && rect().contains(e->pos()))
+        emit clicked();
+    QFrame::mouseReleaseEvent(e);
+}
+
+void Clickable::keyPressEvent(QKeyEvent *e)
+{
+    if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter || e->key() == Qt::Key_Space) {
+        emit clicked();
+        return;
+    }
+    QFrame::keyPressEvent(e);
+}
+
+Tabs::Tabs(const QString &label, QWidget *parent, bool small)
+    : QFrame(parent)
+    , m_small(small)
+{
+    Theme::role(this, "tabs");
+    setAccessibleName(label);
+    m_row = new QHBoxLayout(this);
+    m_row->setContentsMargins(S3, 0, S3, 0);
+    m_row->setSpacing(S1);
+    m_row->addStretch();
+}
+
+QPushButton *Tabs::add(const QString &text, const QString &icon)
+{
+    auto *b = new QPushButton(text, this);
+    b->setProperty("tab", m_small ? QStringLiteral("small") : QStringLiteral("normal"));
+    b->setCheckable(true);
+    b->setAutoExclusive(false);
+    b->setCursor(Qt::PointingHandCursor);
+    if (!icon.isEmpty()) {
+        b->setIcon(Icons::get(icon, Theme::color("text2")));
+        b->setIconSize(QSize(14, 14));
+    }
+    const int index = m_tabs.size();
+    m_tabs << b;
+    b->setChecked(index == m_current);
+    m_row->insertWidget(index, b);
+    connect(b, &QPushButton::clicked, this, [this, index] {
+        const bool was = m_current == index;
+        setCurrent(index);
+        if (!was)
+            emit changed(index);
+    });
+    return b;
+}
+
+void Tabs::setText(int index, const QString &text)
+{
+    if (QPushButton *b = m_tabs.value(index))
+        b->setText(text);
+}
+
+void Tabs::setEnabledAt(int index, bool enabled)
+{
+    if (QPushButton *b = m_tabs.value(index))
+        b->setEnabled(enabled);
+}
+
+void Tabs::setCurrent(int index)
+{
+    m_current = index;
+    for (int i = 0; i < m_tabs.size(); i++)
+        m_tabs[i]->setChecked(i == index);
+}
+
+Segmented::Segmented(const QString &label, const QStringList &choices, QWidget *parent)
+    : QFrame(parent)
+{
+    setObjectName(QStringLiteral("segmented"));
+    setAccessibleName(label);
+    setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    auto *h = new QHBoxLayout(this);
+    h->setContentsMargins(2, 2, 2, 2);
+    h->setSpacing(0);
+    for (int i = 0; i < choices.size(); i++) {
+        auto *b = new QPushButton(choices[i], this);
+        b->setProperty("segment", true);
+        b->setCheckable(true);
+        b->setChecked(i == 0);
+        b->setCursor(Qt::PointingHandCursor);
+        m_segments << b;
+        h->addWidget(b);
+        connect(b, &QPushButton::clicked, this, [this, i] {
+            const bool was = m_current == i;
+            setCurrent(i);
+            if (!was)
+                emit changed(i);
+        });
+    }
+}
+
+void Segmented::setCurrent(int index)
+{
+    m_current = index;
+    for (int i = 0; i < m_segments.size(); i++)
+        m_segments[i]->setChecked(i == index);
+}
+
+Stepper::Stepper(QWidget *parent)
+    : QWidget(parent)
+{
+    setAccessibleName(tr("Steps"));
+    m_row = new QHBoxLayout(this);
+    m_row->setContentsMargins(0, 0, 0, 0);
+    m_row->setSpacing(16);
+}
+
+void Stepper::setSteps(const QStringList &names, int current)
+{
+    m_names = names;
+    m_current = current;
+    while (QLayoutItem *item = m_row->takeAt(0)) {
+        if (item->widget())
+            item->widget()->deleteLater();
+        delete item;
+    }
+    for (int i = 0; i < names.size(); i++) {
+        auto *step = new QWidget(this);
+        auto *h = new QHBoxLayout(step);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(S2);
+        auto *num = new QLabel(QString::number(i + 1), step);
+        num->setAlignment(Qt::AlignCenter);
+        num->setFixedSize(22, 22);
+        const QString state = i == current ? QStringLiteral("current") : i < current ? QStringLiteral("done") : QStringLiteral("todo");
+        num->setProperty("stepNum", state);
+        auto *name = new QLabel(names[i], step);
+        name->setProperty("stepName", state);
+        h->addWidget(num);
+        h->addWidget(name);
+        step->setAccessibleName(i == current ? tr("Step %1, %2, current").arg(i + 1).arg(names[i]) : tr("Step %1, %2").arg(i + 1).arg(names[i]));
+        m_row->addWidget(step);
+    }
+    m_row->addStretch();
+}
+
+Switcher::Switcher(QWidget *parent)
+    : QWidget(parent)
+{
+    auto *v = new QVBoxLayout(this);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(0);
+}
+
+void Switcher::add(QWidget *state)
+{
+    state->setParent(this);
+    layout()->addWidget(state);
+    state->setVisible(m_states.isEmpty());
+    m_states << state;
+}
+
+void Switcher::setCurrent(int index)
+{
+    if (index == m_current || index < 0 || index >= m_states.size())
+        return;
+    m_current = index;
+    for (int i = 0; i < m_states.size(); i++)
+        m_states[i]->setVisible(i == index);
+    emit changed(index);
+}
+
+QFrame *note(const QString &text, const QString &kind, QWidget *parent)
+{
+    auto *f = new QFrame(parent);
+    f->setProperty("note", kind);
+    auto *h = new QHBoxLayout(f);
+    h->setContentsMargins(S3, S2, S3, S2);
+    h->setSpacing(S2);
+    QColor fg = Theme::color("text2");
+    if (kind == QLatin1String("warn"))
+        fg = Theme::dark() ? Theme::color("warn") : QColor(0x6b, 0x45, 0x00);
+    else if (kind == QLatin1String("ok"))
+        fg = Theme::dark() ? Theme::color("ok") : QColor(0x14, 0x5f, 0x36);
+    auto *icon = new QLabel(f);
+    icon->setPixmap(Icons::get(kind == QLatin1String("warn") ? QStringLiteral("alert-triangle") : kind == QLatin1String("ok") ? QStringLiteral("check") : QStringLiteral("info"), fg).pixmap(14, 14));
+    icon->setAlignment(Qt::AlignTop);
+    h->addWidget(icon, 0, Qt::AlignTop);
+    auto *l = new QLabel(text, f);
+    l->setWordWrap(true);
+    l->setStyleSheet(QStringLiteral("color: %1; font-size: 13px; background: transparent;").arg(fg.name()));
+    h->addWidget(l, 1);
+    f->setAccessibleName(text);
+    return f;
+}
+
+Dialog::Dialog(const QString &title, QWidget *parent, bool wide)
+    : QDialog(parent)
+{
+    setProperty("role", QStringLiteral("dialog"));
+    setWindowTitle(title);
+    setModal(true);
+    const int width = wide ? 920 : 640;
+    setMinimumWidth(qMin(width, 480));
+    resize(width, 10);
+    m_outer = new QVBoxLayout(this);
+    m_outer->setContentsMargins(S5, S5, S5, S5);
+    m_outer->setSpacing(S3);
+    m_title = new QLabel(title, this);
+    m_title->setProperty("role", QStringLiteral("dialogTitle"));
+    m_title->setWordWrap(true);
+    m_outer->addWidget(m_title);
+    m_body = new QVBoxLayout;
+    m_body->setSpacing(S3);
+    m_outer->addLayout(m_body);
+    m_error = text(QString(), "error", this);
+    m_error->setWordWrap(true);
+    m_error->hide();
+    m_outer->addWidget(m_error);
+}
+
+void Dialog::setTitle(const QString &title)
+{
+    setWindowTitle(title);
+    m_title->setText(title);
+}
+
+QString Dialog::title() const
+{
+    return m_title->text();
+}
+
+QBoxLayout *Dialog::buttons()
+{
+    if (!m_buttons) {
+        m_buttons = new QHBoxLayout;
+        m_buttons->setSpacing(S2);
+        m_buttons->addStretch();
+        m_outer->addLayout(m_buttons);
+    }
+    return m_buttons;
+}
+
+void Dialog::setError(const QString &text)
+{
+    m_error->setText(text);
+    m_error->setVisible(!text.isEmpty());
+    if (!text.isEmpty())
+        m_error->setAccessibleDescription(tr("Problem"));
+}
+
+QString Dialog::error() const
+{
+    return m_error->isHidden() ? QString() : m_error->text();
 }
 
 } // namespace Web

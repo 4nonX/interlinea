@@ -143,9 +143,21 @@ func TestTermbases(t *testing.T) {
 	if r := e.do("POST", "/api/termbases", benTok, newTermbase{Definition: term.Definition{Name: "X", Languages: []string{"de"}}}); r.status != 403 {
 		t.Fatalf("a translator makes a termbase: %d", r.status)
 	}
-	if r := e.do("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "X"}}); r.status != 422 {
-		t.Fatalf("termbase without languages: %d", r.status)
+	if r := e.do("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: " "}}); r.status != 422 {
+		t.Fatalf("termbase without a name: %d", r.status)
 	}
+	// A master may start without languages; the first entry brings them.
+	var bare termbaseDetail
+	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Bare"}}, 201, &bare)
+	if len(bare.Definition.Languages) != 0 {
+		t.Fatalf("languages of a termbase made without any: %v", bare.Definition.Languages)
+	}
+	e.call("POST", "/api/termbases/Bare/entries", tbm, map[string]any{"entry": term.Entry{Languages: []term.Language{{Lang: "nl", Terms: []term.Term{{Text: "huur"}}}}}}, 201, nil)
+	e.call("GET", "/api/termbases/Bare", tbm, nil, 200, &bare)
+	if len(bare.Definition.Languages) != 1 || bare.Definition.Languages[0] != "nl" {
+		t.Fatalf("languages after the first entry: %v", bare.Definition.Languages)
+	}
+	e.call("DELETE", "/api/termbases/Bare", tbm, nil, 204, nil)
 	var tb termbaseDetail
 	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Recht", Languages: []string{"de-DE", "en-GB"}}}, 201, &tb)
 	if tb.Kind != "master" || tb.Role != "manage" {
@@ -218,6 +230,38 @@ func TestTermbases(t *testing.T) {
 	if r := e.do("POST", "/api/termbases/Copy/import?onMatch=maybe", tbm, r.body); r.status != 422 {
 		t.Fatalf("bad policy: %d", r.status)
 	}
+	// Chosen entries go out alone, and a field is renamed everywhere.
+	e.call("POST", base+"/entries", benTok, map[string]any{"entry": term.Entry{Languages: []term.Language{{Lang: "de-DE", Terms: []term.Term{{Text: "Hausordnung"}}}}}}, 201, nil)
+	var all struct{ Entries []termdb.Stored }
+	e.call("GET", base+"/entries", benTok, nil, 200, &all)
+	if len(all.Entries) < 2 {
+		t.Fatalf("entries to choose from: %d", len(all.Entries))
+	}
+	part := e.call("POST", base+"/export?format=csv", benTok, map[string]any{"entries": []string{all.Entries[0].ID}}, 200, nil)
+	if lines := strings.Count(strings.TrimSpace(string(part.body)), "\n"); lines != 1 {
+		t.Fatalf("one entry and the header expected:\n%s", part.body)
+	}
+	if r := e.do("POST", base+"/export?format=csv", benTok, map[string]any{"entries": []string{}}); r.status != 422 {
+		t.Fatalf("an export of no entries: %d", r.status)
+	}
+	var def termbaseDetail
+	e.call("GET", base, tbm, nil, 200, &def)
+	if len(def.Definition.Fields) > 0 {
+		old := def.Definition.Fields[0].Name
+		if r := e.do("PUT", base+"/fields/"+url.PathEscape(old), benTok, map[string]string{"name": "Renamed"}); r.status != 403 {
+			t.Fatalf("an editor renames a field: %d", r.status)
+		}
+		e.call("PUT", base+"/fields/"+url.PathEscape(old), tbm, map[string]string{"name": "Renamed"}, 200, nil)
+		e.call("GET", base, tbm, nil, 200, &def)
+		if def.Definition.Fields[0].Name != "Renamed" {
+			t.Fatalf("after renaming: %+v", def.Definition.Fields)
+		}
+		if r := e.do("PUT", base+"/fields/Renamed", tbm, map[string]string{"name": ""}); r.status != 422 {
+			t.Fatalf("renaming to nothing: %d", r.status)
+		}
+		e.call("PUT", base+"/fields/Renamed", tbm, map[string]string{"name": old}, 200, nil)
+	}
+
 	// A spreadsheet is inspected first, then imported with the columns,
 	// languages and default status the person chose.
 	sheet := []byte("Deutsch,Englisch,Bemerkung\nKaution,deposit; security deposit,aus dem Vertrag\nNebenkosten,service charge,\n,,nur eine Bemerkung\n")
@@ -242,10 +286,19 @@ func TestTermbases(t *testing.T) {
 		Languages []string
 		Fields    []term.Field
 		Read      term.Report
+		Dropped   int
+		Sample    []string
 	}
 	e.call("POST", "/api/termfiles/inspect?filename=liste.csv&mapping="+url.QueryEscape(string(mj)), benTok, sheet, 200, &read, "Content-Type", "text/csv")
 	if strings.Join(read.Languages, " ") != "de en" || len(read.Fields) != 1 || read.Read.Entries != 2 || read.Read.Skipped != 1 {
 		t.Fatalf("read with a mapping %+v", read)
+	}
+	if len(read.Sample) != 2 || read.Sample[1] != "Nebenkosten, service charge" {
+		t.Fatalf("sample %v", read.Sample)
+	}
+	e.call("POST", "/api/termfiles/inspect?filename=liste.csv&mapping="+url.QueryEscape(string(mj))+"&languages="+url.QueryEscape(`{"de":""}`), benTok, sheet, 200, &read, "Content-Type", "text/csv")
+	if strings.Join(read.Languages, " ") != "de en" || read.Dropped != 0 || read.Sample[0] != "deposit, security deposit" {
+		t.Fatalf("read with German left out %+v", read)
 	}
 	if r := e.do("POST", "/api/termfiles/inspect?filename=liste.csv&mapping=nonsense", benTok, sheet); r.status != 422 {
 		t.Fatalf("a mapping that is not JSON: %d", r.status)

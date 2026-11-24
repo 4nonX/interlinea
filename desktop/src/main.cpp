@@ -3,6 +3,7 @@
 #include "icons.h"
 #include "mainwindow.h"
 #include "memoriespage.h"
+#include "terminologypage.h"
 #include "projectspage.h"
 #include "settingspage.h"
 #include "singleinstance.h"
@@ -59,6 +60,9 @@ int main(int argc, char *argv[])
                    QKeySequence(QStringLiteral("Ctrl+1")));
     window.addPage(QStringLiteral("memories"), QObject::tr("Memories"), Icons::get(QStringLiteral("memories")), new MemoriesPage(&connections, &window),
                    QKeySequence(QStringLiteral("Ctrl+2")));
+    auto *terminology = new TerminologyPage(&connections, &window);
+    window.addPage(QStringLiteral("terminology"), QObject::tr("Terminology"), Icons::get(QStringLiteral("terminology")), terminology,
+                   QKeySequence(QStringLiteral("Ctrl+3")));
     window.addPage(QStringLiteral("settings"), QObject::tr("Settings"), Icons::get(QStringLiteral("settings")),
                    new SettingsPage(&connections, &window), QKeySequence(QStringLiteral("Ctrl+,")));
     QObject::connect(&instance, &SingleInstance::activated, &window, [&window, projects](const QStringList &files) {
