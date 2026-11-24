@@ -1,17 +1,15 @@
 #pragma once
 
+#include <QJsonObject>
 #include <QWidget>
 
 class ConnectionManager;
 class EditorPage;
 class ProjectPage;
 class ProjectsModel;
-class QLabel;
-class QLineEdit;
-class QPushButton;
-class QSortFilterProxyModel;
+class QLayout;
 class QStackedWidget;
-class QTableView;
+class QVBoxLayout;
 
 // The projects of every place work is kept, and one project opened.
 class ProjectsPage : public QWidget {
@@ -20,7 +18,6 @@ public:
     explicit ProjectsPage(ConnectionManager *manager, QWidget *parent = nullptr);
 
     ProjectsModel *model() const { return m_model; }
-    QTableView *table() const { return m_table; }
     ProjectPage *openProject() const { return m_project; }
     EditorPage *openEditor() const { return m_editor; }
     void edit(const QString &file, const QString &lang);
@@ -34,15 +31,14 @@ signals:
 
 private:
     void updateState();
+    static QStringList expand(const QStringList &paths);
+    static void clearLayout(QLayout *layout);
+    void openInEditor(const QString &connectionId, qint64 projectId, const QJsonObject &settings);
 
     ConnectionManager *m_manager;
     ProjectsModel *m_model;
-    QSortFilterProxyModel *m_proxy;
     QStackedWidget *m_stack;
-    QTableView *m_table;
-    QLineEdit *m_filter;
-    QPushButton *m_open;
-    QLabel *m_empty;
+    QVBoxLayout *m_sections;
     ProjectPage *m_project = nullptr;
     EditorPage *m_editor = nullptr;
     void closeEditor();

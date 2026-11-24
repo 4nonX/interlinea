@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 
+#include "icons.h"
+
 #include "connectionmanager.h"
 #include "navigationrail.h"
 
@@ -47,15 +49,26 @@ MainWindow::MainWindow(ConnectionManager *manager, QWidget *parent)
     // The app's name heads the navigation.
     auto *side = new QWidget(central);
     side->setObjectName(QStringLiteral("side"));
+    // As the web's .rail: 216 px, 16 by 12 px in, the brand above the
+    // pages.
     auto *sl = new QVBoxLayout(side);
-    sl->setContentsMargins(0, 0, 0, 0);
-    sl->setSpacing(0);
+    sl->setContentsMargins(12, 16, 12, 16);
+    sl->setSpacing(16);
+    auto *brand = new QHBoxLayout;
+    brand->setContentsMargins(8, 4, 8, 4);
+    brand->setSpacing(8);
+    auto *mark = new QLabel(side);
+    mark->setObjectName(QStringLiteral("brandMark"));
+    mark->setFixedSize(28, 28);
+    mark->setAlignment(Qt::AlignCenter);
+    mark->setPixmap(Icons::get(QStringLiteral("editor"), QColor(Qt::white)).pixmap(18, 18));
     auto *name = new QLabel(QStringLiteral("Interlinea"), side);
     name->setObjectName(QStringLiteral("appName"));
-    name->setAutoFillBackground(false);
-    sl->addWidget(name);
+    brand->addWidget(mark);
+    brand->addWidget(name, 1);
+    sl->addLayout(brand);
     sl->addWidget(m_rail, 1);
-    side->setFixedWidth(m_rail->width());
+    side->setFixedWidth(216);
     outer->addWidget(side);
     auto *right = new QVBoxLayout;
     right->setContentsMargins(0, 0, 0, 0);

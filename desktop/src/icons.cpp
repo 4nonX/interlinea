@@ -179,6 +179,94 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(8, 20);
         path.lineTo(5, 17);
         path.lineTo(8, 14);
+    } else if (name == QLatin1String("cloud")) {
+        path.moveTo(7, 19);
+        path.cubicTo(3.5, 19, 2.5, 15, 5, 13.5);
+        path.cubicTo(5, 9, 10, 7, 12.5, 9.5);
+        path.cubicTo(14, 6.5, 19.5, 7, 19.5, 11.5);
+        path.cubicTo(22.5, 12.5, 22, 19, 18, 19);
+        path.closeSubpath();
+    } else if (name == QLatin1String("hard-drive")) {
+        path.addRoundedRect(QRectF(3, 13, 18, 7), 2, 2);
+        path.moveTo(3, 13);
+        path.lineTo(6.5, 5);
+        path.lineTo(17.5, 5);
+        path.lineTo(21, 13);
+        path.moveTo(7, 16.5);
+        path.lineTo(7.2, 16.5);
+        path.moveTo(10.5, 16.5);
+        path.lineTo(10.7, 16.5);
+    } else if (name == QLatin1String("file-text")) {
+        path.moveTo(14, 3);
+        path.lineTo(6, 3);
+        path.lineTo(6, 21);
+        path.lineTo(18, 21);
+        path.lineTo(18, 7);
+        path.closeSubpath();
+        path.moveTo(14, 3);
+        path.lineTo(14, 7);
+        path.lineTo(18, 7);
+        path.moveTo(9, 12);
+        path.lineTo(15, 12);
+        path.moveTo(9, 16);
+        path.lineTo(15, 16);
+    } else if (name == QLatin1String("folder-open")) {
+        path.moveTo(3, 19);
+        path.lineTo(3, 6);
+        path.lineTo(9, 6);
+        path.lineTo(11, 8);
+        path.lineTo(18, 8);
+        path.lineTo(18, 11);
+        path.moveTo(3, 19);
+        path.lineTo(6, 11);
+        path.lineTo(21, 11);
+        path.lineTo(18, 19);
+        path.closeSubpath();
+    } else if (name == QLatin1String("trash")) {
+        path.moveTo(4, 7);
+        path.lineTo(20, 7);
+        path.moveTo(9, 7);
+        path.lineTo(9, 4);
+        path.lineTo(15, 4);
+        path.lineTo(15, 7);
+        path.moveTo(6, 7);
+        path.lineTo(7, 20);
+        path.lineTo(17, 20);
+        path.lineTo(18, 7);
+    } else if (name == QLatin1String("pencil")) {
+        path.moveTo(16.5, 3.5);
+        path.lineTo(20.5, 7.5);
+        path.lineTo(8, 20);
+        path.lineTo(3.5, 21);
+        path.lineTo(4.5, 16.5);
+        path.closeSubpath();
+    } else if (name == QLatin1String("history")) {
+        path.arcMoveTo(QRectF(3.5, 3.5, 17, 17), 160);
+        path.arcTo(QRectF(3.5, 3.5, 17, 17), 160, -340);
+        path.moveTo(4, 6.5);
+        path.lineTo(4.3, 10.5);
+        path.lineTo(8.2, 9.8);
+        path.moveTo(12, 8);
+        path.lineTo(12, 12);
+        path.lineTo(15, 14);
+    } else if (name == QLatin1String("info")) {
+        path.addEllipse(QPointF(12, 12), 8.5, 8.5);
+        path.moveTo(12, 11);
+        path.lineTo(12, 16);
+        path.moveTo(12, 8);
+        path.lineTo(12, 8.2);
+    } else if (name == QLatin1String("chevron-right")) {
+        path.moveTo(9, 6);
+        path.lineTo(15, 12);
+        path.lineTo(9, 18);
+    } else if (name == QLatin1String("users")) {
+        path.addEllipse(QPointF(9, 8.5), 3.3, 3.3);
+        path.moveTo(3, 19.5);
+        path.cubicTo(3.5, 15, 6, 13.5, 9, 13.5);
+        path.cubicTo(12, 13.5, 14.5, 15, 15, 19.5);
+        path.addEllipse(QPointF(16.5, 8), 2.6, 2.6);
+        path.moveTo(16.5, 12.5);
+        path.cubicTo(19, 12.5, 20.5, 14, 21, 17.5);
     } else { // settings: three sliders
         for (int i = 0; i < 3; ++i) {
             const double y = 6 + i * 6;

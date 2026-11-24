@@ -3,6 +3,9 @@
 #include "icons.h"
 
 #include <QApplication>
+
+#include <algorithm>
+#include <vector>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -81,15 +84,15 @@ QMainWindow, QDialog { background: @bg; }
 QWidget { color: @text; }
 QToolTip { background: @text; color: @surface; border: 0; border-radius: 6px; padding: 6px 8px; }
 
-/* Navigation */
-QListWidget#navigation { background: @rail; border: 0; padding: 8px 10px; font-size: 14px; }
-QListWidget#navigation::item { border-radius: 6px; padding: 6px 8px; margin: 1px 0; color: @text2; }
-QListWidget#navigation::item:hover { background: rgba(127,140,160,0.14); color: @text; }
-QListWidget#navigation::item:selected { background: @accentWeak; color: @accentText; font-weight: 600; }
-QListWidget#navigation::item:focus { border: 2px solid @accent; }
+/* Navigation (.rail) */
 QWidget#side { background: @rail; border-right: 1px solid @border; }
-QListWidget#navigation { border-right: 0; }
-QLabel#appName { font-size: 16px; font-weight: 650; padding: 18px 18px 6px 18px; color: @text; background: transparent; }
+QListWidget#navigation { background: transparent; border: 0; padding: 0; font-size: 14px; outline: 0; }
+QListWidget#navigation::item { border-radius: 6px; padding: 7px 8px; margin: 0 0 2px 0; color: @text2; font-weight: 500; }
+QListWidget#navigation::item:hover { background: rgba(26,31,38,0.06); color: @text; }
+QListWidget#navigation::item:selected { background: @surface; color: @text; }
+QListWidget#navigation::item:focus { border: 2px solid @accent; }
+QLabel#appName { font-size: 16px; font-weight: 650; color: @text; background: transparent; }
+QLabel#brandMark { background: @accent; border-radius: 7px; }
 
 /* Text */
 QLabel[role="title"] { font-size: 22px; font-weight: 600; color: @text; padding-bottom: 2px; }
@@ -180,6 +183,26 @@ QLabel[role="sectionTitle"] { color: @text2; font-size: 13px; font-weight: 600; 
 QLabel[role="count"] { background: @count; color: @text2; border-radius: 8px; font-size: 11px; padding: 0 6px; }
 QLabel[role="progress"] { color: @text3; font-size: 12px; }
 
+/* Pages (.main, .page, .page-header, .section, .panel) */
+QScrollArea#page, QWidget#pageOuter { background: @bg; border: 0; }
+QLabel[role="pageTitle"] { font-size: 22px; font-weight: 650; color: @text; }
+QLabel[role="sectionTitle16"] { font-size: 16px; font-weight: 600; color: @text; }
+QLabel[role="panelTitle"] { font-size: 18px; font-weight: 600; color: @text; }
+QLabel[role="cellSub"] { color: @text3; font-size: 13px; }
+QLabel[role="help"] { color: @text2; font-size: 13px; }
+QFrame#panel { background: @surface; border: 1px solid @border; border-radius: 10px; }
+QFrame#choice { background: @surface; border: 1px solid @border; border-radius: 6px; }
+QFrame#choice:hover { border-color: @borderStrong; }
+QFrame#choice[checked="true"] { border-color: @accent; background: @choiceBg; }
+QFrame#choice QRadioButton, QFrame#choice QCheckBox, QFrame#choice QLabel { background: transparent; }
+QFrame#dropzone { background: @surface; border: 2px dashed @borderStrong; border-radius: 10px; }
+QFrame#dropzone[dragging="true"] { border-color: @accent; background: @accentWeak; }
+QTableWidget#webTable { background: @surface; border: 1px solid @border; border-radius: 10px; }
+QTableWidget#webTable:focus { border: 1px solid @border; }
+QTableWidget#webTable::item { padding: 0; border: 0; border-bottom: 1px solid @border; }
+QTableWidget#webTable::item:hover { background: transparent; }
+QTableWidget#webTable QHeaderView::section { background: @surface2; color: @text2; font-size: 13px; font-weight: 600; padding: 10px 12px; border: 0; border-bottom: 1px solid @border; }
+
 /* .select-small */
 QComboBox[small="true"] { padding: 1px 6px; min-height: 16px; font-size: 13px; }
 QComboBox[small="true"]:focus { padding: 0 5px; }
@@ -213,9 +236,12 @@ QTextBrowser#activeSource { background: transparent; border: 0; padding: 0; }
         {"@surface2", t.surface2},         {"@onAccent", t.onAccent},       {"@surface", t.surface},       {"@border", t.border},
         {"@accent", t.accent},             {"@danger", t.danger},           {"@text2", t.text2},           {"@text3", t.text3},
         {"@dangerBg", t.dangerBg},         {"@warnBg", t.warnBg},           {"@okBg", t.okBg},             {"@count", t.count},
-        {"@track", t.track},               {"@warn", t.warn},               {"@ok", t.ok},
+        {"@track", t.track},               {"@choiceBg", g_dark ? "#1d2636" : "#f7faff"},               {"@warn", t.warn},               {"@ok", t.ok},
         {"@text", t.text},                 {"@rail", t.rail},               {"@bg", t.bg}};
-    for (const auto &[k, v] : vars)
+    // Longer names first, so "@dangerBg" is not read as "@danger" + "Bg".
+    std::vector<std::pair<const char *, const char *>> sorted(std::begin(vars), std::end(vars));
+    std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) { return qstrlen(a.first) > qstrlen(b.first); });
+    for (const auto &[k, v] : sorted)
         s.replace(QLatin1String(k), QLatin1String(v));
     return s;
 }
