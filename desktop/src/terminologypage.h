@@ -125,6 +125,9 @@ private:
     void showDetail();
     void showHistory(QVBoxLayout *into);
     void showCreateForm(bool open);
+    // What the page shows of the opened termbase, to tell whether reading
+    // it again brought anything new.
+    QByteArray signature() const;
     void readEntry(const QJsonObject &entry, QVBoxLayout *body, QWidget *inner);
     void showNewEntry(bool open);
 
@@ -201,6 +204,8 @@ private:
     // The form makes a project termbase, over these masters.
     bool m_newProject = false;
     bool m_createOpen = false;
+    QByteArray m_drawn;
+    QByteArray m_listsDrawn;
     QStringList m_newUpstreams;
 };
 

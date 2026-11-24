@@ -21,6 +21,7 @@
 #include <QDateTime>
 #include <QHBoxLayout>
 #include <QJsonDocument>
+#include <QCryptographicHash>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
@@ -734,6 +735,18 @@ void TerminologyPage::showLists()
         }
         m_lists.insert(m_conn, list);
     }
+    // Drawn again only when it would look different.
+    {
+        QJsonObject all{{QLatin1String("place"), m_conn}, {QLatin1String("name"), m_name}, {QLatin1String("words"), Words::git()}};
+        for (Connection *c : m_manager->all()) {
+            if (c->isReady())
+                all.insert(QStringLiteral("list:") + c->id(), m_lists.value(c->id()));
+        }
+        const QByteArray now = QCryptographicHash::hash(QJsonDocument(all).toJson(QJsonDocument::Compact), QCryptographicHash::Sha1);
+        if (now == m_listsDrawn && m_listBody->count() > 0)
+            return;
+        m_listsDrawn = now;
+    }
     clear(m_listBody);
     QWidget *host = m_listBody->parentWidget();
     const auto group = [&](const QString &title, Connection *c, const QList<QJsonObject> &list, const QString &emptyNote) {
@@ -1118,9 +1131,16 @@ void TerminologyPage::loadEntries(int offset, int reading)
         const auto finish = [this, reading] {
             if (reading != m_reading)
                 return;
+            const bool was = m_opened;
             m_entries = m_pendingEntries;
             m_pendingEntries.clear();
             m_opened = true;
+            // Read again with nothing new, as after one's own change: the
+            // page stays as it is, with what is being typed or asked.
+            if (was && m_wantEntry.isEmpty() && signature() == m_drawn) {
+                emit loaded();
+                return;
+            }
             showTermbase();
             emit loaded();
         };
@@ -1168,8 +1188,25 @@ void TerminologyPage::loadEntries(int offset, int reading)
     });
 }
 
+QByteArray TerminologyPage::signature() const
+{
+    QJsonArray entries, masters;
+    for (const QJsonObject &e : m_entries)
+        entries.append(e);
+    for (const QJsonObject &e : m_masterEntries)
+        masters.append(e);
+    QJsonObject bases;
+    for (auto it = m_bases.constBegin(); it != m_bases.constEnd(); ++it)
+        bases.insert(it.key(), it.value());
+    const QJsonObject all{{QLatin1String("place"), m_conn}, {QLatin1String("name"), m_name},       {QLatin1String("opened"), m_opened},   {QLatin1String("problem"), m_problem},
+                          {QLatin1String("detail"), m_detail}, {QLatin1String("entries"), entries}, {QLatin1String("masters"), masters}, {QLatin1String("bases"), bases},
+                          {QLatin1String("requests"), m_requests}};
+    return QCryptographicHash::hash(QJsonDocument(all).toJson(QJsonDocument::Compact), QCryptographicHash::Sha1);
+}
+
 void TerminologyPage::showTermbase()
 {
+    m_drawn = signature();
     showHead();
     showReviewNote();
     m_tabs->setEnabledAt(1, m_entries.size() >= 2);
