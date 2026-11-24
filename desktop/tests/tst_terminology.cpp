@@ -6,6 +6,7 @@
 #include "connectionmanager.h"
 #include "eventfeed.h"
 #include "languages.h"
+#include "options.h"
 #include "reviewpage.h"
 #include "termbasedialogs.h"
 #include "termdata.h"
@@ -170,6 +171,16 @@ private slots:
         QCOMPARE(Words::get("reviewMerge"), QStringLiteral("Diff and merge"));
         QCOMPARE(Words::get("history"), QStringLiteral("Log"));
         Words::setGit(false);
+        // The editor's choices, on unless turned off.
+        QVERIFY(Options::autoInsert() && Options::autoPropagate());
+        QCOMPARE(Options::contextRule(), QStringLiteral("previous"));
+        Options::setAutoInsert(false);
+        Options::setContextRule(QStringLiteral("both"));
+        QVERIFY(!Options::autoInsert());
+        QCOMPARE(Options::contextRule(), QStringLiteral("both"));
+        Options::setContextRule(QStringLiteral("nonsense"));
+        QCOMPARE(Options::contextRule(), QStringLiteral("previous"));
+        Options::setAutoInsert(true);
     }
 
     void parts()

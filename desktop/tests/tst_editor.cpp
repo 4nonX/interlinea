@@ -168,6 +168,9 @@ private slots:
             QTest::qWait(300);
             projects.grab().save(dir + QStringLiteral("/editor-desktop.png"));
         }
+        // The best match is already in the empty segment, as in Trados;
+        // inserting it by hand gives the same.
+        QTRY_COMPARE_WITH_TIMEOUT(SegmentContent::plainText(ed->target()->content()), QStringLiteral("The contract starts today."), 5000);
         ed->insertResult(1);
         QCOMPARE(SegmentContent::plainText(ed->target()->content()), QStringLiteral("The contract starts today."));
         QSignalSpy saved(ed, &EditorPage::saved);

@@ -55,6 +55,7 @@ add_library(interlinea_app STATIC
     src/accesspanel.cpp
     src/accountspage.cpp
     src/memoriespage.cpp
+    src/options.cpp
     src/reviewpage.cpp
     src/termbasedialogs.cpp
     src/termdata.cpp

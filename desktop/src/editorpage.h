@@ -68,6 +68,9 @@ signals:
     // Another file or language of the project.
     void openFile(const QString &file, const QString &lang);
     void saved(const QString &id);
+    // The best memory match was put into the segment that just opened;
+    // what says which, for those who do not see it.
+    void bestInserted(const QString &what);
     void checked();
     void resultsShown();
 
@@ -125,6 +128,7 @@ private:
     QString m_activeId;
     QJsonArray m_loadedTarget;
     QJsonObject m_origin;
+    bool m_insertBest = false;
     QJsonArray m_ignored;
     QJsonArray m_results;
     QJsonArray m_terms;

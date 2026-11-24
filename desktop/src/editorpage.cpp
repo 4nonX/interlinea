@@ -1,5 +1,7 @@
 #include "editorpage.h"
 
+#include "options.h"
+
 #include "apiclient.h"
 #include "bands.h"
 #include "connection.h"
@@ -1148,6 +1150,10 @@ void EditorPage::activate(int row)
     m_terms = {};
     m_issues = {};
     m_selected = 0;
+    // The best match goes into an empty, untouched segment once its
+    // matches are known (Trados' default).
+    m_insertBest = Options::autoInsert() && s.value(QLatin1String("status")).toString() == QLatin1String("new") && !s.value(QLatin1String("locked")).toBool() &&
+                   plainText(m_loadedTarget).trimmed().isEmpty();
     m_captureForm->hide();
     m_captureIntro->show();
     m_grid->openPersistentEditor(m_model->index(row, SegmentModel::Source));
@@ -1200,6 +1206,15 @@ void EditorPage::lookup()
         }
         m_results = results;
         showResults();
+        if (m_insertBest) {
+            m_insertBest = false;
+            const QJsonObject best = m_results.isEmpty() ? QJsonObject() : m_results.first().toObject();
+            if (best.value(QLatin1String("kind")).toString() == QLatin1String("match") && editable() && m_target && plainText(m_target->content()).trimmed().isEmpty()) {
+                insertResult(1);
+                const int score = best.value(QLatin1String("score")).toInt();
+                emit bestInserted(best.value(QLatin1String("context")).toBool() ? tr("Context match inserted") : tr("%1% match inserted").arg(score));
+            }
+        }
     });
 }
 
@@ -1618,7 +1633,7 @@ void EditorPage::confirm()
         QList<int> repRows;
         for (int i = 0; i < m_model->rowCount(); ++i) {
             const QJsonObject s = m_model->segment(i);
-            if (i == row || s.value(QLatin1String("status")).toString() == QLatin1String("confirmed") || s.value(QLatin1String("locked")).toBool())
+            if (!Options::autoPropagate() || i == row || s.value(QLatin1String("status")).toString() == QLatin1String("confirmed") || s.value(QLatin1String("locked")).toBool())
                 continue;
             if (sourceKey(s.value(QLatin1String("source")).toArray()) == key) {
                 numbers << QString::number(i + 1);
