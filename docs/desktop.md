@@ -55,9 +55,11 @@ platforms.
 
 ## Stages
 
-Done: 1 to 7. Next: the project page, new projects and settings in the web layout, then 8. The editor, the project list and the
-Memories page are laid out as the same screens of the browser client, which
-is the model for every page; the project page, the new project dialog and
+Done: 1 to 7, and the installers of 8. Next: the project page, new
+projects and Settings in the web layout, then the rest of 8. The editor,
+the project list, Memories, Terminology, the review of merge requests and
+Accounts are laid out as the same screens of the browser client, which is
+the model for every page; the project page, the new project dialog and
 Settings still have their first layout and follow. The browser client's
 editor:
 
@@ -92,18 +94,27 @@ editor:
    shortcuts close to memoQ's and Trados's.
 5. **Memories.** The main and project memories on this computer and the
    memories on each team server: new ones (for a client, filled from a TMX
-   file), TMX in and out, what uses each, search of a server memory's
-   units, who may use it, delete.
+   file), TMX in and out, what uses each, the units of any memory
+   searched, added, changed with their tags kept and deleted, who may use
+   a server memory, delete.
 6. **Terminology.** Termbases (master and project, layered), entries with
-   their fields and history, revert, merge duplicates, import and export
-   (TBX, MultiTerm, CSV, TSV, Excel), definitions, review rules, merge
-   requests and their review (single terms and scoped decisions), git or
-   plain wording.
+   their fields and history, an earlier version restored, deleted entries
+   brought back, merge duplicates, import and export (TBX, MultiTerm, CSV,
+   TSV, Excel), a project termbase's view of its masters' entries (changed
+   for the project, left out, brought back), project termbases made by
+   hand, settings (name, languages, fields, masters, review rules, who may
+   use it, delete), merge requests and their review (single entries and
+   many at once, notes, postponing, undoing a merge, reviewers with their
+   parts), what is offered following the role, git or plain wording.
 7. **Accounts and roles** on a team server, for administrators and
    managers.
-8. **Release.** Accessibility review with NVDA, VoiceOver and Orca; German
-   translation complete; installers (MSI on Windows, a signed-ready DMG on
-   macOS, AppImage and a Flatpak manifest on Linux) built in CI.
+8. **Release.** Installers built by the release workflow from a version
+   tag and started once before they are published: a Windows installer
+   (Inno Setup, for one person, no administrator rights) and a portable
+   folder, a universal macOS disk image (signed for the computer only,
+   without a developer certificate), and a Linux AppImage. Still to do:
+   accessibility review with NVDA, VoiceOver and Orca; the German
+   translation complete; a Flatpak manifest.
 
 ## Look
 
