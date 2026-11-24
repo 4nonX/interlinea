@@ -24,6 +24,7 @@ import {
   Plus,
   Repeat2,
   Search,
+  Replace,
   Settings2,
   Tag,
   X,
@@ -71,6 +72,8 @@ import {
 } from "../project";
 import { go } from "../App";
 import { Preview } from "../editor/Preview";
+import { countIn, replaceInRuns, searchPattern } from "../editor/replace";
+import { Modal } from "./TermbaseDialogs";
 import { AnalysisTable } from "../components/AnalysisTable";
 import {
   core,
@@ -156,6 +159,18 @@ export function Editor({
   const [filter, setFilter] = useState<Filter>("all");
   // Text the segments shown must hold, in the source or the translation.
   const [find, setFind] = useState("");
+  const [replacing, setReplacing] = useState(false);
+  // Ctrl+H opens find and replace, wherever the keyboard is on the page.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === "KeyH") {
+        e.preventDefault();
+        setReplacing(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [capture, setCapture] = useState<{
     source: string;
     target: string;
@@ -969,6 +984,10 @@ export function Editor({
             <Settings2 size={14} aria-hidden="true" />
             Project settings
           </a>
+          <button type="button" className="btn btn-small" onClick={() => setReplacing(true)} disabled={segments.length === 0}>
+            <Replace size={14} aria-hidden="true" />
+            Replace
+          </button>
           <button
             type="button"
             className="btn btn-small"
@@ -1020,6 +1039,21 @@ export function Editor({
         </div>
       </header>
 
+      {replacing && (
+        <ReplaceDialog
+          segments={segments}
+          lang={target}
+          initial={find.trim()}
+          onClose={() => setReplacing(false)}
+          onReplace={(changes, places) => {
+            dispatch({ type: "replaceTargets", at, changes });
+            setReplacing(false);
+            const said = `Replaced ${plural(places, "place", "places")} in ${plural(changes.length, "segment", "segments")}`;
+            notify(said);
+            setAnnouncement(said);
+          }}
+        />
+      )}
       <dialog
         ref={memoryDialog}
         className="dialog"
@@ -1664,6 +1698,8 @@ export function Editor({
                     <dd>Insert the next missing tag</dd>
                     <dt>Ctrl+E</dt>
                     <dd>Add a term from the selections</dd>
+                    <dt>Ctrl+H</dt>
+                    <dd>Find and replace in the translations</dd>
                     <dt>Ctrl+K or F3</dt>
                     <dd>Search the memory for the selection</dd>
                   </dl>
@@ -2162,5 +2198,89 @@ function LengthCounter({ length, max }: { length: number; max: number }) {
       {length} of {max} characters
       {over ? `, ${length - max} too many` : ""}
     </span>
+  );
+}
+
+
+/**
+ * Find and replace in the translations of the open file. Locked segments
+ * stay as they are, tags stay where they are, and a segment that changes
+ * is a draft again.
+ */
+function ReplaceDialog({
+  segments,
+  lang: targetLang,
+  initial,
+  onClose,
+  onReplace,
+}: {
+  segments: Segment[];
+  lang: LangCode;
+  initial: string;
+  onClose: () => void;
+  onReplace: (changes: { segmentId: string; target: Run[] }[], places: number) => void;
+}) {
+  const [find, setFind] = useState(initial);
+  const [to, setTo] = useState("");
+  const [matchCase, setMatchCase] = useState(false);
+  const [wholeWords, setWholeWords] = useState(false);
+  const re = searchPattern(find, { matchCase, wholeWords });
+  const changes: { segmentId: string; target: Run[] }[] = [];
+  let places = 0;
+  let locked = 0;
+  if (re)
+    for (const s of segments) {
+      if (s.locked) {
+        if (countIn(s.target, re)) locked++;
+        continue;
+      }
+      const r = replaceInRuns(s.target, re, to);
+      if (r.count) {
+        places += r.count;
+        changes.push({ segmentId: s.id, target: r.runs });
+      }
+    }
+  return (
+    <Modal title="Find and replace" onClose={onClose}>
+      <form
+        className="dialog-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (changes.length) onReplace(changes, places);
+        }}
+      >
+        <label className="field">
+          <span className="field-label">Find in the translations</span>
+          <input value={find} lang={targetLang} autoFocus onChange={(e) => setFind(e.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">Replace with</span>
+          <input value={to} lang={targetLang} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} /> Match case
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={wholeWords} onChange={(e) => setWholeWords(e.target.checked)} /> Whole words only
+        </label>
+        <p role="status">
+          {!find
+            ? "Nothing to find yet."
+            : places === 0
+              ? "Not found in the translations of this file."
+              : `${plural(places, "place", "places")} in ${plural(changes.length, "segment", "segments")}.`}
+          {locked > 0 && ` ${plural(locked, "locked segment has", "locked segments have")} it too and ${locked === 1 ? "stays" : "stay"} as ${locked === 1 ? "it is" : "they are"}.`}
+        </p>
+        <p className="help">Formatting tags stay where they are. A confirmed segment that changes is a draft again, to be confirmed anew.</p>
+        <div className="row">
+          <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary btn-small" disabled={!changes.length}>
+            Replace all
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

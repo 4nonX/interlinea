@@ -292,6 +292,50 @@ export default () =>
         await sleep(200);
         check((await evaluate("document.querySelectorAll('.seg').length")) === all, "without text all segments are back");
       }
+      // Find and replace in the translations: what would change is counted
+      // first, tags and locked segments stay, and the open segment shows the new text.
+      {
+        const said = () => evaluate("document.querySelector('dialog[open] [role=status]')?.textContent ?? ''");
+        const fields = "dialog[open] .dialog-form input:not([type=checkbox])";
+        const type = async (i, v) => {
+          await evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(fields)})[${i}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+          await sleep(120);
+        };
+        const tick = async (i) => {
+          await evaluate(`document.querySelectorAll('dialog[open] .dialog-form input[type=checkbox]')[${i}].click()`);
+          await sleep(120);
+        };
+        const places = async () => Number((/^(\d+) place/.exec(await said()) ?? [0, 0])[1]);
+        await click(".editor-actions button", "Replace");
+        check(await waitFor("document.querySelector('dialog[open] .dialog-title')?.textContent === 'Find and replace'"), "find and replace opens");
+        check((await said()) === "Nothing to find yet." && (await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.includes('Replace all')).disabled")), "with nothing to find nothing is replaced");
+        await type(0, "LEASE");
+        const any = await places();
+        await tick(0);
+        const exact = await places();
+        check(any >= 2 && exact === 0 && (await said()).startsWith("Not found"), `case counts when asked for: ${any} without, ${exact} with`);
+        await tick(0);
+        await type(0, "leas");
+        const part = await places();
+        await tick(1);
+        check(part >= any && (await said()).startsWith("Not found"), "whole words only leaves parts of words alone");
+        await tick(1);
+        await type(0, "Basic rent");
+        await type(1, "Base rent");
+        check((await said()) === "1 place in 1 segment.", "the places are counted before anything changes: " + (await said()));
+        await click("dialog[open] button", "Replace all");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Replaced 1 place in 1 segment')", 10000), "replacing says what it did");
+        check(await waitFor("document.querySelector('.target-editor').innerText.trim() === 'Base rent'", 5000), "the open segment shows the new text");
+        // Ctrl+H opens it as well; replaced back, the text is as it was.
+        await key("h", "KeyH", 72, 2);
+        check(await waitFor("document.querySelector('dialog[open] .dialog-title')?.textContent === 'Find and replace'"), "Ctrl+H opens find and replace");
+        await type(0, "Base rent");
+        await type(1, "Basic rent");
+        await tick(0);
+        await click("dialog[open] button", "Replace all");
+        check(await waitFor("document.querySelector('.target-editor').innerText.trim() === 'Basic rent'", 5000), "replaced back, the text is as it was");
+        await waitFor("!document.querySelector('dialog[open]')");
+      }
       check(
         (
           await evaluate("document.querySelector('.target-editor').innerText")

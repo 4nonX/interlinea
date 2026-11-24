@@ -2,6 +2,7 @@
 #include "connection.h"
 #include "connectionmanager.h"
 #include "editorpage.h"
+#include "webui.h"
 #include "projectpage.h"
 #include "projectspage.h"
 #include "segmentcontent.h"
@@ -357,6 +358,52 @@ private slots:
         find->clear();
         QVERIFY(foundLabel->isHidden());
         QCOMPARE(ed->shownCount(), 4);
+
+        // Find and replace in the translations: what would change is counted
+        // first, and the segments that change are drafts again.
+        QVERIFY(ed->findChild<QPushButton *>(QStringLiteral("replaceButton")));
+        Web::Dialog *rep = ed->showReplaceDialog();
+        QVERIFY(rep);
+        QCOMPARE(rep->title(), QStringLiteral("Find and replace"));
+        auto *repFind = rep->findChild<QLineEdit *>(QStringLiteral("replaceFind"));
+        auto *repWith = rep->findChild<QLineEdit *>(QStringLiteral("replaceWith"));
+        auto *repStatus = rep->findChild<QLabel *>(QStringLiteral("replaceStatus"));
+        auto *repGo = rep->findChild<QPushButton *>(QStringLiteral("save"));
+        QCOMPARE(repStatus->text(), QStringLiteral("Nothing to find yet."));
+        QVERIFY(!repGo->isEnabled());
+        repFind->setText(QStringLiteral("CONTRACT"));
+        QCOMPARE(repStatus->text(), QStringLiteral("1 place in 1 segment."));
+        rep->findChild<QCheckBox *>(QStringLiteral("matchCase"))->setChecked(true);
+        QCOMPARE(repStatus->text(), QStringLiteral("Not found in the translations of this file."));
+        QVERIFY(!repGo->isEnabled());
+        rep->findChild<QCheckBox *>(QStringLiteral("matchCase"))->setChecked(false);
+        repFind->setText(QStringLiteral("contrac"));
+        QCOMPARE(repStatus->text(), QStringLiteral("1 place in 1 segment."));
+        rep->findChild<QCheckBox *>(QStringLiteral("wholeWords"))->setChecked(true);
+        QCOMPARE(repStatus->text(), QStringLiteral("Not found in the translations of this file."));
+        repFind->setText(QStringLiteral("contract"));
+        repWith->setText(QStringLiteral("agreement"));
+        QVERIFY(repGo->isEnabled());
+        QSignalSpy replacedSpy(ed, &EditorPage::replaced);
+        repGo->click();
+        QTRY_COMPARE_WITH_TIMEOUT(replacedSpy.size(), 1, 10000);
+        QCOMPARE(replacedSpy.first().at(0).toInt(), 1);
+        QCOMPARE(replacedSpy.first().at(1).toInt(), 1);
+        {
+            const QJsonArray after = wait(api->get(base + "/segments", {{"file", "Mietvertrag.txt"}, {"lang", "en-GB"}})).array();
+            int with = 0;
+            for (const QJsonValue &v : after) {
+                const QJsonObject o = v.toObject();
+                if (SegmentContent::plainText(o.value("target").toArray()) == QStringLiteral("The agreement starts today.")) {
+                    ++with;
+                    QCOMPARE(o.value("status").toString(), QStringLiteral("draft"));
+                }
+            }
+            QCOMPARE(with, 1);
+        }
+        // Replaced back, the text is as it was.
+        ed->replaceAll(QStringLiteral("agreement"), QStringLiteral("contract"), true, true);
+        QTRY_COMPARE_WITH_TIMEOUT(replacedSpy.size(), 2, 10000);
 
         // Someone else saves the segment being worked on: both are shown,
         // and theirs can be taken.

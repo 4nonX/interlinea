@@ -10,6 +10,7 @@
 #include "icons.h"
 #include "languages.h"
 #include "segmentcontent.h"
+#include "webui.h"
 #include "targeteditor.h"
 #include "theme.h"
 
@@ -32,6 +33,8 @@
 #include <QMouseEvent>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QResizeEvent>
 #include <QSaveFile>
@@ -297,6 +300,7 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
         s->setContext(Qt::WidgetWithChildrenShortcut);
         connect(s, &QShortcut::activated, this, fn);
     };
+    bind(QKeySequence(Qt::CTRL | Qt::Key_H), [this] { showReplaceDialog(); });
     bind(QKeySequence(Qt::CTRL | Qt::Key_Return), [this] { confirm(); });
     bind(QKeySequence(Qt::CTRL | Qt::Key_Enter), [this] { confirm(); });
     bind(QKeySequence(Qt::ALT | Qt::Key_Down), [this] { move(1); });
@@ -532,6 +536,9 @@ QWidget *EditorPage::buildBar()
         saveActive();
         emit openProject();
     });
+    auto *replace = action(QStringLiteral("replace"), tr("Replace"));
+    replace->setObjectName(QStringLiteral("replaceButton"));
+    connect(replace, &QPushButton::clicked, this, [this] { showReplaceDialog(); });
     connect(action(QStringLiteral("memories"), tr("Memories")), &QPushButton::clicked, this, &EditorPage::showMemoriesDialog);
     connect(action(QStringLiteral("bar-chart"), tr("Analysis")), &QPushButton::clicked, this, &EditorPage::showAnalysisDialog);
     m_preview = action(QStringLiteral("eye"), tr("Preview"));
@@ -797,6 +804,7 @@ QWidget *EditorPage::buildPanel()
         {"Ctrl+Insert", QT_TR_NOOP("Copy source to target")},
         {"F9", QT_TR_NOOP("Insert the next missing tag")},
         {"Ctrl+E", QT_TR_NOOP("Add a term from the selections")},
+        {"Ctrl+H", QT_TR_NOOP("Find and replace in the translations")},
         {"Ctrl+K or F3", QT_TR_NOOP("Search the memory for the selection")},
     };
     int r = 0;
@@ -2007,6 +2015,179 @@ void EditorPage::addWord(const QString &word)
                  notify(tr("“%1” is spelled right in this project from now on").arg(word));
                  runChecks();
              });
+}
+
+namespace {
+
+// What find and replace looks for; a place lies within the text between
+// two tags, so the tags stay where they are. The same rules are in the
+// web client (replace.ts).
+QRegularExpression searchPattern(const QString &find, bool matchCase, bool wholeWords)
+{
+    QString body = QRegularExpression::escape(find);
+    // A whole word has no letter or digit before or after it.
+    if (wholeWords)
+        body = QStringLiteral("(?<![\\p{L}\\p{N}])%1(?![\\p{L}\\p{N}])").arg(body);
+    QRegularExpression::PatternOptions o = QRegularExpression::UseUnicodePropertiesOption;
+    if (!matchCase)
+        o |= QRegularExpression::CaseInsensitiveOption;
+    return QRegularExpression(body, o);
+}
+
+// The content with every place replaced, and how many there were.
+QJsonArray replaceIn(const QJsonArray &content, const QRegularExpression &re, const QString &with, int *count)
+{
+    QJsonArray out;
+    for (const QJsonValue &v : content) {
+        const QJsonObject run = v.toObject();
+        if (!run.contains(QLatin1String("text"))) {
+            out.append(run);
+            continue;
+        }
+        const QString text = run.value(QLatin1String("text")).toString();
+        QString next;
+        int at = 0;
+        for (auto it = re.globalMatch(text); it.hasNext();) {
+            const QRegularExpressionMatch m = it.next();
+            if (m.capturedLength() == 0)
+                continue;
+            next += text.mid(at, m.capturedStart() - at);
+            next += with;
+            at = int(m.capturedEnd());
+            ++*count;
+        }
+        next += text.mid(at);
+        if (!next.isEmpty())
+            out.append(QJsonObject{{QStringLiteral("text"), next}});
+    }
+    return out;
+}
+
+} // namespace
+
+void EditorPage::replaceAll(const QString &find, const QString &with, bool matchCase, bool wholeWords)
+{
+    if (find.isEmpty() || !m_conn)
+        return;
+    const QRegularExpression re = searchPattern(find, matchCase, wholeWords);
+    struct Change {
+        QString id;
+        QJsonArray target;
+    };
+    auto changes = std::make_shared<QList<Change>>();
+    int places = 0;
+    for (int row = 0; row < m_model->rowCount(); ++row) {
+        if (m_model->index(row, 0).data(SegmentModel::LockedRole).toBool())
+            continue;
+        const QJsonObject s = m_model->segment(row);
+        const QString id = s.value(QLatin1String("id")).toString();
+        // The open segment is replaced as it stands in its editor.
+        const QJsonArray now = id == m_activeId && m_target ? m_target->content() : s.value(QLatin1String("target")).toArray();
+        int n = 0;
+        const QJsonArray next = replaceIn(now, re, with, &n);
+        if (n > 0) {
+            places += n;
+            changes->append({id, next});
+        }
+    }
+    if (changes->isEmpty())
+        return;
+    const int total = int(changes->size());
+    // One after the other, so a segment someone else changed stops nothing else.
+    auto step = std::make_shared<std::function<void(int)>>();
+    *step = [this, changes, step, places, total](int i) {
+        if (i >= changes->size()) {
+            notify(tr("Replaced %1 in %2")
+                       .arg(places == 1 ? tr("1 place") : tr("%1 places").arg(QLocale(QLocale::English).toString(places)),
+                            total == 1 ? tr("1 segment") : tr("%1 segments").arg(QLocale(QLocale::English).toString(total))));
+            emit replaced(places, total);
+            return;
+        }
+        const Change c = changes->at(i);
+        if (c.id == m_activeId && m_target)
+            m_target->setContent(c.target);
+        // A segment that changes is a draft again; one emptied is new.
+        const bool empty = SegmentContent::plainText(c.target).trimmed().isEmpty() && c.target.isEmpty();
+        save(c.id, c.target, empty ? QStringLiteral("new") : QStringLiteral("draft"), {}, {}, [step, i](bool) { (*step)(i + 1); });
+    };
+    (*step)(0);
+}
+
+Web::Dialog *EditorPage::showReplaceDialog()
+{
+    if (!m_model || m_model->rowCount() == 0)
+        return nullptr;
+    auto *d = new Web::Dialog(tr("Find and replace"), window());
+    d->setObjectName(QStringLiteral("replaceDialog"));
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    auto *find = new QLineEdit(m_find ? m_find->text().trimmed() : QString(), d);
+    find->setObjectName(QStringLiteral("replaceFind"));
+    auto *with = new QLineEdit(d);
+    with->setObjectName(QStringLiteral("replaceWith"));
+    auto *matchCase = new QCheckBox(tr("Match case"), d);
+    matchCase->setObjectName(QStringLiteral("matchCase"));
+    auto *wholeWords = new QCheckBox(tr("Whole words only"), d);
+    wholeWords->setObjectName(QStringLiteral("wholeWords"));
+    auto *status = new QLabel(d);
+    status->setObjectName(QStringLiteral("replaceStatus"));
+    status->setWordWrap(true);
+    auto *help = Web::text(tr("Formatting tags stay where they are. A confirmed segment that changes is a draft again, to be confirmed anew."), "help", d);
+    help->setWordWrap(true);
+    d->body()->addWidget(Web::field(tr("Find in the translations"), find, d));
+    d->body()->addWidget(Web::field(tr("Replace with"), with, d));
+    d->body()->addWidget(matchCase);
+    d->body()->addWidget(wholeWords);
+    d->body()->addWidget(status);
+    d->body()->addWidget(help);
+    auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, d);
+    auto *go = Web::button(tr("Replace all"), Web::Primary | Web::Small, d);
+    go->setObjectName(QStringLiteral("save"));
+    d->buttons()->addWidget(cancel);
+    d->buttons()->addWidget(go);
+    connect(cancel, &QPushButton::clicked, d, &QDialog::reject);
+    const auto count = [this, find, with, matchCase, wholeWords, status, go] {
+        const auto many = [](int n, const QString &one, const QString &more) { return n == 1 ? one : more.arg(QLocale(QLocale::English).toString(n)); };
+        int places = 0, segments = 0, locked = 0;
+        if (!find->text().isEmpty()) {
+            const QRegularExpression re = searchPattern(find->text(), matchCase->isChecked(), wholeWords->isChecked());
+            for (int row = 0; row < m_model->rowCount(); ++row) {
+                const QJsonObject s = m_model->segment(row);
+                const QString id = s.value(QLatin1String("id")).toString();
+                int n = 0;
+                replaceIn(id == m_activeId && m_target ? m_target->content() : s.value(QLatin1String("target")).toArray(), re, with->text(), &n);
+                if (n == 0)
+                    continue;
+                if (m_model->index(row, 0).data(SegmentModel::LockedRole).toBool()) {
+                    ++locked;
+                } else {
+                    places += n;
+                    ++segments;
+                }
+            }
+        }
+        QString said = find->text().isEmpty() ? tr("Nothing to find yet.")
+                       : places == 0          ? tr("Not found in the translations of this file.")
+                                              : tr("%1 in %2.").arg(many(places, tr("1 place"), tr("%1 places")), many(segments, tr("1 segment"), tr("%1 segments")));
+        if (locked > 0)
+            said += QLatin1Char(' ') + (locked == 1 ? tr("1 locked segment has it too and stays as it is.") : tr("%1 locked segments have it too and stay as they are.").arg(QLocale(QLocale::English).toString(locked)));
+        status->setText(said);
+        go->setEnabled(places > 0);
+    };
+    connect(find, &QLineEdit::textChanged, d, count);
+    connect(with, &QLineEdit::textChanged, d, count);
+    connect(matchCase, &QCheckBox::toggled, d, count);
+    connect(wholeWords, &QCheckBox::toggled, d, count);
+    count();
+    QPointer<Web::Dialog> dialog(d);
+    connect(go, &QPushButton::clicked, this, [this, dialog, find, with, matchCase, wholeWords] {
+        if (!dialog)
+            return;
+        replaceAll(find->text(), with->text(), matchCase->isChecked(), wholeWords->isChecked());
+        dialog->accept();
+    });
+    d->open();
+    find->setFocus();
+    return d;
 }
 
 void EditorPage::showMemoriesDialog()

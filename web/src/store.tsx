@@ -201,6 +201,12 @@ type Action =
     }
   | { type: "ignoreIssue"; at: SegmentsAt; segmentId: string; text: string }
   | {
+      /** Translations changed by find and replace: they are drafts again. */
+      type: "replaceTargets";
+      at: SegmentsAt;
+      changes: { segmentId: string; target: Run[] }[];
+    }
+  | {
       type: "setTarget";
       at: SegmentsAt;
       segmentId: string;
@@ -745,6 +751,19 @@ function reduce(state: State, action: Action): State {
             : sg,
         ),
       );
+    case "replaceTargets": {
+      const to = new Map(action.changes.map((c) => [c.segmentId, c.target]));
+      return withSegments(state, action.at, (segments) =>
+        segments.map((sg) => {
+          const target = to.get(sg.id);
+          if (!target || sg.locked) return sg;
+          const text = normalize(target);
+          const empty = !text.some((r) => typeof r !== "string" || r.trim());
+          // An open editor shows the new text, and saved warnings belonged to the old one.
+          return { ...sg, target: text, status: empty ? ("new" as const) : ("draft" as const), origin: empty ? undefined : sg.origin, warnings: undefined, rev: (sg.rev ?? 0) + 1 };
+        }),
+      );
+    }
     case "confirm":
       return withSegments(state, action.at, (segments) => {
         const done = segments.find((sg) => sg.id === action.segmentId)!;

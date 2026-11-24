@@ -310,6 +310,22 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(12, 17);
         path.lineTo(20, 17);
         path.addEllipse(QPointF(9.5, 17), 2.5, 2.5);
+    } else if (name == QLatin1String("replace")) {
+        // Two boxes and the way from the one to the other.
+        path.addRoundedRect(QRectF(3, 3, 7, 7), 1.5, 1.5);
+        path.addRoundedRect(QRectF(14, 14, 7, 7), 1.5, 1.5);
+        path.moveTo(14, 5);
+        path.lineTo(17.5, 5);
+        path.lineTo(17.5, 10.5);
+        path.moveTo(15, 8);
+        path.lineTo(17.5, 10.5);
+        path.lineTo(20, 8);
+        path.moveTo(10, 19);
+        path.lineTo(6.5, 19);
+        path.lineTo(6.5, 13.5);
+        path.moveTo(4, 16);
+        path.lineTo(6.5, 13.5);
+        path.lineTo(9, 16);
     } else if (name == QLatin1String("columns")) {
         path.addRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
         path.moveTo(12, 3);

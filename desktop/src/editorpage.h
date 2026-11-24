@@ -15,6 +15,9 @@
 #include <functional>
 
 class Connection;
+namespace Web {
+class Dialog;
+}
 class QButtonGroup;
 class QComboBox;
 class QFrame;
@@ -62,6 +65,11 @@ public:
     // Saves the active segment if it changed. Done before leaving.
     void saveActive();
 
+    // Find and replace in the translations of the open file.
+    Web::Dialog *showReplaceDialog();
+    // Replaces every place of the text; says what it did when it is done.
+    void replaceAll(const QString &find, const QString &with, bool matchCase, bool wholeWords);
+
 signals:
     void back();
     void openProject();
@@ -69,6 +77,8 @@ signals:
     // Another file or language of the project.
     void openFile(const QString &file, const QString &lang);
     void saved(const QString &id);
+    // Find and replace is done: how many places in how many segments.
+    void replaced(int places, int segments);
     // The best memory match was put into the segment that just opened;
     // what says which, for those who do not see it.
     void bestInserted(const QString &what);
