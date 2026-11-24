@@ -854,7 +854,8 @@ private slots:
         QTRY_VERIFY((useProject = byName<QPushButton>(review, QStringLiteral("useProject"))));
         QCOMPARE(useProject->text(), QStringLiteral("Use project version: “forbidden”"));
         QCOMPARE(byName<QPushButton>(review, QStringLiteral("keepMaster"))->text(), QStringLiteral("Keep master version: “proposed”"));
-        QVERIFY(!byName<QPushButton>(review, QStringLiteral("approve")));
+        // The page is drawn once everything it shows is read again.
+        QTRY_VERIFY_WITH_TIMEOUT(!byName<QPushButton>(review, QStringLiteral("approve")), 10000);
         QVERIFY(label(review, QStringLiteral("Choose which of the two goes into Recht. What only one side changed is merged either way.")));
         QVERIFY(byName<QPushButton>(review, QStringLiteral("postpone")) && byName<QPushButton>(review, QStringLiteral("reject")));
         const auto rentStatus = [&] {
@@ -870,8 +871,8 @@ private slots:
         QCOMPARE(rentStatus(), QStringLiteral("forbidden"));
         byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
         QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 3, 10000);
-        QVERIFY(label(review, QStringLiteral("Approved with edits")) && label(review, QStringLiteral("Approved")));
-        QVERIFY(!byName<QPushButton>(review, QStringLiteral("approve")) && !byName<QPushButton>(review, QStringLiteral("useProject")));
+        QTRY_VERIFY_WITH_TIMEOUT(label(review, QStringLiteral("Approved with edits")) && label(review, QStringLiteral("Approved")), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!byName<QPushButton>(review, QStringLiteral("approve")) && !byName<QPushButton>(review, QStringLiteral("useProject")), 10000);
 
         // The master has what was approved.
         const ApiResult master = wait(api->get(QStringLiteral("/api/termbases/Recht/entries"), [] {

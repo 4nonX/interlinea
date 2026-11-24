@@ -13,6 +13,8 @@
 
 #include <QDateTime>
 #include <QHBoxLayout>
+#include <memory>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QCryptographicHash>
@@ -183,7 +185,16 @@ void ReviewPage::reload()
     const bool team = !m_conn->isLocal();
     auto *left = new int(team ? 6 : 4);
     auto *failed = new QString;
-    const auto done = [this, left, failed, reading](const ApiResult &r) {
+    // What is read is taken in together, once all of it is there: the
+    // page never holds more than it shows.
+    struct Read {
+        QJsonObject request, progress, target;
+        QJsonArray items, reviewers, people;
+        int total = 0;
+        bool hasRequest = false, hasProgress = false, hasTarget = false, hasItems = false, hasReviewers = false, hasPeople = false;
+    };
+    auto read = std::make_shared<Read>();
+    const auto done = [this, left, failed, reading, read](const ApiResult &r) {
         if (!r.ok() && failed->isEmpty())
             *failed = r.error.message;
         if (--*left > 0)
@@ -193,6 +204,20 @@ void ReviewPage::reload()
         delete failed;
         if (reading != m_reading)
             return;
+        if (read->hasRequest)
+            m_request = read->request;
+        if (read->hasProgress)
+            m_progress = read->progress;
+        if (read->hasTarget)
+            m_target = read->target;
+        if (read->hasItems) {
+            m_items = read->items;
+            m_total = read->total;
+        }
+        if (read->hasReviewers)
+            m_reviewers = read->reviewers;
+        if (read->hasPeople)
+            m_people = read->people;
         m_problem = problem;
         const bool was = m_read;
         m_read = problem.isEmpty();
@@ -225,37 +250,47 @@ void ReviewPage::reload()
         }
         emit loaded();
     };
-    onResult(m_conn->api()->get(base), this, [this, reading, done](const ApiResult &r) {
-        if (reading == m_reading && r.ok())
-            m_request = r.object();
+    onResult(m_conn->api()->get(base), this, [this, reading, done, read](const ApiResult &r) {
+        if (r.ok()) {
+            read->request = r.object();
+            read->hasRequest = true;
+        }
         done(r);
         // The master says what one may do with the request.
         if (reading != m_reading || !r.ok() || !m_conn) {
             done(ApiResult{});
             return;
         }
-        onResult(m_conn->api()->get(QStringLiteral("/api/termbases/") + ApiClient::seg(str(r.object(), "target"))), this, [this, reading, done](const ApiResult &t) {
-            if (reading == m_reading && t.ok())
-                m_target = t.object();
+        onResult(m_conn->api()->get(QStringLiteral("/api/termbases/") + ApiClient::seg(str(r.object(), "target"))), this, [done, read](const ApiResult &t) {
+            if (t.ok()) {
+                read->target = t.object();
+                read->hasTarget = true;
+            }
             // Without a look at the master the request is still shown.
             done(ApiResult{});
         });
     });
     if (team) {
-        onResult(m_conn->api()->get(base + QStringLiteral("/reviewers")), this, [this, reading, done](const ApiResult &r) {
-            if (reading == m_reading && r.ok())
-                m_reviewers = r.array();
+        onResult(m_conn->api()->get(base + QStringLiteral("/reviewers")), this, [done, read](const ApiResult &r) {
+            if (r.ok()) {
+                read->reviewers = r.array();
+                read->hasReviewers = true;
+            }
             done(r);
         });
-        onResult(m_conn->api()->get(QStringLiteral("/api/people")), this, [this, reading, done](const ApiResult &r) {
-            if (reading == m_reading && r.ok())
-                m_people = r.array();
+        onResult(m_conn->api()->get(QStringLiteral("/api/people")), this, [done, read](const ApiResult &r) {
+            if (r.ok()) {
+                read->people = r.array();
+                read->hasPeople = true;
+            }
             done(ApiResult{});
         });
     }
-    onResult(m_conn->api()->get(base + QStringLiteral("/progress")), this, [this, reading, done](const ApiResult &r) {
-        if (reading == m_reading && r.ok())
-            m_progress = r.object();
+    onResult(m_conn->api()->get(base + QStringLiteral("/progress")), this, [done, read](const ApiResult &r) {
+        if (r.ok()) {
+            read->progress = r.object();
+            read->hasProgress = true;
+        }
         done(r);
     });
     QJsonObject filter;
@@ -268,10 +303,11 @@ void ReviewPage::reload()
     if (m_mine)
         query.insert(QLatin1String("reviewer"), m_conn->login());
     onResult(m_conn->api()->post(base + QStringLiteral("/items"), query), this,
-             [this, reading, done](const ApiResult &r) {
-                 if (reading == m_reading && r.ok()) {
-                     m_items = r.object().value(QLatin1String("items")).toArray();
-                     m_total = r.object().value(QLatin1String("total")).toInt();
+             [done, read](const ApiResult &r) {
+                 if (r.ok()) {
+                     read->items = r.object().value(QLatin1String("items")).toArray();
+                     read->total = r.object().value(QLatin1String("total")).toInt();
+                     read->hasItems = true;
                  }
                  done(r);
              });

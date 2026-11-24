@@ -141,7 +141,14 @@ jobs:
         # and the runner runs out of memory.
         run: cmake --build build/desktop --config Release --parallel 4
       - name: tests
-        run: ctest --test-dir build/desktop -C Release --output-on-failure
+        shell: bash
+        # What a failed test said is in the log, also where the run shows
+        # none of it.
+        run: |
+          ctest --test-dir build/desktop -C Release --output-on-failure || {
+            grep -a -E "FAIL!|Loc:|Actual|Expected|QFATAL|Totals|Exception|crashed" build/desktop/Testing/Temporary/LastTest.log | head -60
+            exit 1
+          }
       - name: the whole app against a team server
         if: runner.os == 'Linux'
         run: |
