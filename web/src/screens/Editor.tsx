@@ -62,6 +62,8 @@ import {
 import { dictionaryLoaded, ensureDictionary } from "../editor/spelling";
 import {
   analyzeFiles,
+  availableMatches,
+  type Available,
   checkSegment,
   memoryRefs,
   projectMemoryOf,
@@ -333,6 +335,29 @@ export function Editor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [active, c, memories, index, segments, context, memVersion],
   );
+  // The match column: the best match every segment of the file has in the
+  // memories, worked out once the file is open and again when the
+  // memories gain units, a moment after the last change.
+  const [available, setAvailable] = useState<Map<string, Available>>(
+    () => new Map(),
+  );
+  const sourceLang = project?.sourceLang;
+  useEffect(() => {
+    if (!c || !file || !sourceLang) return;
+    const t = setTimeout(() => {
+      try {
+        setAvailable(
+          availableMatches(c, file, sourceLang, target, memories, context),
+        );
+      } catch {
+        // A memory that cannot be read shows in the results panel.
+        setAvailable(new Map());
+      }
+    }, 300);
+    return () => clearTimeout(t);
+    // The file's sources do not change while it is open: its ID stands for them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c, file?.id, sourceLang, target, memories, context, memVersion]);
   // The core's checks, as the project switches them.
   // The spelling dictionary of this language, loaded into the core once.
   const dictName = project?.qa.dictionaries[target] ?? "";
@@ -1265,7 +1290,7 @@ export function Editor({
                       </button>
                     )}
                   </div>
-                  <SegmentStatusCell s={s} />
+                  <SegmentStatusCell s={s} available={available.get(s.id)} />
                 </li>
               );
             })}
@@ -1665,7 +1690,19 @@ const FILE_STATE_TEXT: Partial<
   rejected: "Rejected by a reviewer in the file",
 };
 
-function SegmentStatusCell({ s }: { s: Segment }) {
+function SegmentStatusCell({
+  s,
+  available,
+}: {
+  s: Segment;
+  /** The best match the memories hold for the segment. */
+  available?: Available;
+}) {
+  // Shown until the segment has a translation from a match or is confirmed.
+  const offer =
+    available && !s.origin && s.status !== "confirmed" && !s.locked
+      ? available
+      : undefined;
   const warnings = s.warnings ?? [];
   const fileNote =
     s.file && JSON.stringify(runsToCore(s.target)) === s.file.target
@@ -1727,6 +1764,37 @@ function SegmentStatusCell({ s }: { s: Segment }) {
           <Repeat2 size={13} aria-label="Repetition" />
         </span>
       )}
+      {offer && <AvailableBadge offer={offer} />}
+    </span>
+  );
+}
+
+/**
+ * The best match the memories hold for a segment that has no translation
+ * from one yet: outlined with dashes, where an inserted match is filled.
+ */
+function AvailableBadge({ offer }: { offer: Available }) {
+  if (offer.band === "repetition" || offer.band === "cross-file") {
+    const text =
+      offer.band === "repetition"
+        ? "Repeats an earlier segment of this file"
+        : "Repeats a segment of another file";
+    return (
+      <span className="seg-origin seg-available" title={text}>
+        <Repeat2 size={13} aria-label={text} />
+      </span>
+    );
+  }
+  const context = offer.band === "context";
+  const score = offer.score ?? 100;
+  const desc = `${scoreDescription(score, context)}${offer.memory ? ` in ${offer.memory}` : ""}, not inserted`;
+  return (
+    <span
+      className={`score is-available band-${bandOf(score, context)}`}
+      title={desc}
+    >
+      <span aria-hidden="true">{scoreLabel(score, context)}</span>
+      <span className="sr-only">{desc}</span>
     </span>
   );
 }

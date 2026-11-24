@@ -207,6 +207,47 @@ func SearchTerms(c content.Content) []string {
 	return out
 }
 
+// A short segment is one of at most shortSegment words. In it one word in
+// another form ("Mieters" for "Mieter", a heading in the plural) leaves
+// too few words in common, or none, for the segment to be found by its
+// words, so backends also look for the beginnings of its words.
+const shortSegment = 3
+
+// formLength is how much of a word FormKeys takes, in characters, and the
+// length a word must exceed to have a key.
+const formLength = 4
+
+// FormKeys returns the beginnings of the longer words of a short segment,
+// lower-cased and distinct: what its words share with their other forms.
+// It returns nothing for a longer segment, which is found by the words it
+// shares with a match.
+func FormKeys(c content.Content) []string {
+	words := 0
+	seen := map[string]bool{}
+	var out []string
+	for _, t := range fuzzy.Tokenize(c) {
+		if t.Kind == fuzzy.Number {
+			words++
+		}
+		if t.Kind != fuzzy.Word {
+			continue
+		}
+		words++
+		r := []rune(textnorm.Fold(t.Text))
+		if len(r) <= formLength {
+			continue
+		}
+		if k := string(r[:formLength]); !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	if words > shortSegment {
+		return nil
+	}
+	return out
+}
+
 // SortMatches orders matches best first: higher score, then more recently
 // changed, then higher ID.
 func SortMatches(ms []Match) {

@@ -34,6 +34,7 @@ func Run(t *testing.T, newMemory Factory) {
 		{"LookupTags", testLookupTags},
 		{"LookupPrefersRecent", testLookupPrefersRecent},
 		{"LookupShortAndCJK", testLookupShortAndCJK},
+		{"LookupWordForms", testLookupWordForms},
 		{"Concordance", testConcordance},
 		{"TMX", testTMX},
 		{"Each", testEach},
@@ -241,6 +242,43 @@ func testLookupShortAndCJK(t *testing.T, newMemory Factory) {
 	}
 	if ms := lookup(t, m, "OK", tm.LookupOptions{}); len(ms) != 1 || ms[0].Score != 100 {
 		t.Fatalf("two letters = %v", scores(ms))
+	}
+}
+
+// A short segment whose only word is in another form shares no word with
+// its match and is found all the same; a change of ending in a sentence
+// leaves a close match, in every script.
+func testLookupWordForms(t *testing.T, newMemory Factory) {
+	m := newMemory(t, DefaultInfo)
+	add(t, m, "Kündigungsfristen", "Notice periods")
+	add(t, m, "Garten", "Garden")
+	add(t, m, "Sonstige Vereinbarungen", "Other agreements")
+	add(t, m, "Die Pflichten des Mieters", "The tenant's obligations")
+	add(t, m, "임차인은 차임을 지급한다", "The tenant pays the rent")
+	add(t, m, "العَقْدُ مُلْزِمٌ للطرفين", "The contract binds both parties")
+	add(t, m, "Арендатор платит арендную плату", "The tenant pays the rent")
+
+	ms := lookup(t, m, "Kündigungsfrist", tm.LookupOptions{MinScore: 50})
+	if len(ms) != 1 || ms[0].Unit.Target.Plain() != "Notice periods" || ms[0].Score >= 70 {
+		t.Fatalf("a heading in the singular: %v", scores(ms))
+	}
+	if ms := lookup(t, m, "Gartenhaus", tm.LookupOptions{MinScore: 50}); len(ms) != 0 {
+		t.Fatalf("another word with the same beginning is no match: %v", scores(ms))
+	}
+	ms = lookup(t, m, "Sonstigen Vereinbarung", tm.LookupOptions{MinScore: 50})
+	if len(ms) != 1 || ms[0].Unit.Target.Plain() != "Other agreements" {
+		t.Fatalf("two words, both in another form: %v", scores(ms))
+	}
+	for _, c := range []struct{ query, target string }{
+		{"Die Pflichten des Mieter", "The tenant's obligations"},
+		{"임차인이 차임을 지급한다", "The tenant pays the rent"},
+		{"العقد ملزم للطرفين", "The contract binds both parties"},
+		{"Арендатор платит арендной платы", "The tenant pays the rent"},
+	} {
+		ms := lookup(t, m, c.query, tm.LookupOptions{})
+		if len(ms) == 0 || ms[0].Unit.Target.Plain() != c.target || ms[0].Score >= 100 {
+			t.Errorf("%q: %v", c.query, scores(ms))
+		}
 	}
 }
 

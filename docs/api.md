@@ -428,7 +428,9 @@ Access: manage on the project.
 
 ### `POST /api/projects/{id}/analysis`
 
-Analyses a project's files against the memories it looks up in: words by match band, repetitions, and with weights the weighted words, for each target language.
+Analyses a project's files against the memories it looks up in: words by match band, repetitions, and with weights the weighted words, for each target language, or for one language and one file.
+
+Each report lists how every segment was counted, with the score and the memory of its best match.
 
 Access: read on the project, or work in it.
 
@@ -1570,6 +1572,7 @@ access is what someone may do in a project.
 
 | Field | Type | Description |
 |---|---|---|
+| `file` | string | File is the one file to analyse; empty for all. The editor asks for the file it has open, to show each segment's best match. |
 | `lang` | string | Lang is the target language; empty for all. |
 | `weights` | map of number | Weights are the share of the full rate charged per band, in percent; with them the report has weighted words. |
 

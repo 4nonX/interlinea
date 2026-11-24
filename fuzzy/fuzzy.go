@@ -2,10 +2,28 @@
 // read a TM match percentage: 100 for an identical segment, lower values for
 // segments that need more editing.
 //
-// The score is a weighted, token-based edit distance. Words and numbers weigh
-// most, punctuation and inline tags less, and case-only differences very
-// little, so "Der Mieter haftet." against "der Mieter haftet." scores high
-// while a changed word costs a full token.
+// The score is a weighted edit distance over tokens. Words and numbers
+// weigh most, punctuation and inline tags less. What a changed token costs
+// depends on how far apart the two are:
+//
+//   - the same word in another case, or written with other marks (an
+//     accent left out, Arabic with and without its short vowels, Hebrew
+//     with and without points), costs a fraction of a word;
+//   - two forms of one word ("Mieter" and "Mieters", a Finnish case
+//     ending, a Turkish suffix, a Korean particle) cost by the share of
+//     their letters that differ, so a sentence in which only an ending
+//     changed stays a close match;
+//   - two numbers cost a quarter of a word, since a number is replaced,
+//     not translated; the same number in other digits (Arabic-Indic,
+//     Devanagari, full width) costs next to nothing;
+//   - punctuation of the same kind in another form (straight and curly
+//     quotes, a hyphen and a dash, a full-width or Arabic comma) costs a
+//     fraction of a punctuation mark.
+//
+// Scripts written without spaces between words (Chinese, Japanese, Thai,
+// Lao, Khmer, Burmese) are compared character by character, each with the
+// marks written on it. Every script is composed first (NFC), so the same
+// text scores the same however a file stores it.
 package fuzzy
 
 import (
@@ -35,16 +53,37 @@ const (
 type Token struct {
 	Kind Kind
 	Text string
+	// fold is the text without regard to case, width and the script of
+	// digits; base is fold without marks and with letters that are written
+	// several ways brought to one.
 	fold string
+	base string
+	// perChar marks a character of a script written without spaces.
+	perChar bool
 }
 
-// Weights of the token kinds and of a case-only difference (relative to the token weight).
+// Weights of the token kinds, and what a difference of each degree costs
+// relative to the token's weight.
 const (
 	weightWord   = 1.0
 	weightNumber = 1.0
 	weightPunct  = 0.5
 	weightTag    = 0.5
-	caseFactor   = 0.2
+	// The same word in another case.
+	caseFactor = 0.2
+	// The same word with other marks, or a letter written another way.
+	markFactor = 0.15
+	// Another number.
+	numberFactor = 0.25
+	// The same number in other digits, or with other separators.
+	digitFactor = 0.1
+	// Punctuation of the same kind in another form.
+	punctFactor = 0.2
+	// Two forms of a word cost formBase plus formSlope for each share of
+	// letters that differs; from half the letters on they are two words.
+	formBase  = 0.25
+	formSlope = 1.5
+	formLimit = 0.5
 )
 
 func (t Token) weight() float64 {
@@ -67,7 +106,7 @@ func Tokenize(c content.Content) []Token {
 	for _, r := range c {
 		if r.IsTag() {
 			key := r.Tag.Kind.String() + ":" + r.Tag.Type
-			out = append(out, Token{Kind: Tag, Text: key, fold: key})
+			out = append(out, Token{Kind: Tag, Text: key, fold: key, base: key})
 			continue
 		}
 		out = appendTextTokens(out, r.Text)
@@ -102,6 +141,27 @@ func appendTextTokens(out []Token, s string) []Token {
 		switch {
 		case unicode.IsSpace(r):
 			i += n
+		case unicode.IsDigit(r):
+			j := i + n
+			for j < len(s) {
+				r2, n2 := utf8.DecodeRuneInString(s[j:])
+				if unicode.IsDigit(r2) {
+					j += n2
+					continue
+				}
+				if numberSeparator(r2) && j+n2 < len(s) {
+					r3, _ := utf8.DecodeRuneInString(s[j+n2:])
+					if unicode.IsDigit(r3) {
+						j += n2
+						continue
+					}
+				}
+				break
+			}
+			w := s[i:j]
+			f := textnorm.ASCIIDigits(w)
+			out = append(out, Token{Kind: Number, Text: w, fold: f, base: digitsOnly(f)})
+			i = j
 		case isIdeographic(r):
 			// A character with the vowel signs and tone marks written on it.
 			j := i + n
@@ -113,7 +173,7 @@ func appendTextTokens(out []Token, s string) []Token {
 				j += n2
 			}
 			w := s[i:j]
-			out = append(out, Token{Kind: Word, Text: w, fold: textnorm.NFC(w)})
+			out = append(out, Token{Kind: Word, Text: w, fold: w, base: textnorm.StripMarks(w), perChar: true})
 			i = j
 		case isWordRune(r):
 			j := i + n
@@ -134,48 +194,170 @@ func appendTextTokens(out []Token, s string) []Token {
 				break
 			}
 			w := s[i:j]
-			out = append(out, Token{Kind: Word, Text: w, fold: textnorm.Fold(w)})
-			i = j
-		case unicode.IsDigit(r):
-			j := i + n
-			for j < len(s) {
-				r2, n2 := utf8.DecodeRuneInString(s[j:])
-				if unicode.IsDigit(r2) {
-					j += n2
-					continue
-				}
-				if (r2 == '.' || r2 == ',') && j+n2 < len(s) {
-					r3, _ := utf8.DecodeRuneInString(s[j+n2:])
-					if unicode.IsDigit(r3) {
-						j += n2
-						continue
-					}
-				}
-				break
-			}
-			w := s[i:j]
-			out = append(out, Token{Kind: Number, Text: w, fold: w})
+			f := textnorm.Fold(textnorm.Compat(w))
+			out = append(out, Token{Kind: Word, Text: w, fold: f, base: textnorm.Base(f)})
 			i = j
 		default:
 			w := s[i : i+n]
-			out = append(out, Token{Kind: Punct, Text: w, fold: w})
+			out = append(out, Token{Kind: Punct, Text: w, fold: w, base: punctClass(r)})
 			i += n
 		}
 	}
 	return out
 }
 
+// subCost is what it costs to turn token a into token b.
 func subCost(a, b Token) float64 {
 	if a.Kind == b.Kind && a.Text == b.Text {
 		return 0
 	}
-	wa, wb := a.weight(), b.weight()
-	w := math.Max(wa, wb)
-	if a.Kind == b.Kind && a.fold == b.fold {
-		return caseFactor * w
+	w := math.Max(a.weight(), b.weight())
+	if a.Kind != b.Kind {
+		return w
+	}
+	switch a.Kind {
+	case Word:
+		switch {
+		case a.fold == b.fold:
+			return caseFactor * w
+		case a.base == b.base:
+			return markFactor * w
+		case a.perChar || b.perChar:
+			return w
+		}
+		share := formDistance(a.base, b.base)
+		if share >= formLimit {
+			return w
+		}
+		return math.Min(1, formBase+formSlope*share) * w
+	case Number:
+		switch {
+		case a.fold == b.fold, a.base == b.base:
+			return digitFactor * w
+		}
+		return numberFactor * w
+	case Punct:
+		if a.base != "" && a.base == b.base {
+			return punctFactor * w
+		}
 	}
 	return w
 }
+
+// formDistance is the share of two words' letters that differ: their edit
+// distance by the length of the longer. Korean syllables are compared by
+// their letters, so a particle that changes one letter counts as one.
+func formDistance(a, b string) float64 {
+	ra, rb := letters(a), letters(b)
+	if len(ra) < len(rb) {
+		ra, rb = rb, ra
+	}
+	if len(ra) == 0 {
+		return 0
+	}
+	// Words whose lengths are too far apart cannot be forms of each other.
+	if float64(len(ra)-len(rb)) >= formLimit*float64(len(ra)) {
+		return 1
+	}
+	prev := make([]int, len(rb)+1)
+	cur := make([]int, len(rb)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ra); i++ {
+		cur[0] = i
+		for j := 1; j <= len(rb); j++ {
+			c := prev[j-1]
+			if ra[i-1] != rb[j-1] {
+				c++
+			}
+			if d := prev[j] + 1; d < c {
+				c = d
+			}
+			if d := cur[j-1] + 1; d < c {
+				c = d
+			}
+			cur[j] = c
+		}
+		prev, cur = cur, prev
+	}
+	return float64(prev[len(rb)]) / float64(len(ra))
+}
+
+// letters are the runes of a word; a Hangul syllable gives its two or
+// three letters.
+func letters(s string) []rune {
+	out := make([]rune, 0, len(s))
+	for _, r := range s {
+		if r >= 0xAC00 && r <= 0xD7A3 {
+			i := r - 0xAC00
+			out = append(out, 0x1100+i/588, 0x1161+(i%588)/28)
+			if t := i % 28; t != 0 {
+				out = append(out, 0x11A7+t)
+			}
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// numberSeparator reports whether r groups or divides the digits of a
+// number when it stands between two of them: the point and the comma, the
+// Swiss apostrophe, the no-break spaces of French and SI style, and the
+// Arabic decimal and thousands marks.
+func numberSeparator(r rune) bool {
+	switch r {
+	case '.', ',', '\'', '’', '\u00a0', '\u202f', '\u2009', '٫', '٬':
+		return true
+	}
+	return false
+}
+
+// digitsOnly is a number without its separators.
+func digitsOnly(s string) string {
+	b := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			b = append(b, s[i])
+		}
+	}
+	return string(b)
+}
+
+// Punctuation that is the same mark in another form, by class.
+var punctClasses = map[string]string{
+	"quote":  "\"“”„‟«»‹›「」『』〝〞＂",
+	"apos":   "'‘’‚‛ʼ＇′",
+	"dash":   "-‐‑‒–—―−－﹣",
+	"comma":  ",，、،﹐",
+	"stop":   ".。．｡۔",
+	"colon":  ":：",
+	"semi":   ";；؛",
+	"quest":  "?？؟;",
+	"excl":   "!！",
+	"open":   "(（",
+	"close":  ")）",
+	"sopen":  "[［【",
+	"sclose": "]］】",
+	"pct":    "%％٪",
+	"slash":  "/／",
+	"amp":    "&＆",
+}
+
+var punctOf = func() map[rune]string {
+	m := map[rune]string{}
+	for class, marks := range punctClasses {
+		for _, r := range marks {
+			m[r] = class
+		}
+	}
+	return m
+}()
+
+// punctClass names the kind of a punctuation mark, or "" for a mark that
+// has no other form.
+func punctClass(r rune) string { return punctOf[r] }
 
 // Distance returns the weighted edit distance between two token sequences.
 func Distance(a, b []Token) float64 {

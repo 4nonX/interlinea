@@ -192,6 +192,36 @@ export default () =>
         )) === 4,
         "bold names in segment 2 come from the file as tags",
       );
+      // The match column: what the memories hold for each segment, before
+      // anything is inserted.
+      const offered = () =>
+        evaluate(
+          "[...document.querySelectorAll('.seg')].map(s => { const b = s.querySelector('.seg-status .score.is-available > [aria-hidden]'); return b ? s.querySelector('.seg-num').textContent + '=' + b.textContent : s.querySelector('.seg-available') ? s.querySelector('.seg-num').textContent + '=rep' : ''; }).filter(Boolean).join(' ')",
+        );
+      check(
+        await waitFor(
+          "document.querySelectorAll('.seg-status .score.is-available').length > 5",
+        ),
+        "the best match of each segment is shown beside it",
+      );
+      const offers = await offered();
+      check(
+        /(^| )11=100%( |$)/.test(offers) &&
+          /(^| )18=CM( |$)/.test(offers) &&
+          /(^| )32=rep( |$)/.test(offers) &&
+          /(^| )10=9\d%( |$)/.test(offers),
+        "exact, context and fuzzy matches and a repetition, by segment: " + offers,
+      );
+      check(
+        !/(^| )(1|2|3|9)=/.test(offers),
+        "none beside confirmed segments or segments without a match",
+      );
+      check(
+        (await evaluate(
+          "[...document.querySelectorAll('.seg')][10].querySelector('.score.is-available').title",
+        )) === "Exact match (100%) in Kanzlei Weber (DE-EN), not inserted",
+        "the badge says what it is and which memory holds it",
+      );
       await key("ArrowDown", "ArrowDown", 40, 1);
       await key("ArrowDown", "ArrowDown", 40, 1);
       check((await activeNum()) === "10", "Alt+Down moves to segment 10");
@@ -213,7 +243,7 @@ export default () =>
       check(
         /^\d\d%/.test(badge) &&
           (await evaluate(
-            "document.querySelector('.seg.is-active .seg-status .score').className.includes('band-8')",
+            "document.querySelector('.seg.is-active .seg-status .score').className.includes('band-95')",
           )),
         "fuzzy score badge with its band: " + badge,
       );
@@ -303,7 +333,7 @@ export default () =>
             "1.250,00 and 220,00 from the source are not in the translation",
           ) &&
           issueText.includes("980.00 and 180.00 are not in the source") &&
-          issueText.includes("89% match is unchanged"),
+          issueText.includes("97% match is unchanged"),
         "segment 10 shows the core's checks (numbers missing and extra) and the unchanged match: " +
           issueText,
       );

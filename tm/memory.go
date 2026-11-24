@@ -103,9 +103,7 @@ func (m *InMemory) Add(ctx context.Context, u Unit, policy AddPolicy) (Unit, err
 	idx := len(m.units)
 	m.units = append(m.units, stored)
 	m.byKey[key] = append(m.byKey[key], idx)
-	for _, tok := range SearchTerms(stored.Source) {
-		m.index[tok] = append(m.index[tok], idx)
-	}
+	m.addToIndex(stored.Source, idx)
 	return cloneUnit(stored), nil
 }
 
@@ -142,6 +140,20 @@ func (m *InMemory) Lookup(ctx context.Context, source content.Content, opts Look
 	return matches, nil
 }
 
+// formPrefix marks the index entries of FormKeys, which no word starts with.
+const formPrefix = "\x00"
+
+// addToIndex lists a unit under its words and, when it is short, under
+// the beginnings of its words.
+func (m *InMemory) addToIndex(source content.Content, idx int) {
+	for _, tok := range SearchTerms(source) {
+		m.index[tok] = append(m.index[tok], idx)
+	}
+	for _, k := range FormKeys(source) {
+		m.index[formPrefix+k] = append(m.index[formPrefix+k], idx)
+	}
+}
+
 // candidates returns unit indexes sharing tokens with source, most shared first.
 // Segments without word or number tokens (only punctuation or tags) fall
 // back to all units of similar length.
@@ -161,9 +173,15 @@ func (m *InMemory) candidates(source content.Content) []int {
 		}
 		return out
 	}
+	// A shared word counts twice what a shared beginning of a word does.
 	shared := map[int]int{}
 	for _, tok := range toks {
 		for _, i := range m.index[tok] {
+			shared[i] += 2
+		}
+	}
+	for _, k := range FormKeys(source) {
+		for _, i := range m.index[formPrefix+k] {
 			shared[i]++
 		}
 	}
@@ -262,9 +280,7 @@ func (m *InMemory) Delete(ctx context.Context, id int64) error {
 	for i, u := range m.units {
 		key := SourceKey(u.Source)
 		m.byKey[key] = append(m.byKey[key], i)
-		for _, tok := range SearchTerms(u.Source) {
-			m.index[tok] = append(m.index[tok], i)
-		}
+		m.addToIndex(u.Source, i)
 	}
 	return nil
 }

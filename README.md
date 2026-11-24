@@ -79,7 +79,7 @@ The Go packages:
 | `content` | Segment model: text interleaved with inline tags (open, close, standalone), JSON encoding, slicing at segment boundaries |
 | `langtag` | BCP 47 normalization and matching (`de_de` to `de-DE`, primary-language matches) |
 | `segment` | SRX 2.0 parser and segmenter, built-in rules for German, English, CJK and a generic fallback |
-| `fuzzy` | Weighted token edit distance and match percentages, aware of tags, case and punctuation |
+| `fuzzy` | Match percentages: a weighted edit distance over words, numbers, punctuation and tags, aware of case, marks, word forms, the digits and punctuation of every script, and scripts written without spaces |
 | `tmx` | Streaming TMX 1.4b reader and writer (UTF-8, UTF-16, ISO-8859-1, Windows-1252), inline markup mapped to tags |
 | `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export, penalties for less trusted memories |
 | `tm/tmdb` | Persistent backend: any number of memories in a SQLite file (desktop) or PostgreSQL (server); term index for fuzzy candidates, trigram index for concordance, unit versions that refuse stale edits, change log for syncing |
@@ -444,8 +444,18 @@ that match by primary language only (`de-AT` for `de-DE`).
   reports a recognized term with no allowed translation in the target
   (inflected target forms count) and every forbidden term in the target.
 - Match scores: 100 means identical text and identical tag structure (tag IDs
-  may differ). Case-only and punctuation differences cost little, a changed
-  word costs a full token, tags count half.
+  may differ). Below that the score is an edit distance over words, numbers,
+  punctuation and tags, where a difference costs by its degree: another case
+  or other marks on the same word (an accent left out, Arabic with or
+  without its short vowels) a fraction of a word; another form of a word
+  (an ending, a suffix, a Korean particle) by the share of its letters that
+  differ; another number a quarter of a word, and the same number in other
+  digits next to nothing; punctuation of the same kind in another form
+  (curly for straight quotes, a full-width comma) a fraction of a mark;
+  another word a whole word; tags half. Chinese, Japanese, Thai, Lao, Khmer
+  and Burmese are compared by character. A short segment is also found by
+  the beginnings of its words, so a heading in the plural finds its
+  singular. The score is tested on a sample of every listed language.
 - SRX rules use Go's RE2 engine: Unicode classes work, look-around and
   back-references do not and are reported as errors when a rule file is loaded.
 - TMX `<sub>` content inside native codes is kept as part of the native code,
@@ -579,7 +589,9 @@ in the browser as WebAssembly: the units keep their formatting as tags, and
 "Save translated document" writes the .docx with the original layout.
 
 Creating a project opens it in the editor. It follows the
-conventions Trados Studio, memoQ and Phrase share: the best match goes into
+conventions Trados Studio, memoQ and Phrase share: the best match of every
+segment shows beside it before it is opened (CM, a percentage or a
+repetition, outlined until it is inserted), the best match goes into
 an empty segment when it opens, Ctrl+Enter confirms and fills repetitions,
 Ctrl+1 to 9 insert numbered results, terms are recognized by the core
 (including inflected forms), the core's checks run as the project switches

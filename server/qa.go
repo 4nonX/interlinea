@@ -518,6 +518,9 @@ func utf16Len(s string) int {
 type analysisRequest struct {
 	// Lang is the target language; empty for all.
 	Lang string `json:"lang"`
+	// File is the one file to analyse; empty for all. The editor asks for
+	// the file it has open, to show each segment's best match.
+	File string `json:"file,omitempty"`
 	// Weights are the share of the full rate charged per band, in
 	// percent; with them the report has weighted words.
 	Weights map[analysis.Band]float64 `json:"weights,omitempty"`
@@ -525,7 +528,9 @@ type analysisRequest struct {
 
 // projectAnalysis analyses a project's files against the memories it looks
 // up in: words by match band, repetitions, and with weights the weighted
-// words, for each target language.
+// words, for each target language, or for one language and one
+// file. Each report lists how every segment was counted, with the score
+// and the memory of its best match.
 //
 // Access: read on the project, or work in it.
 func (s *Server) projectAnalysis(w http.ResponseWriter, r *http.Request, me session) {
@@ -552,6 +557,9 @@ func (s *Server) projectAnalysis(w http.ResponseWriter, r *http.Request, me sess
 		var files []analysis.File
 		for _, f := range p.Settings.Files {
 			if f.Role != project.Translatable || (f.TargetLang != "" && !strings.EqualFold(f.TargetLang, lang)) {
+				continue
+			}
+			if req.File != "" && f.Name != req.File {
 				continue
 			}
 			segs, err := s.cfg.Projects.Segments(ctx, p.ID, f.Name, lang)

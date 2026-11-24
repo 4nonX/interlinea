@@ -94,7 +94,7 @@ func TestAnalyze(t *testing.T) {
 	for _, s := range r.Segments {
 		bands = append(bands, s.File+"/"+s.ID+"="+string(s.Band))
 	}
-	want := "a.docx/1=new a.docx/2=context a.docx/3=100 a.docx/4=85 a.docx/5=repetition a.docx/6=locked b.docx/1=cross-file b.docx/2=new b.docx/3=cross-file"
+	want := "a.docx/1=new a.docx/2=context a.docx/3=100 a.docx/4=95 a.docx/5=repetition a.docx/6=locked b.docx/1=cross-file b.docx/2=new b.docx/3=cross-file"
 	if strings.Join(bands, " ") != want {
 		t.Fatalf("bands:\n got %s\nwant %s", strings.Join(bands, " "), want)
 	}

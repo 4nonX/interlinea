@@ -19,6 +19,12 @@ client and the desktop app, with installers and a server image.
   terms, formatting tags, spelling, quality checks, own rules and length
   limits. The best memory match goes into an empty segment, and a
   confirmed translation fills its repetitions, if wanted.
+- Match scores that hold in every listed language: a word in another
+  form, a spelling with other marks, a number in other digits and
+  punctuation in another form each cost what they are worth, and a short
+  segment finds its match in another form.
+- The best match of every segment is shown beside it in the editor before
+  anything is inserted: context, exact and fuzzy matches and repetitions.
 - Analysis of a project against its memories, by match band.
 - Translation memories with TMX in and out. The units of a memory are
   searched, added, changed with their formatting tags kept, and deleted.

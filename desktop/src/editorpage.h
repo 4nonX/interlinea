@@ -73,6 +73,8 @@ signals:
     void bestInserted(const QString &what);
     void checked();
     void resultsShown();
+    // The match column has what the memories hold for the file's segments.
+    void availableLoaded();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -83,6 +85,7 @@ private:
     QWidget *buildPanel();
     void loadProject();
     void load();
+    void loadAvailable();
     void applyFilter();
     void activate(int row);
     QWidget *makeCellWidget(QWidget *parent, const QModelIndex &index);
@@ -120,6 +123,7 @@ private:
     qint64 m_id;
     QString m_file;
     QString m_lang;
+    QTimer *m_availableTimer = nullptr;
     QJsonObject m_project;
     QString m_sourceLang;
 

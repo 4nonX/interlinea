@@ -763,13 +763,59 @@ func (m *Memory) candidates(ctx context.Context, source content.Content) ([]tm.U
 	}
 	args = append(args, candidateLimit)
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(terms)), ",")
-	return m.queryUnits(ctx, m.db.sql, `
+	out, err := m.queryUnits(ctx, m.db.sql, `
 		JOIN (
 			SELECT unit_id, count(*) AS shared FROM unit_terms
 			WHERE memory_id = ? AND term IN (`+placeholders+`)
 			GROUP BY unit_id ORDER BY shared DESC, unit_id DESC LIMIT ?
 		) c ON c.unit_id = units.id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	// A short segment with a word in another form shares too few words
+	// with its match, or none: short units that hold the beginning of one
+	// of its words are candidates too, found through the index the
+	// concordance search uses.
+	keys := tm.FormKeys(source)
+	if len(keys) == 0 {
+		return out, nil
+	}
+	have := map[int64]bool{}
+	for _, u := range out {
+		have[u.ID] = true
+	}
+	longest := utf8.RuneCountInString(source.Plain())*2 + 2
+	for _, k := range keys {
+		var more []tm.Unit
+		if m.db.d == sqlstore.Postgres {
+			cond, arg := sqlstore.LikeContains("source_plain", k)
+			more, err = m.queryUnits(ctx, m.db.sql,
+				`WHERE memory_id = ? AND `+cond+` AND char_length(source_plain) <= ? ORDER BY id DESC LIMIT ?`,
+				m.id, arg, longest, formCandidates)
+		} else {
+			more, err = m.queryUnits(ctx, m.db.sql, `
+			WHERE id IN (
+				SELECT f.rowid FROM units_fts f JOIN units x ON x.id = f.rowid
+				WHERE units_fts MATCH ? AND x.memory_id = ? AND length(x.source_plain) <= ?)
+			ORDER BY id DESC LIMIT ?`,
+				"source_plain : "+ftsQuote(k), m.id, longest, formCandidates)
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, u := range more {
+			if !have[u.ID] {
+				have[u.ID] = true
+				out = append(out, u)
+			}
+		}
+	}
+	return out, nil
 }
+
+// formCandidates bounds the short units looked at for each word of a
+// short segment.
+const formCandidates = 50
 
 // Concordance implements tm.Memory.
 func (m *Memory) Concordance(ctx context.Context, query string, opts tm.ConcordanceOptions) ([]tm.Unit, error) {

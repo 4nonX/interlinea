@@ -23,6 +23,7 @@ import (
 	"github.com/4nonX/interlinea/filter/docx"
 	"github.com/4nonX/interlinea/filter/docx/docxtest"
 	"github.com/4nonX/interlinea/filter/xliff"
+	"github.com/4nonX/interlinea/fuzzy"
 	"github.com/4nonX/interlinea/langdetect"
 	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/qa"
@@ -166,6 +167,7 @@ func TestEveryLanguage(t *testing.T) {
 				}
 				memory(t, m, tag, s)
 			})
+			t.Run("scores", func(t *testing.T) { scores(t, tag, s) })
 			t.Run("terms", func(t *testing.T) { terms(t, tag, s) })
 			t.Run("checks", func(t *testing.T) { checks(t, tag, s) })
 			t.Run("detection", func(t *testing.T) { detection(t, tag, s) })
@@ -206,6 +208,84 @@ func words(t *testing.T, tag string, s sample) {
 	}
 	if n.Segments != 1 || n.Characters == 0 {
 		t.Errorf("counts %+v", n)
+	}
+}
+
+// scores checks the match percentage on the language's own text: what a
+// translator expects of it holds in every language of the list.
+func scores(t *testing.T, tag string, s sample) {
+	score := fuzzy.ScoreText
+	if got := score(s.text, s.text); got != 100 {
+		t.Errorf("the same text scores %d", got)
+	}
+	// One sentence against both is far from a match, and not nothing.
+	parts := segment.New(segment.Default(), tag).Strings(s.text)
+	if len(parts) == 2 {
+		if got := score(parts[1], s.text); got < 30 || got > 85 {
+			t.Errorf("one sentence of two scores %d", got)
+		}
+	}
+	// The text with another number in it stays a close match, and so does
+	// the same number in the digits of another script.
+	with := func(n string) string { return s.text + " " + n }
+	if got := score(with("1250"), with("980")); got < 90 || got > 99 {
+		t.Errorf("another number scores %d", got)
+	}
+	if got := score(with("1250"), with("١٢٥٠")); got < 95 || got > 99 {
+		t.Errorf("the same number in other digits scores %d", got)
+	}
+	// Punctuation in another form costs less than other punctuation.
+	if form, other := score(with("-"), with("–")), score(with("-"), with("+")); !(form >= other && form < 100) {
+		t.Errorf("a dash for a hyphen scores %d, a plus sign %d", form, other)
+	}
+	// One element changed: a word, or a character where words are not
+	// written apart. The more of the text changes, the lower the score.
+	var units []string
+	if perCharacter(tag) {
+		for _, r := range s.text {
+			if unicode.IsLetter(r) && !unicode.IsMark(r) {
+				units = append(units, string(r))
+			}
+		}
+	} else {
+		units = strings.Fields(s.text)
+	}
+	if len(units) < 6 {
+		t.Fatalf("the sample has only %d words", len(units))
+	}
+	replace := func(n int) string {
+		out := s.text
+		for i := 0; i < n; i++ {
+			out = strings.Replace(out, units[len(units)/2+i], "Ω", 1)
+		}
+		return out
+	}
+	one, two := score(s.text, replace(1)), score(s.text, replace(2))
+	if !(one < 100 && one >= 80 && two < one && two >= 60) {
+		t.Errorf("one element changed scores %d, two score %d", one, two)
+	}
+	if a, b := score(s.text, replace(1)), score(replace(1), s.text); a != b {
+		t.Errorf("%d one way and %d the other", a, b)
+	}
+	// Another case of the same words costs little, where the script has case.
+	if upper := strings.ToUpper(s.text); upper != s.text {
+		if got := score(s.text, upper); got < 80 || got > 99 {
+			t.Errorf("the text in capitals scores %d", got)
+		}
+	}
+	// A word in another form is closer to it than another word is. The
+	// sample's form is running text; the word in it that is closest to
+	// the term must be closer than a word that has nothing to do with it.
+	if !perCharacter(tag) {
+		best := 0
+		for _, w := range strings.Fields(s.form) {
+			if got := score(s.term, w); got > best {
+				best = got
+			}
+		}
+		if other := score(s.term, "Ωμέγα"); best <= other {
+			t.Errorf("%q in %q scores %d, an unrelated word %d", s.term, s.form, best, other)
+		}
 	}
 }
 

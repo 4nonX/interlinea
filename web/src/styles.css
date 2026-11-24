@@ -1945,7 +1945,7 @@ kbd {
 
 .seg {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 52px;
+  grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 56px;
   border-bottom: 1px solid #e9ecf0;
   font-size: 0.9375rem;
   line-height: 1.55;
@@ -2013,6 +2013,8 @@ kbd {
   align-content: start;
   gap: 2px;
   padding-top: 15px;
+  padding-left: 0;
+  padding-right: 0;
   color: var(--text-3);
 }
 
@@ -2476,6 +2478,16 @@ kbd {
 .score.is-edited {
   background: transparent;
   border-color: currentColor;
+}
+
+/* In the memories, not inserted: a dashed outline. */
+.score.is-available {
+  background: transparent;
+  border: 1px dashed currentColor;
+}
+
+.seg-available {
+  opacity: 0.75;
 }
 
 .seg-status .score {

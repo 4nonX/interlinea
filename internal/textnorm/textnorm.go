@@ -58,3 +58,82 @@ func StripMarks(s string) string {
 	}
 	return norm.NFC.String(b.String())
 }
+
+// Compat returns s with characters that are another form of the same one
+// brought to the usual form (Unicode NFKC): full-width Latin letters and
+// half-width katakana, ligatures, the presentation forms of Arabic.
+func Compat(s string) string {
+	if norm.NFKC.IsNormalString(s) {
+		return s
+	}
+	return norm.NFKC.String(s)
+}
+
+// Letters that are written in several ways, each brought to one: the
+// Arabic alef with and without hamza, the Arabic and the Persian yeh and
+// kaf, the German sharp s, and the Turkish dotless i, which capitals
+// written without regard to the language turn into an ordinary one.
+var variants = strings.NewReplacer(
+	"أ", "ا", "إ", "ا", "آ", "ا", "ٱ", "ا",
+	"ى", "ي", "ی", "ي", "ک", "ك",
+	"ß", "ss",
+	"ı", "i",
+)
+
+// Base returns a folded word without the marks written on its letters and
+// with letters that are written in several ways brought to one, so that
+// two spellings of a word compare equal.
+func Base(folded string) string {
+	plain := true
+	for i := 0; i < len(folded); i++ {
+		if folded[i] >= 0x80 {
+			plain = false
+			break
+		}
+	}
+	if plain {
+		return folded
+	}
+	return variants.Replace(StripMarks(folded))
+}
+
+// ASCIIDigits returns s with the digits of every script as 0 to 9, so a
+// number compares equal whichever digits it is written in.
+func ASCIIDigits(s string) string {
+	plain := true
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			plain = false
+			break
+		}
+	}
+	if plain {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r > unicode.MaxASCII && unicode.IsDigit(r) {
+			b.WriteByte(byte('0' + digitValue(r)))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// digitValue is the value of a decimal digit of any script: the digits of
+// a script are ten code points in a row, from zero.
+func digitValue(r rune) int {
+	for _, rg := range unicode.Nd.R16 {
+		if rune(rg.Lo) <= r && r <= rune(rg.Hi) {
+			return int(r-rune(rg.Lo)) % 10
+		}
+	}
+	for _, rg := range unicode.Nd.R32 {
+		if rune(rg.Lo) <= r && r <= rune(rg.Hi) {
+			return int(r-rune(rg.Lo)) % 10
+		}
+	}
+	return 0
+}
