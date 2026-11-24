@@ -82,10 +82,13 @@ export interface CoreApi {
   xliffDetect(bytes: Uint8Array): Res<string>;
   xliffExtract(bytes: Uint8Array): Res<string>;
   xliffMerge(bytes: Uint8Array, updates: string): Res<Uint8Array>;
-  sdlPackageOpen(bytes: Uint8Array): Res<string>;
-  sdlPackageRead(bytes: Uint8Array, path: string): Res<Uint8Array>;
-  sdlPackageReturn(
+  archiveRead(bytes: Uint8Array): Res<Uint8Array>;
+  archiveWrite(bytes: Uint8Array, document: Uint8Array): Res<Uint8Array>;
+  packageOpen(bytes: Uint8Array, name: string): Res<string>;
+  packageRead(bytes: Uint8Array, name: string, path: string): Res<Uint8Array>;
+  packageReturn(
     bytes: Uint8Array,
+    name: string,
     translated: Record<string, Uint8Array>,
   ): Res<Uint8Array>;
   qaKinds(): Res<string>;
@@ -248,13 +251,56 @@ export interface Extracted {
   warnings: string[];
 }
 
-/** Extracts the units of a Word document as editor segments. */
+/** The document formats the core's filters read, by file name. */
+export type DocumentFormat = "docx" | "pptx" | "xlsx" | "html" | "idml";
+
+const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
+  [/\.(docx|docm)$/i, "docx"],
+  [/\.(pptx|pptm|ppsx)$/i, "pptx"],
+  [/\.(xlsx|xlsm)$/i, "xlsx"],
+  [/\.(html?|xhtml)$/i, "html"],
+  [/\.idml$/i, "idml"],
+];
+
+/** The format of a document one of the core's filters reads; null for any other file. */
+export function documentFormat(name: string): DocumentFormat | null {
+  return DOCUMENT_FORMATS.find(([re]) => re.test(name))?.[1] ?? null;
+}
+
+/** What a document format is called. */
+export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
+  docx: "Word document",
+  pptx: "PowerPoint presentation",
+  xlsx: "Excel workbook",
+  html: "Web page",
+  idml: "InDesign document (IDML)",
+};
+
+/** The type a translated document is offered for download as. */
+export const DOCUMENT_TYPE: Record<DocumentFormat, string> = {
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  html: "text/html",
+  idml: "application/vnd.adobe.indesign-idml-package",
+};
+
+/**
+ * Extracts the units of a document as editor segments: a Word document,
+ * a presentation, a workbook, a web page or an InDesign document, by the
+ * file's name.
+ */
 export async function extractDocx(
   bytes: Uint8Array,
   lang: string,
+  name = "document.docx",
 ): Promise<Extracted> {
   const core = await loadCore();
-  const r = core.extract(bytes, lang);
+  const r = core.extract(
+    bytes,
+    lang,
+    JSON.stringify({ format: documentFormat(name) ?? "docx" }),
+  );
   if (!r.ok) throw new Error(r.error);
   const ex = JSON.parse(r.value) as CoreExtraction;
   return {
@@ -279,6 +325,7 @@ export async function mergeDocx(
   lang: string,
   target: string,
   segments: Segment[],
+  name = "document.docx",
 ): Promise<Uint8Array> {
   const core = await loadCore();
   const tr: Record<string, CoreRun[]> = {};
@@ -289,13 +336,24 @@ export async function mergeDocx(
     )
       tr[s.id] = runsToCore(s.target);
   }
-  const r = core.merge(bytes, lang, target, JSON.stringify(tr));
+  const r = core.merge(
+    bytes,
+    lang,
+    target,
+    JSON.stringify(tr),
+    JSON.stringify({ format: documentFormat(name) ?? "docx" }),
+  );
   if (!r.ok) throw new Error(r.error);
   return r.value;
 }
 
-/** File names the XLIFF filter reads: XLIFF 1.2 and 2, Trados SDLXLIFF, memoQ MQXLIFF. */
-export const XLIFF_FILE = /\.(xlf|xliff|sdlxliff|mqxliff)$/i;
+/** File names the XLIFF filter reads: XLIFF 1.2 and 2, Trados SDLXLIFF, memoQ MQXLIFF, also in its archive. */
+export const XLIFF_FILE = /\.(xlf|xliff|sdlxliff|mqxliff|mqxlz)$/i;
+
+/** Whether the bytes are a ZIP file: a memoQ XLIFF in its archive (.mqxlz). */
+function archived(bytes: Uint8Array): boolean {
+  return bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
+}
 export const XLIFF_TYPE = "application/xliff+xml";
 
 /** What a bilingual file holds besides its segments. */
@@ -335,7 +393,8 @@ function editorStatus(
 /** Reads a bilingual XLIFF file with its translations and states. */
 export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
   const core = await loadCore();
-  const ex = JSON.parse(unwrap(core.xliffExtract(bytes))) as CoreExtraction;
+  const doc = archived(bytes) ? unwrap(core.archiveRead(bytes)) : bytes;
+  const ex = JSON.parse(unwrap(core.xliffExtract(doc))) as CoreExtraction;
   return {
     format: ex.format ?? "xliff-1.2",
     sourceLang: ex.sourceLang ?? "",
@@ -393,11 +452,29 @@ export async function mergeXliff(
     if (!s.locked)
       updates[s.id] = { target: runsToCore(s.target), state: fileState(s) };
   }
-  return unwrap(core.xliffMerge(bytes, JSON.stringify(updates)));
+  if (!archived(bytes))
+    return unwrap(core.xliffMerge(bytes, JSON.stringify(updates)));
+  // A memoQ XLIFF in its archive goes back into it.
+  const merged = unwrap(
+    core.xliffMerge(unwrap(core.archiveRead(bytes)), JSON.stringify(updates)),
+  );
+  return unwrap(core.archiveWrite(bytes, merged));
 }
 
-/** Trados project packages. */
-export const SDL_PACKAGE_FILE = /\.sdlppx$/i;
+/** Packages of bilingual files: Trados project packages and memoQ handoff packages. */
+export const SDL_PACKAGE_FILE = /\.(sdlppx|mqout)$/i;
+
+/** The name of the package that goes back: .sdlrpx for Trados, .mqback for memoQ. */
+export function returnPackageName(name: string): string {
+  return /\.mqout$/i.test(name)
+    ? name.replace(/\.mqout$/i, "") + ".mqback"
+    : name.replace(/\.sdlppx$/i, "") + ".sdlrpx";
+}
+
+/** What a package is called, by its name. */
+export function packageKind(name: string): string {
+  return /\.mqout$/i.test(name) ? "memoQ handoff package" : "Trados package";
+}
 export const SDL_RETURN_TYPE = "application/octet-stream";
 
 export interface SdlPackage {
@@ -410,26 +487,32 @@ export interface SdlPackage {
   other: number;
 }
 
-export async function openSdlPackage(bytes: Uint8Array): Promise<SdlPackage> {
+export async function openSdlPackage(
+  bytes: Uint8Array,
+  name: string,
+): Promise<SdlPackage> {
   const core = await loadCore();
-  return JSON.parse(unwrap(core.sdlPackageOpen(bytes))) as SdlPackage;
+  return JSON.parse(unwrap(core.packageOpen(bytes, name))) as SdlPackage;
 }
 
+/** A bilingual file of a package; a memoQ document comes out of its archive. */
 export async function readSdlPackage(
   bytes: Uint8Array,
+  name: string,
   path: string,
 ): Promise<Uint8Array> {
   const core = await loadCore();
-  return unwrap(core.sdlPackageRead(bytes, path));
+  return unwrap(core.packageRead(bytes, name, path));
 }
 
-/** A return package (.sdlrpx) with the translated file in place of the package's. */
+/** A return package (.sdlrpx, .mqback) with the translated files in place of the package's. */
 export async function returnSdlPackage(
   bytes: Uint8Array,
+  name: string,
   translated: Record<string, Uint8Array>,
 ): Promise<Uint8Array> {
   const core = await loadCore();
-  return unwrap(core.sdlPackageReturn(bytes, translated));
+  return unwrap(core.packageReturn(bytes, name, translated));
 }
 
 /** Offers bytes as a download. */

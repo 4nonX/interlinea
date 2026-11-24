@@ -15,6 +15,8 @@ import (
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/filter/formats"
+	"github.com/4nonX/interlinea/filter/mqpackage"
 	"github.com/4nonX/interlinea/filter/sdlpackage"
 	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/project/projectdb"
@@ -588,7 +590,7 @@ func (s *Server) addProjectFile(w http.ResponseWriter, r *http.Request, me sessi
 		return
 	}
 	if f.Role == project.Package {
-		invalid(w, "role", "A Trados package starts a project of its own: make a new project from it.")
+		invalid(w, "role", "A package starts a project of its own: make a new project from it.")
 		return
 	}
 	if err := prepareFile(&f, p.Settings.SourceLang, p.Settings.TargetLangs); err != nil {
@@ -639,9 +641,9 @@ func (s *Server) removeProjectFile(w http.ResponseWriter, r *http.Request, me se
 }
 
 // projectTranslatedFile sends a file of the project (?name=) with the
-// translations of a target language (?lang=): a Word document in the
-// target language, a bilingual file with its translations and states, or
-// a text. Segments not translated yet keep their source text.
+// translations of a target language (?lang=): a document (Word,
+// PowerPoint, Excel, a web page, InDesign IDML) in the target language, a
+// bilingual file with its translations and states, or a text. Segments not translated yet keep their source text.
 //
 // Access: read on the project, or work in it.
 func (s *Server) projectTranslatedFile(w http.ResponseWriter, r *http.Request, me session) {
@@ -672,7 +674,12 @@ func (s *Server) projectTranslatedFile(w http.ResponseWriter, r *http.Request, m
 	for i, sg := range segs {
 		plain[i] = sg.Segment
 	}
-	format := formatOf(f.Name)
+	// The format the file was read in when it was added: a page added as
+	// text before there was a filter for web pages stays text.
+	format := f.Format
+	if format == "" {
+		format = formatOf(f.Name)
+	}
 	data, err := translatedFile(format, f.Data, p.Settings.SourceLang, lang, plain)
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "badFile", fmt.Sprintf("%s could not be written in %s: %v", f.Name, lang, err))
@@ -688,9 +695,10 @@ func (s *Server) projectTranslatedFile(w http.ResponseWriter, r *http.Request, m
 	w.Write(data)
 }
 
-// projectReturnPackage sends the Trados return package (.sdlrpx) of a
-// project made from a Trados package: the package's bilingual files with
-// the project's translations and states.
+// projectReturnPackage sends the return package of a project made from a
+// package: a Trados return package (.sdlrpx) or a memoQ delivery package
+// (.mqback) with the package's bilingual files, the project's
+// translations and states in them.
 //
 // Access: read on the project, or work in it.
 func (s *Server) projectReturnPackage(w http.ResponseWriter, r *http.Request, me session) {
@@ -706,7 +714,7 @@ func (s *Server) projectReturnPackage(w http.ResponseWriter, r *http.Request, me
 		}
 	}
 	if pkgName == "" {
-		writeError(w, http.StatusNotFound, "notFound", "The project was not made from a Trados package.")
+		writeError(w, http.StatusNotFound, "notFound", "The project was not made from a package.")
 		return
 	}
 	pkg, err := s.cfg.Projects.File(ctx, p.ID, pkgName)
@@ -740,12 +748,19 @@ func (s *Server) projectReturnPackage(w http.ResponseWriter, r *http.Request, me
 		}
 		translated[f.Package] = data
 	}
-	out, err := sdlpackage.Return(pkg.Data, translated)
+	var out []byte
+	ext := ".sdlrpx"
+	if formats.Of(pkgName) == formats.MemoQPackage {
+		ext = ".mqback"
+		out, err = mqpackage.Return(pkg.Data, translated)
+	} else {
+		out, err = sdlpackage.Return(pkg.Data, translated)
+	}
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "badFile", fmt.Sprintf("The return package could not be written: %v", err))
 		return
 	}
-	name := strings.TrimSuffix(path.Base(pkgName), path.Ext(pkgName)) + ".sdlrpx"
+	name := strings.TrimSuffix(path.Base(pkgName), path.Ext(pkgName)) + ext
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
 	w.Header().Set("Content-Length", strconv.Itoa(len(out)))
@@ -844,6 +859,12 @@ func (s *Server) projectProgress(w http.ResponseWriter, r *http.Request, me sess
 // contentTypes are the types of the formats the apps store.
 var contentTypes = map[string]string{
 	"docx":     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"pptx":     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	"xlsx":     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"html":     "text/html",
+	"idml":     "application/vnd.adobe.indesign-idml-package",
+	"mqxlz":    "application/octet-stream",
+	"mqout":    "application/octet-stream",
 	"xliff":    "application/xliff+xml",
 	"sdlxliff": "application/xliff+xml",
 	"pdf":      "application/pdf",

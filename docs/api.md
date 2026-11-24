@@ -541,7 +541,7 @@ Access: read on the project, or work in it.
 
 ### `GET /api/projects/{id}/files/translated`
 
-Sends a file of the project (?name=) with the translations of a target language (?lang=): a Word document in the target language, a bilingual file with its translations and states, or a text.
+Sends a file of the project (?name=) with the translations of a target language (?lang=): a document (Word, PowerPoint, Excel, a web page, InDesign IDML) in the target language, a bilingual file with its translations and states, or a text.
 
 Segments not translated yet keep their source text.
 
@@ -672,7 +672,7 @@ Access: read on the project, or work in it.
 
 ### `GET /api/projects/{id}/return-package`
 
-Sends the Trados return package (.sdlrpx) of a project made from a Trados package: the package's bilingual files with the project's translations and states.
+Sends the return package of a project made from a package: a Trados return package (.sdlrpx) or a memoQ delivery package (.mqback) with the package's bilingual files, the project's translations and states in them.
 
 Access: read on the project, or work in it.
 

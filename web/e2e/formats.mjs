@@ -1,0 +1,190 @@
+// Every document format goes from the file to the translated file:
+// PowerPoint, Excel, a web page and InDesign IDML in one project, and a
+// memoQ handoff package to its delivery package.
+import { readFileSync, readdirSync } from "node:fs";
+import { inflateRawSync } from "node:zlib";
+import { run } from "./harness.mjs";
+
+/** The entries of a ZIP file, by name. */
+function unzip(buf) {
+  const out = {};
+  let p = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const n = buf.readUInt16LE(p + 10);
+  p = buf.readUInt32LE(p + 16);
+  for (let i = 0; i < n; i++) {
+    const method = buf.readUInt16LE(p + 10);
+    const size = buf.readUInt32LE(p + 20);
+    const nameLen = buf.readUInt16LE(p + 28);
+    const extra = buf.readUInt16LE(p + 30);
+    const comment = buf.readUInt16LE(p + 32);
+    const local = buf.readUInt32LE(p + 42);
+    const name = buf.toString("utf8", p + 46, p + 46 + nameLen);
+    const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+    const raw = buf.subarray(start, start + size);
+    out[name] = method === 0 ? raw : inflateRawSync(raw);
+    p += 46 + nameLen + extra + comment;
+  }
+  return out;
+}
+
+export default () =>
+  run(
+    "Document formats and memoQ packages",
+    async ({ send, evaluate, click, text, check, sleep, open, setValue, key, fixtures, downloads, waitFor, errors }) => {
+      const docs = `${fixtures}/documents`;
+      const setFiles = async (files) => {
+        const doc = await send("DOM.getDocument", { depth: -1, pierce: true });
+        const q = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "input[type=file][multiple]:not([webkitdirectory])" });
+        await send("DOM.setFileInputFiles", { nodeId: q.nodeId, files });
+      };
+      const through = async () => {
+        await click("button", "Continue to memories");
+        await sleep(300);
+        await click("button", "Continue to terminology");
+        await sleep(300);
+        await click("button", "Continue to review");
+        await waitFor("!!document.querySelector('.analysis')");
+      };
+      /** Opens a file of the project, types a translation into its named segment and confirms it. */
+      const translate = async (file, source, translation) => {
+        await setValue("#ed-file", await evaluate(`[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes(${JSON.stringify(file)})).value`));
+        await waitFor(`document.querySelector('#ed-file option:checked')?.textContent.includes(${JSON.stringify(file)}) && document.querySelectorAll('.seg').length > 0`);
+        await sleep(400);
+        const found = await evaluate(`(() => { const s = [...document.querySelectorAll('.seg')].find(s => s.querySelector('.seg-source').innerText.replace(/\\s+/g, ' ').includes(${JSON.stringify(source)})); if (!s) return false; (s.querySelector('.seg-target-view') ?? s.querySelector('.target-editor')).click(); return true; })()`);
+        if (!found) return false;
+        await sleep(400);
+        await evaluate("document.querySelector('.seg.is-active .target-editor')?.focus()");
+        await sleep(200);
+        await key("a", "KeyA", 65, 2);
+        await send("Input.insertText", { text: translation });
+        await sleep(200);
+        await key("Enter", "Enter", 13, 2);
+        await sleep(400);
+        return true;
+      };
+      const save = async (label, name, said = name) => {
+        await click("button", label);
+        const ok = await waitFor(`document.body.innerText.includes(${JSON.stringify("Saved " + said)})`);
+        await sleep(500);
+        return ok && readdirSync(downloads).includes(name);
+      };
+
+      await open("/new", { wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFiles([`${docs}/Folien.pptx`, `${docs}/Tabelle.xlsx`, `${docs}/Seite.html`, `${docs}/Layout.idml`]);
+      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 4", 15000), "the four files are listed");
+      check(
+        await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable' && !r.textContent.includes('reference file'))"),
+        "a presentation, a workbook, a web page and an InDesign document are files to translate",
+      );
+      check((await text()).includes("Detected German"), "the language is read from their text");
+      await setValue("#pname", "Vier Formate");
+      await sleep(200);
+      await through();
+      check((await text()).includes("4 files to translate"), "the review counts them");
+      await click("button", "Create project");
+      check(await waitFor("!!document.querySelector('#ed-file')"), "the editor offers the files");
+
+      // A presentation: slides in the order of the show, notes after their slide.
+      check(await translate("Folien.pptx", "Mietrecht 2027", "Tenancy law 2027"), "the presentation's title is a segment");
+      let t = await text();
+      check(t.includes("Begrüßung.") && t.includes("Nettokaltmiete") && !t.includes("Titelmasterformat"), "notes and chart labels are read, the master's prompt is not");
+      check(await save("Save translated document", "Folien_en-GB.pptx"), "the presentation is saved under its name in the target language");
+      let z = unzip(readFileSync(`${downloads}/Folien_en-GB.pptx`));
+      check(z["ppt/slides/slide2.xml"].toString().includes("<a:t>Tenancy law 2027</a:t>"), "the slide has the translation");
+
+      // A workbook: cells, not numbers.
+      check(await translate("Tabelle.xlsx", "Kündigung durch den Mieter", "Notice by the tenant"), "a cell of the workbook is a segment");
+      check((await evaluate("document.querySelectorAll('.seg').length")) === 4, "the workbook's four texts, without its number");
+      check(await save("Save translated document", "Tabelle_en-GB.xlsx"), "the workbook is saved");
+      z = unzip(readFileSync(`${downloads}/Tabelle_en-GB.xlsx`));
+      check(
+        z["xl/sharedStrings.xml"].toString().includes("<si><t>Notice by the tenant</t></si>") && z["xl/worksheets/sheet1.xml"].toString().includes('<c r="B2"><v>3</v></c>'),
+        "the cell has the translation and the number is as it was",
+      );
+
+      // A web page: the title, the text with its tags, the picture's description.
+      check(await translate("Seite.html", "Das Haus in der Lindenstraße", "The house in Lindenstraße"), "a picture's description is a segment");
+      check(
+        (await evaluate("[...document.querySelectorAll('.seg')].find(s => s.querySelector('.seg-source').innerText.includes('Die Kaution'))?.querySelectorAll('.seg-source .tag-chip').length")) === 2,
+        "bold text of the page is a pair of tags",
+      );
+      check(await save("Save translated document", "Seite_en-GB.html"), "the page is saved");
+      const page = readFileSync(`${downloads}/Seite_en-GB.html`, "utf8");
+      check(
+        page.includes('<html lang="en-GB">') && page.includes('alt="The house in Lindenstraße"') && page.includes("<p>Die Kaution ist <b>fällig</b>."),
+        "the page has the translation, the target language, and its other text as it was",
+      );
+
+      // An InDesign document.
+      check(await translate("Layout.idml", "Näheres steht im Mietvertrag.", "The lease has the details."), "a paragraph of the InDesign document is a segment");
+      check(await save("Save translated document", "Layout_en-GB.idml"), "the InDesign document is saved");
+      z = unzip(readFileSync(`${downloads}/Layout_en-GB.idml`));
+      check(
+        Object.keys(z)[0] === "mimetype" && z["Stories/Story_u1.xml"].toString().includes("<Content>The lease has the details.</Content>"),
+        "the story has the translation and the package its type first",
+      );
+      // The preview shows the workbook's sheet as a table.
+      await setValue("#ed-file", await evaluate("[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes('Tabelle.xlsx')).value"));
+      await sleep(500);
+      await click("button", "Preview");
+      check(await waitFor("document.querySelectorAll('.preview .pv-table td').length >= 4"), "the preview lays the workbook's cells out as its sheet");
+      await click("button", "Preview");
+
+      // A memoQ handoff package becomes a project, and goes back as a delivery package.
+      await open("/new", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFiles([`${docs}/Hofmann.mqout`]);
+      check(await waitFor("document.body.innerText.includes('From the memoQ handoff package Hofmann.mqout')", 15000), "the package's document is listed, out of its archive");
+      t = await text();
+      check(t.includes("Mietvertrag.docx.mqxliff") && t.includes("1 of 3 segments confirmed"), "with its name and how far it is: " + (t.match(/From the memoQ[^\n]*/)?.[0] ?? ""));
+      await setValue("#pname", "Hofmann memoQ");
+      await sleep(200);
+      await through();
+      check((await text()).includes("from the memoQ handoff package Hofmann.mqout"), "the review names the package");
+      await click("button", "Create project");
+      check(await waitFor("document.querySelectorAll('.seg').length === 3"), "the document opens with its three segments");
+      await evaluate("document.querySelector('.seg.is-active .target-editor')?.focus()");
+      await sleep(200);
+      await key("a", "KeyA", 65, 2);
+      await send("Input.insertText", { text: "Made in Interlinea" });
+      await sleep(200);
+      await key("Enter", "Enter", 13, 2);
+      await sleep(300);
+      check(await save("Save return package", "Hofmann.mqback", "the return package Hofmann.mqback"), "the delivery package is saved");
+      z = unzip(readFileSync(`${downloads}/Hofmann.mqback`));
+      check(Object.keys(z).sort().join(",") === "DeliveryPackageInfo.xml,Mietvertrag.docx.mqxliff", "it holds the document and the delivery's description: " + Object.keys(z).join(","));
+      check(
+        z["Mietvertrag.docx.mqxliff"].toString().includes("Made in Interlinea") && z["DeliveryPackageInfo.xml"].toString().includes("<HandoffDeliveryPackageInfo") && z["DeliveryPackageInfo.xml"].toString().includes("<User>Anna Lindner</User>"),
+        "the document has the translation; the description is the handoff's under the delivery's names",
+      );
+
+      // A memoQ XLIFF archive on its own is a bilingual file and goes back into its archive.
+      await open("/new", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFiles([`${docs}/Mietvertrag.mqxlz`]);
+      check(await waitFor("document.body.innerText.includes('memoQ MQXLIFF')", 15000), "an archive is read as memoQ XLIFF");
+      await setValue("#pname", "Archiv");
+      await sleep(200);
+      await through();
+      await click("button", "Create project");
+      await waitFor("document.querySelectorAll('.seg').length === 3");
+      await evaluate("document.querySelector('.seg.is-active .target-editor')?.focus()");
+      await sleep(200);
+      await key("a", "KeyA", 65, 2);
+      await send("Input.insertText", { text: "Back into the archive" });
+      await sleep(200);
+      await key("Enter", "Enter", 13, 2);
+      await sleep(300);
+      check(await save("Save XLIFF", "Mietvertrag.mqxlz"), "the archive is saved under its name");
+      z = unzip(readFileSync(`${downloads}/Mietvertrag.mqxlz`));
+      check(z["document.mqxliff"].toString().includes("Back into the archive") && !!z["skeleton.xml"], "the document in it has the translation, and what memoQ needs is still there");
+      check(errors.length === 0, "no console errors: " + errors.join(" | "));
+    },
+  );

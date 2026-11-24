@@ -3,7 +3,7 @@
 // termbases the server doesn't have yet go up first, with their units and
 // entries, so the project finds them there.
 
-import { tm, type CoreApi } from "./core";
+import { documentFormat, tm, type CoreApi } from "./core";
 import type { Entry, Project, ProjectFile, Termbase, TranslationMemory } from "./data";
 import { projectMemoryName } from "./data";
 import { openMemory } from "./editor/memory";
@@ -137,7 +137,7 @@ export function uploadOf(f: ProjectFile): FileUpload {
     name: f.name,
     role: f.role,
     targetLang: f.targetLang,
-    format: f.role === "reference" ? (/\.([^.]+)$/.exec(f.name)?.[1]?.toLowerCase() ?? "") : f.kind === "text" ? "txt" : f.kind,
+    format: f.role === "reference" ? (/\.([^.]+)$/.exec(f.name)?.[1]?.toLowerCase() ?? "") : f.kind === "text" ? "txt" : f.kind === "docx" ? (documentFormat(f.name) ?? "docx") : /\.mqxlz$/i.test(f.name) ? "mqxlz" : f.kind,
     data: base64(bytes),
     segments:
       f.role === "translatable"

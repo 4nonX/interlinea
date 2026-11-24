@@ -74,11 +74,13 @@ import { Preview } from "../editor/Preview";
 import { AnalysisTable } from "../components/AnalysisTable";
 import {
   core,
-  DOCX_TYPE,
   download,
   loadCore,
+  documentFormat,
+  DOCUMENT_TYPE,
   mergeDocx,
   mergeXliff,
+  returnPackageName,
   returnSdlPackage,
   SDL_RETURN_TYPE,
   tm,
@@ -703,8 +705,8 @@ export function Editor({
               segs,
             );
           }
-          const rpx = await returnSdlPackage(pkg.bytes, translated);
-          const name = pkg.name.replace(/\.sdlppx$/i, "") + ".sdlrpx";
+          const rpx = await returnSdlPackage(pkg.bytes, pkg.name, translated);
+          const name = returnPackageName(pkg.name);
           download(rpx, name, SDL_RETURN_TYPE);
           notify(
             `Saved the return package ${name} with ${plural(Object.keys(translated).length, "file", "files")}.${pending}`,
@@ -723,13 +725,12 @@ export function Editor({
         source,
         target,
         segments,
+        file.name,
       );
-      const base = (file.name.split("/").pop() ?? file.name).replace(
-        /\.docx$/i,
-        "",
-      );
-      const name = `${base}_${target}.docx`;
-      download(out, name, DOCX_TYPE);
+      const own = file.name.split("/").pop() ?? file.name;
+      const dot = own.lastIndexOf(".");
+      const name = `${own.slice(0, dot)}_${target}${own.slice(dot)}`;
+      download(out, name, DOCUMENT_TYPE[documentFormat(file.name) ?? "docx"]);
       const empty = segments.filter((s) => !plain(s.target).trim()).length;
       notify(
         empty

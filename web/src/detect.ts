@@ -7,6 +7,7 @@
 import type { LangCode } from "./data";
 import { countWords, type PendingDoc } from "./draft";
 import {
+  documentFormat,
   extractDocx,
   extractXliff,
   openSdlPackage,
@@ -335,14 +336,16 @@ async function readPackageFile(
   pkgBytes: Uint8Array,
   path: string,
 ): Promise<PendingDoc> {
-  const file = path.split("/").pop() ?? path;
+  // A memoQ document kept in an archive is the memoQ XLIFF in it.
+  const shown = path.replace(/\.mqxlz$/i, ".mqxliff");
+  const file = shown.split("/").pop() ?? shown;
   try {
-    const bytes = await readSdlPackage(pkgBytes, path);
+    const bytes = await readSdlPackage(pkgBytes, name, path);
     const bi = await extractXliff(bytes);
     const text = bi.segments.map((s) => plain(s.source)).join("\n");
     return {
       file,
-      path,
+      path: shown,
       words: countWords(text),
       text: text.slice(0, 20000),
       bytes,
@@ -353,7 +356,7 @@ async function readPackageFile(
   } catch (e) {
     return {
       file,
-      path,
+      path: shown,
       words: 0,
       text: null,
       error: e instanceof Error ? e.message : String(e),
@@ -390,7 +393,7 @@ async function readPackage(file: File): Promise<PendingDoc[]> {
     return [{ file: file.name, words: 0, text: null, error: unreadable(e) }];
   }
   try {
-    const pkg = await openSdlPackage(bytes);
+    const pkg = await openSdlPackage(bytes, file.name);
     const targets = pkg.files.filter((f) => f.target).map((f) => f.path);
     if (!targets.length)
       return [
@@ -456,7 +459,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
       };
     }
   }
-  if (/\.docx$/i.test(file.name)) {
+  if (documentFormat(file.name)) {
     let bytes: Uint8Array;
     try {
       bytes = new Uint8Array(await file.arrayBuffer());
@@ -471,7 +474,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
     try {
       // Sentence rules barely matter for detection; the units are extracted
       // again with the confirmed source language when the project is created.
-      const ex = await extractDocx(bytes, "en");
+      const ex = await extractDocx(bytes, "en", file.name);
       const text = ex.segments.map((s) => plain(s.source)).join("\n");
       return {
         file: file.name,

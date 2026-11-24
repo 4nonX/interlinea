@@ -56,7 +56,7 @@ import {
   type TranslationMemory,
 } from "./data";
 import { coreToRuns, runsToCore, type Segment } from "./editor/model";
-import { core, extractDocx, extractXliff, loadCore } from "./core";
+import { core, documentFormat, extractDocx, extractXliff, loadCore } from "./core";
 import { openRemoteMemory } from "./editor/memory";
 import { fromCoreEntry, infoTypesFromCore, toCoreEntry } from "./termio";
 import { go } from "./App";
@@ -339,9 +339,9 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
         const kind: ProjectFile["kind"] =
           f.role === "reference"
             ? "none"
-            : ext(f.name) === "docx"
+            : documentFormat(f.name)
               ? "docx"
-              : /^(xlf|xliff|sdlxliff|mqxliff)$/.test(ext(f.name))
+              : /^(xlf|xliff|sdlxliff|mqxliff|mqxlz)$/.test(ext(f.name))
                 ? "xliff"
                 : "text";
         const bytes = before?.bytes ?? (await api.fileBytes(p.id, f.name));
@@ -354,7 +354,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
           if (!before) {
             try {
               if (kind === "docx") {
-                const ex = await extractDocx(bytes, s.sourceLang);
+                const ex = await extractDocx(bytes, s.sourceLang, f.name);
                 file.blocks = ex.blocks;
                 local = new Map(ex.segments.map((x) => [x.id, x]));
               } else if (kind === "xliff") {

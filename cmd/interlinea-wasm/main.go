@@ -24,6 +24,7 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
+	"github.com/4nonX/interlinea/filter/formats"
 )
 
 func result(v any, err error) any {
@@ -42,16 +43,26 @@ func bytesArg(v js.Value) ([]byte, error) {
 	return b, nil
 }
 
-func options(args []js.Value, i int) (docx.Options, error) {
+// options reads the options of extract and merge: the document's format
+// ("docx" when not given, else "pptx", "xlsx", "html" or "idml") and, for
+// Word, whether tracked changes are kept.
+func options(args []js.Value, i int) (string, docx.Options, error) {
 	var o struct {
-		KeepRevisions bool `json:"keepRevisions"`
+		Format        string `json:"format"`
+		KeepRevisions bool   `json:"keepRevisions"`
 	}
 	if len(args) > i && args[i].Type() == js.TypeString && args[i].String() != "" {
 		if err := json.Unmarshal([]byte(args[i].String()), &o); err != nil {
-			return docx.Options{}, fmt.Errorf("options: %w", err)
+			return "", docx.Options{}, fmt.Errorf("options: %w", err)
 		}
 	}
-	return docx.Options{KeepRevisions: o.KeepRevisions}, nil
+	if o.Format == "" {
+		o.Format = formats.Word
+	}
+	if !formats.Document(o.Format) {
+		return "", docx.Options{}, fmt.Errorf("options: %q is not a document format", o.Format)
+	}
+	return o.Format, docx.Options{KeepRevisions: o.KeepRevisions}, nil
 }
 
 func extract(_ js.Value, args []js.Value) (out any) {
@@ -63,7 +74,7 @@ func extract(_ js.Value, args []js.Value) (out any) {
 	if len(args) < 2 {
 		return result(nil, fmt.Errorf("extract(bytes, lang, options)"))
 	}
-	opts, err := options(args, 2)
+	format, opts, err := options(args, 2)
 	if err != nil {
 		return result(nil, err)
 	}
@@ -71,7 +82,12 @@ func extract(_ js.Value, args []js.Value) (out any) {
 	if err != nil {
 		return result(nil, err)
 	}
-	ex, err := docx.Extract(data, args[1].String(), opts)
+	var ex *filter.Extraction
+	if format == formats.Word {
+		ex, err = docx.Extract(data, args[1].String(), opts)
+	} else {
+		ex, err = formats.Extract(format, data, args[1].String())
+	}
 	if err != nil {
 		return result(nil, err)
 	}
@@ -88,7 +104,7 @@ func merge(_ js.Value, args []js.Value) (out any) {
 	if len(args) < 4 {
 		return result(nil, fmt.Errorf("merge(bytes, lang, target, translations, options)"))
 	}
-	opts, err := options(args, 4)
+	format, opts, err := options(args, 4)
 	if err != nil {
 		return result(nil, err)
 	}
@@ -100,7 +116,12 @@ func merge(_ js.Value, args []js.Value) (out any) {
 	if err := json.Unmarshal([]byte(args[3].String()), &raw); err != nil {
 		return result(nil, fmt.Errorf("translations: %w", err))
 	}
-	out2, err := docx.Merge(data, args[1].String(), args[2].String(), filter.Translations(raw), opts)
+	var out2 []byte
+	if format == formats.Word {
+		out2, err = docx.Merge(data, args[1].String(), args[2].String(), filter.Translations(raw), opts)
+	} else {
+		out2, err = formats.Merge(format, data, args[1].String(), args[2].String(), filter.Translations(raw))
+	}
 	if err != nil {
 		return result(nil, err)
 	}
@@ -113,7 +134,7 @@ func main() {
 	api := map[string]any{
 		"extract": js.FuncOf(extract),
 		"merge":   js.FuncOf(merge),
-		"version": "5",
+		"version": "6",
 	}
 	for k, v := range tmFuncs() {
 		api[k] = v

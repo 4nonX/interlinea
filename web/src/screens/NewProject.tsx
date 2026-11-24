@@ -27,7 +27,13 @@ import {
   readFiles,
   type Detection,
 } from "../detect";
-import { core, loadCore, XLIFF_FORMAT_NAME, type Extracted } from "../core";
+import {
+  core,
+  loadCore,
+  packageKind,
+  XLIFF_FORMAT_NAME,
+  type Extracted,
+} from "../core";
 import {
   buildFiles,
   docName,
@@ -418,7 +424,7 @@ export function NewProject() {
       ps.push({
         field: "files",
         message:
-          "A project holds the files of one Trados package, so it can be saved back as one return package.",
+          "A project holds the files of one package, so it can be saved back as one return package.",
       });
     if (asTemplate && step === 4) {
       if (!templateName.trim())
@@ -1165,7 +1171,7 @@ export function NewProject() {
               {packages[0] && (
                 <span className="muted">
                   {" "}
-                  from the Trados package {packages[0]}
+                  from the {packageKind(packages[0])} {packages[0]}
                 </span>
               )}
             </dd>
@@ -1545,7 +1551,7 @@ export function FilesField({
         <p className="dropzone-text">
           {reading
             ? "Reading the files…"
-            : "Drop files or folders here. Word files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .xlf) and Trados packages (.sdlppx) keep their translations and states."}
+            : "Drop files or folders here. Word, PowerPoint, Excel, InDesign (IDML) and web page files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf), Trados packages (.sdlppx) and memoQ handoff packages (.mqout) keep their translations and states."}
         </p>
         <div className="row">
           <button
@@ -1611,7 +1617,7 @@ function describe(doc: PendingDoc): string {
     const done = bi.segments.filter((s) => s.status === "confirmed").length;
     const locked = bi.segments.filter((s) => s.locked).length;
     const what = doc.sdlPackage
-      ? `From the Trados package ${doc.sdlPackage.name}`
+      ? `From the ${packageKind(doc.sdlPackage.name)} ${doc.sdlPackage.name}`
       : (XLIFF_FORMAT_NAME[bi.format] ?? "XLIFF");
     const langs = bi.targetLang
       ? `, ${lang(knownLang(bi.sourceLang)).name} to ${lang(knownLang(bi.targetLang)).name}`

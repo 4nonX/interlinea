@@ -12,7 +12,7 @@ import (
 
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/filter"
-	"github.com/4nonX/interlinea/filter/docx"
+	"github.com/4nonX/interlinea/filter/formats"
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/tm"
 )
@@ -59,17 +59,17 @@ func readProjectFile(path, src string) (*filter.Extraction, error) {
 		}
 		return ex, nil
 	}
-	if strings.EqualFold(filepath.Ext(path), ".docx") {
+	if f := formats.Of(path); formats.Document(f) {
 		if src == "" {
-			return nil, usageErr("%s: -src is required for Word files", path)
+			return nil, usageErr("%s: -src is required for documents", path)
 		}
-		ex, err := docx.Extract(data, src, docx.Options{})
+		ex, err := formats.Extract(f, data, src)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		return ex, nil
 	}
-	return nil, fmt.Errorf("%s: not a Word or XLIFF file", path)
+	return nil, fmt.Errorf("%s: not %s, and not an XLIFF file", path, documentKinds)
 }
 
 func runAnalyze(args []string, _ io.Reader, stdout, stderr io.Writer) error {

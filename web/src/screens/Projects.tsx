@@ -84,7 +84,7 @@ export function Projects() {
           <p>
             {reading
               ? "Reading the files…"
-              : "Drop files, a folder or a Trados package here. Interlinea detects the source language and suggests memories and termbases for the client."}
+              : "Drop files, a folder, or a Trados or memoQ package here. Interlinea detects the source language and suggests memories and termbases for the client."}
           </p>
         </div>
         <div className="row">

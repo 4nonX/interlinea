@@ -189,7 +189,7 @@ function SettingsForm({ project }: { project: Project }) {
       ps.push({
         field: "files",
         message:
-          "Files of a Trados package come with the project they were made for; start a new project from the package.",
+          "Files of a package come with the project they were made for; start a new project from the package.",
       });
     return ps;
     // eslint-disable-next-line react-hooks/exhaustive-deps

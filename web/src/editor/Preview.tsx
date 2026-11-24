@@ -13,8 +13,9 @@ interface Props {
 
 /**
  * A live preview of the translated document, built from the paragraph
- * structure the Word filter reports: styles, tables, footnotes, header and
- * footer. Segments without a translation show their source text. The saved
+ * structure the document's filter reports: styles, tables, footnotes,
+ * header and footer; for a workbook its sheets as tables, for a
+ * presentation its slides' text in order. Segments without a translation show their source text. The saved
  * file comes from the original and is exact; this view is an approximation.
  */
 export function Preview({
@@ -98,6 +99,9 @@ export function Preview({
     { title: "Charts", blocks: part("chart") },
     { title: "SmartArt", blocks: part("diagram") },
     { title: "Comments", blocks: part("comment") },
+    { title: "Speaker notes", blocks: part("notes") },
+    { title: "Title and description of the page", blocks: part("meta") },
+    { title: "Texts of pictures, links and form fields", blocks: part("attribute") },
   ].filter((x) => x.blocks.length > 0);
   return (
     <div className="preview" ref={root} lang={targetLang}>

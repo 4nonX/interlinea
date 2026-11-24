@@ -47,3 +47,34 @@ func TestExtractAndMerge(t *testing.T) {
 		t.Error("invalid translations should fail")
 	}
 }
+
+// extract and merge read every document format, by the file's name.
+func TestExtractAndMergeOtherFormats(t *testing.T) {
+	dir := t.TempDir()
+	deck := filepath.Join(dir, "Folien.pptx")
+	page := filepath.Join(dir, "Seite.html")
+	os.WriteFile(deck, docxtest.Deck(), 0o644)
+	os.WriteFile(page, []byte(`<p>Die Kaution ist <b>fällig</b>.</p>`), 0o644)
+	code, out, errOut := exec(t, "", "extract", "-lang", "de-DE", deck)
+	if code != 0 || !strings.Contains(out, "slide2/p1/s1\tMietrecht 2027") || !strings.Contains(out, "notesSlide1/p1/s1\tAuf die Tabelle hinweisen.") {
+		t.Fatalf("extract pptx: %d %q %q", code, out, errOut)
+	}
+	code, out, errOut = exec(t, "", "extract", "-lang", "de-DE", page)
+	if code != 0 || out != "b1/s1\tDie Kaution ist {1}fällig{/1}.\n" {
+		t.Fatalf("extract html: %d %q %q", code, out, errOut)
+	}
+	trFile := filepath.Join(dir, "tr.json")
+	os.WriteFile(trFile, []byte(`{"b1/s1":[{"text":"The deposit is "},{"tag":{"kind":"open","id":"1"}},{"text":"due"},{"tag":{"kind":"close","id":"1"}},{"text":"."}]}`), 0o644)
+	dst := filepath.Join(dir, "page.html")
+	if code, out, errOut = exec(t, "", "merge", "-lang", "de-DE", "-target", "en-GB", "-o", dst, page, trFile); code != 0 {
+		t.Fatalf("merge html: %d %q %q", code, out, errOut)
+	}
+	if got, _ := os.ReadFile(dst); string(got) != `<p>The deposit is <b>due</b>.</p>` {
+		t.Errorf("merged page: %s", got)
+	}
+	other := filepath.Join(dir, "Plan.pdf")
+	os.WriteFile(other, []byte("%PDF"), 0o644)
+	if code, _, errOut = exec(t, "", "extract", other); code == 0 || !strings.Contains(errOut, "is not a Word, PowerPoint, Excel, HTML or InDesign IDML file") {
+		t.Errorf("extract pdf: %d %q", code, errOut)
+	}
+}

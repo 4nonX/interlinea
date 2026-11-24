@@ -10,21 +10,36 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
+	"github.com/4nonX/interlinea/filter/formats"
 	"github.com/4nonX/interlinea/langtag"
 )
 
-// runExtract prints the translatable units of a Word document.
+// document names the formats extract and merge read.
+const documentKinds = "a Word, PowerPoint, Excel, HTML or InDesign IDML file"
+
+// extractDocument reads a document by the format its name says.
+func extractDocument(name string, data []byte, lang string, opts docx.Options) (*filter.Extraction, error) {
+	switch f := formats.Of(name); {
+	case f == formats.Word:
+		return docx.Extract(data, lang, opts)
+	case formats.Document(f):
+		return formats.Extract(f, data, lang)
+	}
+	return nil, usageErr("%s is not %s", name, documentKinds)
+}
+
+// runExtract prints the translatable units of a document.
 func runExtract(args []string, _ io.Reader, stdout, stderr io.Writer) error {
-	fs := newFlags("extract", "file.docx", stderr)
+	fs := newFlags("extract", "file", stderr)
 	lang := fs.String("lang", "en", "source language of the document (BCP 47)")
 	asJSON := fs.Bool("json", false, "print units and blocks as JSON")
-	keep := fs.Bool("keep-revisions", false, "keep tracked changes as tags instead of accepting them")
+	keep := fs.Bool("keep-revisions", false, "Word: keep tracked changes as tags instead of accepting them")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	opts := docx.Options{KeepRevisions: *keep}
 	if fs.NArg() != 1 {
-		return usageErr("expected one .docx file")
+		return usageErr("expected one file: " + documentKinds)
 	}
 	if _, err := langtag.Normalize(*lang); err != nil {
 		return usageErr("invalid language %q", *lang)
@@ -33,7 +48,7 @@ func runExtract(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	ex, err := docx.Extract(data, *lang, opts)
+	ex, err := extractDocument(fs.Arg(0), data, *lang, opts)
 	if err != nil {
 		return err
 	}
@@ -51,9 +66,9 @@ func runExtract(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// runMerge writes a translated copy of a Word document.
+// runMerge writes a translated copy of a document.
 func runMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
-	fs := newFlags("merge", "file.docx translations.json", stderr)
+	fs := newFlags("merge", "file translations.json", stderr)
 	lang := fs.String("lang", "en", "source language of the document (as used for extract)")
 	target := fs.String("target", "", "target language written to the translated text (BCP 47)")
 	outName := fs.String("o", "", "output file (required)")
@@ -63,7 +78,7 @@ func runMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	opts := docx.Options{KeepRevisions: *keep}
 	if fs.NArg() != 2 {
-		return usageErr("expected a .docx file and a translations file")
+		return usageErr("expected a file (" + documentKinds + ") and a translations file")
 	}
 	if *outName == "" {
 		return usageErr("-o is required")
@@ -88,7 +103,15 @@ func runMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", fs.Arg(1), err)
 	}
-	out, err := docx.Merge(data, *lang, *target, tr, opts)
+	var out []byte
+	switch f := formats.Of(fs.Arg(0)); {
+	case f == formats.Word:
+		out, err = docx.Merge(data, *lang, *target, tr, opts)
+	case formats.Document(f):
+		out, err = formats.Merge(f, data, *lang, *target, tr)
+	default:
+		return usageErr("%s is not %s", fs.Arg(0), documentKinds)
+	}
 	if err != nil {
 		return err
 	}

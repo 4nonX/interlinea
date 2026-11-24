@@ -6770,7 +6770,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Sends a file of the project (?name=) with the translations of a target language (?lang=): a Word document in the target language, a bilingual file with its translations and states, or a text.",
+        "summary": "Sends a file of the project (?name=) with the translations of a target language (?lang=): a document (Word, PowerPoint, Excel, a web page, InDesign IDML) in the target language, a bilingual file with its translations and states, or a text.",
         "tags": [
           "Projects"
         ]
@@ -7491,7 +7491,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Sends the Trados return package (.sdlrpx) of a project made from a Trados package: the package's bilingual files with the project's translations and states.",
+        "summary": "Sends the return package of a project made from a package: a Trados return package (.sdlrpx) or a memoQ delivery package (.mqback) with the package's bilingual files, the project's translations and states in them.",
         "tags": [
           "Projects"
         ]

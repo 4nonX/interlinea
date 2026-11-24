@@ -13,6 +13,8 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
+	"github.com/4nonX/interlinea/filter/formats"
+	"github.com/4nonX/interlinea/filter/mqpackage"
 	"github.com/4nonX/interlinea/filter/sdlpackage"
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/langtag"
@@ -41,20 +43,15 @@ func plainKey(s string) string {
 	return strings.Join(strings.FieldsFunc(s, unicode.IsSpace), " ")
 }
 
-// formatOf is the format of a file by its name: docx, xliff, package (a
-// Trados project package) or txt.
+// formatOf is the format of a file by its name: a document format (docx,
+// pptx, xlsx, html, idml), xliff, mqxlz (a memoQ XLIFF in its archive),
+// package (a Trados or memoQ package) or txt.
 func formatOf(name string) string {
-	n := strings.ToLower(name)
-	switch {
-	case strings.HasSuffix(n, ".docx"):
-		return "docx"
-	case strings.HasSuffix(n, ".xlf"), strings.HasSuffix(n, ".xliff"), strings.HasSuffix(n, ".sdlxliff"), strings.HasSuffix(n, ".mqxliff"):
-		return "xliff"
-	case strings.HasSuffix(n, ".sdlppx"):
+	f := formats.Of(name)
+	if formats.Package(f) {
 		return "package"
-	default:
-		return "txt"
 	}
+	return f
 }
 
 // prepareFiles reads the uploaded files of a project with the given source
@@ -80,32 +77,59 @@ func prepareFiles(files []fileUpload, sourceLang string, targets []string) ([]fi
 	return out, nil
 }
 
-// expandPackage turns a Trados package into the package file and the
-// bilingual files of its target languages that are the project's.
+// expandPackage turns a Trados or memoQ package into the package file and
+// the bilingual files of its target languages that are the project's.
 func expandPackage(f fileUpload, targets []string) ([]fileUpload, error) {
 	if formatOf(f.Name) != "package" {
-		return nil, problemf("%s is not a Trados project package (.sdlppx).", f.Name)
+		return nil, problemf("%s is not a Trados project package (.sdlppx) or a memoQ handoff package (.mqout).", f.Name)
 	}
-	pkg, err := sdlpackage.Open(f.Data)
-	if err != nil {
-		return nil, problemf("%s could not be read as a Trados package: %v", f.Name, err)
-	}
-	f.Format, f.TargetLang, f.Segments = "sdlppx", "", nil
-	out := []fileUpload{f}
-	for _, pf := range pkg.Files {
-		if !pf.Target || !strings.HasSuffix(strings.ToLower(pf.Path), ".sdlxliff") {
-			continue
+	type member struct{ path, lang string }
+	var members []member
+	var sourceLang string
+	var read func(path string) ([]byte, error)
+	kind := formats.Of(f.Name)
+	if kind == formats.MemoQPackage {
+		pkg, err := mqpackage.Open(f.Data)
+		if err != nil {
+			return nil, problemf("%s could not be read as a memoQ handoff package: %v", f.Name, err)
 		}
-		lang, ok := projectTarget(pf.Lang, targets)
+		sourceLang = pkg.SourceLang
+		for _, pf := range pkg.Files {
+			members = append(members, member{pf.Path, pf.Lang})
+		}
+		read = func(path string) ([]byte, error) { return mqpackage.Read(f.Data, path) }
+	} else {
+		pkg, err := sdlpackage.Open(f.Data)
+		if err != nil {
+			return nil, problemf("%s could not be read as a Trados package: %v", f.Name, err)
+		}
+		sourceLang = pkg.SourceLang
+		for _, pf := range pkg.Files {
+			if pf.Target && strings.HasSuffix(strings.ToLower(pf.Path), ".sdlxliff") {
+				members = append(members, member{pf.Path, pf.Lang})
+			}
+		}
+		read = func(path string) ([]byte, error) { return sdlpackage.Read(f.Data, path) }
+	}
+	f.Format, f.TargetLang, f.Segments = kind, "", nil
+	out := []fileUpload{f}
+	for _, m := range members {
+		lang, ok := projectTarget(m.lang, targets)
 		if !ok {
 			continue
 		}
-		data, err := sdlpackage.Read(f.Data, pf.Path)
+		data, err := read(m.path)
 		if err != nil {
-			return nil, problemf("%s in %s could not be read: %v", pf.Path, f.Name, err)
+			return nil, problemf("%s in %s could not be read: %v", m.path, f.Name, err)
 		}
-		b := fileUpload{Name: pf.Path, Role: project.Translatable, TargetLang: lang, Format: "xliff", Data: data, Package: pf.Path}
-		if err := prepareFile(&b, pkg.SourceLang, targets); err != nil {
+		// A memoQ document is stored as the memoQ XLIFF it is, whether or
+		// not the package kept it in an archive.
+		name := m.path
+		if strings.HasSuffix(strings.ToLower(name), ".mqxlz") {
+			name = name[:len(name)-len(".mqxlz")] + ".mqxliff"
+		}
+		b := fileUpload{Name: name, Role: project.Translatable, TargetLang: lang, Format: "xliff", Data: data, Package: m.path}
+		if err := prepareFile(&b, sourceLang, targets); err != nil {
 			return nil, err
 		}
 		out = append(out, b)
@@ -141,11 +165,18 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 	}
 	f.Format = want
 	if f.Format == "package" {
-		return problemf("%s is a Trados package: send it as a package, not as a file to translate.", f.Name)
+		return problemf("%s is a package: send it as a package, not as a file to translate.", f.Name)
 	}
 	switch f.Format {
-	case "xliff":
-		ex, err := xliff.Extract(f.Data)
+	case "xliff", formats.MemoQArchive:
+		doc := f.Data
+		if f.Format == formats.MemoQArchive {
+			var err error
+			if doc, err = mqpackage.ReadArchive(f.Data); err != nil {
+				return problemf("%s could not be read: %v", f.Name, err)
+			}
+		}
+		ex, err := xliff.Extract(doc)
 		if err != nil {
 			return problemf("%s could not be read: %v", f.Name, err)
 		}
@@ -161,11 +192,11 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 	case "txt":
 		return fillText(f, sourceLang, targets)
 	}
-	ex, err := docx.Extract(f.Data, sourceLang, docx.Options{})
+	ex, err := formats.Extract(f.Format, f.Data, sourceLang)
 	if err != nil {
 		return problemf("%s could not be read: %v", f.Name, err)
 	}
-	if len(f.Segments) > 0 && !matches(ex, f.Segments) {
+	if f.Format == formats.Word && len(f.Segments) > 0 && !matches(ex, f.Segments) {
 		// The app may have read the file with tracked changes kept.
 		if kept, err := docx.Extract(f.Data, sourceLang, docx.Options{KeepRevisions: true}); err == nil && matches(kept, f.Segments) {
 			ex = kept
@@ -386,26 +417,38 @@ func fileStateOf(s project.Segment) filter.State {
 	return filter.StateNew
 }
 
-// translatedFile writes a file with its segments' translations: a Word
+// translatedFile writes a file with its segments' translations: a
 // document in the target language, a bilingual file with translations and
 // states, or a text with each segment replaced by its translation.
 // Segments without a translation keep their source text.
 func translatedFile(format string, data []byte, sourceLang, targetLang string, segs []project.Segment) ([]byte, error) {
-	switch format {
-	case "docx":
+	if formats.Document(format) {
 		tr := filter.Translations{}
 		for _, s := range segs {
 			if strings.TrimSpace(s.Target.Plain()) != "" {
 				tr[s.ID] = s.Target
 			}
 		}
-		return docx.Merge(data, sourceLang, targetLang, tr, docx.Options{})
-	case "xliff":
+		return formats.Merge(format, data, sourceLang, targetLang, tr)
+	}
+	switch format {
+	case "xliff", formats.MemoQArchive:
 		up := map[string]xliff.Update{}
 		for _, s := range segs {
 			if !s.Locked {
 				up[s.ID] = xliff.Update{Target: s.Target, State: fileStateOf(s)}
 			}
+		}
+		if format == formats.MemoQArchive {
+			doc, err := mqpackage.ReadArchive(data)
+			if err != nil {
+				return nil, err
+			}
+			merged, err := xliff.Merge(doc, up)
+			if err != nil {
+				return nil, err
+			}
+			return mqpackage.WriteArchive(data, merged)
 		}
 		return xliff.Merge(data, up)
 	case "txt":
@@ -443,7 +486,7 @@ func translatedFile(format string, data []byte, sourceLang, targetLang string, s
 // files keep their name.
 func translatedName(name, format, lang string) string {
 	base := path.Base(name)
-	if format == "xliff" {
+	if format == "xliff" || format == formats.MemoQArchive {
 		return base
 	}
 	ext := path.Ext(base)

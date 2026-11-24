@@ -11,7 +11,7 @@ import {
   type LangCode,
   type ProjectFile,
 } from "./data";
-import { extractDocx, type Extracted } from "./core";
+import { documentFormat, extractDocx, type Extracted } from "./core";
 import { segmentText, type Segment } from "./editor/model";
 import type { PendingDoc } from "./draft";
 
@@ -35,7 +35,7 @@ export function draftDocs(docs: PendingDoc[]): DraftDoc[] {
 
 export function kindOf(doc: PendingDoc): FileKind {
   if (doc.bilingual) return "xliff";
-  if (doc.bytes && /\.docx$/i.test(doc.file)) return "docx";
+  if (doc.bytes && documentFormat(doc.file)) return "docx";
   return doc.text ? "text" : "none";
 }
 
@@ -81,7 +81,7 @@ export async function extractWordDocs(
   const out = new Map<string, Extracted>();
   for (const d of docs) {
     if (d.role === "translatable" && kindOf(d.doc) === "docx")
-      out.set(d.key, await extractDocx(d.doc.bytes!, source));
+      out.set(d.key, await extractDocx(d.doc.bytes!, source, d.doc.file));
   }
   return out;
 }

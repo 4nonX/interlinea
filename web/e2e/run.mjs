@@ -4,13 +4,14 @@ import terminology from "./terminology.mjs";
 import persistence from "./persistence.mjs";
 import xliff from "./xliff.mjs";
 import setup from "./setup.mjs";
+import formats from "./formats.mjs";
 import server from "./server.mjs";
 
 let passed = 0;
 let failed = 0;
 // The team server test needs a built interlinea-server ($INTERLINEA_SERVER);
 // CI always has one.
-const tests = [editor, terminology, persistence, xliff, setup];
+const tests = [editor, terminology, persistence, xliff, setup, formats];
 if (process.env.INTERLINEA_SERVER) tests.push(server);
 else if (process.env.CI) {
   console.log("FAIL INTERLINEA_SERVER is not set, so the team server test can't run");

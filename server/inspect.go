@@ -9,7 +9,8 @@ import (
 
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/filter"
-	"github.com/4nonX/interlinea/filter/docx"
+	"github.com/4nonX/interlinea/filter/formats"
+	"github.com/4nonX/interlinea/filter/mqpackage"
 	"github.com/4nonX/interlinea/filter/sdlpackage"
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/langdetect"
@@ -18,7 +19,7 @@ import (
 // textExtensions are the plain text formats translated as text.
 var textExtensions = map[string]bool{
 	".txt": true, ".md": true, ".csv": true, ".tsv": true, ".srt": true, ".po": true,
-	".htm": true, ".html": true, ".xml": true, ".json": true,
+	".xml": true, ".json": true,
 }
 
 // detectionLimit is how much text the language guess reads.
@@ -101,19 +102,42 @@ func inspect(name string, data []byte) inspection {
 	}
 	switch out.Format {
 	case "package":
-		pkg, err := sdlpackage.Open(data)
-		if err != nil {
-			out.Problem = "The file could not be read as a Trados package: " + err.Error()
-			return out
-		}
-		info := &packageInfo{Name: pkg.Name, SourceLang: pkg.SourceLang, TargetLangs: pkg.TargetLangs, Files: []packageFile{}, Other: pkg.Other}
-		var text strings.Builder
-		for _, f := range pkg.Files {
-			if !f.Target {
-				continue
+		memoQ := formats.Of(name) == formats.MemoQPackage
+		type member struct{ path, lang string }
+		var members []member
+		info := &packageInfo{Files: []packageFile{}}
+		read := func(p string) ([]byte, error) { return sdlpackage.Read(data, p) }
+		if memoQ {
+			pkg, err := mqpackage.Open(data)
+			if err != nil {
+				out.Problem = "The file could not be read as a memoQ handoff package: " + err.Error()
+				return out
 			}
-			pf := packageFile{Path: f.Path, Lang: f.Lang}
-			b, err := sdlpackage.Read(data, f.Path)
+			info.Name, info.SourceLang, info.TargetLangs, info.Other = pkg.Name, pkg.SourceLang, pkg.TargetLangs, pkg.Other
+			if info.Name == "" {
+				info.Name = strings.TrimSuffix(path.Base(name), path.Ext(name))
+			}
+			for _, f := range pkg.Files {
+				members = append(members, member{f.Path, f.Lang})
+			}
+			read = func(p string) ([]byte, error) { return mqpackage.Read(data, p) }
+		} else {
+			pkg, err := sdlpackage.Open(data)
+			if err != nil {
+				out.Problem = "The file could not be read as a Trados package: " + err.Error()
+				return out
+			}
+			info.Name, info.SourceLang, info.TargetLangs, info.Other = pkg.Name, pkg.SourceLang, pkg.TargetLangs, pkg.Other
+			for _, f := range pkg.Files {
+				if f.Target {
+					members = append(members, member{f.Path, f.Lang})
+				}
+			}
+		}
+		var text strings.Builder
+		for _, f := range members {
+			pf := packageFile{Path: f.path, Lang: f.lang}
+			b, err := read(f.path)
 			if err == nil {
 				var ex *filter.Extraction
 				if ex, err = xliff.Extract(b); err == nil {
@@ -133,8 +157,16 @@ func inspect(name string, data []byte) inspection {
 			out.Problem = "The package has no files to translate."
 		}
 		out.Detection = detect(text.String())
-	case "xliff":
-		ex, err := xliff.Extract(data)
+	case "xliff", formats.MemoQArchive:
+		doc := data
+		if out.Format == formats.MemoQArchive {
+			var err error
+			if doc, err = mqpackage.ReadArchive(data); err != nil {
+				out.Problem = "The file could not be read: " + err.Error()
+				return out
+			}
+		}
+		ex, err := xliff.Extract(doc)
 		if err != nil {
 			out.Problem = "The file could not be read: " + err.Error()
 			return out
@@ -149,10 +181,10 @@ func inspect(name string, data []byte) inspection {
 		}
 		out.Bilingual, out.Translatable, out.Warnings = b, true, append(out.Warnings, ex.Warnings...)
 		out.Detection = detect(text.String())
-	case "docx":
+	case formats.Word, formats.PowerPoint, formats.Excel, formats.HTML, formats.InDesign:
 		// Sentence rules barely matter here; the file is read again with
 		// the project's source language.
-		ex, err := docx.Extract(data, "en", docx.Options{})
+		ex, err := formats.Extract(out.Format, data, "en")
 		if err != nil {
 			out.Problem = "The file could not be read: " + err.Error()
 			return out

@@ -130,6 +130,11 @@ export type ContextRule = "previous" | "both";
 export type FileRole = "translatable" | "reference";
 
 /** How a file is read and writes its translation. */
+/**
+ * "docx" is a document one of the core's filters reads (Word, and by the
+ * file's name PowerPoint, Excel, a web page or InDesign IDML), "xliff" a
+ * bilingual file, "text" plain text, "none" a file that is not read.
+ */
 export type FileKind = "docx" | "xliff" | "text" | "none";
 
 export interface ProjectFile {

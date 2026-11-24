@@ -27,7 +27,10 @@ export interface Block {
     | "footer"
     | "comment"
     | "chart"
-    | "diagram";
+    | "diagram"
+    | "notes"
+    | "attribute"
+    | "meta";
   file: string;
   style?: string;
   styleName?: string;
