@@ -177,6 +177,7 @@ export function migrateV1(old: V1State): {
       branchedAt: old.branchedAt,
       gitWords: old.gitWords,
       autoInsert: old.autoInsert,
+      autoComplete: true,
       autoPropagate: old.autoPropagate,
       contextRule: old.contextRule,
     },

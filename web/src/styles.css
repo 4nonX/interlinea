@@ -2782,6 +2782,38 @@ table[aria-label="Units found"] .cell-action .row {
   margin: 0;
 }
 
+/* Completions offered while typing a translation */
+.completions {
+  position: fixed;
+  z-index: 40;
+  min-width: 160px;
+  max-width: 360px;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  font-size: 0.875rem;
+}
+
+.completions li {
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.completions li.is-selected {
+  background: var(--accent-weak);
+  color: var(--accent-text);
+}
+
+.completion-typed {
+  font-weight: 600;
+}
+
 /* Comments on a segment */
 .comment-list {
   display: grid;

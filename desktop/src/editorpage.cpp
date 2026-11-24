@@ -1389,6 +1389,30 @@ void EditorPage::recognize()
 
 void EditorPage::showResults()
 {
+    // What may complete a word being typed: the terms found for the segment,
+    // then the longer words of its memory matches.
+    {
+        QStringList words;
+        if (Options::autoComplete()) {
+            static const QRegularExpression word(QStringLiteral("[\\p{L}\\p{N}][\\p{L}\\p{N}\\p{M}'\u2019-]{4,}"),
+                                                 QRegularExpression::UseUnicodePropertiesOption);
+            QStringList fromMatches;
+            for (const QJsonValue &v : std::as_const(m_results)) {
+                const QJsonObject r = v.toObject();
+                if (r.contains(QLatin1String("unit"))) {
+                    auto it = word.globalMatch(plainText(r.value(QLatin1String("unit")).toObject().value(QLatin1String("target")).toArray()));
+                    while (it.hasNext())
+                        fromMatches << it.next().captured(0);
+                    continue;
+                }
+                for (const QJsonValue &t : r.value(QLatin1String("targets")).toArray())
+                    if (t.toObject().value(QLatin1String("status")).toString() != QLatin1String("forbidden"))
+                        words << t.toObject().value(QLatin1String("text")).toString();
+            }
+            words << fromMatches;
+        }
+        m_target->setCompletions(words);
+    }
     clear(m_resultsList);
     QWidget *panel = m_panel->widget();
     m_resultsCount->setVisible(!m_results.isEmpty());

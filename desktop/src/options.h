@@ -8,6 +8,9 @@ namespace Options {
 // Insert the best memory match when an empty segment opens.
 bool autoInsert();
 void setAutoInsert(bool on);
+// Offer the terms and memory words that complete a word being typed.
+bool autoComplete();
+void setAutoComplete(bool on);
 // Fill repetitions when a segment is confirmed.
 bool autoPropagate();
 void setAutoPropagate(bool on);

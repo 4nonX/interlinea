@@ -100,6 +100,8 @@ export interface State {
   gitWords: boolean;
   /** Editor: put the best memory match into an empty segment when it opens (Trados does this by default). */
   autoInsert: boolean;
+  /** Editor: offer the terms and memory words that complete a word being typed. */
+  autoComplete: boolean;
   /** Editor: confirming fills identical segments further on (auto-propagation). */
   autoPropagate: boolean;
   /** Context matches for new projects: the segment before must match (Trados) or before and after (memoQ). */
@@ -193,7 +195,7 @@ type Action =
   | { type: "setGitWords"; value: boolean }
   | {
       type: "setEditorOption";
-      option: "autoInsert" | "autoPropagate";
+      option: "autoInsert" | "autoPropagate" | "autoComplete";
       value: boolean;
     }
   | { type: "setContextRule"; value: "previous" | "both" }
@@ -287,6 +289,7 @@ const initial: State = {
   removals: [],
   gitWords: false,
   autoInsert: true,
+  autoComplete: true,
   autoPropagate: true,
   contextRule: "previous",
   userName: DEFAULT_USER_NAME,
@@ -1207,6 +1210,7 @@ function withDefaults(s: SavedState): SavedState {
     removals: s.removals ?? [],
     dictionaries: s.dictionaries ?? [],
     providers: s.providers ?? [],
+    autoComplete: s.autoComplete ?? true,
     // What the browser keeps is on this computer: termbases saved with a
     // server that never existed are shown as what they are.
     termbases: s.termbases.map((t) => {

@@ -14,6 +14,16 @@ void setAutoInsert(bool on)
     QSettings().setValue(QStringLiteral("editor/autoInsert"), on);
 }
 
+bool autoComplete()
+{
+    return QSettings().value(QStringLiteral("editor/autoComplete"), true).toBool();
+}
+
+void setAutoComplete(bool on)
+{
+    QSettings().setValue(QStringLiteral("editor/autoComplete"), on);
+}
+
 bool autoPropagate()
 {
     return QSettings().value(QStringLiteral("editor/autoPropagate"), true).toBool();

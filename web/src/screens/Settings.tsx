@@ -96,6 +96,29 @@ export function Settings() {
           <label className="choice">
             <input
               type="checkbox"
+              checked={state.autoComplete}
+              onChange={(e) =>
+                dispatch({
+                  type: "setEditorOption",
+                  option: "autoComplete",
+                  value: e.target.checked,
+                })
+              }
+            />
+            <span className="choice-body">
+              <span className="choice-title">
+                Complete words while you type
+              </span>
+              <span className="choice-desc">
+                After two letters, the terms found for the segment and the
+                words of its memory matches are offered. Tab or Enter takes
+                one, Escape closes the list.
+              </span>
+            </span>
+          </label>
+          <label className="choice">
+            <input
+              type="checkbox"
               checked={state.autoPropagate}
               onChange={(e) =>
                 dispatch({

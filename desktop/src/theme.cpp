@@ -167,6 +167,10 @@ QStatusBar::item { border: 0; }
 QMenu { background: @surface; border: 1px solid @border; border-radius: 8px; padding: 4px; }
 QMenu::item { padding: 6px 16px; border-radius: 6px; }
 QMenu::item:selected { background: @accentWeak; color: @accentText; }
+/* As the web app's .completions */
+QListWidget#completions { background: @surface; border: 1px solid @borderStrong; border-radius: 8px; padding: 4px; font-size: 14px; outline: 0; }
+QListWidget#completions::item { padding: 4px 8px; border-radius: 5px; color: @text; }
+QListWidget#completions::item:selected { background: @accentWeak; color: @accentText; }
 
 /* As the web app's .btn-small and .btn-quiet */
 QPushButton[small="true"] { padding: 5px 10px; min-height: 16px; font-size: 13px; font-weight: 500; }

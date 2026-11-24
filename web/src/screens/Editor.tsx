@@ -475,6 +475,14 @@ export function Editor({
       .filter((h) => h.targets.some((t) => t.status !== "forbidden"))
       .map((h) => ({ kind: "term" as const, h })),
   ];
+  // What may complete a word being typed: the terms found for the segment,
+  // then the longer words of its memory matches.
+  const completions = useMemo(() => {
+    const out: string[] = [];
+    for (const h of hits) for (const t of h.targets) if (t.status !== "forbidden") out.push(t.text);
+    for (const m of matches) for (const w of plain(m.unit.target).match(/[\p{L}\p{N}][\p{L}\p{N}\p{M}'’-]{4,}/gu) ?? []) out.push(w);
+    return out;
+  }, [hits, matches]);
   // A server project's concordance runs on the server.
   const serverHits = useServerConcordance(project, target, lookupText ?? "", 8);
   const concordanceHits = useMemo(() => {
@@ -1318,6 +1326,7 @@ export function Editor({
                           describedBy="seg-help"
                           onChange={(runs) => setTarget(runs)}
                           onKeyDown={onKeyDown}
+                          completions={state.autoComplete ? completions : undefined}
                         />
                         {s.maxLength ? (
                           <LengthCounter

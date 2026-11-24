@@ -153,6 +153,10 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
         auto *insert = new QCheckBox(tr("Insert the best memory match when a segment opens"), group);
         insert->setChecked(Options::autoInsert());
         gv->addWidget(Web::choice(insert, tr("Only into empty segments. The match percentage stays next to the segment until you confirm."), group));
+        auto *complete = new QCheckBox(tr("Complete words while you type"), group);
+        complete->setChecked(Options::autoComplete());
+        gv->addWidget(Web::choice(complete, tr("After two letters, the terms found for the segment and the words of its memory matches are offered. Tab or Enter takes one, Escape closes the list."), group));
+        connect(complete, &QCheckBox::toggled, this, [](bool on) { Options::setAutoComplete(on); });
         auto *fill = new QCheckBox(tr("Fill repetitions when you confirm"), group);
         fill->setChecked(Options::autoPropagate());
         gv->addWidget(Web::choice(fill, tr("Other segments with the same text and tags get the same translation and are confirmed. Segments you already confirmed are left alone."), group));

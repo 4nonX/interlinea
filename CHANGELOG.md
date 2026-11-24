@@ -57,6 +57,10 @@ client and the desktop app, with installers and a server image.
   and Word output; Thai, Lao, Khmer and Burmese counted and matched by
   character.
 
+### Typing
+
+- While a translation is typed, the terms found for the segment and the words of its memory matches are offered after two letters. Tab or Enter takes one, Escape closes the list. It can be turned off in the settings.
+
 ### Other programs
 
 - An MCP endpoint (`/mcp`) on the team server and the desktop's core, for

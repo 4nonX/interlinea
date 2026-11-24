@@ -92,6 +92,73 @@ private slots:
         QCOMPARE(diff, QStringLiteral("Die <span class=\"mark\">Kaution</span> ist fällig"));
     }
 
+    // Typing two letters offers the words that start with them; Tab or
+    // Enter takes one, Escape closes the list, and what was typed stays.
+    void completions()
+    {
+        QCOMPARE(TargetEditor::completionsFor(QStringLiteral("b"), {QStringLiteral("Basic")}), QStringList());
+        QCOMPARE(TargetEditor::completionsFor(QStringLiteral("ba"), {QStringLiteral("Basic rent"), QStringLiteral("basic"), QStringLiteral("Basic"), QStringLiteral("Bank"), QStringLiteral("ba"), QStringLiteral("rent")}),
+                 (QStringList{QStringLiteral("Bank"), QStringLiteral("basic"), QStringLiteral("Basic rent")}));
+        QCOMPARE(TargetEditor::completionsFor(QStringLiteral("ÜB"), {QStringLiteral("Übergabe")}), QStringList{QStringLiteral("Übergabe")});
+
+        QWidget page;
+        page.resize(600, 300);
+        auto *e = new TargetEditor(&page);
+        e->setGeometry(20, 20, 400, 80);
+        auto *other = new QLineEdit(&page);
+        other->setGeometry(20, 120, 200, 30);
+        page.show();
+        page.activateWindow();
+        e->setFocus();
+        QTRY_VERIFY(e->hasFocus());
+        e->setCompletions({QStringLiteral("Basic rent"), QStringLiteral("Basic"), QStringLiteral("Deposit")});
+        QTest::keyClicks(e, QStringLiteral("b"));
+        QVERIFY(e->offered().isEmpty());
+        QTest::keyClicks(e, QStringLiteral("a"));
+        QCOMPARE(e->offered(), (QStringList{QStringLiteral("Basic"), QStringLiteral("Basic rent")}));
+        QCOMPARE(e->offeredIndex(), 0);
+        auto *list = page.findChild<QListWidget *>(QStringLiteral("completions"));
+        QVERIFY(list && list->isVisible() && page.rect().contains(list->geometry()) && list->y() > e->y());
+        if (qEnvironmentVariableIsSet("INTERLINEA_SHOTS"))
+            page.grab().save(qEnvironmentVariable("INTERLINEA_SHOTS") + QStringLiteral("/completions.png"));
+        // Escape closes the list and nothing else.
+        QTest::keyClick(e, Qt::Key_Escape);
+        QVERIFY(e->offered().isEmpty());
+        QCOMPARE(e->toPlainText(), QStringLiteral("ba"));
+        // Typing on offers again; the arrows choose and go round.
+        QTest::keyClicks(e, QStringLiteral("s"));
+        QCOMPARE(e->offered().size(), 2);
+        QTest::keyClick(e, Qt::Key_Down);
+        QCOMPARE(e->offeredIndex(), 1);
+        QTest::keyClick(e, Qt::Key_Down);
+        QCOMPARE(e->offeredIndex(), 0);
+        QTest::keyClick(e, Qt::Key_Up);
+        QCOMPARE(e->offeredIndex(), 1);
+        // Tab takes the chosen one and stays in the translation.
+        QSignalSpy edited(e, &TargetEditor::edited);
+        QTest::keyClick(e, Qt::Key_Tab);
+        QCOMPARE(e->toPlainText(), QStringLiteral("basic rent"));
+        QVERIFY(e->offered().isEmpty() && e->hasFocus() && edited.size() == 1);
+        // Enter takes one too, and adds no line.
+        QTest::keyClicks(e, QStringLiteral(" De"));
+        QCOMPARE(e->offered(), QStringList{QStringLiteral("Deposit")});
+        QTest::keyClick(e, Qt::Key_Return);
+        QCOMPARE(e->toPlainText(), QStringLiteral("basic rent Deposit"));
+        // In the middle of a word nothing is offered.
+        e->setContent(QJsonArray{QJsonObject{{"text", "sic"}}});
+        e->moveCursor(QTextCursor::Start);
+        QTest::keyClicks(e, QStringLiteral("ba"));
+        QVERIFY(e->offered().isEmpty());
+        // Without a list, Tab moves on as before.
+        QTest::keyClick(e, Qt::Key_Tab);
+        QVERIFY(other->hasFocus());
+        // Text put in from elsewhere offers nothing.
+        e->setCompletions({QStringLiteral("Basic")});
+        e->setContent(QJsonArray{});
+        e->insertPlain(QStringLiteral("ba"));
+        QVERIFY(e->offered().isEmpty());
+    }
+
     // Every document format opens in the editor and is saved as it came:
     // a presentation, a workbook, a web page and an InDesign document as
     // translated documents, a memoQ package's file as a return package.

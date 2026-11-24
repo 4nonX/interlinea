@@ -371,6 +371,33 @@ export default () =>
         "document.querySelector('.target-editor').textContent = ''; document.querySelector('.target-editor').dispatchEvent(new Event('input', { bubbles: true }))",
       );
       await sleep(150);
+      // Typing two letters offers the words of the memory match that start with them.
+      {
+        const typed = async (t) => {
+          await evaluate("document.querySelector('.target-editor').focus()");
+          await send("Input.insertText", { text: t });
+          await sleep(150);
+        };
+        const text = () => evaluate("document.querySelector('.target-editor').innerText.trim()");
+        await typed("b");
+        check(!(await evaluate("!!document.querySelector('.completions')")), "one letter offers no completion");
+        await typed("a");
+        check(await waitFor("document.querySelector('.completions [aria-selected=\"true\"]')?.textContent === 'Basic'", 3000), "two letters offer the word from the memory match");
+        check(await evaluate("document.querySelector('.target-editor').getAttribute('aria-activedescendant') === document.querySelector('.completions [aria-selected=\"true\"]').id"), "the editor names the offered word to a screen reader");
+        await key("Escape", "Escape", 27);
+        await sleep(100);
+        check(!(await evaluate("!!document.querySelector('.completions')")) && (await text()) === "ba" && (await evaluate("!!document.querySelector('.seg.is-active .target-editor')")), "Escape closes the list and nothing else");
+        await typed("s");
+        check(await waitFor("!!document.querySelector('.completions')", 3000), "typing on offers it again");
+        await key("Tab", "Tab", 9);
+        await sleep(150);
+        check((await text()) === "basic" && !(await evaluate("!!document.querySelector('.completions')")), "Tab completes the word, what was typed stays as typed: " + (await text()));
+        check(await evaluate("document.activeElement?.classList.contains('target-editor')"), "and the caret stays in the translation");
+      }
+      await evaluate(
+        "document.querySelector('.target-editor').textContent = ''; document.querySelector('.target-editor').dispatchEvent(new Event('input', { bubbles: true }))",
+      );
+      await sleep(150);
       await key("1", "Digit1", 49, 2);
       check(
         (
