@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -35,6 +37,13 @@ public:
     QString openMemory(const QString &connectionId) const;
     // Opens a memory of a team server; an empty name closes the open one.
     void open(const QString &connectionId, const QString &name);
+    // The units the last search of a place's opened memory found.
+    QJsonArray found(const QString &connectionId) const;
+    // Searches the opened memory of a place.
+    void search(const QString &connectionId, const QString &text, bool inTranslations = false);
+    // The dialogs for one unit: a new one, or one found to be changed.
+    Web::Dialog *addUnitDialog(const QString &connectionId);
+    Web::Dialog *editUnitDialog(const QString &connectionId, const QJsonObject &unit);
     // Reads a TMX file into a memory, and writes a memory to a TMX file:
     // what the buttons do once a file is chosen.
     void importFile(const QString &connectionId, const QString &memory, const QString &path);
@@ -47,6 +56,8 @@ public:
 signals:
     // Every place's memories were read and are shown.
     void loaded();
+    // A search of the units was answered and its results are shown.
+    void searched();
 
 protected:
     void resizeEvent(QResizeEvent *e) override;
@@ -65,6 +76,12 @@ private:
         QVBoxLayout *formHolder = nullptr;
         QString open;
         QString openRole;
+        // The units found by the last search of the opened memory, and how
+        // to search again after one of them changed.
+        // What the lists were drawn from, to leave them when nothing changed.
+        QByteArray drawn;
+        QJsonArray found;
+        std::function<void()> searchAgain;
         QPointer<Web::ConfirmButton> openDelete;
         QJsonArray memories;
         QJsonArray projects;

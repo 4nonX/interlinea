@@ -125,6 +125,9 @@ QToolButton:hover { background: rgba(127,140,160,0.16); color: @text; }
 QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDateTimeEdit, QComboBox {
     background: @surface; border: 1px solid @borderStrong; border-radius: 6px; padding: 5px 8px; min-height: 20px;
     selection-background-color: @accent; selection-color: @onAccent; }
+/* A few lines of text, as a textarea of three rows. */
+QPlainTextEdit[lines="few"], QTextEdit[lines="few"] { min-height: 66px; max-height: 66px; }
+QTextEdit[lines="few"]:read-only { background: @surface2; }
 QLineEdit:hover, QPlainTextEdit:hover, QSpinBox:hover, QDateTimeEdit:hover, QComboBox:hover { border-color: @text3; }
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus, QDateTimeEdit:focus, QComboBox:focus { border: 2px solid @accent; padding: 4px 7px; }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDateTimeEdit:disabled, QPlainTextEdit:disabled { background: @surface2; color: @text3; border-color: @border; }

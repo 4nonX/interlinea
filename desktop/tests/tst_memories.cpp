@@ -5,6 +5,7 @@
 #include "connectionmanager.h"
 #include "languages.h"
 #include "memoriespage.h"
+#include "targeteditor.h"
 #include "testcore.h"
 #include "theme.h"
 #include "webui.h"
@@ -13,6 +14,7 @@
 #include <QFile>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
@@ -20,6 +22,7 @@
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTextCursor>
 
 static ApiResult wait(ApiReply *reply)
 {
@@ -281,6 +284,144 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted the memory Leer"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT((main = named<QTableWidget>(&page, QStringLiteral("Main memories on this computer"))) && main->rowCount() == 1, 10000);
         QCOMPARE(wait(api->get(QStringLiteral("/api/memories"))).array().size(), 2);
+    }
+
+    void unitsOfAMemory()
+    {
+        // The units of a memory on this computer: searched, one added,
+        // its translation changed, and deleted.
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        const QString here = m.local()->id();
+        QVERIFY(wait(api->post(QStringLiteral("/api/memories"), QJsonObject{{"name", "Mietrecht"}, {"sourceLang", "de-DE"}, {"targetLang", "en-GB"}})).ok());
+        QVERIFY(wait(api->upload("POST", QStringLiteral("/api/memories/Mietrecht/import"), tmx(), QStringLiteral("application/x-tmx+xml"))).ok());
+        // A unit with formatting in it.
+        const QJsonObject bold{{"kind", "open"}, {"id", "1"}, {"type", "bold"}};
+        const QJsonObject boldEnd{{"kind", "close"}, {"id", "1"}, {"type", "bold"}};
+        const ApiResult tagged = wait(api->post(QStringLiteral("/api/memories/Mietrecht/units"),
+                                                QJsonObject{{"source", QJsonArray{QJsonObject{{"text", "Die "}}, QJsonObject{{"tag", bold}}, QJsonObject{{"text", "Nebenkosten"}}, QJsonObject{{"tag", boldEnd}},
+                                                                                  QJsonObject{{"text", " steigen."}}}},
+                                                            {"target", QJsonArray{QJsonObject{{"text", "The "}}, QJsonObject{{"tag", bold}}, QJsonObject{{"text", "service charges"}}, QJsonObject{{"tag", boldEnd}},
+                                                                                  QJsonObject{{"text", " rise."}}}}}));
+        QVERIFY2(tagged.ok(), qPrintable(tagged.error.message));
+
+        MemoriesPage page(&m);
+        page.resize(1280, 900);
+        page.show();
+        QPushButton *open = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((open = page.findChild<QPushButton *>(QStringLiteral("open:Mietrecht"))), 15000);
+        QCOMPARE(open->text(), QStringLiteral("Open"));
+        open->click();
+        QTRY_VERIFY_WITH_TIMEOUT(page.findChild<QLineEdit *>(QStringLiteral("unitQuery")), 10000);
+        QCOMPARE(page.openMemory(here), QStringLiteral("Mietrecht"));
+        QTRY_COMPARE(page.findChild<QPushButton *>(QStringLiteral("open:Mietrecht"))->text(), QStringLiteral("Close"));
+
+        // Searching the sentences, and the translations.
+        QSignalSpy searched(&page, &MemoriesPage::searched);
+        page.search(here, QStringLiteral("Kaution"));
+        QTRY_COMPARE_WITH_TIMEOUT(searched.size(), 1, 10000);
+        QCOMPARE(page.found(here).size(), 1);
+        auto *table = page.findChild<QTableWidget *>(QStringLiteral("unitsFound"));
+        QVERIFY(table);
+        QCOMPARE(table->rowCount(), 1);
+        QCOMPARE(cell(table, 0, 1), QStringLiteral("The deposit is due."));
+        page.search(here, QStringLiteral("tenant"), true);
+        QTRY_COMPARE_WITH_TIMEOUT(searched.size(), 2, 10000);
+        QCOMPARE(page.found(here).size(), 1);
+        page.search(here, QStringLiteral("Hausordnung"));
+        QTRY_COMPARE_WITH_TIMEOUT(searched.size(), 3, 10000);
+        QVERIFY(page.findChild<QLabel *>(QStringLiteral("noUnits")));
+
+        // A new unit.
+        QVERIFY(page.findChild<QPushButton *>(QStringLiteral("addUnitButton")));
+        Web::Dialog *add = page.addUnitDialog(here);
+        QVERIFY(add);
+        QCOMPARE(add->title(), QStringLiteral("Add a unit to Mietrecht"));
+        auto *save = add->findChild<QPushButton *>(QStringLiteral("save"));
+        QVERIFY(save && !save->isEnabled());
+        add->findChild<QPlainTextEdit *>(QStringLiteral("unitSource"))->setPlainText(QStringLiteral("Die Hausordnung gilt."));
+        QVERIFY(!save->isEnabled());
+        add->findChild<QPlainTextEdit *>(QStringLiteral("unitTarget"))->setPlainText(QStringLiteral("The house rules apply."));
+        QVERIFY(save->isEnabled());
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(200);
+            add->grab().save(dir + QStringLiteral("/memory-add-unit.png"));
+        }
+        save->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added the unit to Mietrecht"), 10000);
+        // The search is run again and now finds it.
+        QTRY_VERIFY_WITH_TIMEOUT(page.found(here).size() == 1 && (table = page.findChild<QTableWidget *>(QStringLiteral("unitsFound"))) && table->rowCount() == 1, 10000);
+        QCOMPARE(cell(table, 0, 1), QStringLiteral("The house rules apply."));
+        QTRY_COMPARE_WITH_TIMEOUT(wait(api->get(QStringLiteral("/api/memories/Mietrecht"))).object().value("units").toInt(), 4, 10000);
+
+        // Its translation is changed.
+        QJsonObject unit = page.found(here).first().toObject();
+        QVERIFY(unit.value("id").toInteger() > 0 && unit.value("version").toInt() > 0);
+        QVERIFY(page.findChild<QPushButton *>(QStringLiteral("changeUnit:%1").arg(unit.value("id").toInteger())));
+        Web::Dialog *change = page.editUnitDialog(here, unit);
+        QVERIFY(change);
+        auto *target = change->findChild<TargetEditor *>(QStringLiteral("unitTarget"));
+        QVERIFY(target && change->findChild<TargetEditor *>(QStringLiteral("unitSource"))->isReadOnly());
+        // Without a translation it is not a unit.
+        target->setContent({});
+        change->findChild<QPushButton *>(QStringLiteral("save"))->click();
+        QCOMPARE(change->error(), QStringLiteral("A unit needs a translation. Delete the unit instead."));
+        target->setContent(QJsonArray{QJsonObject{{"text", "The house rules are binding."}}});
+        change->findChild<QPushButton *>(QStringLiteral("save"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Saved the unit"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(page.found(here).size() == 1 && page.found(here).first().toObject().value("version").toInt() == unit.value("version").toInt() + 1, 10000);
+        QTRY_VERIFY((table = page.findChild<QTableWidget *>(QStringLiteral("unitsFound"))));
+        QCOMPARE(cell(table, 0, 1), QStringLiteral("The house rules are binding."));
+
+        // Saved over a newer version: said, and nothing is overwritten.
+        change = page.editUnitDialog(here, unit);
+        change->findChild<TargetEditor *>(QStringLiteral("unitTarget"))->setContent(QJsonArray{QJsonObject{{"text", "Too late."}}});
+        change->findChild<QPushButton *>(QStringLiteral("save"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(change->error(), QStringLiteral("Someone else changed this unit in the meantime. Search again to see it as it is now."), 10000);
+        change->reject();
+
+        // A translation with formatting keeps its tags when the words change.
+        page.search(here, QStringLiteral("Nebenkosten"));
+        QTRY_VERIFY_WITH_TIMEOUT(page.found(here).size() == 1 && page.found(here).first().toObject().value("id").toInteger() == tagged.object().value("id").toInteger(), 10000);
+        unit = page.found(here).first().toObject();
+        change = page.editUnitDialog(here, unit);
+        target = change->findChild<TargetEditor *>(QStringLiteral("unitTarget"));
+        QCOMPARE(target->content().size(), 5);
+        QTextCursor end(target->document());
+        end.movePosition(QTextCursor::End);
+        end.insertText(QStringLiteral(" Again."));
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(200);
+            change->grab().save(dir + QStringLiteral("/memory-change-unit.png"));
+        }
+        change->findChild<QPushButton *>(QStringLiteral("save"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(wait(api->get(QStringLiteral("/api/memories/Mietrecht/units/%1").arg(unit.value("id").toInteger()))).object().value("version").toInt(),
+                                  unit.value("version").toInt() + 1, 10000);
+        const QJsonArray saved = wait(api->get(QStringLiteral("/api/memories/Mietrecht/units/%1").arg(unit.value("id").toInteger()))).object().value("target").toArray();
+        QCOMPARE(saved.size(), 5);
+        QVERIFY(saved[1].toObject().contains("tag") && saved[3].toObject().contains("tag"));
+        QCOMPARE(saved[4].toObject().value("text").toString(), QStringLiteral(" rise. Again."));
+
+        // Deleting a unit asks first.
+        QTRY_VERIFY_WITH_TIMEOUT(page.findChild<Web::ConfirmButton *>(QStringLiteral("deleteUnit:%1").arg(unit.value("id").toInteger())), 10000);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(300);
+            page.grab().save(dir + QStringLiteral("/memory-units.png"));
+        }
+        auto *del = page.findChild<Web::ConfirmButton *>(QStringLiteral("deleteUnit:%1").arg(unit.value("id").toInteger()));
+        del->button()->click();
+        QVERIFY(label(&page, QStringLiteral("Delete this unit?")));
+        del->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted the unit"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(page.found(here).isEmpty() && page.findChild<QLabel *>(QStringLiteral("noUnits")), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(wait(api->get(QStringLiteral("/api/memories/Mietrecht"))).object().value("units").toInt(), 3, 10000);
+
+        // Closing puts the units away.
+        page.findChild<QPushButton *>(QStringLiteral("open:Mietrecht"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(page.openMemory(here).isEmpty() && !page.findChild<QLineEdit *>(QStringLiteral("unitQuery")), 10000);
     }
 
 private:

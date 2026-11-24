@@ -76,6 +76,9 @@ protected:
     void showEvent(QShowEvent *e) override;
 
 private:
+    void fitRows();
+    QSize inset() const;
+
     QList<int> m_numeric;
     bool m_refit = false;
 };

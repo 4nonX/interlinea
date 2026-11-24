@@ -225,7 +225,7 @@ Table::Table(const QStringList &headers, QWidget *parent)
     setWordWrap(true);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     horizontalHeader()->setHighlightSections(false);
     horizontalHeader()->setSectionsClickable(false);
@@ -267,7 +267,15 @@ int Table::addRow(const QList<QWidget *> &cells)
         auto *wrap = new QWidget(this);
         auto *l = new QHBoxLayout(wrap);
         l->setContentsMargins(S3, 10, S3, 10);
-        l->addWidget(w, 1, m_numeric.contains(c) ? Qt::AlignRight | Qt::AlignTop : Qt::AlignLeft | Qt::AlignTop);
+        // Text that may wrap gets the width of its column, so it wraps
+        // only when it has to; everything else keeps its own size.
+        auto *wrapping = qobject_cast<QLabel *>(w);
+        if (wrapping && wrapping->wordWrap() && !m_numeric.contains(c)) {
+            wrapping->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+            l->addWidget(w, 1);
+        } else {
+            l->addWidget(w, 1, m_numeric.contains(c) ? Qt::AlignRight | Qt::AlignTop : Qt::AlignLeft | Qt::AlignTop);
+        }
         setCellWidget(row, c, wrap);
         // The text for screen readers, without sizing the column.
         auto *item = new QTableWidgetItem;
@@ -297,12 +305,24 @@ void Table::fit()
             }
         }
     }
+    // A column that does not stretch is as wide as its widest cell, in
+    // every row and not only in those in view.
     for (int c = 0; c < columnCount(); ++c) {
-        if (horizontalHeader()->sectionResizeMode(c) != QHeaderView::Stretch)
-            resizeColumnToContents(c);
+        if (horizontalHeader()->sectionResizeMode(c) == QHeaderView::Stretch)
+            continue;
+        // The header's own text, in its bold face, with its padding.
+        QFont headFont = horizontalHeader()->font();
+        headFont.setWeight(QFont::DemiBold);
+        const QTableWidgetItem *head = horizontalHeaderItem(c);
+        int width = QFontMetrics(headFont).horizontalAdvance(head ? head->text() : QString()) + 2 * S3 + 8;
+        for (int r = 0; r < rowCount(); ++r) {
+            if (QWidget *w = cellWidget(r, c))
+                width = qMax(width, qMax(w->sizeHint().width(), w->minimumSizeHint().width()) + inset().width());
+        }
+        horizontalHeader()->setSectionResizeMode(c, QHeaderView::Fixed);
+        horizontalHeader()->resizeSection(c, width + 2);
     }
-    resizeRowsToContents();
-    updateGeometry();
+    fitRows();
     // Cells are styled for good only once they are shown, and may then be
     // larger than they said: measure once more after that.
     if (!m_refit) {
@@ -324,10 +344,41 @@ void Table::resizeEvent(QResizeEvent *e)
 {
     QTableWidget::resizeEvent(e);
     // Wrapped text is as tall as the width it gets.
-    QMetaObject::invokeMethod(this, [this] {
-        resizeRowsToContents();
-        updateGeometry();
-    }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(this, &Table::fitRows, Qt::QueuedConnection);
+}
+
+// How much smaller than its cell a cell's widget is: the style keeps a
+// margin around what a cell holds.
+QSize Table::inset() const
+{
+    for (int r = 0; r < rowCount(); ++r) {
+        for (int c = 0; c < columnCount(); ++c) {
+            const QWidget *w = cellWidget(r, c);
+            const QRect cell = visualRect(model()->index(r, c));
+            if (w && w->width() > 0 && w->height() > 0 && cell.width() >= w->width() && cell.height() >= w->height() && cell.width() - w->width() < 40)
+                return QSize(cell.width() - w->width(), cell.height() - w->height());
+        }
+    }
+    return QSize(12, 10);
+}
+
+// A row is as tall as its tallest cell at the width the cell has.
+void Table::fitRows()
+{
+    for (int r = 0; r < rowCount(); ++r) {
+        int h = 0;
+        for (int c = 0; c < columnCount(); ++c) {
+            QWidget *w = cellWidget(r, c);
+            if (!w)
+                continue;
+            const int width = columnWidth(c) - inset().width();
+            h = qMax(h, w->hasHeightForWidth() && width > 0 ? w->heightForWidth(width) : w->sizeHint().height());
+            h = qMax(h, w->minimumSizeHint().height());
+        }
+        if (h > 0)
+            setRowHeight(r, h + inset().height());
+    }
+    updateGeometry();
 }
 
 QSize Table::sizeHint() const

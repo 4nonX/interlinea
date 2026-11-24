@@ -9,6 +9,7 @@
 #include "eventfeed.h"
 #include "languages.h"
 #include "segmentcontent.h"
+#include "targeteditor.h"
 #include "theme.h"
 #include "webui.h"
 
@@ -19,12 +20,16 @@
 #include <QFileInfo>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QCryptographicHash>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QResizeEvent>
+#include <QUrlQuery>
 #include <QVBoxLayout>
 
 namespace {
@@ -249,6 +254,9 @@ void MemoriesPage::syncParts()
             mainBody->addLayout(p->list);
             p->formHolder = new QVBoxLayout;
             mainBody->addLayout(p->formHolder);
+            // The opened memory, with its units, under both lists.
+            p->detail = new QVBoxLayout;
+            p->detail->setSpacing(16);
             QVBoxLayout *ownBody = nullptr;
             p->ownSection = Web::section(tr("Project memories"), p->root, &ownBody);
             ownBody->addWidget(Web::text(tr("Each collects one project's confirmed translations. Add them to a main memory from the project's settings; "
@@ -258,6 +266,7 @@ void MemoriesPage::syncParts()
             ownBody->addLayout(p->ownList);
             p->ownSection->hide();
             v->addWidget(p->ownSection);
+            v->addLayout(p->detail);
             p->list->addWidget(Web::text(tr("Loading the memories…"), "muted", p->root));
         } else {
             QVBoxLayout *body = nullptr;
@@ -358,6 +367,14 @@ void MemoriesPage::showPart(Part *p)
 {
     if (!p->conn)
         return;
+    // Read again with nothing new, the lists stay as they are: drawing
+    // them again would take away a question being asked in a row.
+    const QJsonObject all{{QLatin1String("memories"), p->memories}, {QLatin1String("projects"), p->projects}, {QLatin1String("templates"), p->templates}, {QLatin1String("open"), p->open}};
+    const QByteArray now = QCryptographicHash::hash(QJsonDocument(all).toJson(QJsonDocument::Compact), QCryptographicHash::Sha1);
+    const bool openGone = !p->open.isEmpty() && memory(p, p->open).isEmpty();
+    if (now == p->drawn && !openGone && (p->open.isEmpty() || p->detail->count() > 0))
+        return;
+    p->drawn = now;
     if (p->conn->isLocal())
         showLocal(p);
     else
@@ -382,6 +399,11 @@ void MemoriesPage::showLocal(Part *p)
     if (!own.isEmpty())
         p->ownList->addWidget(localTable(p, own, false));
     p->ownSection->setVisible(!own.isEmpty());
+    // The opened memory stays as it is while the lists are read again.
+    if (!p->open.isEmpty() && memory(p, p->open).isEmpty())
+        p->open.clear();
+    if (p->open.isEmpty() || p->detail->count() == 0)
+        showDetail(p);
     if (p->formHolder->count() == 0)
         localForm(p, false);
 }
@@ -403,6 +425,12 @@ QWidget *MemoriesPage::localTable(Part *p, const QList<QJsonObject> &memories, b
         QWidget *used = users.isEmpty() ? Web::cellText(tr("No project"), table, false, true) : Web::cellText(users.join(QLatin1String(", ")), table);
 
         QList<QWidget *> actions;
+        const bool isOpen = sameName(name, p->open);
+        auto *toggle = Web::button(isOpen ? tr("Close") : tr("Open"), Web::Quiet | Web::Small, table);
+        toggle->setObjectName(QStringLiteral("open:%1").arg(name));
+        toggle->setAccessibleName(isOpen ? tr("Close %1").arg(name) : tr("Open %1").arg(name));
+        connect(toggle, &QPushButton::clicked, this, [this, id, name, isOpen] { open(id, isOpen ? QString() : name); });
+        actions << toggle;
         if (main) {
             auto *import = Web::button(tr("Import TMX"), Web::Small, table, QStringLiteral("upload"));
             import->setAccessibleName(tr("Import TMX into %1").arg(name));
@@ -681,6 +709,7 @@ void MemoriesPage::showServer(Part *p)
             const QString name = m.value(QLatin1String("name")).toString();
             const bool isOpen = sameName(name, p->open);
             auto *toggle = Web::button(isOpen ? tr("Close") : tr("Open"), Web::Quiet | Web::Small, table);
+            toggle->setObjectName(QStringLiteral("open:%1").arg(name));
             toggle->setAccessibleName(isOpen ? tr("Close %1").arg(name) : tr("Open %1").arg(name));
             connect(toggle, &QPushButton::clicked, this, [this, id, name, isOpen] { open(id, isOpen ? QString() : name); });
             table->addRow({Web::cell(name, tr("Since %1").arg(date(m.value(QLatin1String("createdAt")).toString())), table),
@@ -710,12 +739,178 @@ void MemoriesPage::showServer(Part *p)
 void MemoriesPage::open(const QString &connectionId, const QString &name)
 {
     Part *p = part(connectionId);
-    if (!p || p->conn->isLocal())
+    if (!p)
         return;
     p->open = name;
+    p->found = {};
+    p->searchAgain = nullptr;
     clear(p->detail);
     if (p->read)
-        showServer(p);
+        showPart(p);
+}
+
+QJsonArray MemoriesPage::found(const QString &connectionId) const
+{
+    const Part *p = part(connectionId);
+    return p ? p->found : QJsonArray();
+}
+
+void MemoriesPage::search(const QString &connectionId, const QString &text, bool inTranslations)
+{
+    Part *p = part(connectionId);
+    if (!p || p->open.isEmpty())
+        return;
+    if (auto *query = p->root->findChild<QLineEdit *>(QStringLiteral("unitQuery"))) {
+        query->setText(text);
+        if (auto *in = p->root->findChild<QCheckBox *>(QStringLiteral("inTranslations")))
+            in->setChecked(inTranslations);
+        if (p->searchAgain)
+            p->searchAgain();
+    }
+}
+
+// A new unit: the sentence and its translation, as plain text.
+Web::Dialog *MemoriesPage::addUnitDialog(const QString &connectionId)
+{
+    Part *p = part(connectionId);
+    if (!p || p->open.isEmpty())
+        return nullptr;
+    const QJsonObject m = memory(p, p->open);
+    const QString name = m.value(QLatin1String("name")).toString();
+    auto *d = new Web::Dialog(tr("Add a unit to %1").arg(name), window(), true);
+    d->setObjectName(QStringLiteral("addUnit"));
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    auto *source = new QPlainTextEdit(d);
+    source->setObjectName(QStringLiteral("unitSource"));
+    source->setTabChangesFocus(true);
+    source->setProperty("lines", QStringLiteral("few"));
+    auto *target = new QPlainTextEdit(d);
+    target->setObjectName(QStringLiteral("unitTarget"));
+    target->setTabChangesFocus(true);
+    target->setProperty("lines", QStringLiteral("few"));
+    d->body()->addWidget(Web::field(Languages::name(m.value(QLatin1String("sourceLang")).toString()), source, d));
+    d->body()->addWidget(Web::field(Languages::name(m.value(QLatin1String("targetLang")).toString()), target, d));
+    auto *both = new QCheckBox(tr("Replace other translations of this sentence"), d);
+    both->setObjectName(QStringLiteral("unitOverwrite"));
+    d->body()->addWidget(both);
+    auto *help = Web::text(tr("Without it, a sentence that is there already keeps its translations and gets this one as well."), "help", d);
+    help->setWordWrap(true);
+    d->body()->addWidget(help);
+    auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, d);
+    auto *add = Web::button(tr("Add the unit"), Web::Primary | Web::Small, d);
+    add->setObjectName(QStringLiteral("save"));
+    add->setEnabled(false);
+    d->buttons()->addWidget(cancel);
+    d->buttons()->addWidget(add);
+    const auto ready = [source, target, add] { add->setEnabled(!source->toPlainText().trimmed().isEmpty() && !target->toPlainText().trimmed().isEmpty()); };
+    connect(source, &QPlainTextEdit::textChanged, add, ready);
+    connect(target, &QPlainTextEdit::textChanged, add, ready);
+    connect(cancel, &QPushButton::clicked, d, &QDialog::reject);
+    QPointer<Web::Dialog> dialog(d);
+    connect(add, &QPushButton::clicked, this, [this, connectionId, name, source, target, both, dialog] {
+        Part *q = part(connectionId);
+        if (!q || !dialog)
+            return;
+        const auto text = [](const QString &t) { return QJsonArray{QJsonObject{{QLatin1String("text"), t.trimmed()}}}; };
+        QUrlQuery query;
+        if (both->isChecked())
+            query.addQueryItem(QStringLiteral("policy"), QStringLiteral("overwrite"));
+        onResult(q->conn->api()->post(QStringLiteral("/api/memories/%1/units").arg(ApiClient::seg(name)),
+                                      QJsonObject{{QLatin1String("source"), text(source->toPlainText())}, {QLatin1String("target"), text(target->toPlainText())}}, query),
+                 this, [this, connectionId, name, dialog](const ApiResult &r) {
+                     if (!dialog)
+                         return;
+                     if (!r.ok()) {
+                         dialog->setError(r.error.message);
+                         return;
+                     }
+                     notify(tr("Added the unit to %1").arg(name));
+                     dialog->accept();
+                     if (Part *q = part(connectionId); q && q->searchAgain)
+                         q->searchAgain();
+                     reload();
+                 });
+    });
+    d->open();
+    source->setFocus();
+    return d;
+}
+
+// A unit found, to change its translation; the formatting tags stay.
+Web::Dialog *MemoriesPage::editUnitDialog(const QString &connectionId, const QJsonObject &unit)
+{
+    Part *p = part(connectionId);
+    if (!p || p->open.isEmpty())
+        return nullptr;
+    const QJsonObject m = memory(p, p->open);
+    const QString name = m.value(QLatin1String("name")).toString();
+    auto *d = new Web::Dialog(tr("Change the unit"), window(), true);
+    d->setObjectName(QStringLiteral("editUnit"));
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    auto *source = new TargetEditor(d);
+    source->setObjectName(QStringLiteral("unitSource"));
+    source->setContent(unit.value(QLatin1String("source")).toArray());
+    source->setReadOnly(true);
+    source->setProperty("lines", QStringLiteral("few"));
+    auto *target = new TargetEditor(d);
+    target->setObjectName(QStringLiteral("unitTarget"));
+    target->setContent(unit.value(QLatin1String("target")).toArray());
+    target->setTabChangesFocus(true);
+    target->setProperty("lines", QStringLiteral("few"));
+    d->body()->addWidget(Web::field(Languages::name(m.value(QLatin1String("sourceLang")).toString()), source, d));
+    d->body()->addWidget(Web::field(Languages::name(m.value(QLatin1String("targetLang")).toString()), target, d));
+    QStringList parts{unit.value(QLatin1String("changedBy")).toString(), date(unit.value(QLatin1String("changedAt")).toString())};
+    parts.removeAll(QString());
+    if (!parts.isEmpty()) {
+        const int used = unit.value(QLatin1String("usageCount")).toInt();
+        QString meta = tr("Last changed by %1.").arg(parts.join(QStringLiteral(", ")));
+        if (used > 0)
+            meta += QLatin1Char(' ') + (used == 1 ? tr("Used once.") : tr("Used %1 times.").arg(used));
+        d->body()->addWidget(Web::text(meta, "help", d));
+    }
+    auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, d);
+    auto *save = Web::button(tr("Save"), Web::Primary | Web::Small, d);
+    save->setObjectName(QStringLiteral("save"));
+    d->buttons()->addWidget(cancel);
+    d->buttons()->addWidget(save);
+    connect(cancel, &QPushButton::clicked, d, &QDialog::reject);
+    QPointer<Web::Dialog> dialog(d);
+    connect(save, &QPushButton::clicked, this, [this, connectionId, name, unit, target, dialog] {
+        Part *q = part(connectionId);
+        if (!q || !dialog)
+            return;
+        const QJsonArray now = target->content();
+        if (SegmentContent::plainText(now).trimmed().isEmpty()) {
+            dialog->setError(tr("A unit needs a translation. Delete the unit instead."));
+            return;
+        }
+        QJsonObject body{{QLatin1String("source"), unit.value(QLatin1String("source"))}, {QLatin1String("target"), now}};
+        if (unit.contains(QLatin1String("attributes")))
+            body.insert(QLatin1String("attributes"), unit.value(QLatin1String("attributes")));
+        if (unit.contains(QLatin1String("notes")))
+            body.insert(QLatin1String("notes"), unit.value(QLatin1String("notes")));
+        onResult(q->conn->api()->put(QStringLiteral("/api/memories/%1/units/%2").arg(ApiClient::seg(name)).arg(unit.value(QLatin1String("id")).toInteger()), body,
+                                     unit.value(QLatin1String("version")).toInt()),
+                 this, [this, connectionId, dialog](const ApiResult &r) {
+                     if (!dialog)
+                         return;
+                     if (r.status == 409) {
+                         dialog->setError(tr("Someone else changed this unit in the meantime. Search again to see it as it is now."));
+                         return;
+                     }
+                     if (!r.ok()) {
+                         dialog->setError(r.error.message);
+                         return;
+                     }
+                     notify(tr("Saved the unit"));
+                     dialog->accept();
+                     if (Part *q = part(connectionId); q && q->searchAgain)
+                         q->searchAgain();
+                 });
+    });
+    d->open();
+    target->setFocus();
+    return d;
 }
 
 void MemoriesPage::showDetail(Part *p)
@@ -734,18 +929,23 @@ void MemoriesPage::showDetail(Part *p)
     const QString source = m.value(QLatin1String("sourceLang")).toString();
     const QString target = m.value(QLatin1String("targetLang")).toString();
     p->openRole = role;
-    const bool edit = Roles::allows(role, QStringLiteral("edit"));
-    const bool manage = Roles::allows(role, QStringLiteral("manage"));
+    // On this computer everything is one's own.
+    const bool local = p->conn->isLocal();
+    const bool edit = local || Roles::allows(role, QStringLiteral("edit"));
+    const bool manage = !local && Roles::allows(role, QStringLiteral("manage"));
 
     QVBoxLayout *body = nullptr;
     QFrame *panel = Web::panel(name, p->root, &body);
 
     // Search the units, in the sources or in the translations.
     auto *query = new QLineEdit(panel);
+    query->setObjectName(QStringLiteral("unitQuery"));
     query->setMinimumWidth(240);
     query->setClearButtonEnabled(true);
     auto *inTarget = new QCheckBox(tr("In the translations"), panel);
+    inTarget->setObjectName(QStringLiteral("inTranslations"));
     auto *search = Web::button(tr("Search"), Web::Normal, panel, QStringLiteral("search"));
+    search->setObjectName(QStringLiteral("searchUnits"));
     search->setEnabled(false);
     auto *form = new QWidget(panel);
     form->setAccessibleName(tr("Search %1").arg(name));
@@ -756,6 +956,12 @@ void MemoriesPage::showDetail(Part *p)
     fl->addWidget(inTarget, 0, Qt::AlignBottom);
     fl->addWidget(search, 0, Qt::AlignBottom);
     fl->addStretch();
+    if (edit) {
+        auto *add = Web::button(tr("Add a unit"), Web::Normal, panel, QStringLiteral("plus"));
+        add->setObjectName(QStringLiteral("addUnitButton"));
+        fl->addWidget(add, 0, Qt::AlignBottom);
+        connect(add, &QPushButton::clicked, this, [this, id] { addUnitDialog(id); });
+    }
     body->addWidget(form);
     auto *results = new QWidget(panel);
     auto *rl = new QVBoxLayout(results);
@@ -763,48 +969,95 @@ void MemoriesPage::showDetail(Part *p)
     results->hide();
     body->addWidget(results);
     connect(query, &QLineEdit::textChanged, search, [search](const QString &t) { search->setEnabled(!t.trimmed().isEmpty()); });
-    auto run = [this, id, name, source, target, query, inTarget, results, rl] {
+    auto run = [this, id, name, source, target, query, inTarget, results, rl, edit] {
         Part *q = part(id);
         if (!q || query->text().trimmed().isEmpty())
             return;
         QPointer<QWidget> holder(results);
         onResult(q->conn->api()->post(QStringLiteral("/api/memories/%1/concordance").arg(ApiClient::seg(name)),
                                       QJsonObject{{QStringLiteral("query"), query->text()}, {QStringLiteral("inTarget"), inTarget->isChecked()}}),
-                 this, [this, holder, rl, source, target](const ApiResult &r) {
+                 this, [this, id, name, holder, rl, source, target, edit](const ApiResult &r) {
                      if (!holder)
                          return;
                      if (!r.ok()) {
                          notify(r.error.message);
                          return;
                      }
+                     Part *q = part(id);
+                     if (q) {
+                         q->found = {};
+                         for (const QJsonValue &v : r.array())
+                             q->found.append(v.toObject().value(QLatin1String("unit")));
+                     }
                      clear(rl);
                      if (r.array().isEmpty()) {
-                         rl->addWidget(Web::text(tr("Nothing found."), "muted", holder));
+                         auto *none = Web::text(tr("Nothing found."), "muted", holder);
+                         none->setObjectName(QStringLiteral("noUnits"));
+                         rl->addWidget(none);
                      } else {
-                         auto *table = new Web::Table({source, target, tr("Changed")}, holder);
+                         QStringList heads{source, target, tr("Changed")};
+                         if (edit)
+                             heads << QString();
+                         auto *table = new Web::Table(heads, holder);
+                         table->setObjectName(QStringLiteral("unitsFound"));
                          table->setAccessibleName(tr("Units found"));
                          table->setStretch(0);
                          table->setStretch(1);
                          for (const QJsonValue &v : r.array()) {
                              const QJsonObject u = v.toObject().value(QLatin1String("unit")).toObject();
+                             const qint64 unitId = u.value(QLatin1String("id")).toInteger();
                              // Who changed it and when; a unit read from TMX may name nobody.
                              QStringList parts{u.value(QLatin1String("changedBy")).toString(), date(u.value(QLatin1String("changedAt")).toString())};
                              parts.removeAll(QString());
                              const QString changed = parts.join(QLatin1String(", "));
                              auto *by = Web::text(changed, "cellSub", table);
+                             by->setWordWrap(false);
                              by->setAccessibleName(changed);
-                             table->addRow({Web::cellText(SegmentContent::plainText(u.value(QLatin1String("source")).toArray()), table),
-                                            Web::cellText(SegmentContent::plainText(u.value(QLatin1String("target")).toArray()), table), by});
+                             QList<QWidget *> cells{Web::cellText(SegmentContent::plainText(u.value(QLatin1String("source")).toArray()), table),
+                                                    Web::cellText(SegmentContent::plainText(u.value(QLatin1String("target")).toArray()), table), by};
+                             if (edit) {
+                                 const QString said = SegmentContent::plainText(u.value(QLatin1String("source")).toArray());
+                                 auto *change = Web::button(tr("Change"), Web::Quiet | Web::Small, table, QStringLiteral("pencil"));
+                                 change->setObjectName(QStringLiteral("changeUnit:%1").arg(unitId));
+                                 change->setAccessibleName(tr("Change the translation of “%1”").arg(said));
+                                 connect(change, &QPushButton::clicked, this, [this, id, u] { editUnitDialog(id, u); });
+                                 auto *del = new Web::ConfirmButton(QString(), tr("Delete this unit?"), tr("Delete"), table, true, QStringLiteral("trash"));
+                                 del->setObjectName(QStringLiteral("deleteUnit:%1").arg(unitId));
+                                 del->button()->setAccessibleName(tr("Delete the unit “%1”").arg(said));
+                                 del->button()->setToolTip(tr("Delete the unit"));
+                                 connect(del, &Web::ConfirmButton::confirmed, this, [this, id, name, unitId] {
+                                     Part *q = part(id);
+                                     if (!q)
+                                         return;
+                                     onResult(q->conn->api()->del(QStringLiteral("/api/memories/%1/units/%2").arg(ApiClient::seg(name)).arg(unitId)), this, [this, id](const ApiResult &r) {
+                                         notify(r.ok() ? tr("Deleted the unit") : r.error.message);
+                                         if (Part *q = part(id); q && q->searchAgain)
+                                             q->searchAgain();
+                                         reload();
+                                     });
+                                 });
+                                 cells << Web::row({change, del}, table);
+                             }
+                             table->addRow(cells);
                          }
                          table->fit();
                          rl->addWidget(table);
+                         if (r.array().size() >= 50)
+                             rl->addWidget(Web::text(tr("The first 50 units found. Search for more of the sentence to narrow it down."), "cellSub", holder));
                      }
                      holder->show();
+                     emit searched();
                  });
     };
+    p->searchAgain = run;
     connect(search, &QPushButton::clicked, panel, run);
     connect(query, &QLineEdit::returnPressed, panel, run);
 
+    // The lists above have these for a memory on this computer.
+    if (local) {
+        p->detail->addWidget(panel);
+        return;
+    }
     // TMX out and in, and deleting, for those who may.
     QList<QWidget *> actions;
     auto *exportButton = Web::button(tr("Export TMX"), Web::Normal, panel, QStringLiteral("download"));
