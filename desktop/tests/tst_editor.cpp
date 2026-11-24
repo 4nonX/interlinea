@@ -24,6 +24,7 @@
 #include <QStandardPaths>
 #include <QTableView>
 #include <QTableWidget>
+#include <QPlainTextEdit>
 #include <QTest>
 #include <QTimer>
 #include <QTreeWidget>
@@ -404,6 +405,47 @@ private slots:
         // Replaced back, the text is as it was.
         ed->replaceAll(QStringLiteral("agreement"), QStringLiteral("contract"), true, true);
         QTRY_COMPARE_WITH_TIMEOUT(replacedSpy.size(), 2, 10000);
+
+        // Comments on the open segment: written, counted, and deleted; the
+        // segment's translation and version stay as they are.
+        {
+            auto *words = ed->findChild<QPlainTextEdit *>(QStringLiteral("commentText"));
+            auto *addButton = ed->findChild<QPushButton *>(QStringLiteral("addComment"));
+            QVERIFY(words && addButton && !addButton->isEnabled());
+            QVERIFY(ed->findChild<QLabel *>(QStringLiteral("noComments")));
+            const QString openId = ed->activeId();
+            QVERIFY(!openId.isEmpty());
+            const auto stored = [&] {
+                for (const QJsonValue &v : wait(api->get(base + "/segments", {{"file", "Mietvertrag.txt"}, {"lang", "en-GB"}})).array()) {
+                    if (v.toObject().value("id").toString() == openId)
+                        return v.toObject();
+                }
+                return QJsonObject();
+            };
+            const int versionBefore = stored().value("version").toInt();
+            words->setPlainText(QStringLiteral("Is this the cold rent or the total?"));
+            QVERIFY(addButton->isEnabled());
+            QSignalSpy commentedSpy(ed, &EditorPage::commented);
+            addButton->click();
+            QTRY_COMPARE_WITH_TIMEOUT(commentedSpy.size(), 1, 10000);
+            QCOMPARE(ed->comments().size(), 1);
+            QCOMPARE(ed->comments().first().toObject().value("text").toString(), QStringLiteral("Is this the cold rent or the total?"));
+            QVERIFY(words->toPlainText().isEmpty() && !ed->findChild<QLabel *>(QStringLiteral("noComments")));
+            QCOMPARE(ed->findChild<QLabel *>(QStringLiteral("commentWords"))->text(), QStringLiteral("Is this the cold rent or the total?"));
+            QCOMPARE(stored().value("comments").toArray().size(), 1);
+            QCOMPARE(stored().value("version").toInt(), versionBefore);
+            // One written elsewhere arrives without touching the translation.
+            QVERIFY(wait(api->post(base + "/comments", QJsonObject{{"text", "The total, see clause 3."}}, {{"file", "Mietvertrag.txt"}, {"lang", "en-GB"}, {"segment", openId}})).ok());
+            QTRY_COMPARE_WITH_TIMEOUT(ed->comments().size(), 2, 10000);
+            const QString first = ed->comments().first().toObject().value("id").toString();
+            auto *del = ed->findChild<QPushButton *>(QStringLiteral("deleteComment:%1").arg(first));
+            QVERIFY(del);
+            del->click();
+            QTRY_COMPARE_WITH_TIMEOUT(ed->comments().size(), 1, 10000);
+            QCOMPARE(ed->comments().first().toObject().value("text").toString(), QStringLiteral("The total, see clause 3."));
+            ed->deleteComment(ed->comments().first().toObject().value("id").toString());
+            QTRY_VERIFY_WITH_TIMEOUT(ed->comments().isEmpty() && ed->findChild<QLabel *>(QStringLiteral("noComments")), 10000);
+        }
 
         // Someone else saves the segment being worked on: both are shown,
         // and theirs can be taken.

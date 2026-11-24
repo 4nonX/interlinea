@@ -23,6 +23,7 @@ class QComboBox;
 class QFrame;
 class QLabel;
 class QLineEdit;
+class QPlainTextEdit;
 class QProgressBar;
 class QPushButton;
 class QScrollArea;
@@ -65,6 +66,12 @@ public:
     // Saves the active segment if it changed. Done before leaving.
     void saveActive();
 
+    // Comments on the open segment: a remark for the others working on
+    // the project. Its translation and version stay as they are.
+    void addComment(const QString &text);
+    void deleteComment(const QString &commentId);
+    QJsonArray comments() const;
+
     // Find and replace in the translations of the open file.
     Web::Dialog *showReplaceDialog();
     // Replaces every place of the text; says what it did when it is done.
@@ -77,6 +84,8 @@ signals:
     // Another file or language of the project.
     void openFile(const QString &file, const QString &lang);
     void saved(const QString &id);
+    // The comments of a segment changed here.
+    void commented(const QString &id);
     // Find and replace is done: how many places in how many segments.
     void replaced(int places, int segments);
     // The best memory match was put into the segment that just opened;
@@ -107,6 +116,9 @@ private:
     void runChecks();
     void showResults();
     void showIssues();
+    void showComments();
+    void takeComments(const QJsonObject &segment);
+    void refreshComments();
     void showCapture(const QString &source, const QString &target);
     void searchMemory();
     void save(const QString &id, const QJsonArray &target, const QString &status, const QJsonArray &warnings,
@@ -199,6 +211,10 @@ private:
     QVBoxLayout *m_resultsList;
     QLabel *m_checksCount;
     QVBoxLayout *m_issuesList;
+    QLabel *m_commentsCount = nullptr;
+    QVBoxLayout *m_commentsList = nullptr;
+    QPlainTextEdit *m_commentText = nullptr;
+    QPushButton *m_commentAdd = nullptr;
     QWidget *m_lookupSection;
     QLineEdit *m_lookupField;
     QVBoxLayout *m_lookupList;

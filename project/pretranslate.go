@@ -48,7 +48,22 @@ type Segment struct {
 	Warnings []Warning `json:"warnings,omitempty"`
 	// Ignored are the warnings marked as false alarms, by kind and text.
 	Ignored []string `json:"ignored,omitempty"`
+	// Comments are what the people working on the project wrote about
+	// the segment, oldest first. They do not go into the document.
+	Comments []Comment `json:"comments,omitempty"`
 }
+
+// Comment is a remark on a segment by someone working on the project.
+type Comment struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+	By   string `json:"by"`
+	// At is when it was written, in RFC 3339.
+	At string `json:"at"`
+}
+
+// MaxCommentLength is how long a comment may be, in characters.
+const MaxCommentLength = 2000
 
 // FileState is a segment's state in its bilingual file.
 type FileState struct {

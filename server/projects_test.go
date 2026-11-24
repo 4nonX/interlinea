@@ -617,3 +617,53 @@ func TestPreviewProject(t *testing.T) {
 		t.Fatalf("a taken name: %d %s", r.status, r.body)
 	}
 }
+
+func TestSegmentComments(t *testing.T) {
+	te := newTeam(t)
+	var p projectView
+	te.call("POST", "/api/projects", te.pm, leaseRequest(), 201, &p)
+	at := fmt.Sprintf("/api/projects/%d/comments?file=Mietvertrag.txt&lang=en-GB&segment=s2", p.ID)
+	segsAt := fmt.Sprintf("/api/projects/%d/segments?file=Mietvertrag.txt&lang=en-GB", p.ID)
+	var before []projectdb.StoredSegment
+	te.call("GET", segsAt, te.pm, nil, 200, &before)
+
+	// Someone without the project can't comment on it.
+	if r := te.do("POST", at, te.ben, map[string]string{"text": "Is this the tenant?"}); r.status != 404 {
+		t.Fatalf("a stranger comments: %d", r.status)
+	}
+	var got projectdb.StoredSegment
+	te.call("POST", at, te.pm, map[string]string{"text": "  Mieter is tenant here, not lessee.  "}, 201, &got)
+	if len(got.Comments) != 1 || got.Comments[0].Text != "Mieter is tenant here, not lessee." || got.Comments[0].By == "" || got.Comments[0].ID == "" || got.Comments[0].At == "" {
+		t.Fatalf("commented %+v", got.Comments)
+	}
+	// The translation and its version stay as they are.
+	if got.Version != before[1].Version || got.Status != before[1].Status {
+		t.Fatalf("a comment changed the segment: version %d, was %d", got.Version, before[1].Version)
+	}
+	te.call("POST", at, te.pm, map[string]string{"text": "Second thought."}, 201, &got)
+	if len(got.Comments) != 2 || got.Comments[1].Text != "Second thought." {
+		t.Fatalf("two comments %+v", got.Comments)
+	}
+	// A translation saved afterwards keeps the comments.
+	var saved projectdb.StoredSegment
+	te.call("PUT", fmt.Sprintf("%s&segment=s2&version=%d", segsAt, got.Version), te.pm, project.Edit{Target: content.Text("The tenant pays the rent."), Status: project.StatusDraft}, 200, &saved)
+	if len(saved.Comments) != 2 {
+		t.Fatalf("saving lost the comments: %+v", saved.Comments)
+	}
+	for _, bad := range []string{"", "   ", strings.Repeat("x", project.MaxCommentLength+1)} {
+		if r := te.do("POST", at, te.pm, map[string]string{"text": bad}); r.status != 422 || r.err().Problems[0].Field != "text" {
+			t.Fatalf("comment of %d characters: %d %s", len(bad), r.status, r.body)
+		}
+	}
+	if r := te.do("POST", strings.Replace(at, "segment=s2", "segment=s99", 1), te.pm, map[string]string{"text": "x"}); r.status != 404 {
+		t.Fatalf("a comment on no segment: %d", r.status)
+	}
+	// Deleted, it is gone; one that is not there is not found.
+	te.call("DELETE", at+"&comment="+got.Comments[0].ID, te.pm, nil, 200, &got)
+	if len(got.Comments) != 1 || got.Comments[0].Text != "Second thought." {
+		t.Fatalf("after deleting %+v", got.Comments)
+	}
+	if r := te.do("DELETE", at+"&comment=nope", te.pm, nil); r.status != 404 {
+		t.Fatalf("deleting no comment: %d", r.status)
+	}
+}

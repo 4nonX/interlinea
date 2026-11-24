@@ -118,6 +118,14 @@ export function runsToCore(runs: Run[]): CoreRun[] {
 
 export type Run = string | TagRun;
 
+/** A remark on a segment by someone working on the project. */
+export interface SegmentComment {
+  id: string;
+  text: string;
+  by: string;
+  at: string;
+}
+
 export type SegmentStatus = "new" | "draft" | "confirmed";
 
 export interface Segment {
@@ -151,6 +159,8 @@ export interface Segment {
   file?: { state: FileState; target: string; match?: number };
   /** Bilingual files: comments on the segment. */
   notes?: string[];
+  /** What the people working on the project wrote about the segment, oldest first. */
+  comments?: SegmentComment[];
 }
 
 /** States of segments in bilingual files, as the core reports them. */

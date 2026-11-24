@@ -505,6 +505,31 @@ Access: read on the project, or work in it.
 - Answer: 200 OK: {`changes`: list of [projectdb.Change](#projectdbchange), `more`: boolean}
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `POST /api/projects/{id}/comments`
+
+Puts a comment on a segment (?file=, ?lang=, ?segment=): a remark for the others working on the project, which does not go into the document.
+
+The segment's translation and version stay as they are. The answer is the segment with its comments.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query)
+- Body: {`text`: string}
+- Answer: 201 Created: [projectdb.StoredSegment](#projectdbstoredsegment)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `DELETE /api/projects/{id}/comments`
+
+Takes a comment (?comment=) off a segment (?file=, ?lang=, ?segment=).
+
+The answer is the segment with the comments that are left.
+
+Access: the comment's author; manage on the project for anyone's.
+
+- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `comment` (query)
+- Answer: 200 OK: [projectdb.StoredSegment](#projectdbstoredsegment)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `POST /api/projects/{id}/concordance`
 
 Searches the memories the project searches with for the language.
@@ -2352,6 +2377,17 @@ Analysis is how the project's analysis counts.
 |---|---|---|
 | `context` | string | Context is the context match rule: "previous" (Trados) or "both" (memoQ). |
 
+### project.Comment
+
+Comment is a remark on a segment by someone working on the project.
+
+| Field | Type | Description |
+|---|---|---|
+| `at` | string | At is when it was written, in RFC 3339. |
+| `by` | string |  |
+| `id` | string |  |
+| `text` | string |  |
+
 ### project.Edit
 
 Edit is what saving a segment changes.
@@ -2462,6 +2498,7 @@ Segment is a segment of a file in one target language.
 | Field | Type | Description |
 |---|---|---|
 | `block` | string | Block is the paragraph of the original document the segment is in. |
+| `comments` | list of [project.Comment](#projectcomment) | Comments are what the people working on the project wrote about the segment, oldest first. They do not go into the document. |
 | `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
 | `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |
@@ -2621,6 +2658,7 @@ StoredSegment is a segment with its version.
 | `block` | string | Block is the paragraph of the original document the segment is in. |
 | `changedAt` | string (date-time) |  |
 | `changedBy` | string |  |
+| `comments` | list of [project.Comment](#projectcomment) | Comments are what the people working on the project wrote about the segment, oldest first. They do not go into the document. |
 | `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
 | `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |

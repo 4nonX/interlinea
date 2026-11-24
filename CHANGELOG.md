@@ -27,6 +27,10 @@ client and the desktop app, with installers and a server image.
 - The segments shown in the editor are narrowed to those that hold a
   text, in the source or the translation, besides to those still to do
   or with warnings.
+- Comments on segments, for the others working on a project: shown
+  with the segment, counted in its row, kept on the team server and
+  seen there as they are written. They do not go into the document,
+  and leave the translation and its version alone.
 - Find and replace in the translations of a file, with matching case
   and whole words: the places are counted before anything changes, tags
   and locked segments stay, and a segment that changes is a draft again.

@@ -1759,6 +1759,25 @@
         },
         "type": "object"
       },
+      "project.Comment": {
+        "description": "Comment is a remark on a segment by someone working on the project.",
+        "properties": {
+          "at": {
+            "description": "At is when it was written, in RFC 3339.",
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "project.Edit": {
         "description": "Edit is what saving a segment changes.",
         "properties": {
@@ -1980,6 +1999,13 @@
           "block": {
             "description": "Block is the paragraph of the original document the segment is in.",
             "type": "string"
+          },
+          "comments": {
+            "description": "Comments are what the people working on the project wrote about the segment, oldest first. They do not go into the document.",
+            "items": {
+              "$ref": "#/components/schemas/project.Comment"
+            },
+            "type": "array"
           },
           "file": {
             "allOf": [
@@ -2393,6 +2419,13 @@
           },
           "changedBy": {
             "type": "string"
+          },
+          "comments": {
+            "description": "Comments are what the people working on the project wrote about the segment, oldest first. They do not go into the document.",
+            "items": {
+              "$ref": "#/components/schemas/project.Comment"
+            },
+            "type": "array"
           },
           "file": {
             "allOf": [
@@ -6777,6 +6810,164 @@
           }
         },
         "summary": "Lists the project's changes after ?since= (a change number), oldest first, at most ?limit=.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/comments": {
+      "delete": {
+        "description": "The answer is the segment with the comments that are left.\n\nAccess: the comment's author; manage on the project for anyone's.",
+        "operationId": "deleteSegmentComment",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comment",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/projectdb.StoredSegment"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Takes a comment (?comment=) off a segment (?file=, ?lang=, ?segment=).",
+        "tags": [
+          "Projects"
+        ]
+      },
+      "post": {
+        "description": "The segment's translation and version stay as they are. The answer is the segment with its comments.\n\nAccess: read on the project, or work in it.",
+        "operationId": "addSegmentComment",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/projectdb.StoredSegment"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Puts a comment on a segment (?file=, ?lang=, ?segment=): a remark for the others working on the project, which does not go into the document.",
         "tags": [
           "Projects"
         ]

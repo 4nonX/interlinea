@@ -9,6 +9,7 @@
 #include "flowlayout.h"
 #include "icons.h"
 #include "languages.h"
+#include "roles.h"
 #include "segmentcontent.h"
 #include "webui.h"
 #include "targeteditor.h"
@@ -34,6 +35,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QPlainTextEdit>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QResizeEvent>
@@ -369,6 +371,10 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
                 const QJsonObject mine = m_model->segment(m_model->rowOf(data.value(QLatin1String("segment")).toString()));
                 if (data.value(QLatin1String("version")).toInt() > mine.value(QLatin1String("version")).toInt())
                     m_refreshTimer.start();
+            } else if (kind == QLatin1String("segment-commented") && data.value(QLatin1String("file")).toString() == m_file
+                       && data.value(QLatin1String("targetLang")).toString() == m_lang) {
+                // Only the comments changed: the translations here stay as they are.
+                refreshComments();
             } else if (kind == QLatin1String("settings-changed")) {
                 loadProject();
             } else if (kind == QLatin1String("file-removed") || kind == QLatin1String("project-deleted")) {
@@ -654,6 +660,28 @@ QWidget *EditorPage::buildPanel()
     connect(esc, &QShortcut::activated, this, closeLookup);
     m_lookupSection->hide();
     v->addWidget(m_lookupSection);
+
+    // Comments on the open segment, and a field for a new one.
+    QVBoxLayout *commentsBody = nullptr;
+    v->addWidget(section(tr("Comments"), &m_commentsCount, body, &commentsBody));
+    m_commentsList = new QVBoxLayout;
+    m_commentsList->setSpacing(S2);
+    commentsBody->addLayout(m_commentsList);
+    m_commentText = new QPlainTextEdit(body);
+    m_commentText->setObjectName(QStringLiteral("commentText"));
+    m_commentText->setAccessibleName(tr("A comment on this segment"));
+    m_commentText->setPlaceholderText(tr("A comment for those working on the project"));
+    m_commentText->setTabChangesFocus(true);
+    m_commentText->setFixedHeight(56);
+    commentsBody->addWidget(m_commentText);
+    m_commentAdd = new QPushButton(Icons::get(QStringLiteral("comment")), tr("Add comment"), body);
+    m_commentAdd->setObjectName(QStringLiteral("addComment"));
+    Theme::smallButton(m_commentAdd);
+    m_commentAdd->setIconSize(QSize(14, 14));
+    m_commentAdd->setEnabled(false);
+    commentsBody->addWidget(m_commentAdd, 0, Qt::AlignLeft);
+    connect(m_commentText, &QPlainTextEdit::textChanged, this, [this] { m_commentAdd->setEnabled(!m_commentText->toPlainText().trimmed().isEmpty() && !m_activeId.isEmpty()); });
+    connect(m_commentAdd, &QPushButton::clicked, this, [this] { addComment(m_commentText->toPlainText()); });
 
     // Add a term: the intro and its buttons, or the form.
     QVBoxLayout *termBody = nullptr;
@@ -1266,6 +1294,8 @@ void EditorPage::activate(int row)
         m_target->setFocus();
     showResults();
     showIssues();
+    m_commentText->clear();
+    showComments();
     updatePreview();
     sendPresence();
     lookup();
@@ -2015,6 +2045,131 @@ void EditorPage::addWord(const QString &word)
                  notify(tr("“%1” is spelled right in this project from now on").arg(word));
                  runChecks();
              });
+}
+
+QJsonArray EditorPage::comments() const
+{
+    return m_model->segment(activeRow()).value(QLatin1String("comments")).toArray();
+}
+
+void EditorPage::showComments()
+{
+    clear(m_commentsList);
+    QWidget *panel = m_commentText->parentWidget();
+    const QJsonArray list = m_activeId.isEmpty() ? QJsonArray() : comments();
+    m_commentsCount->setVisible(!list.isEmpty());
+    m_commentsCount->setText(QString::number(list.size()));
+    if (list.isEmpty()) {
+        auto *none = label(tr("No comments on this segment."), "muted", panel);
+        none->setObjectName(QStringLiteral("noComments"));
+        m_commentsList->addWidget(none);
+        return;
+    }
+    // Their author deletes them; on this computer, or managing the project, anyone's.
+    const bool all = m_conn && (m_conn->isLocal() || Roles::allows(m_project.value(QLatin1String("access")).toObject().value(QLatin1String("role")).toString(), QStringLiteral("manage")));
+    const QString me = m_conn ? m_conn->login() : QString();
+    for (const QJsonValue &v : list) {
+        const QJsonObject c = v.toObject();
+        const QString id = c.value(QLatin1String("id")).toString();
+        const QString text = c.value(QLatin1String("text")).toString();
+        auto *box = new QFrame(panel);
+        box->setProperty("role", QStringLiteral("box"));
+        box->setObjectName(QStringLiteral("comment"));
+        auto *bv = new QVBoxLayout(box);
+        bv->setContentsMargins(S3, S2, S3, S2);
+        bv->setSpacing(S1);
+        auto *words = new QLabel(text, box);
+        words->setTextFormat(Qt::PlainText);
+        words->setWordWrap(true);
+        words->setObjectName(QStringLiteral("commentWords"));
+        bv->addWidget(words);
+        auto *meta = new QHBoxLayout;
+        meta->setSpacing(S2);
+        const QDateTime at = QDateTime::fromString(c.value(QLatin1String("at")).toString(), Qt::ISODate).toLocalTime();
+        meta->addWidget(label(tr("%1, %2").arg(c.value(QLatin1String("by")).toString(), QLocale(QLocale::English, QLocale::UnitedKingdom).toString(at.date(), QStringLiteral("d MMM yyyy"))), "secondary", box), 1);
+        if (all || c.value(QLatin1String("by")).toString() == me) {
+            auto *del = new QPushButton(tr("Delete"), box);
+            del->setObjectName(QStringLiteral("deleteComment:%1").arg(id));
+            del->setAccessibleName(tr("Delete the comment “%1”").arg(text));
+            Theme::smallButton(del);
+            Theme::quietButton(del);
+            connect(del, &QPushButton::clicked, this, [this, id] { deleteComment(id); });
+            meta->addWidget(del);
+        }
+        bv->addLayout(meta);
+        m_commentsList->addWidget(box);
+    }
+}
+
+// The segment as the server has it now: its comments are taken, the
+// translation being worked on stays.
+void EditorPage::takeComments(const QJsonObject &segment)
+{
+    const QString id = segment.value(QLatin1String("id")).toString();
+    const int row = m_model->rowOf(id);
+    if (row < 0)
+        return;
+    QJsonObject mine = m_model->segment(row);
+    if (mine.value(QLatin1String("comments")) == segment.value(QLatin1String("comments")))
+        return;
+    if (segment.value(QLatin1String("comments")).toArray().isEmpty())
+        mine.remove(QLatin1String("comments"));
+    else
+        mine.insert(QLatin1String("comments"), segment.value(QLatin1String("comments")));
+    m_model->update(mine);
+    m_grid->resizeRowToContents(row);
+    if (id == m_activeId)
+        showComments();
+}
+
+void EditorPage::refreshComments()
+{
+    if (!m_conn)
+        return;
+    const QUrlQuery q{{QStringLiteral("file"), m_file}, {QStringLiteral("lang"), m_lang}};
+    onResult(m_conn->api()->get(projectPath() + QStringLiteral("/segments"), q), this, [this](const ApiResult &r) {
+        if (!r.ok())
+            return;
+        for (const QJsonValue &v : r.array())
+            takeComments(v.toObject());
+    });
+}
+
+void EditorPage::addComment(const QString &text)
+{
+    const QString said = text.trimmed();
+    if (!m_conn || m_activeId.isEmpty() || said.isEmpty())
+        return;
+    const QUrlQuery q{{QStringLiteral("file"), m_file}, {QStringLiteral("lang"), m_lang}, {QStringLiteral("segment"), m_activeId}};
+    const QString id = m_activeId;
+    m_commentAdd->setEnabled(false);
+    onResult(m_conn->api()->post(projectPath() + QStringLiteral("/comments"), QJsonObject{{QStringLiteral("text"), said}}, q), this, [this, id](const ApiResult &r) {
+        if (!r.ok()) {
+            notify(r.error.message);
+            m_commentAdd->setEnabled(!m_commentText->toPlainText().trimmed().isEmpty());
+            return;
+        }
+        if (id == m_activeId)
+            m_commentText->clear();
+        takeComments(r.object());
+        emit commented(id);
+    });
+}
+
+void EditorPage::deleteComment(const QString &commentId)
+{
+    if (!m_conn || m_activeId.isEmpty())
+        return;
+    const QUrlQuery q{{QStringLiteral("file"), m_file}, {QStringLiteral("lang"), m_lang}, {QStringLiteral("segment"), m_activeId}, {QStringLiteral("comment"), commentId}};
+    const QString id = m_activeId;
+    onResult(m_conn->api()->del(projectPath() + QStringLiteral("/comments"), q), this, [this, id](const ApiResult &r) {
+        if (!r.ok()) {
+            notify(r.error.message);
+            return;
+        }
+        takeComments(r.object());
+        emit commented(id);
+    });
 }
 
 namespace {

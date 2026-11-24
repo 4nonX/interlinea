@@ -191,6 +191,7 @@ function segmentOf(s: StoredSegment, local?: Segment): Segment {
     status: s.status,
     locked: s.locked || undefined,
     lockedReason: undefined,
+    comments: s.comments?.length ? s.comments : undefined,
   };
 }
 
@@ -735,6 +736,20 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
               notify(`${c.by} deleted the project “${c.project}” on the server`);
               return;
             }
+            if (c.kind === "segment-commented" && c.file && c.targetLang && c.segment) {
+              // Only the comments changed: the translation here stays as it is.
+              const fileId = Object.entries(p.remote.files).find(([, n]) => n === c.file)?.[0];
+              const lang = c.targetLang;
+              const segId = c.segment;
+              if (!fileId) return;
+              later(`com|${vkey(p.remote.id, c.file, lang, segId)}`, 150, () => {
+                void api.segments(p.remote!.id, c.file!, lang).then((fresh) => {
+                  const theirs = fresh.find((x) => x.id === segId);
+                  if (theirs) dispatch({ type: "setComments", at: { projectId: p.id, fileId, lang }, segmentId: segId, comments: theirs.comments ?? [] });
+                });
+              });
+              return;
+            }
             if (c.kind === "segment-changed" && c.file && c.targetLang && c.segment) {
               const k = vkey(p.remote.id, c.file, c.targetLang, c.segment);
               if ((versions.current.get(k) ?? 0) >= (c.version ?? 0)) return;
@@ -911,6 +926,56 @@ export function usePresence(project: Project | undefined, fileId: string, lang: 
     return () => void api.leave(n).catch(() => undefined);
   }, [api, n]);
   return present;
+}
+
+/**
+ * Comments on the segments of a file: kept with the project on this
+ * computer, or on the team server for everyone working on it.
+ */
+export function useSegmentComments(project: Project | undefined, fileId: string, lang: LangCode) {
+  const { api, conn } = useRemote();
+  const { state, dispatch, notify } = useStore();
+  const latest = useRef(state);
+  latest.current = state;
+  const n = project?.remote?.id;
+  const file = n ? project!.remote!.files[fileId] : undefined;
+  const projectId = project?.id ?? "";
+  const role = project?.remote?.role ?? "";
+  return useMemo(() => {
+    const at: SegmentsAt = { projectId, fileId, lang };
+    const now = (segmentId: string) =>
+      latest.current.projects.find((p) => p.id === projectId)?.files.find((f) => f.id === fileId)?.segments[lang]?.find((s) => s.id === segmentId)?.comments ?? [];
+    const failed = (e: unknown) => notify(e instanceof Error ? e.message : String(e));
+    return {
+      /** Who the signed-in person's comments are by. */
+      me: n ? (conn?.user.username ?? "") : latest.current.userName,
+      /** Whether the person may delete anyone's comment, or only their own. */
+      deletesAll: !n || allows(role, "manage"),
+      add(segmentId: string, text: string) {
+        if (n && api && file)
+          return api.addComment(n, file, lang, segmentId, text).then(
+            (s) => dispatch({ type: "setComments", at, segmentId, comments: s.comments ?? [] }),
+            failed,
+          );
+        dispatch({
+          type: "setComments",
+          at,
+          segmentId,
+          comments: [...now(segmentId), { id: crypto.randomUUID(), text, by: latest.current.userName, at: new Date().toISOString() }],
+        });
+        return Promise.resolve();
+      },
+      remove(segmentId: string, commentId: string) {
+        if (n && api && file)
+          return api.deleteComment(n, file, lang, segmentId, commentId).then(
+            (s) => dispatch({ type: "setComments", at, segmentId, comments: s.comments ?? [] }),
+            failed,
+          );
+        dispatch({ type: "setComments", at, segmentId, comments: now(segmentId).filter((c) => c.id !== commentId) });
+        return Promise.resolve();
+      },
+    };
+  }, [api, conn?.user.username, dispatch, notify, n, file, projectId, fileId, lang, role]);
 }
 
 /**

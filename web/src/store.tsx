@@ -49,6 +49,7 @@ import {
   sourceKey,
   type Run,
   type Segment,
+  type SegmentComment,
   type SegmentStatus,
 } from "./editor/model";
 
@@ -200,6 +201,7 @@ type Action =
       warnings: { kind: string; text: string }[];
     }
   | { type: "ignoreIssue"; at: SegmentsAt; segmentId: string; text: string }
+  | { type: "setComments"; at: SegmentsAt; segmentId: string; comments: SegmentComment[] }
   | {
       /** Translations changed by find and replace: they are drafts again. */
       type: "replaceTargets";
@@ -750,6 +752,10 @@ function reduce(state: State, action: Action): State {
               }
             : sg,
         ),
+      );
+    case "setComments":
+      return withSegments(state, action.at, (segments) =>
+        segments.map((sg) => (sg.id === action.segmentId ? { ...sg, comments: action.comments.length ? action.comments : undefined } : sg)),
       );
     case "replaceTargets": {
       const to = new Map(action.changes.map((c) => [c.segmentId, c.target]));

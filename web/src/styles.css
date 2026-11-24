@@ -2736,6 +2736,43 @@ table[aria-label="Units found"] .cell-action .row {
   border-radius: 6px;
 }
 
+/* Comments on a segment */
+.comment-list {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comment-list li {
+  padding: var(--s2) var(--s3);
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.comment-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-list .result-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin: var(--s1) 0 0;
+}
+
+.seg-comments {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  color: var(--text-2);
+  font-size: 0.75rem;
+}
+
 /* Alignment of two documents into a memory: the two texts side by side,
    with lines between the segments that are paired */
 .align-head {

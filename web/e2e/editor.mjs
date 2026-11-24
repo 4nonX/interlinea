@@ -336,6 +336,26 @@ export default () =>
         check(await waitFor("document.querySelector('.target-editor').innerText.trim() === 'Basic rent'", 5000), "replaced back, the text is as it was");
         await waitFor("!document.querySelector('dialog[open]')");
       }
+      // Comments on the open segment: written, counted on the segment, and deleted.
+      {
+        const box = "section[aria-label=Comments]";
+        check((await evaluate(`document.querySelector(${JSON.stringify(box)}).innerText`)).includes("No comments on this segment."), "a segment starts without comments");
+        check(await evaluate(`[...document.querySelectorAll(${JSON.stringify(box + " button")})].find(b => b.textContent.includes('Add comment')).disabled`), "an empty comment can't be added");
+        await setValue(`${box} textarea`, "Is this the cold rent or the total?");
+        await sleep(100);
+        await click(`${box} button`, "Add comment");
+        check(await waitFor(`document.querySelector(${JSON.stringify(box + " .comment-list")})?.innerText.includes('Is this the cold rent or the total?')`), "the comment is shown with the segment");
+        check((await evaluate(`document.querySelector(${JSON.stringify(box + " textarea")}).value`)) === "" && (await evaluate(`document.querySelector(${JSON.stringify(box + " .results-count")})?.textContent`)) === "1", "the field is empty again and the comments are counted");
+        check((await evaluate("document.querySelector('.seg.is-active .seg-comments')?.textContent ?? ''")).includes("1 comment"), "the segment shows that it has a comment");
+        await setValue(`${box} textarea`, "Second remark.");
+        await sleep(100);
+        await click(`${box} button`, "Add comment");
+        check(await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 2`), "a second comment follows the first");
+        await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list li button")}).click()`);
+        check(await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 1`) && (await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list")}).innerText`)).includes("Second remark."), "a comment is deleted");
+        await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list li button")}).click()`);
+        check(await waitFor(`document.querySelector(${JSON.stringify(box)}).innerText.includes('No comments on this segment.')`) && !(await evaluate("!!document.querySelector('.seg.is-active .seg-comments')")), "without comments the segment shows none");
+      }
       check(
         (
           await evaluate("document.querySelector('.target-editor').innerText")

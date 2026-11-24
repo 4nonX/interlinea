@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/auth/authdb"
@@ -44,6 +45,8 @@ func (s *Server) projectRoutes() {
 	s.handle("GET /api/projects/{id}/return-package", s.signedIn(s.projectReturnPackage))
 	s.handle("GET /api/projects/{id}/segments", s.signedIn(s.projectSegments))
 	s.handle("PUT /api/projects/{id}/segments", s.signedIn(s.saveProjectSegment))
+	s.handle("POST /api/projects/{id}/comments", s.signedIn(s.addSegmentComment))
+	s.handle("DELETE /api/projects/{id}/comments", s.signedIn(s.deleteSegmentComment))
 	s.handle("POST /api/projects/{id}/pretranslate", s.signedIn(s.pretranslateProject))
 	s.handle("POST /api/projects/{id}/lookup", s.signedIn(s.projectLookup))
 	s.handle("POST /api/projects/{id}/concordance", s.signedIn(s.projectConcordance))
@@ -1123,6 +1126,64 @@ func (s *Server) saveProjectSegment(w http.ResponseWriter, r *http.Request, me s
 			s.cfg.Log.Error("updating the project's memories failed", "project", p.ID, "segment", seg, "err", err)
 			w.Header().Set("Interlinea-Warning", "memories-not-updated")
 		}
+	}
+	writeJSON(w, http.StatusOK, got)
+}
+
+// addSegmentComment puts a comment on a segment (?file=, ?lang=,
+// ?segment=): a remark for the others working on the project, which does
+// not go into the document. The segment's translation and version stay
+// as they are. The answer is the segment with its comments.
+//
+// Access: read on the project, or work in it.
+func (s *Server) addSegmentComment(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	text := strings.TrimSpace(req.Text)
+	if text == "" {
+		invalid(w, "text", "The comment is empty.")
+		return
+	}
+	if utf8.RuneCountInString(text) > project.MaxCommentLength {
+		invalid(w, "text", fmt.Sprintf("A comment is at most %d characters long.", project.MaxCommentLength))
+		return
+	}
+	q := r.URL.Query()
+	got, err := s.cfg.Projects.AddComment(r.Context(), p.ID, q.Get("file"), q.Get("lang"), q.Get("segment"), text, me.by())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, got)
+}
+
+// deleteSegmentComment takes a comment (?comment=) off a segment
+// (?file=, ?lang=, ?segment=). The answer is the segment with the
+// comments that are left.
+//
+// Access: the comment's author; manage on the project for anyone's.
+func (s *Server) deleteSegmentComment(w http.ResponseWriter, r *http.Request, me session) {
+	p, a, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	got, err := s.cfg.Projects.DeleteComment(r.Context(), p.ID, q.Get("file"), q.Get("lang"), q.Get("segment"), q.Get("comment"), me.by(), a.manage())
+	if errors.Is(err, projectdb.ErrNotYours) {
+		forbidden(w, "Only its author or a manager of the project may delete a comment.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, got)
 }

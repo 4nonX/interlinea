@@ -89,6 +89,8 @@ QVariant SegmentModel::data(const QModelIndex &index, int role) const
                 parts << tr("Locked");
             if (warnings)
                 parts << tr("%n warning(s)", nullptr, warnings);
+            if (const int n = int(s.value(QLatin1String("comments")).toArray().size()); n > 0)
+                parts << (n == 1 ? tr("1 comment") : tr("%1 comments").arg(n));
             if (m_pending.contains(id))
                 parts << tr("Not saved");
             const QStringList who = m_presence.value(id);
@@ -109,6 +111,8 @@ QVariant SegmentModel::data(const QModelIndex &index, int role) const
             QStringList lines;
             for (const QJsonValue &w : s.value(QLatin1String("warnings")).toArray())
                 lines << w.toObject().value(QLatin1String("text")).toString();
+            for (const QJsonValue &c : s.value(QLatin1String("comments")).toArray())
+                lines << QStringLiteral("%1: %2").arg(c.toObject().value(QLatin1String("by")).toString(), c.toObject().value(QLatin1String("text")).toString());
             const QString by = s.value(QLatin1String("changedBy")).toString();
             if (!by.isEmpty())
                 lines << tr("Last saved by %1").arg(by);
@@ -413,6 +417,12 @@ void SegmentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &optio
             painter->drawText(QRect(cx + 4, y, 16, 13), Qt::AlignLeft | Qt::AlignVCenter, QString::number(w));
             y += 15;
         }
+        if (const int n = s.value(QLatin1String("comments")).toArray().size(); n > 0) {
+            Icons::paint(*painter, QRectF(cx - 10, y, 13, 13), QStringLiteral("comment"), Theme::color("text2"));
+            painter->setPen(Theme::color("text2"));
+            painter->drawText(QRect(cx + 4, y, 16, 13), Qt::AlignLeft | Qt::AlignVCenter, QString::number(n));
+            y += 15;
+        }
         const QJsonObject origin = s.value(QLatin1String("origin")).toObject();
         if (origin.value(QLatin1String("kind")).toString() == QLatin1String("tm")) {
             const int score = origin.value(QLatin1String("score")).toInt();
@@ -474,6 +484,8 @@ QSize SegmentDelegate::sizeHint(const QStyleOptionViewItem &option, const QModel
         if (s.value(QLatin1String("locked")).toBool())
             h += 15;
         if (!s.value(QLatin1String("warnings")).toArray().isEmpty())
+            h += 15;
+        if (!s.value(QLatin1String("comments")).toArray().isEmpty())
             h += 15;
         const QString origin = s.value(QLatin1String("origin")).toObject().value(QLatin1String("kind")).toString();
         if (origin == QLatin1String("tm") || origin == QLatin1String("repetition") || !index.data(SegmentModel::AvailableRole).toJsonObject().isEmpty())

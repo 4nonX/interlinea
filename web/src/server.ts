@@ -257,6 +257,7 @@ export interface CoreSegment {
   target: CoreRun[] | null;
   status: "new" | "draft" | "confirmed";
   locked?: boolean;
+  comments?: { id: string; text: string; by: string; at: string }[];
 }
 
 export interface StoredSegment extends CoreSegment {
@@ -597,6 +598,11 @@ export function client(conn: Connection) {
       get<StoredSegment[]>(`${p(id)}/segments?${q({ file, lang })}`),
     saveSegment: (id: number, file: string, lang: string, segment: string, target: CoreRun[], status: string, version: number) =>
       send<StoredSegment>("PUT", `${p(id)}/segments?${q({ file, lang, segment })}`, { target, status }, version),
+    /** Puts a comment on a segment; its translation and version stay. */
+    addComment: (id: number, file: string, lang: string, segment: string, text: string) =>
+      send<StoredSegment>("POST", `${p(id)}/comments?${q({ file, lang, segment })}`, { text }),
+    deleteComment: (id: number, file: string, lang: string, segment: string, comment: string) =>
+      send<StoredSegment>("DELETE", `${p(id)}/comments?${q({ file, lang, segment, comment })}`),
     /** The units of a memory the project uses that match its segments in a language, as TMX. */
     memoryExtract: async (id: number, name: string, lang: string) =>
       new Uint8Array(

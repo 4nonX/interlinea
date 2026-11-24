@@ -326,6 +326,17 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(4, 16);
         path.lineTo(6.5, 13.5);
         path.lineTo(9, 16);
+    } else if (name == QLatin1String("comment")) {
+        // A speech bubble with its tail at the bottom left.
+        path.moveTo(21, 15);
+        path.cubicTo(21, 16.1, 20.1, 17, 19, 17);
+        path.lineTo(7, 17);
+        path.lineTo(3, 21);
+        path.lineTo(3, 5);
+        path.cubicTo(3, 3.9, 3.9, 3, 5, 3);
+        path.lineTo(19, 3);
+        path.cubicTo(20.1, 3, 21, 3.9, 21, 5);
+        path.closeSubpath();
     } else if (name == QLatin1String("columns")) {
         path.addRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
         path.moveTo(12, 3);

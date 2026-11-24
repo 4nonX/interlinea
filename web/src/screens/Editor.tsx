@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  MessageSquare,
   ArrowLeft,
   BarChart3,
   Check,
@@ -41,6 +42,7 @@ import {
   wordCount,
   type Run,
   type Segment,
+  type SegmentComment,
   type TmUnit,
 } from "../editor/model";
 import type { QaIssue, TermHit } from "../editor/match";
@@ -98,7 +100,7 @@ import {
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
-import { usePresence, useServerConcordance } from "../remote";
+import { usePresence, useSegmentComments, useServerConcordance } from "../remote";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -295,6 +297,7 @@ export function Editor({
   const index = segments.findIndex((s) => s.id === activeId);
   // On a team server: who else has which segment open.
   const present = usePresence(project, file?.id ?? "", target, activeId);
+  const commenting = useSegmentComments(project, file?.id ?? "", target);
   const here = useMemo(() => {
     const m = new Map<string, typeof present>();
     for (const x of present) m.set(x.segment, [...(m.get(x.segment) ?? []), x]);
@@ -1572,6 +1575,17 @@ export function Editor({
                   </Section>
                 )}
 
+                <Section title="Comments" count={active.comments?.length}>
+                  <SegmentComments
+                    key={active.id}
+                    comments={active.comments ?? []}
+                    me={commenting.me}
+                    deletesAll={commenting.deletesAll}
+                    onAdd={(text) => commenting.add(active.id, text)}
+                    onDelete={(id) => commenting.remove(active.id, id)}
+                  />
+                </Section>
+
                 <Section title="Add a term">
                   {capture ? (
                     <CaptureForm
@@ -1761,6 +1775,7 @@ function SegmentStatusCell({
     s.locked ? (s.lockedReason ?? "Locked in the file") : "",
     fileNote ?? "",
     ...(s.notes ?? []).map((n) => `Note: ${n}`),
+    ...(s.comments ?? []).map((c) => `${c.by}: ${c.text}`),
     ...warnings.map((x) => x.text),
   ]
     .filter(Boolean)
@@ -1792,6 +1807,13 @@ function SegmentStatusCell({
           {s.file.match}%
         </span>
       ) : null}
+      {(s.comments?.length ?? 0) > 0 && (
+        <span className="seg-comments">
+          <MessageSquare size={13} aria-hidden="true" />
+          <span className="sr-only">{plural(s.comments!.length, "comment", "comments")}</span>
+          <span aria-hidden="true">{s.comments!.length}</span>
+        </span>
+      )}
       {warnings.length > 0 && (
         <span className="seg-warn">
           <AlertTriangle size={13} aria-hidden="true" />
@@ -2207,6 +2229,77 @@ function LengthCounter({ length, max }: { length: number; max: number }) {
  * stay as they are, tags stay where they are, and a segment that changes
  * is a draft again.
  */
+/** The comments on the open segment, and a field for a new one. */
+function SegmentComments({
+  comments,
+  me,
+  deletesAll,
+  onAdd,
+  onDelete,
+}: {
+  comments: SegmentComment[];
+  me: string;
+  deletesAll: boolean;
+  onAdd: (text: string) => Promise<unknown>;
+  onDelete: (id: string) => Promise<unknown>;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const add = () => {
+    const t = text.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    void onAdd(t).then(() => {
+      setText("");
+      setBusy(false);
+    });
+  };
+  return (
+    <>
+      {comments.length === 0 ? (
+        <p className="muted">No comments on this segment.</p>
+      ) : (
+        <ul className="comment-list">
+          {comments.map((c) => (
+            <li key={c.id}>
+              <p className="comment-text">{c.text}</p>
+              <p className="result-meta">
+                {c.by}, {fmtDate(c.at)}
+                {(deletesAll || c.by === me) && (
+                  <button type="button" className="link-button" aria-label={`Delete the comment “${c.text}”`} onClick={() => void onDelete(c.id)}>
+                    Delete
+                  </button>
+                )}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <label className="field">
+        <span className="sr-only">A comment on this segment</span>
+        <textarea
+          rows={2}
+          maxLength={2000}
+          placeholder="A comment for those working on the project"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              e.stopPropagation();
+              add();
+            }
+          }}
+        />
+      </label>
+      <button type="button" className="btn btn-small" disabled={!text.trim() || busy} onClick={add}>
+        <MessageSquare size={14} aria-hidden="true" />
+        Add comment
+      </button>
+    </>
+  );
+}
+
 function ReplaceDialog({
   segments,
   lang: targetLang,

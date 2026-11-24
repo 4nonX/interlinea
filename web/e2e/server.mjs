@@ -293,6 +293,33 @@ export default () =>
       const kept = (await api("GET", `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}`, admin)).find((x) => x.id === segs[1].id);
       check(JSON.stringify(kept.target).includes("Anna was first") && kept.changedBy === "anna", "the server keeps the translation saved first");
 
+      // Comments on a segment are kept on the server for everyone: Ben's is
+      // saved there, Anna's arrives while he works, and neither touches the translation.
+      {
+        const box = "section[aria-label=Comments]";
+        const segOnServer = async () => {
+          const all = await api("GET", `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}`, admin);
+          return all.find((x) => (x.comments ?? []).some((c) => c.text === "Tenancy or lease?")) ?? null;
+        };
+        await setValue(`${box} textarea`, "Tenancy or lease?");
+        await sleep(100);
+        await click(`${box} button`, "Add comment");
+        check(await waitFor(`document.querySelector(${JSON.stringify(box + " .comment-list")})?.innerText.includes('Tenancy or lease?')`, 10000), "Ben's comment is shown");
+        const commented = await segOnServer();
+        check(!!commented && commented.comments[0].by === "ben", "and is kept on the server under his name");
+        const versionBefore = commented.version;
+        await api("POST", `/api/projects/${p.id}/comments?file=${encodeURIComponent(file)}&lang=${lang}&segment=${commented.id}`, admin, { text: "Lease, as in the client's glossary." });
+        check(await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 2`, 10000), "Anna's comment arrives while Ben works");
+        check((await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list")}).innerText`)).includes("Lease, as in the client's glossary."), "with her words");
+        check((await segOnServer()).version === versionBefore, "comments leave the segment's version alone");
+        // Ben deletes his own; Anna's has no button for him.
+        check((await evaluate(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li button")}).length`)) === 1, "Ben may delete only his own comment");
+        await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list li button")}).click()`);
+        check(await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 1`, 10000), "his comment is deleted");
+        const r = await fetch(`${base}/api/projects/${p.id}/comments?file=${encodeURIComponent(file)}&lang=${lang}&segment=${commented.id}&comment=nope`, { method: "DELETE", headers: { Authorization: `Bearer ${admin}` } });
+        check(r.status === 404, "a comment that is not there is not found");
+      }
+
       // The memory search asks the server: Ben's confirmed translation was
       // not in what the browser loaded, but is found.
       await key("k", "KeyK", 75, 2);
