@@ -77,6 +77,14 @@ static QLabel *label(QWidget *root, const QString &text)
 }
 
 // Signs in to the team server of the environment; null without one.
+static QLabel *labelWith(QWidget *root, const QString &part)
+{
+    for (QLabel *l : root->findChildren<QLabel *>())
+        if (l->text().contains(part) && !(l->isHidden() && l->testAttribute(Qt::WA_WState_ExplicitShowHide)))
+            return l;
+    return nullptr;
+}
+
 static Connection *signIn(ConnectionManager &m)
 {
     const QString server = qEnvironmentVariable("INTERLINEA_TEAM_SERVER");
@@ -682,8 +690,70 @@ private slots:
         ReviewPage *review = section.review();
         QTRY_VERIFY_WITH_TIMEOUT(section.reviewing() && review->items().size() == 1, 15000);
         QCOMPARE(review->mergeRequest().value("title").toString(), QStringLiteral("Neue Benennungen"));
-        byName<QPushButton>(review, QStringLiteral("approve"))->click();
-        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Approved: 1 entry"), 10000);
+        // Reviewers: nobody has a part yet. Rosa cannot be given one while
+        // she may only read the master; once she may approve, she can.
+        QTRY_VERIFY_WITH_TIMEOUT(byName<QLabel>(review, QStringLiteral("noReviewers")), 10000);
+        QCOMPARE(byName<QLabel>(review, QStringLiteral("noReviewers"))->text(), QStringLiteral("Nobody is given a part: everyone who may approve changes to E2E Recht sees all of it."));
+        QVERIFY(review->may("manage"));
+        byName<QPushButton>(review, QStringLiteral("assign"))->click();
+        QCOMPARE(review->message(), QStringLiteral("Choose who reviews."));
+        pick(byName<QComboBox>(review, QStringLiteral("assignWho")), QStringLiteral("rosa"));
+        byName<QPushButton>(review, QStringLiteral("assign"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Rosa Lind may not approve changes to E2E Recht. Give them the approve role first."), 10000);
+        QVERIFY(review->reviewers().isEmpty());
+        QVERIFY(wait(api->put(QStringLiteral("/api/grants"), QJsonObject{{"userId", rosa}, {"kind", "termbase"}, {"resource", "E2E Recht"}, {"role", "approve"}})).ok());
+        QTRY_VERIFY(byName<QComboBox>(review, QStringLiteral("assignWho")));
+        pick(byName<QComboBox>(review, QStringLiteral("assignWho")), QStringLiteral("rosa"));
+        pick(byName<QComboBox>(review, QStringLiteral("assignPart")), QStringLiteral("lang:de-DE"));
+        byName<QPushButton>(review, QStringLiteral("assign"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Rosa Lind reviews a part of the request"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(review->reviewers().size() == 1 && byName<QPushButton>(review, QStringLiteral("unassign:rosa")), 10000);
+        QVERIFY(labelWith(review, QStringLiteral("entries with terms in German (Germany): 1 of 1 to decide")));
+        QVERIFY(labelWith(review, QStringLiteral("; for rosa to review")));
+        QTest::qWait(200);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty())
+            review->grab().save(dir + QStringLiteral("/review-reviewers.png"));
+        // Rosa sees her part alone, and decides it with a note.
+        {
+            TestCore hers;
+            ConnectionManager rm(&hers.launcher);
+            rm.start();
+            QTRY_VERIFY_WITH_TIMEOUT(rm.local()->isReady(), 30000);
+            Connection *asRosa = nullptr;
+            bool done = false;
+            rm.signInWithPassword(ConnectionManager::serverUrl(qEnvironmentVariable("INTERLINEA_TEAM_SERVER")), QStringLiteral("rosa"), QStringLiteral("another long password"),
+                                  [&](Connection *c, const ApiError &) { asRosa = c; done = true; });
+            QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
+            QVERIFY(asRosa);
+            ReviewPage hersPage;
+            hersPage.resize(1360, 900);
+            hersPage.show();
+            hersPage.open(asRosa, review->request());
+            QTRY_VERIFY2_WITH_TIMEOUT(hersPage.items().size() == 1 && byName<QCheckBox>(&hersPage, QStringLiteral("mine")),
+                                      qPrintable(QStringLiteral("%1 items, %2 reviewers, as %3, %4")
+                                                     .arg(hersPage.items().size())
+                                                     .arg(hersPage.reviewers().size())
+                                                     .arg(asRosa->userName(), byName<QLabel>(&hersPage, QStringLiteral("state")) ? byName<QLabel>(&hersPage, QStringLiteral("state"))->text() : QString())),
+                                      15000);
+            QVERIFY(hersPage.may("approve") && !hersPage.may("manage"));
+            // She decides, but does not hand out parts.
+            QVERIFY(!byName<QPushButton>(&hersPage, QStringLiteral("assign")) && !byName<QPushButton>(&hersPage, QStringLiteral("unassign:rosa")));
+            byName<QCheckBox>(&hersPage, QStringLiteral("mine"))->click();
+            QTRY_VERIFY_WITH_TIMEOUT(hersPage.items().size() == 1 && byName<QLineEdit>(&hersPage, QStringLiteral("comment")), 10000);
+            QTest::keyClicks(byName<QLineEdit>(&hersPage, QStringLiteral("comment")), QStringLiteral("Passt"));
+            byName<QPushButton>(&hersPage, QStringLiteral("approve"))->click();
+            QTRY_COMPARE_WITH_TIMEOUT(hersPage.message(), QStringLiteral("Approved: 1 entry"), 10000);
+        }
+        // What she decided shows here by itself, with her note and name.
+        QTRY_VERIFY_WITH_TIMEOUT(review->progress().value("states").toObject().value("approved").toInt() == 1, 15000);
+        QTRY_VERIFY_WITH_TIMEOUT(labelWith(review, QStringLiteral("all 1 decided")), 10000);
+        byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
+        QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 1 && label(review, QStringLiteral("“Passt”, rosa")), 10000);
+        // The part is taken from her again, and she is back to reading.
+        byName<QPushButton>(review, QStringLiteral("unassign:rosa"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Rosa Lind no longer has a part of the request"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(review->reviewers().isEmpty() && byName<QLabel>(review, QStringLiteral("noReviewers")), 10000);
+        QVERIFY(wait(api->put(QStringLiteral("/api/grants"), QJsonObject{{"userId", rosa}, {"kind", "termbase"}, {"resource", "E2E Recht"}, {"role", "read"}})).ok());
         QTRY_COMPARE_WITH_TIMEOUT(wait(api->get(QStringLiteral("/api/termbases/E2E%20Recht/entries"))).object().value("total").toInt(), 3, 10000);
 
 

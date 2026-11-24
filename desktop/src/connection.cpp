@@ -42,6 +42,11 @@ QString Connection::userName() const
     return name.isEmpty() ? m_user.value(QLatin1String("username")).toString() : name;
 }
 
+QString Connection::login() const
+{
+    return m_user.value(QLatin1String("username")).toString();
+}
+
 bool Connection::isAdmin() const
 {
     return m_user.value(QLatin1String("admin")).toBool();

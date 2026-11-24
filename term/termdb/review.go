@@ -381,7 +381,8 @@ func (t *Termbase) OpenMergeRequest(ctx context.Context, master, title, by strin
 		return nil, err
 	}
 	// Entries in an open request already, and the last decision per
-	// entry, so rejected or sent-back entries return only once changed.
+	// entry, so rejected or sent-back entries, and those whose merge was
+	// undone, return only once changed.
 	busy := map[string]bool{}
 	lastDecided := map[string]int{}
 	rows, err := tx.QueryContext(ctx, `SELECT i.entry_id, i.kind, i.project_version, i.state, r.state FROM merge_items i JOIN merge_requests r ON r.id = i.request_id
@@ -400,7 +401,7 @@ func (t *Termbase) OpenMergeRequest(ctx context.Context, master, title, by strin
 		if rstate == "open" && (state == StateWaiting || state == StatePostponed) {
 			busy[key] = true
 		}
-		if state == StateRejected || state == StateChanges {
+		if state == StateRejected || state == StateChanges || state == StateReverted {
 			if v > lastDecided[key] {
 				lastDecided[key] = v
 			}
@@ -1206,7 +1207,9 @@ func (mr *MergeRequest) Close(ctx context.Context, by string) error {
 // Revert undoes an approved item: the master entry goes back to the
 // version before the merge (or is deleted again, or restored for an
 // approved deletion), as a new change. If the master entry changed after
-// the merge, ErrConflict is returned and nothing is written.
+// the merge, ErrConflict is returned and nothing is written. The project
+// is as it was before the merge: its entry is its own change again, which
+// the next request carries once it has changed.
 func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) error {
 	mr.db.wmu.Lock()
 	defer mr.db.wmu.Unlock()
@@ -1215,10 +1218,10 @@ func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) err
 		return err
 	}
 	defer rollback(tx)
-	var kind, state, re, rule string
+	var kind, state, re, rule, entryID string
 	var rv, before int
-	err = tx.QueryRowContext(ctx, `SELECT kind, state, result_entry, result_version, master_before, rule FROM merge_items WHERE id = ? AND request_id = ?`, itemID, mr.ID).
-		Scan(&kind, &state, &re, &rv, &before, &rule)
+	err = tx.QueryRowContext(ctx, `SELECT kind, state, result_entry, result_version, master_before, rule, entry_id FROM merge_items WHERE id = ? AND request_id = ?`, itemID, mr.ID).
+		Scan(&kind, &state, &re, &rv, &before, &rule, &entryID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -1241,7 +1244,14 @@ func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) err
 			return err
 		}
 		e.ID = re
-		if _, err := m.insert(ctx, tx, e, by, summary, now); err != nil {
+		back, err := m.insert(ctx, tx, e, by, summary, now)
+		if err != nil {
+			return err
+		}
+		// The project leaves the entry out again, as before the merge.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO project_removals(project_id, base_termbase, base_entry, base_version, at, author) VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT (project_id, base_termbase, base_entry) DO UPDATE SET base_version = excluded.base_version, at = excluded.at, author = excluded.author`,
+			mr.projectID, mr.targetID, back.ID, back.Version, now.Format(timeLayout), by); err != nil {
 			return err
 		}
 	case before == 0:
@@ -1253,6 +1263,11 @@ func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) err
 			return ErrConflict
 		}
 		if err := m.deleteEntry(ctx, tx, cur, by, summary, now); err != nil {
+			return err
+		}
+		// The project's entry is in no master again.
+		if _, err := tx.ExecContext(ctx, `UPDATE entries SET base_termbase = NULL, base_entry = NULL, base_version = NULL, base_synced = NULL
+			WHERE termbase_id = ? AND entry_id = ? AND base_termbase = ? AND base_entry = ?`, mr.projectID, entryID, mr.targetID, re); err != nil {
 			return err
 		}
 	default:
@@ -1268,7 +1283,14 @@ func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) err
 			return err
 		}
 		old.ID = re
-		if _, err := m.update(ctx, tx, old, cur.Version, by, summary, now); err != nil {
+		undone, err := m.update(ctx, tx, old, cur.Version, by, summary, now)
+		if err != nil {
+			return err
+		}
+		// The project's entry differs from the master's again: all of it
+		// is the project's change, against the master as it now is.
+		if _, err := tx.ExecContext(ctx, `UPDATE entries SET base_version = ?, base_synced = 0
+			WHERE termbase_id = ? AND entry_id = ? AND base_termbase = ? AND base_entry = ?`, undone.Version, mr.projectID, entryID, mr.targetID, re); err != nil {
 			return err
 		}
 	}

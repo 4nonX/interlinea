@@ -3,6 +3,7 @@ package termdb
 import (
 	"errors"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -298,6 +299,59 @@ func TestMergeFastForwardAndNew(t *testing.T) {
 	ms, _ = m.Entries(ctx)
 	if len(ms) != 2 || terms(ms[1].Entry, "de-DE")[0] != "Mieter" {
 		t.Fatalf("after reverts: %+v", ms)
+	}
+
+	// The project is as it was before the merge: its new entry is in no
+	// master, its change is a change again, and it leaves "Mieter" out.
+	layered, _ := p.Layered(ctx)
+	var own, changed, master int
+	for _, l := range layered {
+		switch {
+		case l.Termbase != p.Name():
+			master++
+		case l.Base == nil:
+			own++
+		default:
+			changed++
+		}
+	}
+	if own != 1 || changed != 1 || master != 0 {
+		t.Fatalf("the project after the reverts: %d own, %d changed, %d of the master: %+v", own, changed, master, layered)
+	}
+	if rs, _ := p.Removals(ctx); len(rs) != 1 || rs[0].EntryID != "c2" {
+		t.Fatalf("removals after the reverts: %+v", rs)
+	}
+	// What was taken back does not come again as it is, only once changed.
+	mr.Close(ctx, "rita")
+	mr3 := open1(t, p)
+	if is := items(t, mr3, ItemQuery{}); len(is) != 0 {
+		t.Fatalf("taken back, and submitted again unchanged: %+v", is)
+	}
+	mr3.Close(ctx, "rita")
+	cp2, _ := p.Get(ctx, cp.ID)
+	cp2.Languages[1].Terms = append(cp2.Languages[1].Terms, term.Term{Text: "rent deposit"})
+	if _, err := p.Update(ctx, cp2.Entry, cp2.Version, "eva", ""); err != nil {
+		t.Fatal(err)
+	}
+	mr4 := open1(t, p)
+	again := items(t, mr4, ItemQuery{})
+	if len(again) != 1 || again[0].Kind != ItemChanged || len(again[0].Conflicts) != 0 {
+		t.Fatalf("the changed entry in the next request: %+v", again)
+	}
+	// All of the project's change is in it: both terms the master lacks.
+	var paths []string
+	for _, c := range again[0].Changes {
+		paths = append(paths, c.Path)
+	}
+	sort.Strings(paths)
+	if strings.Join(paths, "|") != "en-GB term rent deposit|en-GB term security deposit" {
+		t.Fatalf("changes of the entry that comes again: %v", paths)
+	}
+	if _, err := mr4.Decide(ctx, Filter{}, Decision{State: StateApproved}, "rita"); err != nil {
+		t.Fatal(err)
+	}
+	if mk, _ = m.Get(ctx, kaution.ID); len(terms(mk.Entry, "en-GB")) != 3 {
+		t.Fatalf("merged after coming again: %+v", mk)
 	}
 }
 

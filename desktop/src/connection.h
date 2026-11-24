@@ -41,7 +41,10 @@ public:
     EventFeed *feed() const { return m_feed; }
 
     QJsonObject user() const { return m_user; }
+    // The name to show, and the name the account signs in with, which is
+    // what the core records as who did something.
     QString userName() const;
+    QString login() const;
     bool isAdmin() const;
     QString serverVersion() const { return m_version; }
     QString provider() const { return m_provider; }

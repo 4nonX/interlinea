@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QPointer>
@@ -26,6 +27,12 @@ public:
     QJsonObject mergeRequest() const { return m_request; }
     QJsonObject progress() const { return m_progress; }
     QJsonArray items() const { return m_items; }
+    // Who reviews which part, as the core lists them.
+    QJsonArray reviewers() const { return m_reviewers; }
+    // Whether the role on the master includes a permission.
+    bool may(const char *permission) const;
+    // Only the part given to oneself.
+    void setMine(bool mine);
     // 0 for those waiting, 1 for those decided, 2 for all.
     int view() const { return m_view; }
     void setView(int view);
@@ -44,6 +51,7 @@ protected:
 
 private:
     void render();
+    QWidget *reviewersPanel(QWidget *host);
     QWidget *item(const QJsonObject &it, QWidget *parent);
     void decide(const QJsonObject &filter, const QString &state, const QJsonObject &edited, const QString &what);
 
@@ -55,6 +63,16 @@ private:
     QJsonObject m_progress;
     QJsonArray m_items;
     int m_total = 0;
+    int m_limit = 50;
+    bool m_mine = false;
+    // The master as the core describes it: its languages and one's role.
+    QJsonObject m_target;
+    QJsonArray m_reviewers;
+    QJsonArray m_people;
+    // What is being written for an item, kept while the page is drawn again.
+    QHash<int, QString> m_comments;
+    QString m_assignWho;
+    QString m_assignPart;
     QString m_problem;
     bool m_read = false;
     QTimer m_reload;

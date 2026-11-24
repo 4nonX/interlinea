@@ -887,6 +887,36 @@ private slots:
         QVERIFY2(english.contains(QStringLiteral("stepped rent/approved")) && english.contains(QStringLiteral("security deposit/approved")) && english.contains(QStringLiteral("rent/forbidden")),
                  qPrintable(english.join(QStringLiteral(", "))));
 
+        // What was merged is taken out of the master again: the new entry
+        // is gone there, and the request says so.
+        const auto itemWith = [&](const QString &term) -> QFrame * {
+            for (QFrame *f : review->findChildren<QFrame *>()) {
+                if (f->property("item").isValid() && f->accessibleName().contains(term) && there(f, review))
+                    return f;
+            }
+            return nullptr;
+        };
+        const auto masterHas = [&](const QString &text) {
+            QUrlQuery q;
+            q.addQueryItem(QStringLiteral("text"), text);
+            return wait(api->get(QStringLiteral("/api/termbases/Recht/entries"), q)).object().value("total").toInt() > 0;
+        };
+        QVERIFY(masterHas(QStringLiteral("Staffelmiete")));
+        QFrame *stepped = itemWith(QStringLiteral("Staffelmiete"));
+        QVERIFY(stepped);
+        auto *undo = stepped->findChild<Web::ConfirmButton *>(QStringLiteral("undo"));
+        QVERIFY(undo);
+        undo->button()->click();
+        QVERIFY(label(review, QStringLiteral("Take this out of Recht again? The entry there goes back to what it was before.")));
+        undo->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Took the merge back out of Recht"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(review->progress().value("states").toObject().value("reverted").toInt() == 1, 10000);
+        QVERIFY(!masterHas(QStringLiteral("Staffelmiete")));
+        QTRY_VERIFY((stepped = itemWith(QStringLiteral("Staffelmiete"))));
+        QVERIFY(label(stepped, QStringLiteral("Reverted")));
+        QVERIFY(!stepped->findChild<Web::ConfirmButton *>(QStringLiteral("undo")));
+        shot(review, QStringLiteral("review-decided"));
+
         // Closing asks, and says what is still open.
         auto *close = byName<Web::ConfirmButton>(review, QStringLiteral("close"));
         QVERIFY(close);
@@ -910,6 +940,43 @@ private slots:
         listed = byName<QPushButton>(page, QStringLiteral("mergeRequest:%1").arg(id));
         listed->click();
         QTRY_VERIFY_WITH_TIMEOUT(section.reviewing() && review->mergeRequest().value("state").toString() == QStringLiteral("closed"), 10000);
+
+        // What was taken back does not come again as it is: the project
+        // changes it first. Postponed with a note for the author, it is
+        // decided later.
+        const ApiResult unchanged = wait(api->post(QStringLiteral("/api/termbases/Fall%20Hofmann/merge-requests"), QJsonObject{{"master", "Recht"}, {"title", "Unchanged"}}));
+        QVERIFY(unchanged.ok());
+        const QString unchangedPath = QStringLiteral("/api/merge-requests/%1").arg(unchanged.object().value("id").toInt());
+        QCOMPARE(wait(api->get(unchangedPath + QStringLiteral("/progress"))).object().value("total").toInt(), 0);
+        QVERIFY(wait(api->post(unchangedPath + QStringLiteral("/close"))).ok());
+        QJsonObject own;
+        for (const QJsonValue &v : wait(api->get(QStringLiteral("/api/termbases/Fall%20Hofmann/entries"))).object().value("entries").toArray()) {
+            if (TermData::head(v.toObject(), QStringLiteral("de-DE")) == QStringLiteral("Staffelmiete"))
+                own = v.toObject();
+        }
+        QVERIFY(!own.isEmpty());
+        const QJsonObject better = TermData::withTerms(TermData::forSaving(own), QStringLiteral("en-GB"), QJsonArray{QJsonObject{{"text", "graduated rent"}, {"status", "approved"}}});
+        QVERIFY(wait(api->put(QStringLiteral("/api/termbases/Fall%20Hofmann/entries/") + own.value("id").toString(), QJsonObject{{"entry", better}}, own.value("version").toInt())).ok());
+        const ApiResult again = wait(api->post(QStringLiteral("/api/termbases/Fall%20Hofmann/merge-requests"), QJsonObject{{"master", "Recht"}, {"title", "Once more"}}));
+        QVERIFY(again.ok());
+        section.openReview(here, again.object().value("id").toInt());
+        QTRY_VERIFY_WITH_TIMEOUT(review->request() == again.object().value("id").toInt() && review->items().size() == 1, 10000);
+        QTRY_VERIFY((stepped = itemWith(QStringLiteral("Staffelmiete"))));
+        auto *note = stepped->findChild<QLineEdit *>(QStringLiteral("comment"));
+        QVERIFY(note);
+        QTest::keyClicks(note, QStringLiteral("Quelle fehlt"));
+        stepped->findChild<QPushButton *>(QStringLiteral("postpone"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Postponed: 1 entry"), 10000);
+        byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
+        QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 1 && (stepped = itemWith(QStringLiteral("Staffelmiete"))), 10000);
+        QCOMPARE(review->items().first().toObject().value("comment").toString(), QStringLiteral("Quelle fehlt"));
+        QVERIFY(labelWith(stepped, QStringLiteral("“Quelle fehlt”")));
+        // Not put off a second time: approved or rejected.
+        QVERIFY(stepped->findChild<QPushButton *>(QStringLiteral("approve")) && stepped->findChild<QPushButton *>(QStringLiteral("reject")));
+        QVERIFY(!there(stepped->findChild<QPushButton *>(QStringLiteral("postpone")), review));
+        stepped->findChild<QPushButton *>(QStringLiteral("approve"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Approved: 1 entry"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(masterHas(QStringLiteral("Staffelmiete")), 10000);
 
         // A request that is not there says so.
         section.openReview(here, 99999);

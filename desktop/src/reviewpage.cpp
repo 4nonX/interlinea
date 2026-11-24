@@ -6,18 +6,24 @@
 #include "flowlayout.h"
 #include "icons.h"
 #include "languages.h"
+#include "roles.h"
 #include "termdata.h"
 #include "theme.h"
 #include "words.h"
 
 #include <QDateTime>
 #include <QHBoxLayout>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QResizeEvent>
+#include <QUrl>
+#include <QUrlQuery>
 #include <QVBoxLayout>
 
 namespace {
@@ -121,10 +127,18 @@ void ReviewPage::open(Connection *conn, int id)
     m_conn = conn;
     m_id = id;
     m_view = 0;
+    m_limit = 50;
+    m_mine = false;
     m_read = false;
     m_request = {};
     m_progress = {};
     m_items = {};
+    m_target = {};
+    m_reviewers = {};
+    m_people = {};
+    m_comments.clear();
+    m_assignWho.clear();
+    m_assignPart.clear();
     m_problem.clear();
     render();
     reload();
@@ -135,7 +149,26 @@ void ReviewPage::setView(int view)
     if (m_view == view)
         return;
     m_view = view;
+    m_limit = 50;
     reload();
+}
+
+void ReviewPage::setMine(bool mine)
+{
+    if (m_mine == mine)
+        return;
+    m_mine = mine;
+    m_limit = 50;
+    reload();
+}
+
+bool ReviewPage::may(const char *permission) const
+{
+    // On this computer everything is one's own.
+    const QString role = str(m_target, "role");
+    if (role.isEmpty())
+        return m_conn && m_conn->isLocal();
+    return Roles::allows(role, QLatin1String(permission));
 }
 
 void ReviewPage::reload()
@@ -144,7 +177,8 @@ void ReviewPage::reload()
         return;
     const int reading = ++m_reading;
     const QString base = QStringLiteral("/api/merge-requests/%1").arg(m_id);
-    auto *left = new int(3);
+    const bool team = !m_conn->isLocal();
+    auto *left = new int(team ? 6 : 4);
     auto *failed = new QString;
     const auto done = [this, left, failed, reading](const ApiResult &r) {
         if (!r.ok() && failed->isEmpty())
@@ -165,7 +199,30 @@ void ReviewPage::reload()
         if (reading == m_reading && r.ok())
             m_request = r.object();
         done(r);
+        // The master says what one may do with the request.
+        if (reading != m_reading || !r.ok() || !m_conn) {
+            done(ApiResult{});
+            return;
+        }
+        onResult(m_conn->api()->get(QStringLiteral("/api/termbases/") + ApiClient::seg(str(r.object(), "target"))), this, [this, reading, done](const ApiResult &t) {
+            if (reading == m_reading && t.ok())
+                m_target = t.object();
+            // Without a look at the master the request is still shown.
+            done(ApiResult{});
+        });
     });
+    if (team) {
+        onResult(m_conn->api()->get(base + QStringLiteral("/reviewers")), this, [this, reading, done](const ApiResult &r) {
+            if (reading == m_reading && r.ok())
+                m_reviewers = r.array();
+            done(r);
+        });
+        onResult(m_conn->api()->get(QStringLiteral("/api/people")), this, [this, reading, done](const ApiResult &r) {
+            if (reading == m_reading && r.ok())
+                m_people = r.array();
+            done(ApiResult{});
+        });
+    }
     onResult(m_conn->api()->get(base + QStringLiteral("/progress")), this, [this, reading, done](const ApiResult &r) {
         if (reading == m_reading && r.ok())
             m_progress = r.object();
@@ -177,7 +234,10 @@ void ReviewPage::reload()
     else if (m_view == 1)
         filter.insert(QLatin1String("states"), QJsonArray{QStringLiteral("approved"), QStringLiteral("approved-with-edits"), QStringLiteral("changes-requested"), QStringLiteral("rejected"),
                                                           QStringLiteral("postponed"), QStringLiteral("reverted")});
-    onResult(m_conn->api()->post(base + QStringLiteral("/items"), QJsonObject{{QLatin1String("filter"), filter}, {QLatin1String("limit"), 50}, {QLatin1String("offset"), 0}}), this,
+    QJsonObject query{{QLatin1String("filter"), filter}, {QLatin1String("limit"), m_limit}, {QLatin1String("offset"), 0}};
+    if (m_mine)
+        query.insert(QLatin1String("reviewer"), m_conn->login());
+    onResult(m_conn->api()->post(base + QStringLiteral("/items"), query), this,
              [this, reading, done](const ApiResult &r) {
                  if (reading == m_reading && r.ok()) {
                      m_items = r.object().value(QLatin1String("items")).toArray();
@@ -194,6 +254,13 @@ void ReviewPage::decide(const QJsonObject &filter, const QString &state, const Q
     QJsonObject decision{{QLatin1String("state"), state}};
     if (!edited.isEmpty())
         decision.insert(QLatin1String("edited"), edited);
+    // What was written for the one entry goes with its decision.
+    const QJsonArray ids = filter.value(QLatin1String("ids")).toArray();
+    if (ids.size() == 1) {
+        const QString comment = m_comments.take(ids.first().toInt()).trimmed();
+        if (!comment.isEmpty())
+            decision.insert(QLatin1String("comment"), comment);
+    }
     const QString target = str(m_request, "target");
     onResult(m_conn->api()->post(QStringLiteral("/api/merge-requests/%1/decide").arg(m_id), QJsonObject{{QLatin1String("filter"), filter}, {QLatin1String("decision"), decision}}), this,
              [this, state, what, target](const ApiResult &r) {
@@ -269,7 +336,12 @@ void ReviewPage::render()
     bar->setValue(total - waiting);
     bar->setAccessibleName(tr("Decided"));
     pv->addWidget(bar);
-    if (open) {
+    if (open && !may("approve")) {
+        auto *wait = Web::text(tr("Those who may approve changes to %1 decide. You see how far they are.").arg(target), "help", panel);
+        wait->setObjectName(QStringLiteral("readOnly"));
+        wait->setWordWrap(true);
+        pv->addWidget(wait);
+    } else if (open) {
         auto *all = Web::button(tr("Approve all waiting without conflicts"), Web::Primary, panel, QStringLiteral("check"));
         all->setObjectName(QStringLiteral("approveAll"));
         all->setEnabled(waiting > 0);
@@ -292,6 +364,8 @@ void ReviewPage::render()
         pv->addWidget(Web::row({all, close}, panel));
     }
     m_body->addWidget(panel);
+    if (m_conn && !m_conn->isLocal())
+        m_body->addWidget(reviewersPanel(host));
 
     // .tabs-small
     auto *tabs = new Web::Tabs(tr("Entries to show"), host, true);
@@ -302,6 +376,17 @@ void ReviewPage::render()
     tabs->setCurrent(m_view);
     connect(tabs, &Web::Tabs::changed, this, &ReviewPage::setView);
     m_body->addWidget(tabs);
+    // Someone given a part of the request can look at that part alone.
+    bool assigned = false;
+    for (const QJsonValue &a : std::as_const(m_reviewers))
+        assigned = assigned || (m_conn && str(a.toObject(), "reviewer") == m_conn->login());
+    if (assigned || m_mine) {
+        auto *mine = new QCheckBox(tr("Only my part"), host);
+        mine->setObjectName(QStringLiteral("mine"));
+        mine->setChecked(m_mine);
+        connect(mine, &QCheckBox::toggled, this, &ReviewPage::setMine);
+        m_body->addWidget(mine);
+    }
 
     if (m_items.isEmpty()) {
         auto *none = Web::text(m_view == 0 ? tr("Nothing is waiting.") : tr("No entries here."), "muted", host);
@@ -315,8 +400,168 @@ void ReviewPage::render()
     for (const QJsonValue &v : m_items)
         list->addWidget(item(v.toObject(), host));
     m_body->addLayout(list);
-    if (m_total > m_items.size())
-        m_body->addWidget(Web::text(tr("Showing the first %1 of %2.").arg(m_items.size()).arg(m_total), "cellSub", host));
+    if (m_total > m_items.size()) {
+        auto *more = Web::button(tr("Show more"), Web::Small, host);
+        more->setObjectName(QStringLiteral("more"));
+        connect(more, &QPushButton::clicked, this, [this] {
+            m_limit += 50;
+            reload();
+        });
+        auto *shown = Web::text(tr("Showing the first %1 of %2.").arg(m_items.size()).arg(m_total), "cellSub", host);
+        shown->setObjectName(QStringLiteral("shown"));
+        m_body->addWidget(Web::row({shown, more}, host));
+    }
+}
+
+// Who reviews which part of the request, on a team server.
+QWidget *ReviewPage::reviewersPanel(QWidget *host)
+{
+    const QString target = str(m_request, "target");
+    const bool open = str(m_request, "state") == QLatin1String("open");
+    QVBoxLayout *v = nullptr;
+    QFrame *panel = Web::panel(tr("Reviewers"), host, &v);
+    panel->setProperty("part", QStringLiteral("reviewers"));
+    const auto nameOf = [this](const QString &username) {
+        for (const QJsonValue &p : std::as_const(m_people)) {
+            if (str(p.toObject(), "username") == username && !str(p.toObject(), "name").isEmpty())
+                return str(p.toObject(), "name");
+        }
+        return username;
+    };
+    const auto partText = [](const QJsonObject &scope) {
+        QStringList parts;
+        QStringList langs;
+        for (const QJsonValue &l : scope.value(QLatin1String("langs")).toArray())
+            langs << Languages::name(l.toString());
+        if (!langs.isEmpty())
+            parts << tr("entries with terms in %1").arg(langs.join(QStringLiteral(", ")));
+        for (const QJsonValue &k : scope.value(QLatin1String("kinds")).toArray())
+            parts << (k.toString() == QLatin1String("new") ? tr("new entries") : k.toString() == QLatin1String("changed") ? tr("changed entries") : tr("entries deleted in the project"));
+        if (scope.value(QLatin1String("conflicts")).toBool())
+            parts << tr("entries with conflicts");
+        QStringList authors;
+        for (const QJsonValue &a : scope.value(QLatin1String("authors")).toArray())
+            authors << a.toString();
+        if (!authors.isEmpty())
+            parts << tr("entries by %1").arg(authors.join(QStringLiteral(", ")));
+        return parts.isEmpty() ? tr("all of it") : parts.join(QStringLiteral("; "));
+    };
+    if (m_reviewers.isEmpty()) {
+        auto *none = Web::text(tr("Nobody is given a part: everyone who may approve changes to %1 sees all of it.").arg(target), "help", panel);
+        none->setObjectName(QStringLiteral("noReviewers"));
+        none->setWordWrap(true);
+        v->addWidget(none);
+    }
+    const QJsonObject by = m_progress.value(QLatin1String("byReviewer")).toObject();
+    for (const QJsonValue &av : std::as_const(m_reviewers)) {
+        const QJsonObject a = av.toObject();
+        const QString reviewer = str(a, "reviewer");
+        auto *rowWidget = new QWidget(panel);
+        rowWidget->setProperty("part", QStringLiteral("reviewer"));
+        auto *h = new QHBoxLayout(rowWidget);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(S3);
+        h->addWidget(new QLabel(QStringLiteral("<b>%1</b>").arg(nameOf(reviewer).toHtmlEscaped()), rowWidget));
+        // How far the reviewer is with the part.
+        const QJsonObject counts = by.value(reviewer).toObject();
+        int all = 0;
+        for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
+            all += it.value().toInt();
+        const int waiting = counts.value(QLatin1String("waiting")).toInt() + counts.value(QLatin1String("postponed")).toInt();
+        QString what = partText(a.value(QLatin1String("scope")).toObject());
+        if (all > 0)
+            what += QStringLiteral(": ") + (waiting == 0 ? tr("all %1 decided").arg(all) : tr("%1 of %2 to decide").arg(waiting).arg(all));
+        auto *sub = Web::text(what, "cellSub", rowWidget);
+        sub->setWordWrap(true);
+        h->addWidget(sub, 1);
+        rowWidget->setAccessibleName(QStringLiteral("%1, %2").arg(nameOf(reviewer), what));
+        if (open && may("manage")) {
+            auto *remove = Web::button(tr("Remove"), Web::Quiet | Web::Small, rowWidget);
+            remove->setObjectName(QStringLiteral("unassign:%1").arg(reviewer));
+            remove->setAccessibleName(tr("Take the part from %1").arg(nameOf(reviewer)));
+            h->addWidget(remove);
+            connect(remove, &QPushButton::clicked, this, [this, reviewer, nameOf] {
+                if (!m_conn)
+                    return;
+                QUrlQuery q;
+                q.addQueryItem(QStringLiteral("reviewer"), QString::fromUtf8(QUrl::toPercentEncoding(reviewer)));
+                const QString name = nameOf(reviewer);
+                onResult(m_conn->api()->del(QStringLiteral("/api/merge-requests/%1/reviewers").arg(m_id), q), this, [this, name](const ApiResult &r) {
+                    notify(r.ok() ? tr("%1 no longer has a part of the request").arg(name) : r.error.message);
+                    reload();
+                });
+            });
+        }
+        v->addWidget(rowWidget);
+    }
+    if (!open || !may("manage"))
+        return panel;
+
+    // .role-add: who, which part, and the button.
+    auto *add = new QWidget(panel);
+    add->setAccessibleName(tr("Give someone a part"));
+    auto *al = new QHBoxLayout(add);
+    al->setContentsMargins(0, 0, 0, 0);
+    al->setSpacing(S3);
+    auto *who = new QComboBox(add);
+    who->setObjectName(QStringLiteral("assignWho"));
+    who->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    who->setMinimumContentsLength(18);
+    who->addItem(tr("Choose someone"), QString());
+    for (const QJsonValue &p : std::as_const(m_people)) {
+        const QString username = str(p.toObject(), "username");
+        who->addItem(str(p.toObject(), "name").isEmpty() ? username : QStringLiteral("%1 (%2)").arg(str(p.toObject(), "name"), username), username);
+    }
+    who->setCurrentIndex(qMax(0, who->findData(m_assignWho)));
+    connect(who, &QComboBox::activated, this, [this, who](int i) { m_assignWho = who->itemData(i).toString(); });
+    al->addWidget(Web::labelled(tr("Who"), who, add));
+    auto *part = new QComboBox(add);
+    part->setObjectName(QStringLiteral("assignPart"));
+    part->addItem(tr("All of it"), QString());
+    for (const QJsonValue &l : m_target.value(QLatin1String("definition")).toObject().value(QLatin1String("languages")).toArray())
+        part->addItem(tr("Terms in %1").arg(Languages::name(l.toString())), QStringLiteral("lang:") + l.toString());
+    part->addItem(tr("New entries"), QStringLiteral("kind:new"));
+    part->addItem(tr("Changed entries"), QStringLiteral("kind:changed"));
+    part->addItem(tr("Entries with conflicts"), QStringLiteral("conflicts"));
+    part->setCurrentIndex(qMax(0, part->findData(m_assignPart)));
+    connect(part, &QComboBox::activated, this, [this, part](int i) { m_assignPart = part->itemData(i).toString(); });
+    al->addWidget(Web::labelled(tr("Part"), part, add));
+    auto *give = Web::button(tr("Give the part"), Web::Normal, add);
+    give->setObjectName(QStringLiteral("assign"));
+    al->addWidget(give, 0, Qt::AlignBottom);
+    al->addStretch();
+    v->addWidget(add);
+    auto *help = Web::text(tr("A reviewer must be able to approve changes to %1. Giving someone a part again replaces the one they had.").arg(target), "help", panel);
+    help->setWordWrap(true);
+    v->addWidget(help);
+    connect(give, &QPushButton::clicked, this, [this, who, part, nameOf] {
+        const QString reviewer = who->currentData().toString();
+        if (reviewer.isEmpty() || !m_conn) {
+            notify(tr("Choose who reviews."));
+            return;
+        }
+        QJsonObject scope;
+        const QString p = part->currentData().toString();
+        if (p.startsWith(QLatin1String("lang:")))
+            scope.insert(QLatin1String("langs"), QJsonArray{p.mid(5)});
+        else if (p.startsWith(QLatin1String("kind:")))
+            scope.insert(QLatin1String("kinds"), QJsonArray{p.mid(5)});
+        else if (p == QLatin1String("conflicts"))
+            scope.insert(QLatin1String("conflicts"), true);
+        const QString name = nameOf(reviewer);
+        onResult(m_conn->api()->put(QStringLiteral("/api/merge-requests/%1/reviewers").arg(m_id), QJsonObject{{QLatin1String("reviewer"), reviewer}, {QLatin1String("scope"), scope}}), this,
+                 [this, name](const ApiResult &r) {
+                     if (!r.ok()) {
+                         notify(r.error.message);
+                         return;
+                     }
+                     m_assignWho.clear();
+                     m_assignPart.clear();
+                     notify(tr("%1 reviews a part of the request").arg(name));
+                     reload();
+                 });
+    });
+    return panel;
 }
 
 QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
@@ -336,8 +581,13 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
     const QString kindText = kind == QLatin1String("new") ? tr("New entry") : kind == QLatin1String("changed") ? tr("Changed entry") : tr("Deleted in the project");
     auto *title = new QLabel(QStringLiteral("<b>%1</b>").arg(kindText), panel);
     head->addWidget(title);
-    head->addWidget(Web::text(tr("by %1, %2").arg(str(it, "author"), day(str(it, "changedAt"))), "cellSub", panel));
-    head->addStretch();
+    QString meta = tr("by %1, %2").arg(str(it, "author"), day(str(it, "changedAt")));
+    QStringList reviewers;
+    for (const QJsonValue &r : it.value(QLatin1String("reviewers")).toArray())
+        reviewers << r.toString();
+    if (!reviewers.isEmpty() && (state == QLatin1String("waiting") || state == QLatin1String("postponed")))
+        meta += tr("; for %1 to review").arg(reviewers.join(QStringLiteral(", ")));
+    head->addWidget(Web::text(meta, "cellSub", panel), 1);
     head->addWidget(Web::chip(stateText(state), state == QLatin1String("waiting") ? QStringLiteral("proposed") : state.startsWith(QLatin1String("approved")) ? QStringLiteral("approved") : QStringLiteral("forbidden"), panel));
     v->addLayout(head);
 
@@ -408,7 +658,7 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
             l->setTextFormat(Qt::PlainText);
             nv->addWidget(l);
         }
-        if (open && state == QLatin1String("waiting") && !it.value(QLatin1String("merged")).toObject().isEmpty()) {
+        if (open && may("approve") && (state == QLatin1String("waiting") || state == QLatin1String("postponed")) && !it.value(QLatin1String("merged")).toObject().isEmpty()) {
             auto *choose = Web::text(tr("Choose which of the two goes into %1. What only one side changed is merged either way.").arg(str(m_request, "target")), "cellSub", notice);
             choose->setProperty("part", QStringLiteral("chooseSide"));
             choose->setWordWrap(true);
@@ -433,7 +683,48 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
         v->addWidget(c);
     }
 
-    if (open && state == QLatin1String("waiting")) {
+    // What becomes of an entry that did not go into the master.
+    if (state == QLatin1String("reverted") || state == QLatin1String("rejected") || state == QLatin1String("changes-requested")) {
+        const QString target = str(m_request, "target");
+        auto *next = Web::text(state == QLatin1String("reverted") ? tr("Taken out of %1 again. It is submitted again once the project has changed it.").arg(target)
+                                                                 : tr("Not in %1. It is submitted again once the project has changed it.").arg(target),
+                               "cellSub", panel);
+        next->setProperty("part", QStringLiteral("whatNext"));
+        next->setWordWrap(true);
+        v->addWidget(next);
+    }
+    // What was merged can be taken out of the master again.
+    if (open && may("approve") && (state == QLatin1String("approved") || state == QLatin1String("approved-with-edits")) && str(it, "rule") != QLatin1String("identical")) {
+        auto *undo = new Web::ConfirmButton(tr("Undo the merge"), tr("Take this out of %1 again? The entry there goes back to what it was before.").arg(str(m_request, "target")), tr("Undo"), panel);
+        undo->setObjectName(QStringLiteral("undo"));
+        v->addWidget(undo, 0, Qt::AlignLeft);
+        connect(undo, &Web::ConfirmButton::confirmed, this, [this, id] {
+            if (!m_conn)
+                return;
+            const QString target = str(m_request, "target");
+            onResult(m_conn->api()->post(QStringLiteral("/api/merge-requests/%1/items/%2/revert").arg(m_id).arg(id)), this, [this, target](const ApiResult &r) {
+                if (r.ok())
+                    notify(tr("Took the merge back out of %1").arg(target));
+                else if (r.status == 409)
+                    notify(tr("The entry in %1 was changed after the merge. Change it there by hand.").arg(target));
+                else
+                    notify(r.error.message);
+                reload();
+            });
+        });
+    }
+    const bool waits = state == QLatin1String("waiting") || state == QLatin1String("postponed");
+    if (open && waits && may("approve")) {
+        // What the author is told with the decision.
+        auto *comment = new QLineEdit(m_comments.value(id), panel);
+        comment->setObjectName(QStringLiteral("comment"));
+        comment->setPlaceholderText(tr("A note for the author, with your decision"));
+        comment->setAccessibleName(tr("A note for the author"));
+        comment->setMaximumWidth(520);
+        connect(comment, &QLineEdit::textEdited, this, [this, id](const QString &t) { m_comments.insert(id, t); });
+        v->addWidget(comment);
+    }
+    if (open && waits && may("approve")) {
         // .server-actions
         const QJsonObject only{{QLatin1String("ids"), QJsonArray{id}}};
         const QJsonObject merged = it.value(QLatin1String("merged")).toObject();
@@ -470,7 +761,12 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
         reject->setObjectName(QStringLiteral("reject"));
         connect(postpone, &QPushButton::clicked, this, [this, only] { decide(only, QStringLiteral("postponed"), {}, QString()); });
         connect(reject, &QPushButton::clicked, this, [this, only] { decide(only, QStringLiteral("rejected"), {}, QString()); });
-        actions << postpone << reject;
+        // What was postponed is decided now, not put off again.
+        if (state == QLatin1String("postponed"))
+            postpone->hide();
+        else
+            actions << postpone;
+        actions << reject;
         v->addWidget(Web::row(actions, panel));
     }
     return panel;
