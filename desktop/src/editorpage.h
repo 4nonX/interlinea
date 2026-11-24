@@ -72,6 +72,15 @@ public:
     void deleteComment(const QString &commentId);
     QJsonArray comments() const;
 
+    // Asks a translation service for a suggestion for the open segment,
+    // which is sent to the service; the answer is shown to be inserted.
+    void askService(const QString &name);
+    // Reads the list of services again.
+    void reloadServices() { loadServices(); }
+    void insertSuggestion();
+    QStringList services() const { return m_services; }
+    QJsonObject suggestion() const { return m_suggestion; }
+
     // Find and replace in the translations of the open file.
     Web::Dialog *showReplaceDialog();
     // Replaces every place of the text; says what it did when it is done.
@@ -84,6 +93,8 @@ signals:
     // Another file or language of the project.
     void openFile(const QString &file, const QString &lang);
     void saved(const QString &id);
+    // A translation service answered, or could not.
+    void suggested(bool ok);
     // The comments of a segment changed here.
     void commented(const QString &id);
     // Find and replace is done: how many places in how many segments.
@@ -117,6 +128,8 @@ private:
     void showResults();
     void showIssues();
     void showComments();
+    void showSuggestions();
+    void loadServices();
     void takeComments(const QJsonObject &segment);
     void refreshComments();
     void showCapture(const QString &source, const QString &target);
@@ -211,6 +224,11 @@ private:
     QVBoxLayout *m_resultsList;
     QLabel *m_checksCount;
     QVBoxLayout *m_issuesList;
+    QVBoxLayout *m_suggestList = nullptr;
+    QStringList m_services;
+    QString m_asking;
+    QString m_serviceProblem;
+    QJsonObject m_suggestion;
     QLabel *m_commentsCount = nullptr;
     QVBoxLayout *m_commentsList = nullptr;
     QPlainTextEdit *m_commentText = nullptr;

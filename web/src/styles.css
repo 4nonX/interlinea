@@ -2736,6 +2736,52 @@ table[aria-label="Units found"] .cell-action .row {
   border-radius: 6px;
 }
 
+/* Settings: translation services and access for programs */
+.provider-form {
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.token-made {
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s3);
+  border-radius: 8px;
+  background: var(--ok-bg, #e6f4ea);
+}
+
+.token-made p {
+  margin: 0;
+}
+
+.token-value {
+  padding: var(--s2) var(--s3);
+  border-radius: 6px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.service-suggestions {
+  display: grid;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.suggestion {
+  display: grid;
+  gap: var(--s1);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.suggestion p {
+  margin: 0;
+}
+
 /* Comments on a segment */
 .comment-list {
   display: grid;

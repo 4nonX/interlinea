@@ -64,7 +64,12 @@ client and the desktop app, with installers and a server image.
   Protocol: projects, segments with their tags, memory and concordance
   search, terms, saving translations and comments, each with the rights
   of the person whose token the program carries.
-- Access tokens for programs, made and ended by their owner.
+- Access tokens for programs, made and ended by their owner in the
+  settings.
+- Translation services of one's own: any machine translation engine or
+  language model behind an address that answers a small JSON contract is
+  asked for a suggestion in the editor, with the segment's tags kept. A
+  team server asks its services itself and keeps their keys.
 
 ### Terminology
 

@@ -169,6 +169,7 @@ export function migrateV1(old: V1State): {
       memories,
       templates: [],
       dictionaries: [],
+      providers: [],
       userName: DEFAULT_USER_NAME,
       deleted: [],
       removals: [],

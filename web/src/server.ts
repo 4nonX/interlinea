@@ -260,6 +260,15 @@ export interface CoreSegment {
   comments?: { id: string; text: string; by: string; at: string }[];
 }
 
+/** A translation service on the server. */
+export interface ServerProvider {
+  name: string;
+  host: string;
+  url?: string;
+  headerName?: string;
+  signed?: boolean;
+}
+
 export interface StoredSegment extends CoreSegment {
   version: number;
   changedAt: string;
@@ -598,6 +607,16 @@ export function client(conn: Connection) {
       get<StoredSegment[]>(`${p(id)}/segments?${q({ file, lang })}`),
     saveSegment: (id: number, file: string, lang: string, segment: string, target: CoreRun[], status: string, version: number) =>
       send<StoredSegment>("PUT", `${p(id)}/segments?${q({ file, lang, segment })}`, { target, status }, version),
+    /** The translation services the server can ask; administrators also get each one's address. */
+    providers: () => get<ServerProvider[]>("/api/providers"),
+    saveProvider: (name: string, p: { url: string; headerName: string; headerValue?: string }) =>
+      send<ServerProvider>("PUT", `/api/providers/${encodeURIComponent(name)}`, p),
+    deleteProvider: (name: string) => send<void>("DELETE", `/api/providers/${encodeURIComponent(name)}`),
+    /** Asks a service for the translation of segments; their text leaves the server for the service. */
+    providerTranslate: (name: string, sourceLang: string, targetLang: string, segments: { id: string; source: CoreRun[] }[]) =>
+      send<{ translations: { id: string; target: CoreRun[]; tagsLost?: boolean }[] }>("POST", `/api/providers/${encodeURIComponent(name)}/translate`, { sourceLang, targetLang, segments }),
+    /** Makes an access token for a program; the token itself is in the answer once. */
+    createToken: (name: string, days: number) => send<{ token: string; id: number; name: string; expiresAt: string }>("POST", "/api/me/tokens", { name, days }),
     /** Puts a comment on a segment; its translation and version stay. */
     addComment: (id: number, file: string, lang: string, segment: string, text: string) =>
       send<StoredSegment>("POST", `${p(id)}/comments?${q({ file, lang, segment })}`, { text }),

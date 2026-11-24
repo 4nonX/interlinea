@@ -1587,6 +1587,53 @@ Access: signed in.
 - Answer: 200 OK: [align.Result](#alignresult)
 - Errors: 401, 403, 422 (see [Error](#error))
 
+### `GET /api/providers`
+
+Lists the translation services the editor can ask for a suggestion.
+
+Administrators also see each one's address and the name of its header; the header's value is never given out.
+
+Access: signed in.
+
+- Answer: 200 OK: list of [ProviderView](#providerview)
+- Errors: 401, 403 (see [Error](#error))
+
+### `PUT /api/providers/{name}`
+
+Adds a translation service or changes the one of the name: its address, and a header sent with each request to sign it.
+
+Without headerValue, the service keeps the value it has.
+
+Access: administrators.
+
+- Parameters: `name` (path)
+- Body: {`headerName`: string, `headerValue`: string or null, `url`: string}
+- Answer: 200 OK: [ProviderView](#providerview)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `DELETE /api/providers/{name}`
+
+Removes a translation service.
+
+Access: administrators.
+
+- Parameters: `name` (path)
+- Answer: 204 No Content
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `POST /api/providers/{name}/translate`
+
+Asks a translation service for the translations of segments.
+
+The texts are sent to the service's address, outside the server; nothing is sent to a service that is not asked. A translation that does not keep the source's tags comes back without tags, marked.
+
+Access: signed in.
+
+- Parameters: `name` (path)
+- Body: [ProviderRequest](#providerrequest)
+- Answer: 200 OK: {`translations`: list of [ProviderTranslation](#providertranslation)}
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `GET /api/roles`
 
 Lists the roles: the five that come with the server (read, suggest, edit, approve, manage, each a permission and the ones before it) and those the administrators defined, each with its permissions and how many grants use it.
@@ -1961,6 +2008,32 @@ projectPreview is what a project would be in one target language.
 | `id` | integer |  |
 | `settings` | [project.Settings](#projectsettings) |  |
 | `version` | integer | Version counts the changes to the settings and the files. |
+
+### ProviderRequest
+
+| Field | Type | Description |
+|---|---|---|
+| `segments` | list of {`id`: string, `source`: [content.Content](#contentcontent)} |  |
+| `sourceLang` | string |  |
+| `targetLang` | string |  |
+
+### ProviderTranslation
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string |  |
+| `tagsLost` | boolean | TagsLost is set where the service's translation did not have the source's tags as they are, and was taken without tags. |
+| `target` | [content.Content](#contentcontent) |  |
+
+### ProviderView
+
+| Field | Type | Description |
+|---|---|---|
+| `headerName` | string |  |
+| `host` | string | Host is where the service is, without the rest of its address. |
+| `name` | string |  |
+| `signed` | boolean |  |
+| `url` | string | URL, HeaderName and Signed (a header's value is kept) are for administrators. |
 
 ### QaRequest
 

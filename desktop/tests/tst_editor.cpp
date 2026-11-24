@@ -25,6 +25,9 @@
 #include <QTableView>
 #include <QTableWidget>
 #include <QPlainTextEdit>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <QJsonDocument>
 #include <QTest>
 #include <QTimer>
 #include <QTreeWidget>
@@ -405,6 +408,59 @@ private slots:
         // Replaced back, the text is as it was.
         ed->replaceAll(QStringLiteral("agreement"), QStringLiteral("contract"), true, true);
         QTRY_COMPARE_WITH_TIMEOUT(replacedSpy.size(), 2, 10000);
+
+        // A translation service of one's own: asked for a suggestion for the
+        // open segment, and its answer inserted.
+        {
+            QTcpServer service;
+            QVERIFY(service.listen(QHostAddress::LocalHost));
+            QByteArray seen;
+            connect(&service, &QTcpServer::newConnection, &service, [&service, &seen] {
+                QTcpSocket *sock = service.nextPendingConnection();
+                auto *buf = new QByteArray;
+                connect(sock, &QTcpSocket::readyRead, sock, [sock, buf, &seen] {
+                    buf->append(sock->readAll());
+                    const int head = buf->indexOf("\r\n\r\n");
+                    if (head < 0)
+                        return;
+                    const int at = buf->toLower().indexOf("content-length:");
+                    const int length = at < 0 ? 0 : buf->mid(at + 15, buf->indexOf("\r\n", at) - at - 15).trimmed().toInt();
+                    if (buf->size() < head + 4 + length)
+                        return;
+                    seen = *buf;
+                    const QJsonObject q = QJsonDocument::fromJson(buf->mid(head + 4)).object();
+                    const QString id = q.value("segments").toArray().first().toObject().value("id").toString();
+                    const QByteArray body = QJsonDocument(QJsonObject{{"translations", QJsonArray{QJsonObject{{"id", id}, {"text", "A suggestion in " + q.value("targetLang").toString()}}}}}).toJson(QJsonDocument::Compact);
+                    sock->write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    sock->disconnectFromHost();
+                    delete buf;
+                });
+            });
+            QVERIFY(ed->services().isEmpty() && !ed->findChild<QPushButton *>(QStringLiteral("suggestWith:Echo")));
+            const QString url = QStringLiteral("http://127.0.0.1:%1/translate").arg(service.serverPort());
+            QVERIFY(wait(api->put(QStringLiteral("/api/providers/Echo"), QJsonObject{{"url", url}, {"headerName", "X-Key"}, {"headerValue", "k1"}})).ok());
+            ed->reloadServices();
+            QTRY_COMPARE_WITH_TIMEOUT(ed->services(), QStringList{QStringLiteral("Echo")}, 10000);
+            auto *askButton = ed->findChild<QPushButton *>(QStringLiteral("suggestWith:Echo"));
+            QVERIFY(askButton);
+            QCOMPARE(askButton->text(), QStringLiteral("Suggest with Echo"));
+            QVERIFY(seen.isEmpty());
+            QSignalSpy suggestedSpy(ed, &EditorPage::suggested);
+            askButton->click();
+            QTRY_COMPARE_WITH_TIMEOUT(suggestedSpy.size(), 1, 15000);
+            QVERIFY(suggestedSpy.first().first().toBool());
+            QVERIFY(seen.toLower().contains("x-key: k1") && seen.contains("\"targetLang\":\"en-GB\""));
+            QCOMPARE(ed->findChild<QLabel *>(QStringLiteral("suggestionWords"))->text(), QStringLiteral("A suggestion in en-GB"));
+            ed->findChild<QPushButton *>(QStringLiteral("insertSuggestion"))->click();
+            QCOMPARE(SegmentContent::plainText(ed->target()->content()), QStringLiteral("A suggestion in en-GB"));
+            // A service that is gone says so, in words.
+            service.close();
+            ed->askService(QStringLiteral("Echo"));
+            QTRY_COMPARE_WITH_TIMEOUT(suggestedSpy.size(), 2, 15000);
+            QVERIFY(!suggestedSpy.at(1).first().toBool());
+            QVERIFY(ed->findChild<QLabel *>(QStringLiteral("serviceProblem"))->text().startsWith(QStringLiteral("Echo did not translate")));
+            QVERIFY(wait(api->del(QStringLiteral("/api/providers/Echo"))).ok());
+        }
 
         // Comments on the open segment: written, counted, and deleted; the
         // segment's translation and version stay as they are.

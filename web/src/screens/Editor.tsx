@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   AlertTriangle,
+  Languages,
   MessageSquare,
   ArrowLeft,
   BarChart3,
@@ -34,12 +35,14 @@ import { fileTargets, lang, type LangCode } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges, incomingFromMaster } from "../merge";
 import {
+  coreToRuns,
   isTag,
   missingTags,
   plain,
   runsToCore,
   sourceKey,
   wordCount,
+  type CoreRun,
   type Run,
   type Segment,
   type SegmentComment,
@@ -100,7 +103,7 @@ import {
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
-import { usePresence, useSegmentComments, useServerConcordance } from "../remote";
+import { usePresence, useSegmentComments, useServerConcordance, useTranslationServices } from "../remote";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -298,6 +301,7 @@ export function Editor({
   // On a team server: who else has which segment open.
   const present = usePresence(project, file?.id ?? "", target, activeId);
   const commenting = useSegmentComments(project, file?.id ?? "", target);
+  const services = useTranslationServices(project, target);
   const here = useMemo(() => {
     const m = new Map<string, typeof present>();
     for (const x of present) m.set(x.segment, [...(m.get(x.segment) ?? []), x]);
@@ -1416,6 +1420,15 @@ export function Editor({
                       ))}
                     </ol>
                   )}
+                  {services.names.length > 0 && !active.locked && (
+                    <ServiceSuggestions
+                      key={active.id}
+                      names={services.names}
+                      lang={target}
+                      ask={(name) => services.ask(name, active.source)}
+                      onInsert={(runs) => editor.current?.setRuns(runs)}
+                    />
+                  )}
                 </Section>
 
                 <Section title="Checks" count={allIssues.length}>
@@ -2229,6 +2242,76 @@ function LengthCounter({ length, max }: { length: number; max: number }) {
  * stay as they are, tags stay where they are, and a segment that changes
  * is a draft again.
  */
+/**
+ * Suggestions from translation services for the open segment: asked for
+ * one at a time, as asking sends the segment to the service.
+ */
+function ServiceSuggestions({
+  names,
+  lang: targetLang,
+  ask,
+  onInsert,
+}: {
+  names: string[];
+  lang: LangCode;
+  ask: (name: string) => Promise<{ target: CoreRun[]; tagsLost: boolean }>;
+  onInsert: (runs: Run[]) => void;
+}) {
+  const [busy, setBusy] = useState("");
+  const [got, setGot] = useState<{ name: string; runs: Run[]; tagsLost: boolean } | null>(null);
+  const [problem, setProblem] = useState("");
+  return (
+    <div className="service-suggestions">
+      <div className="row">
+        {names.map((name) => (
+          <button
+            key={name}
+            type="button"
+            className="btn btn-small"
+            disabled={!!busy}
+            onClick={() => {
+              setBusy(name);
+              setProblem("");
+              ask(name).then(
+                (r) => {
+                  setGot({ name, runs: coreToRuns(r.target), tagsLost: r.tagsLost });
+                  setBusy("");
+                },
+                (e) => {
+                  setProblem(e instanceof Error ? e.message : String(e));
+                  setBusy("");
+                },
+              );
+            }}
+          >
+            <Languages size={14} aria-hidden="true" />
+            {busy === name ? `Asking ${name}…` : `Suggest with ${name}`}
+          </button>
+        ))}
+      </div>
+      {problem && (
+        <p className="error" role="alert">
+          {problem}
+        </p>
+      )}
+      {got && (
+        <div className="suggestion" role="status">
+          <p lang={targetLang}>{plain(got.runs)}</p>
+          <p className="result-meta">
+            From {got.name}
+            {got.tagsLost ? ", without the source's tags: put them in by hand" : ""}
+          </p>
+          <div className="row">
+            <button type="button" className="btn btn-small" onClick={() => onInsert(got.runs)}>
+              Insert
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The comments on the open segment, and a field for a new one. */
 function SegmentComments({
   comments,

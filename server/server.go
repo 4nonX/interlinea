@@ -70,6 +70,9 @@ type Config struct {
 	// SetupToken lets the first administrator be made through the API
 	// while there are no accounts. Empty turns that off.
 	SetupToken string
+	// ProviderClient sends the requests to translation services; nil for
+	// one with a timeout of a minute.
+	ProviderClient *http.Client
 	// TokenTTL is how long a sign-in lasts (default 30 days).
 	TokenTTL time.Duration
 	// TrustProxy takes the client's address from X-Forwarded-For, for a
@@ -212,6 +215,7 @@ func (s *Server) routes() {
 	s.memoryRoutes()
 	s.alignRoutes()
 	s.mcpRoutes()
+	s.providerRoutes()
 	s.qaRoutes()
 	s.termbaseRoutes()
 	s.handle("GET /api/events", s.signedIn(s.events))

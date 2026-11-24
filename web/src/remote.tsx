@@ -7,6 +7,7 @@
 // so the editor works on it as on any other; the store leaves it out of
 // what the browser saves.
 
+import { askLocalProvider, type Suggestion } from "./editor/provider";
 import {
   createContext,
   useCallback,
@@ -55,7 +56,7 @@ import {
   type Termbase,
   type TranslationMemory,
 } from "./data";
-import { coreToRuns, runsToCore, type Segment } from "./editor/model";
+import { coreToRuns, runsToCore, type Run, type Segment } from "./editor/model";
 import { core, documentFormat, extractDocx, extractXliff, loadCore } from "./core";
 import { openRemoteMemory } from "./editor/memory";
 import { fromCoreEntry, infoTypesFromCore, toCoreEntry } from "./termio";
@@ -926,6 +927,50 @@ export function usePresence(project: Project | undefined, fileId: string, lang: 
     return () => void api.leave(n).catch(() => undefined);
   }, [api, n]);
   return present;
+}
+
+/**
+ * The translation services a project's editor can ask for a suggestion:
+ * the team server's for a project there, this browser's for one on this
+ * computer. Asking sends the segment to the service.
+ */
+export function useTranslationServices(project: Project | undefined, lang: LangCode) {
+  const { api } = useRemote();
+  const { state } = useStore();
+  const remote = !!project?.remote;
+  const [onServer, setOnServer] = useState<string[]>([]);
+  useEffect(() => {
+    if (!remote || !api) return;
+    let live = true;
+    api.providers().then(
+      (ps) => live && setOnServer(ps.map((p) => p.name)),
+      () => live && setOnServer([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [remote, api]);
+  const local = state.providers;
+  const sourceLang = project?.sourceLang ?? "";
+  return useMemo(
+    () => ({
+      names: remote ? onServer : local.map((p) => p.name),
+      async ask(name: string, source: Run[]): Promise<Suggestion> {
+        const core = runsToCore(source);
+        if (remote) {
+          if (!api) throw new Error("Sign in to the team server first.");
+          const r = await api.providerTranslate(name, sourceLang, lang, [{ id: "1", source: core }]);
+          const t = r.translations[0];
+          if (!t) throw new Error(`${name} did not translate the segment.`);
+          return { target: t.target, tagsLost: !!t.tagsLost };
+        }
+        const p = local.find((x) => x.name === name);
+        if (!p) throw new Error(`The service ${name} is no longer there.`);
+        return askLocalProvider(p, sourceLang, lang, core);
+      },
+    }),
+    [remote, onServer, local, api, sourceLang, lang],
+  );
 }
 
 /**

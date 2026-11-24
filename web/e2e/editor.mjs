@@ -1,4 +1,5 @@
 // Projects, editor, memories, merge and settings
+import { createServer } from "node:http";
 import { run } from "./harness.mjs";
 
 export default () =>
@@ -846,5 +847,63 @@ export default () =>
         (await text()).includes("No entries yet"),
         "empty state for termbase without sample entries",
       );
+
+      // A translation service of one's own: added in the settings, asked
+      // for a suggestion in the editor, and its answer inserted.
+      {
+        const asked = [];
+        const service = createServer((req, res) => {
+          const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type, accept, x-key", "Access-Control-Allow-Methods": "POST" };
+          if (req.method === "OPTIONS") return res.writeHead(204, cors).end();
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            const q = JSON.parse(body);
+            asked.push({ key: req.headers["x-key"], ...q });
+            if (req.headers["x-key"] !== "k1") return res.writeHead(401, cors).end("no key");
+            res.writeHead(200, { ...cors, "Content-Type": "application/json" });
+            res.end(JSON.stringify({ translations: q.segments.map((s) => ({ id: s.id, text: `[${q.targetLang}] ${s.text.toUpperCase()}` })) }));
+          });
+        });
+        await new Promise((r) => service.listen(0, "127.0.0.1", r));
+        const url = `http://127.0.0.1:${service.address().port}/translate`;
+        try {
+          await open("/settings", { wait: 0 });
+          await waitFor("!!document.querySelector('section[aria-labelledby=s-mt]')");
+          const panel = "section[aria-labelledby=s-mt]";
+          check((await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("No service yet."), "no translation service at first");
+          await click(`${panel} button`, "Add a service");
+          const fill = (i, v) => evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(panel + " form input")})[${i}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+          await fill(0, "Echo");
+          await fill(1, "ftp://nowhere");
+          await sleep(100);
+          check((await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("The address starts with https:// or http://."), "an address that is none is refused");
+          await fill(1, url);
+          await fill(2, "X-Key");
+          await fill(3, "k1");
+          await sleep(100);
+          await click(`${panel} button`, "Add the service");
+          check(await waitFor(`document.querySelector(${JSON.stringify(panel + " .settings-list")})?.innerText.includes('Echo')`), "the service is listed, by its name and where it is");
+          check(!(await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("k1"), "its key is not shown");
+
+          await sleep(800);
+          await open("/projects", { wait: 0, reload: false });
+          await sleep(400);
+          await click("a", "Mietvertrag Hofmann");
+          await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 15000);
+          check(await waitFor("[...document.querySelectorAll('section[aria-label=\"Translation results\"] button')].some(b => b.textContent.includes('Suggest with Echo'))"), "the editor offers the service");
+          check(asked.length === 0, "nothing is sent before a suggestion is asked for");
+          const source = (await evaluate("document.querySelector('.seg.is-active .seg-source').innerText")).replace(/\s+/g, " ").trim();
+          await click("section[aria-label=\"Translation results\"] button", "Suggest with Echo");
+          check(await waitFor("!!document.querySelector('.suggestion')", 10000), "the service's suggestion is shown");
+          check(asked.length === 1 && asked[0].key === "k1" && asked[0].sourceLang === "de-DE" && asked[0].targetLang === "en-GB" && asked[0].segments.length === 1, "the open segment was sent, with the key: " + JSON.stringify(asked[0]));
+          const said = await evaluate("document.querySelector('.suggestion').innerText");
+          check(said.includes("[en-GB]") && said.includes("From Echo"), "with what it answered and where it is from: " + said.slice(0, 80) + " / " + source.slice(0, 30));
+          await click(".suggestion button", "Insert");
+          check(await waitFor("document.querySelector('.seg.is-active .target-editor').innerText.includes('[en-GB]')", 5000), "inserted, it is the translation to work on");
+        } finally {
+          service.close();
+        }
+      }
     },
   );

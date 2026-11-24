@@ -1,6 +1,7 @@
-# Connecting assistants and other programs
+# Connecting assistants, translation services and other programs
 
-Interlinea has two doors for other programs. Both are open on the team
+Interlinea asks a translation service of your choice for suggestions, and
+has two doors for other programs to come in. Both are open on the team
 server and on the core the desktop app runs on your computer, and both work
 as a person: a program has that person's rights and no more, and what it
 saves is recorded under that person's name.
@@ -14,7 +15,7 @@ saves is recorded under that person's name.
 ## An access token
 
 A program signs in with a token. Make one for each program, so each can be
-ended on its own:
+ended on its own, in Settings under Access for programs, or over the API:
 
 ```sh
 curl -X POST https://interlinea.example.org/api/me/tokens \
@@ -77,10 +78,56 @@ reason in words, so an assistant can read it and act on it: a segment that
 is locked or assigned to someone else, a translation saved by someone else
 in the meantime, a project the person has no access to.
 
+## A translation service of your own
+
+The editor can ask any machine translation engine or language model for a
+suggestion, as long as it answers at an address the way described here. A
+service that speaks another protocol needs a small program in front of it
+that takes this request and gives this answer.
+
+A service is added in Settings under Translation services: a name, the
+address, and optionally a header that signs each request (for example
+`Authorization` with the value `Bearer <key>`). On a team server an
+administrator adds the services; the server sends the requests, so the key
+stays there and no app ever gets it. For work on your own computer the
+desktop app's core sends them. In the web app without a server the browser
+sends them itself, so the service must allow requests from the page (CORS),
+and the key is kept in the browser.
+
+The request is a POST with this JSON body:
+
+```json
+{
+  "sourceLang": "de-DE",
+  "targetLang": "en-GB",
+  "segments": [{ "id": "1", "text": "Der <1>Mieter</1> zahlt." }]
+}
+```
+
+The answer has status 200 and this JSON body:
+
+```json
+{
+  "translations": [{ "id": "1", "text": "The <1>tenant</1> pays." }]
+}
+```
+
+Tags are written as described under Tags above. A translation should keep
+them; one that does not have each of the source's tags as often as the
+source is taken without tags and marked, so the translator puts them in by
+hand. Any other status is an error, and the first 200 characters of its
+body are shown to the person who asked.
+
+Over the API, `GET /api/providers` lists the services,
+`PUT /api/providers/{name}` and `DELETE /api/providers/{name}` are for
+administrators, and `POST /api/providers/{name}/translate` asks one for up
+to 50 segments.
+
 ## What is sent where
 
-Nothing leaves Interlinea through these doors unless a program with a
-token asks for it. An assistant you connect reads the segments, memory
+A segment goes to a translation service when someone asks that service
+for a suggestion for it, and not before. Nothing leaves Interlinea through
+the two doors unless a program with a token asks for it. An assistant you connect reads the segments, memory
 matches and terms it asks for; where that text goes then is up to the
 assistant and the service behind it. Give a program a token of an account
 that sees only the projects it should work on.

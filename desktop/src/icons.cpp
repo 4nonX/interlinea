@@ -337,6 +337,21 @@ void draw(QPainter &p, const QString &name)
         path.lineTo(19, 3);
         path.cubicTo(20.1, 3, 21, 3.9, 21, 5);
         path.closeSubpath();
+    } else if (name == QLatin1String("languages")) {
+        // A letter of one script and one of another, as translation is drawn.
+        path.moveTo(4, 6);
+        path.lineTo(13, 6);
+        path.moveTo(8.5, 4);
+        path.lineTo(8.5, 6);
+        path.moveTo(11, 6);
+        path.cubicTo(10.5, 10, 8, 13, 4, 15);
+        path.moveTo(6, 9);
+        path.cubicTo(7, 11.5, 9.5, 13.5, 12, 14.5);
+        path.moveTo(13, 20);
+        path.lineTo(17, 11);
+        path.lineTo(21, 20);
+        path.moveTo(14.4, 17);
+        path.lineTo(19.6, 17);
     } else if (name == QLatin1String("columns")) {
         path.addRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
         path.moveTo(12, 3);

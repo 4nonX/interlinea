@@ -19,6 +19,12 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QJsonObject>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QComboBox>
+#include <QGridLayout>
+#include <QDateTime>
+#include <QFrame>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
@@ -180,6 +186,26 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     body->addWidget(Web::text(tr("Hunspell dictionaries, as LibreOffice and Firefox use them, checked by the core. Each project chooses one per target language in its checks."), "help", p));
     m_dictionaries = host(body);
 
+    page.body->addWidget(Web::panel(tr("Translation services"), p, &body));
+    {
+        auto *help = Web::text(tr("Machine translation or a language model of your choice, asked for a suggestion in the editor when you ask for one. Any service works that answers at an "
+                                  "address as the integration guide describes. A segment you ask a suggestion for is sent to the service; nothing is sent on its own."),
+                               "help", p);
+        help->setWordWrap(true);
+        body->addWidget(help);
+    }
+    m_providers = host(body);
+
+    page.body->addWidget(Web::panel(tr("Access for programs"), p, &body));
+    {
+        auto *help = Web::text(tr("An AI assistant or a script works as you, with your rights, when it signs in with a token made here. "
+                                  "Assistants that speak the Model Context Protocol connect to the address shown with each place."),
+                               "help", p);
+        help->setWordWrap(true);
+        body->addWidget(help);
+    }
+    m_programs = host(body);
+
     page.body->addWidget(Web::panel(tr("Team server"), p, &body));
     body->addWidget(Web::text(tr("A team server keeps a team's termbases in one place: everyone translates with the same terms, and new and changed entries reach the masters through review. Projects and memories can be shared there as well, with work given to translators and reviewers."),
                               "help", p));
@@ -261,6 +287,8 @@ void SettingsPage::reload()
         if (!m_manager->find(id) || !m_manager->find(id)->isReady()) {
             m_templateList.remove(id);
             m_dictionaryList.remove(id);
+            m_providerList.remove(id);
+            m_tokenList.remove(id);
         }
     }
     for (Connection *c : ready()) {
@@ -275,9 +303,21 @@ void SettingsPage::reload()
                 m_dictionaryList.insert(id, r.array());
             fillDictionaries();
         });
+        onResult(c->api()->get(QStringLiteral("/api/providers")), this, [this, id](const ApiResult &r) {
+            if (r.ok())
+                m_providerList.insert(id, r.array());
+            fillProviders();
+        });
+        onResult(c->api()->get(QStringLiteral("/api/me/tokens")), this, [this, id](const ApiResult &r) {
+            if (r.ok())
+                m_tokenList.insert(id, r.array());
+            fillPrograms();
+        });
     }
     fillTemplates();
     fillDictionaries();
+    fillProviders();
+    fillPrograms();
 }
 
 void SettingsPage::fillTemplates()
@@ -512,6 +552,244 @@ void SettingsPage::sendLoose(int index)
         // Otherwise the files do not say the language: it is asked for.
         reload();
     });
+}
+
+void SettingsPage::saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue)
+{
+    Connection *conn = m_manager->find(connectionId);
+    if (!conn)
+        return;
+    QJsonObject body{{QStringLiteral("url"), url.trimmed()}, {QStringLiteral("headerName"), headerName.trimmed()}, {QStringLiteral("headerValue"), headerValue}};
+    onResult(conn->api()->put(QStringLiteral("/api/providers/%1").arg(ApiClient::seg(name.trimmed())), body), this, [this, name](const ApiResult &r) {
+        if (!r.ok()) {
+            say(r.error.message);
+            return;
+        }
+        m_providerFormAt.clear();
+        say(tr("Added the service %1").arg(name.trimmed()));
+        reload();
+    });
+}
+
+// The translation services of each place: listed by name and where they
+// are; administrators (on this computer, you) add and delete them.
+void SettingsPage::fillProviders()
+{
+    clear(m_providers);
+    QWidget *p = m_providers->parentWidget();
+    const QList<Connection *> places = ready();
+    for (Connection *c : places) {
+        const QString id = c->id();
+        const bool admin = c->isLocal() || c->isAdmin();
+        if (places.size() > 1)
+            m_providers->addWidget(Web::text(c->isLocal() ? tr("On this computer") : tr("On %1").arg(c->displayName()), "fieldLabel", p));
+        const QJsonArray list = m_providerList.value(id);
+        if (list.isEmpty())
+            m_providers->addWidget(Web::text(tr("No service yet."), "muted", p));
+        for (const QJsonValue &v : list) {
+            const QJsonObject d = v.toObject();
+            const QString name = d.value(QLatin1String("name")).toString();
+            auto *what = new QWidget(p);
+            auto *h = new QHBoxLayout(what);
+            h->setContentsMargins(0, 0, 0, 0);
+            h->setSpacing(8);
+            h->addWidget(new QLabel(QStringLiteral("<b>%1</b>").arg(name.toHtmlEscaped()), what));
+            h->addWidget(Web::text(d.value(QLatin1String("host")).toString(), "muted", what), 1);
+            Web::ConfirmButton *del = nullptr;
+            if (admin) {
+                del = new Web::ConfirmButton(tr("Delete"), tr("Delete the service %1?").arg(name), tr("Delete"), p);
+                del->button()->setAccessibleName(tr("Delete the service %1").arg(name));
+                connect(del, &Web::ConfirmButton::confirmed, this, [this, id, name] {
+                    Connection *conn = m_manager->find(id);
+                    if (!conn)
+                        return;
+                    onResult(conn->api()->del(QStringLiteral("/api/providers/%1").arg(ApiClient::seg(name))), this, [this, name](const ApiResult &r) {
+                        say(r.ok() ? tr("Deleted the service %1").arg(name) : r.error.message);
+                        reload();
+                    });
+                });
+            }
+            m_providers->addWidget(listRow(what, del, p));
+        }
+        if (!admin) {
+            auto *note = Web::text(tr("An administrator adds the services of the server. They are asked by the server, for its projects, and their keys stay there."), "help", p);
+            note->setWordWrap(true);
+            m_providers->addWidget(note);
+            continue;
+        }
+        if (m_providerFormAt != id) {
+            auto *add = Web::button(tr("Add a service"), Web::Small, p, QStringLiteral("plus"));
+            add->setObjectName(QStringLiteral("addProvider:%1").arg(id));
+            connect(add, &QPushButton::clicked, this, [this, id] {
+                m_providerFormAt = id;
+                fillProviders();
+            });
+            m_providers->addWidget(add, 0, Qt::AlignLeft);
+            continue;
+        }
+        auto *form = new QFrame(p);
+        form->setProperty("role", QStringLiteral("box"));
+        form->setAccessibleName(tr("A translation service"));
+        auto *grid = new QGridLayout(form);
+        grid->setContentsMargins(12, 12, 12, 12);
+        grid->setHorizontalSpacing(16);
+        grid->setVerticalSpacing(12);
+        auto *name = new QLineEdit(form);
+        name->setObjectName(QStringLiteral("providerName"));
+        auto *url = new QLineEdit(form);
+        url->setObjectName(QStringLiteral("providerUrl"));
+        url->setPlaceholderText(QStringLiteral("https://"));
+        auto *headerName = new QLineEdit(form);
+        headerName->setObjectName(QStringLiteral("providerHeader"));
+        headerName->setPlaceholderText(QStringLiteral("Authorization"));
+        auto *headerValue = new QLineEdit(form);
+        headerValue->setObjectName(QStringLiteral("providerHeaderValue"));
+        headerValue->setEchoMode(QLineEdit::Password);
+        headerValue->setPlaceholderText(tr("Bearer …"));
+        grid->addWidget(Web::field(tr("Name"), name, form), 0, 0);
+        grid->addWidget(Web::field(tr("Address requests are sent to"), url, form), 0, 1);
+        grid->addWidget(Web::field(tr("Header that signs requests"), headerName, form, true), 1, 0);
+        grid->addWidget(Web::field(tr("Its value"), headerValue, form, true), 1, 1);
+        auto *save = Web::button(tr("Add the service"), Web::Primary | Web::Small, form);
+        save->setObjectName(QStringLiteral("saveProvider"));
+        save->setEnabled(false);
+        auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
+        auto *row = new QHBoxLayout;
+        row->setSpacing(8);
+        row->addWidget(save);
+        row->addWidget(cancel);
+        row->addStretch();
+        grid->addLayout(row, 2, 0, 1, 2);
+        const auto ready = [name, url, save] { save->setEnabled(!name->text().trimmed().isEmpty() && !url->text().trimmed().isEmpty()); };
+        connect(name, &QLineEdit::textChanged, save, ready);
+        connect(url, &QLineEdit::textChanged, save, ready);
+        connect(cancel, &QPushButton::clicked, this, [this] {
+            m_providerFormAt.clear();
+            fillProviders();
+        });
+        connect(save, &QPushButton::clicked, this, [this, id, name, url, headerName, headerValue] { saveProvider(id, name->text(), url->text(), headerName->text(), headerValue->text()); });
+        m_providers->addWidget(form);
+    }
+}
+
+void SettingsPage::makeToken(const QString &connectionId, const QString &name, int days)
+{
+    Connection *conn = m_manager->find(connectionId);
+    if (!conn || name.trimmed().isEmpty())
+        return;
+    onResult(conn->api()->post(QStringLiteral("/api/me/tokens"), QJsonObject{{QStringLiteral("name"), name.trimmed()}, {QStringLiteral("days"), days}}), this,
+             [this, connectionId](const ApiResult &r) {
+                 if (!r.ok()) {
+                     say(r.error.message);
+                     return;
+                 }
+                 m_madeToken = r.object().value(QLatin1String("token")).toString();
+                 m_madeTokenName = r.object().value(QLatin1String("name")).toString();
+                 m_madeTokenAt = connectionId;
+                 reload();
+             });
+}
+
+// Access tokens for programs, at each place: listed with the sign-ins,
+// made here, and ended.
+void SettingsPage::fillPrograms()
+{
+    clear(m_programs);
+    QWidget *p = m_programs->parentWidget();
+    const QList<Connection *> places = ready();
+    for (Connection *c : places) {
+        const QString id = c->id();
+        QString base = c->url().toString();
+        while (base.endsWith(QLatin1Char('/')))
+            base.chop(1);
+        m_programs->addWidget(Web::text(c->isLocal() ? tr("On this computer") : tr("On %1").arg(c->displayName()), "fieldLabel", p));
+        auto *address = new QLabel(tr("Assistants connect to %1").arg(base + QStringLiteral("/mcp")), p);
+        address->setObjectName(QStringLiteral("mcpAddress:%1").arg(id));
+        address->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+        address->setAccessibleName(address->text());
+        address->setWordWrap(true);
+        Theme::role(address, "help");
+        m_programs->addWidget(address);
+        for (const QJsonValue &v : m_tokenList.value(id)) {
+            const QJsonObject t = v.toObject();
+            const QString name = t.value(QLatin1String("name")).toString().isEmpty() ? tr("Sign-in") : t.value(QLatin1String("name")).toString();
+            const bool current = t.value(QLatin1String("current")).toBool();
+            const qint64 tokenId = t.value(QLatin1String("id")).toInteger();
+            const QDate until = QDateTime::fromString(t.value(QLatin1String("expiresAt")).toString(), Qt::ISODateWithMs).toLocalTime().date();
+            auto *what = new QWidget(p);
+            auto *h = new QHBoxLayout(what);
+            h->setContentsMargins(0, 0, 0, 0);
+            h->setSpacing(8);
+            h->addWidget(new QLabel(QStringLiteral("<b>%1</b>").arg(name.toHtmlEscaped()), what));
+            const QString when = QLocale(QLocale::English, QLocale::UnitedKingdom).toString(until, QStringLiteral("d MMM yyyy"));
+            h->addWidget(Web::text(current ? tr("this sign-in, until %1").arg(when) : tr("until %1").arg(when), "muted", what), 1);
+            Web::ConfirmButton *end = nullptr;
+            if (!current) {
+                end = new Web::ConfirmButton(tr("End"), tr("End %1? What signs in with it is refused from then on.").arg(name), tr("End"), p);
+                end->button()->setAccessibleName(tr("End %1").arg(name));
+                end->setObjectName(QStringLiteral("endToken:%1").arg(tokenId));
+                connect(end, &Web::ConfirmButton::confirmed, this, [this, id, tokenId, name] {
+                    Connection *conn = m_manager->find(id);
+                    if (!conn)
+                        return;
+                    onResult(conn->api()->del(QStringLiteral("/api/me/tokens/%1").arg(tokenId)), this, [this, name](const ApiResult &r) {
+                        say(r.ok() ? tr("Ended %1").arg(name) : r.error.message);
+                        reload();
+                    });
+                });
+            }
+            m_programs->addWidget(listRow(what, end, p));
+        }
+        if (m_madeTokenAt == id && !m_madeToken.isEmpty()) {
+            auto *made = Web::note(tr("The token for %1. It is shown this once: copy it now.").arg(m_madeTokenName), QStringLiteral("ok"), p);
+            auto *value = new QLineEdit(m_madeToken, made);
+            value->setObjectName(QStringLiteral("tokenValue"));
+            value->setReadOnly(true);
+            value->setAccessibleName(tr("The token"));
+            auto *copy = Web::button(tr("Copy"), Web::Small, made);
+            auto *done = Web::button(tr("Done"), Web::Quiet | Web::Small, made);
+            auto *row = new QHBoxLayout;
+            row->setSpacing(8);
+            row->addWidget(value, 1);
+            row->addWidget(copy);
+            row->addWidget(done);
+            if (auto *l = qobject_cast<QBoxLayout *>(made->layout()))
+                l->addLayout(row);
+            connect(copy, &QPushButton::clicked, this, [this] {
+                QGuiApplication::clipboard()->setText(m_madeToken);
+                say(tr("Copied the token"));
+            });
+            connect(done, &QPushButton::clicked, this, [this] {
+                m_madeToken.clear();
+                m_madeTokenAt.clear();
+                fillPrograms();
+            });
+            m_programs->addWidget(made);
+        }
+        auto *form = new QWidget(p);
+        form->setAccessibleName(tr("A new access token"));
+        auto *fl = new QHBoxLayout(form);
+        fl->setContentsMargins(0, 0, 0, 0);
+        fl->setSpacing(12);
+        auto *name = new QLineEdit(form);
+        name->setObjectName(QStringLiteral("tokenName:%1").arg(id));
+        name->setMinimumWidth(240);
+        auto *days = new QComboBox(form);
+        days->addItem(tr("30 days"), 30);
+        days->addItem(tr("90 days"), 90);
+        days->addItem(tr("A year"), 366);
+        days->setCurrentIndex(1);
+        auto *make = Web::button(tr("Make a token"), Web::Normal, form);
+        make->setObjectName(QStringLiteral("makeToken:%1").arg(id));
+        make->setEnabled(false);
+        fl->addWidget(Web::labelled(tr("Program the token is for"), name, form), 0, Qt::AlignBottom);
+        fl->addWidget(Web::labelled(tr("Lasts"), days, form), 0, Qt::AlignBottom);
+        fl->addWidget(make, 0, Qt::AlignBottom);
+        fl->addStretch();
+        connect(name, &QLineEdit::textChanged, make, [make](const QString &t) { make->setEnabled(!t.trimmed().isEmpty()); });
+        connect(make, &QPushButton::clicked, this, [this, id, name, days] { makeToken(id, name->text(), days->currentData().toInt()); });
+        m_programs->addWidget(form);
+    }
 }
 
 void SettingsPage::fillServers()

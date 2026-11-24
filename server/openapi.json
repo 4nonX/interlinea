@@ -788,6 +788,68 @@
         },
         "type": "object"
       },
+      "ProviderRequest": {
+        "properties": {
+          "segments": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "source": {
+                  "$ref": "#/components/schemas/content.Content"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "sourceLang": {
+            "type": "string"
+          },
+          "targetLang": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ProviderTranslation": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tagsLost": {
+            "description": "TagsLost is set where the service's translation did not have the source's tags as they are, and was taken without tags.",
+            "type": "boolean"
+          },
+          "target": {
+            "$ref": "#/components/schemas/content.Content"
+          }
+        },
+        "type": "object"
+      },
+      "ProviderView": {
+        "properties": {
+          "headerName": {
+            "type": "string"
+          },
+          "host": {
+            "description": "Host is where the service is, without the rest of its address.",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "signed": {
+            "type": "boolean"
+          },
+          "url": {
+            "description": "URL, HeaderName and Signed (a header's value is kept) are for administrators.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "QaRequest": {
         "properties": {
           "file": {
@@ -8436,6 +8498,221 @@
         "summary": "Adds a term found while translating where the project's setup puts new terms: its own termbase, or the master in Direct mode.",
         "tags": [
           "Projects"
+        ]
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "description": "Administrators also see each one's address and the name of its header; the header's value is never given out.\n\nAccess: signed in.",
+        "operationId": "listProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Lists the translation services the editor can ask for a suggestion.",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
+    "/api/providers/{name}": {
+      "delete": {
+        "description": "Access: administrators.",
+        "operationId": "deleteProvider",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Removes a translation service.",
+        "tags": [
+          "Other"
+        ]
+      },
+      "put": {
+        "description": "Without headerValue, the service keeps the value it has.\n\nAccess: administrators.",
+        "operationId": "saveProvider",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "headerName": {
+                    "type": "string"
+                  },
+                  "headerValue": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Adds a translation service or changes the one of the name: its address, and a header sent with each request to sign it.",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
+    "/api/providers/{name}/translate": {
+      "post": {
+        "description": "The texts are sent to the service's address, outside the server; nothing is sent to a service that is not asked. A translation that does not keep the source's tags comes back without tags, marked.\n\nAccess: signed in.",
+        "operationId": "providerTranslate",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "translations": {
+                      "items": {
+                        "$ref": "#/components/schemas/ProviderTranslation"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Asks a translation service for the translations of segments.",
+        "tags": [
+          "Other"
         ]
       }
     },

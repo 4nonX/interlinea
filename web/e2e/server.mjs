@@ -666,6 +666,34 @@ export default () =>
       check(!local.includes("srv-"), "server projects are not saved in the browser: " + local);
       const evaKept = JSON.parse((await evaluate("localStorage.getItem('interlinea.server')")) ?? "null");
       check(evaKept?.cookie === true && !evaKept.token, "a provider sign-in keeps no token in the browser either");
+
+      // Access for programs: a token made in the settings signs an
+      // assistant in on the MCP endpoint, and is refused once it is ended.
+      {
+        await open("/settings", { keep: true, wait: 0, reload: false });
+        const panel = "section[aria-labelledby=s-programs]";
+        check(await waitFor(`!!document.querySelector(${JSON.stringify(panel)})`, 10000), "signed in to a server, the settings offer access for programs");
+        check((await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("/mcp"), "with the address assistants connect to");
+        await setValue(`${panel} form input`, "My assistant");
+        await sleep(100);
+        await click(`${panel} button`, "Make a token");
+        check(await waitFor("!!document.querySelector('.token-value')", 10000), "the token is shown once");
+        const token = await evaluate("document.querySelector('.token-value').textContent");
+        const mcp = (tok, method, params) => fetch(`${base}/mcp`, { method: "POST", headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+        let r = await mcp(token, "tools/list");
+        const tools = r.ok ? (await r.json()).result.tools.map((t) => t.name) : [];
+        check(tools.includes("list_segments") && tools.includes("save_translation"), "the token signs in on the MCP endpoint: " + tools.join(", "));
+        r = await mcp(token, "tools/call", { name: "list_projects", arguments: {} });
+        check(r.ok && !(await r.json()).result.isError, "and lists the person's projects");
+        check((await evaluate(`document.querySelector(${JSON.stringify(panel + " .settings-list")}).innerText`)).includes("My assistant"), "the token is listed by the program's name");
+        await click(".token-made button", "Done");
+        await evaluate(`[...document.querySelectorAll(${JSON.stringify(panel + " .settings-list li")})].find(li => li.textContent.includes('My assistant')).querySelector('button').click()`);
+        await sleep(150);
+        await click(`${panel} .confirm button`, "End");
+        check(await waitFor(`!document.querySelector(${JSON.stringify(panel + " .settings-list")}).innerText.includes('My assistant')`, 10000), "ended, it is gone from the list");
+        check((await mcp(token, "tools/list")).status === 401, "and refused on the endpoint");
+        check((await evaluate("document.querySelector('section[aria-labelledby=s-mt]').innerText")).includes("An administrator adds the services of the server") || (await evaluate("document.querySelector('section[aria-labelledby=s-mt]').innerText")).includes("Add a service"), "the settings show the server's translation services");
+      }
     },
     { teamServer: true },
   );

@@ -228,18 +228,32 @@ const schemaV4 = `
 		created_by  TEXT NOT NULL
 	);`
 
+// Version 5: translation services, which the editor asks for a
+// suggestion: where each is reached and the header that signs requests.
+const schemaV5 = `
+	CREATE TABLE providers (
+		name         TEXT PRIMARY KEY,
+		url          TEXT NOT NULL,
+		header_name  TEXT NOT NULL DEFAULT '',
+		header_value TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL,
+		created_by   TEXT NOT NULL
+	);`
+
 var (
 	migrations = []string{
 		fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT", "BLOB"),
 		fmt.Sprintf(schemaV2, "INTEGER PRIMARY KEY AUTOINCREMENT"),
 		schemaV3,
 		fmt.Sprintf(schemaV4, "BLOB"),
+		schemaV5,
 	}
 	pgMigrations = []string{
 		fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "BYTEA"),
 		fmt.Sprintf(schemaV2, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"),
 		schemaV3,
 		fmt.Sprintf(schemaV4, "BYTEA"),
+		schemaV5,
 	}
 )
 

@@ -626,7 +626,17 @@ QWidget *EditorPage::buildPanel()
         notify(tr("Their translation is in."));
     });
 
-    v->addWidget(section(tr("Translation results"), &m_resultsCount, body, &m_resultsList));
+    {
+        QVBoxLayout *resultsBody = nullptr;
+        v->addWidget(section(tr("Translation results"), &m_resultsCount, body, &resultsBody));
+        m_resultsList = new QVBoxLayout;
+        m_resultsList->setSpacing(S2);
+        resultsBody->addLayout(m_resultsList);
+        // Under the results: the translation services, and what one answered.
+        m_suggestList = new QVBoxLayout;
+        m_suggestList->setSpacing(S2);
+        resultsBody->addLayout(m_suggestList);
+    }
     v->addWidget(section(tr("Checks"), &m_checksCount, body, &m_issuesList));
 
     // Memory search, open while in use.
@@ -928,6 +938,7 @@ void EditorPage::loadProject()
             return;
         }
         m_project = r.object();
+        loadServices();
         const QJsonObject s = settings();
         m_sourceLang = s.value(QLatin1String("sourceLang")).toString();
         m_title->setText(s.value(QLatin1String("name")).toString());
@@ -1297,6 +1308,9 @@ void EditorPage::activate(int row)
     showIssues();
     m_commentText->clear();
     showComments();
+    m_suggestion = {};
+    m_serviceProblem.clear();
+    showSuggestions();
     updatePreview();
     sendPresence();
     lookup();
@@ -2046,6 +2060,110 @@ void EditorPage::addWord(const QString &word)
                  notify(tr("“%1” is spelled right in this project from now on").arg(word));
                  runChecks();
              });
+}
+
+void EditorPage::loadServices()
+{
+    if (!m_conn)
+        return;
+    onResult(m_conn->api()->get(QStringLiteral("/api/providers")), this, [this](const ApiResult &r) {
+        if (!r.ok())
+            return;
+        m_services.clear();
+        for (const QJsonValue &v : r.array())
+            m_services << v.toObject().value(QLatin1String("name")).toString();
+        showSuggestions();
+    });
+}
+
+// The translation services, each with its button, and under them what
+// the one asked last answered.
+void EditorPage::showSuggestions()
+{
+    if (!m_suggestList)
+        return;
+    clear(m_suggestList);
+    QWidget *panel = m_panel->widget();
+    if (m_services.isEmpty() || m_activeId.isEmpty() || !editable())
+        return;
+    for (const QString &name : std::as_const(m_services)) {
+        auto *b = new QPushButton(Icons::get(QStringLiteral("languages")), m_asking == name ? tr("Asking %1…").arg(name) : tr("Suggest with %1").arg(name), panel);
+        b->setObjectName(QStringLiteral("suggestWith:%1").arg(name));
+        Theme::smallButton(b);
+        b->setIconSize(QSize(14, 14));
+        b->setEnabled(m_asking.isEmpty());
+        connect(b, &QPushButton::clicked, this, [this, name] { askService(name); });
+        m_suggestList->addWidget(b, 0, Qt::AlignLeft);
+    }
+    if (!m_serviceProblem.isEmpty()) {
+        auto *wrong = label(m_serviceProblem, "error", panel);
+        wrong->setObjectName(QStringLiteral("serviceProblem"));
+        m_suggestList->addWidget(wrong);
+    }
+    if (m_suggestion.isEmpty())
+        return;
+    auto *box = new QFrame(panel);
+    box->setProperty("role", QStringLiteral("box"));
+    box->setObjectName(QStringLiteral("suggestion"));
+    auto *bv = new QVBoxLayout(box);
+    bv->setContentsMargins(S3, S2, S3, S2);
+    bv->setSpacing(S1);
+    auto *words = new QLabel(SegmentContent::plainText(m_suggestion.value(QLatin1String("target")).toArray()), box);
+    words->setTextFormat(Qt::PlainText);
+    words->setWordWrap(true);
+    words->setObjectName(QStringLiteral("suggestionWords"));
+    bv->addWidget(words);
+    QString from = tr("From %1").arg(m_suggestion.value(QLatin1String("name")).toString());
+    if (m_suggestion.value(QLatin1String("tagsLost")).toBool())
+        from += tr(", without the source's tags: put them in by hand");
+    bv->addWidget(label(from, "secondary", box));
+    auto *insert = new QPushButton(tr("Insert"), box);
+    insert->setObjectName(QStringLiteral("insertSuggestion"));
+    Theme::smallButton(insert);
+    connect(insert, &QPushButton::clicked, this, &EditorPage::insertSuggestion);
+    bv->addWidget(insert, 0, Qt::AlignLeft);
+    m_suggestList->addWidget(box);
+}
+
+void EditorPage::askService(const QString &name)
+{
+    if (!m_conn || m_activeId.isEmpty() || !m_asking.isEmpty())
+        return;
+    const QString id = m_activeId;
+    const QJsonObject seg = m_model->segment(activeRow());
+    QJsonObject body{{QStringLiteral("sourceLang"), m_sourceLang},
+                     {QStringLiteral("targetLang"), m_lang},
+                     {QStringLiteral("segments"), QJsonArray{QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("source"), seg.value(QLatin1String("source"))}}}}};
+    m_asking = name;
+    m_serviceProblem.clear();
+    showSuggestions();
+    onResult(m_conn->api()->post(QStringLiteral("/api/providers/%1/translate").arg(ApiClient::seg(name)), body), this, [this, id, name](const ApiResult &r) {
+        m_asking.clear();
+        if (id != m_activeId) {
+            // The answer is for a segment that was left.
+            showSuggestions();
+            return;
+        }
+        const QJsonArray ts = r.object().value(QLatin1String("translations")).toArray();
+        if (!r.ok() || ts.isEmpty()) {
+            m_serviceProblem = r.ok() ? tr("%1 did not translate the segment.").arg(name) : r.error.message;
+            m_suggestion = {};
+        } else {
+            m_suggestion = ts.first().toObject();
+            m_suggestion.insert(QStringLiteral("name"), name);
+        }
+        showSuggestions();
+        emit suggested(r.ok() && !ts.isEmpty());
+    });
+}
+
+void EditorPage::insertSuggestion()
+{
+    if (!editable() || m_suggestion.isEmpty() || !m_target)
+        return;
+    m_target->setContent(m_suggestion.value(QLatin1String("target")).toArray());
+    emit m_target->edited();
+    m_target->setFocus();
 }
 
 QJsonArray EditorPage::comments() const

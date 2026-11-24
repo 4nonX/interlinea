@@ -24,6 +24,14 @@ public:
 
     QString lastNotice() const;
 
+    // Adds a translation service at a place, and makes an access token
+    // for a program there, as the forms do.
+    void saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue);
+    void makeToken(const QString &connectionId, const QString &name, int days);
+    QString madeToken() const { return m_madeToken; }
+    // Reads what the panels show again.
+    void reloadNow() { reload(); }
+
 protected:
     void resizeEvent(QResizeEvent *e) override;
     void showEvent(QShowEvent *e) override;
@@ -42,6 +50,8 @@ private:
     void reload();
     void fillTemplates();
     void fillDictionaries();
+    void fillProviders();
+    void fillPrograms();
     void fillServers();
     void fillSaved();
     void saveName();
@@ -57,11 +67,21 @@ private:
     QVBoxLayout *m_templates;
     QVBoxLayout *m_dictionaries;
     QVBoxLayout *m_servers;
+    QVBoxLayout *m_providers = nullptr;
+    QVBoxLayout *m_programs = nullptr;
     QVBoxLayout *m_saved;
     // Per connection: its templates and dictionaries, and whether the
     // person may change them there.
     QHash<QString, QJsonArray> m_templateList;
     QHash<QString, QJsonArray> m_dictionaryList;
+    QHash<QString, QJsonArray> m_providerList;
+    QHash<QString, QJsonArray> m_tokenList;
+    // The form for a new service is open at this place; the token just
+    // made, shown once, and where.
+    QString m_providerFormAt;
+    QString m_madeToken;
+    QString m_madeTokenName;
+    QString m_madeTokenAt;
     QList<Loose> m_loose;
     QStringList m_dictionaryProblems;
     QString m_states;

@@ -1,3 +1,4 @@
+import type { LocalProvider } from "./editor/provider";
 import {
   createContext,
   useCallback,
@@ -88,6 +89,8 @@ export interface State {
   memories: TranslationMemory[];
   templates: Template[];
   dictionaries: SpellDictionary[];
+  /** Translation services asked from this browser, for work on this computer. */
+  providers: LocalProvider[];
   baseSnapshots: Record<string, Entry>;
   branchedAt: Record<string, string>;
   /** Entries deleted from termbases kept in this browser, newest first. */
@@ -202,6 +205,8 @@ type Action =
     }
   | { type: "ignoreIssue"; at: SegmentsAt; segmentId: string; text: string }
   | { type: "setComments"; at: SegmentsAt; segmentId: string; comments: SegmentComment[] }
+  | { type: "saveProvider"; provider: LocalProvider }
+  | { type: "deleteProvider"; name: string }
   | {
       /** Translations changed by find and replace: they are drafts again. */
       type: "replaceTargets";
@@ -275,6 +280,7 @@ const initial: State = {
   memories: [],
   templates: [],
   dictionaries: [],
+  providers: [],
   baseSnapshots: {},
   branchedAt: {},
   deleted: [],
@@ -753,6 +759,13 @@ function reduce(state: State, action: Action): State {
             : sg,
         ),
       );
+    case "saveProvider":
+      return {
+        ...state,
+        providers: [...state.providers.filter((p) => p.name.toLowerCase() !== action.provider.name.toLowerCase()), action.provider].sort((x, y) => x.name.localeCompare(y.name)),
+      };
+    case "deleteProvider":
+      return { ...state, providers: state.providers.filter((p) => p.name !== action.name) };
     case "setComments":
       return withSegments(state, action.at, (segments) =>
         segments.map((sg) => (sg.id === action.segmentId ? { ...sg, comments: action.comments.length ? action.comments : undefined } : sg)),
@@ -1193,6 +1206,7 @@ function withDefaults(s: SavedState): SavedState {
     deleted: s.deleted ?? [],
     removals: s.removals ?? [],
     dictionaries: s.dictionaries ?? [],
+    providers: s.providers ?? [],
     // What the browser keeps is on this computer: termbases saved with a
     // server that never existed are shown as what they are.
     termbases: s.termbases.map((t) => {

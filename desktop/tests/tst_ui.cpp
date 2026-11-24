@@ -21,6 +21,8 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QTest>
 #include <QTreeWidget>
 
@@ -84,7 +86,61 @@ private slots:
         for (QFrame *f : page->findChildren<QFrame *>(QStringLiteral("panel")))
             panels << f->accessibleName();
         QCOMPARE(panels, (QStringList{QStringLiteral("Your name"), QStringLiteral("Terminology wording"), QStringLiteral("Editor"), QStringLiteral("Project templates"),
-                                      QStringLiteral("Spelling dictionaries"), QStringLiteral("Team server"), QStringLiteral("Saved work")}));
+                                      QStringLiteral("Spelling dictionaries"), QStringLiteral("Translation services"), QStringLiteral("Access for programs"),
+                                      QStringLiteral("Team server"), QStringLiteral("Saved work")}));
+        // A translation service is added on this computer, listed by its
+        // name and where it is, and its key is not shown.
+        {
+            const QString here = m.local()->id();
+            const auto wait = [](ApiReply *reply) {
+                QSignalSpy spy(reply, &ApiReply::finished);
+                return spy.wait(20000) ? spy.first().first().value<ApiResult>() : ApiResult{};
+            };
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QPushButton *>(QStringLiteral("addProvider:%1").arg(here)), 10000);
+            page->findChild<QPushButton *>(QStringLiteral("addProvider:%1").arg(here))->click();
+            auto *save = page->findChild<QPushButton *>(QStringLiteral("saveProvider"));
+            QVERIFY(save && !save->isEnabled());
+            page->findChild<QLineEdit *>(QStringLiteral("providerName"))->setText(QStringLiteral("Echo"));
+            page->findChild<QLineEdit *>(QStringLiteral("providerUrl"))->setText(QStringLiteral("https://mt.example.org/translate"));
+            page->findChild<QLineEdit *>(QStringLiteral("providerHeader"))->setText(QStringLiteral("Authorization"));
+            page->findChild<QLineEdit *>(QStringLiteral("providerHeaderValue"))->setText(QStringLiteral("Bearer k1"));
+            QVERIFY(save->isEnabled());
+            save->click();
+            QTRY_COMPARE_WITH_TIMEOUT(page->lastNotice(), QStringLiteral("Added the service Echo"), 10000);
+            const QJsonArray listed = wait(m.local()->api()->get(QStringLiteral("/api/providers"))).array();
+            QCOMPARE(listed.size(), 1);
+            QCOMPARE(listed.first().toObject().value("host").toString(), QStringLiteral("mt.example.org"));
+            QVERIFY(listed.first().toObject().value("signed").toBool() && !QJsonDocument(listed).toJson().contains("k1"));
+            bool shown = false;
+            QTRY_VERIFY_WITH_TIMEOUT([&] {
+                for (QLabel *l : page->findChildren<QLabel *>())
+                    shown = shown || (l->text() == QStringLiteral("mt.example.org") && !l->isHidden());
+                return shown;
+            }(), 10000);
+            // An address that is none is refused by the core, in its words.
+            page->saveProvider(here, QStringLiteral("Bad"), QStringLiteral("ftp://nowhere"), QString(), QString());
+            QTRY_VERIFY_WITH_TIMEOUT(page->lastNotice().contains(QStringLiteral("https://")), 10000);
+
+            // An access token for a program: made, shown once, and listed.
+            const int before = int(wait(m.local()->api()->get(QStringLiteral("/api/me/tokens"))).array().size());
+            auto *mcp = page->findChild<QLabel *>(QStringLiteral("mcpAddress:%1").arg(here));
+            QVERIFY(mcp && mcp->text().startsWith(QStringLiteral("Assistants connect to http")) && mcp->text().endsWith(QStringLiteral("/mcp")));
+            auto *tokenName = page->findChild<QLineEdit *>(QStringLiteral("tokenName:%1").arg(here));
+            auto *make = page->findChild<QPushButton *>(QStringLiteral("makeToken:%1").arg(here));
+            QVERIFY(tokenName && make && !make->isEnabled());
+            tokenName->setText(QStringLiteral("My assistant"));
+            QVERIFY(make->isEnabled());
+            make->click();
+            QTRY_VERIFY_WITH_TIMEOUT(!page->madeToken().isEmpty(), 10000);
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QLineEdit *>(QStringLiteral("tokenValue")), 10000);
+            QCOMPARE(page->findChild<QLineEdit *>(QStringLiteral("tokenValue"))->text(), page->madeToken());
+            const QJsonArray tokens = wait(m.local()->api()->get(QStringLiteral("/api/me/tokens"))).array();
+            QCOMPARE(int(tokens.size()), before + 1);
+            bool named = false;
+            for (const QJsonValue &v : tokens)
+                named = named || v.toObject().value("name").toString() == QStringLiteral("My assistant");
+            QVERIFY(named);
+        }
         // The name field holds the person's name and saves it to the core.
         auto *name = page->findChild<QLineEdit *>(QStringLiteral("userName"));
         QVERIFY(name);

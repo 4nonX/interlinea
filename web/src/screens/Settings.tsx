@@ -1,3 +1,4 @@
+import { ProgramAccess, TranslationServices } from "./Integrations";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Upload } from "lucide-react";
 import { DEFAULT_USER_NAME, LANGUAGES, lang, type LangCode } from "../data";
@@ -164,6 +165,10 @@ export function Settings() {
       <Templates />
 
       <Dictionaries />
+
+      <TranslationServices />
+
+      <ProgramAccess />
 
       <TeamServer />
 
