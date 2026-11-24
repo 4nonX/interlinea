@@ -1,7 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -215,6 +218,97 @@ func TestTermbases(t *testing.T) {
 	if r := e.do("POST", "/api/termbases/Copy/import?onMatch=maybe", tbm, r.body); r.status != 422 {
 		t.Fatalf("bad policy: %d", r.status)
 	}
+	// A spreadsheet is inspected first, then imported with the columns,
+	// languages and default status the person chose.
+	sheet := []byte("Deutsch,Englisch,Bemerkung\nKaution,deposit; security deposit,aus dem Vertrag\nNebenkosten,service charge,\n,,nur eine Bemerkung\n")
+	var insp struct {
+		Format  string
+		Tabular bool
+		Total   int
+		Rows    [][]string
+		Mapping *term.Mapping
+		Read    term.Report
+	}
+	e.call("POST", "/api/termfiles/inspect?filename=liste.csv", benTok, sheet, 200, &insp, "Content-Type", "text/csv")
+	if insp.Format != "csv" || !insp.Tabular || insp.Total != 4 || len(insp.Rows) != 4 || insp.Mapping == nil || len(insp.Mapping.Columns) < 3 {
+		t.Fatalf("inspection %+v", insp)
+	}
+	mapping := term.Mapping{Header: true, Separator: ";", Columns: []term.Column{
+		{Index: 0, Role: term.RoleTerm, Lang: "de"}, {Index: 1, Role: term.RoleTerm, Lang: "en"},
+		{Index: 2, Role: term.RoleField, Field: "Bemerkung", Level: term.LevelEntry},
+	}}
+	mj, _ := json.Marshal(mapping)
+	var read struct {
+		Languages []string
+		Fields    []term.Field
+		Read      term.Report
+	}
+	e.call("POST", "/api/termfiles/inspect?filename=liste.csv&mapping="+url.QueryEscape(string(mj)), benTok, sheet, 200, &read, "Content-Type", "text/csv")
+	if strings.Join(read.Languages, " ") != "de en" || len(read.Fields) != 1 || read.Read.Entries != 2 || read.Read.Skipped != 1 {
+		t.Fatalf("read with a mapping %+v", read)
+	}
+	if r := e.do("POST", "/api/termfiles/inspect?filename=liste.csv&mapping=nonsense", benTok, sheet); r.status != 422 {
+		t.Fatalf("a mapping that is not JSON: %d", r.status)
+	}
+	if r := e.do("POST", "/api/termfiles/inspect?filename=x.xml", benTok, []byte("<html></html>")); r.status != 422 {
+		t.Fatalf("a file that is no termbase: %d", r.status)
+	}
+	if r := e.do("POST", "/api/termfiles/inspect?filename=liste.csv", "", sheet); r.status != 401 {
+		t.Fatalf("inspecting without signing in: %d", r.status)
+	}
+	var planned struct {
+		Added, Dropped int
+		Imported       bool
+		Plan           []struct{ Kind, Entry, Existing string }
+	}
+	opts := "&mapping=" + url.QueryEscape(string(mj)) + "&languages=" + url.QueryEscape(`{"de":"de-DE","en":"en-GB"}`) + "&status=proposed"
+	e.call("POST", "/api/termbases/Copy/import?dryRun=1&filename=liste.csv"+opts, tbm, sheet, 200, &planned, "Content-Type", "text/csv")
+	if planned.Added != 2 || planned.Imported || len(planned.Plan) != 2 || planned.Plan[0].Kind != "add" || planned.Plan[0].Entry != "Kaution, deposit, security deposit" {
+		t.Fatalf("plan %+v", planned)
+	}
+	e.call("POST", "/api/termbases/Copy/import?filename=liste.csv"+opts, tbm, sheet, 200, &planned, "Content-Type", "text/csv")
+	if planned.Added != 2 || !planned.Imported {
+		t.Fatalf("import with options %+v", planned)
+	}
+	var kept struct{ Entries []termdb.Stored }
+	e.call("GET", "/api/termbases/Copy/entries?text=Kaution", tbm, nil, 200, &kept)
+	if len(kept.Entries) != 1 || kept.Entries[0].Languages[0].Lang != "de-DE" || kept.Entries[0].Languages[1].Lang != "en-GB" ||
+		kept.Entries[0].Languages[1].Terms[1].Status != term.StatusProposed || len(kept.Entries[0].Fields) != 1 {
+		t.Fatalf("imported entry %+v", kept.Entries)
+	}
+	// The same file again meets the entries that are there now; leaving
+	// German out drops nothing, leaving both out drops everything.
+	e.call("POST", "/api/termbases/Copy/import?dryRun=1&filename=liste.csv"+opts, tbm, sheet, 200, &planned, "Content-Type", "text/csv")
+	if planned.Added != 0 || len(planned.Plan) != 2 || planned.Plan[0].Existing == "" {
+		t.Fatalf("plan against existing entries %+v", planned)
+	}
+	none := "&mapping=" + url.QueryEscape(string(mj)) + "&languages=" + url.QueryEscape(`{"de":"","en":""}`)
+	planned.Plan = nil
+	e.call("POST", "/api/termbases/Copy/import?dryRun=1&filename=liste.csv"+none, tbm, sheet, 200, &planned, "Content-Type", "text/csv")
+	if planned.Dropped != 2 || len(planned.Plan) != 0 {
+		t.Fatalf("every language left out %+v", planned)
+	}
+	for _, bad := range []string{"&languages=x", "&languages=" + url.QueryEscape(`{"de":"not a tag!"}`), "&status=forbidden"} {
+		if r := e.do("POST", "/api/termbases/Copy/import?dryRun=1&filename=liste.csv"+bad, tbm, sheet); r.status != 422 {
+			t.Fatalf("%s: %d", bad, r.status)
+		}
+	}
+	// A MultiTerm termbase file goes in as it is.
+	sdltb, err := os.ReadFile("../term/testdata/orchard.sdltb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var orchard struct {
+		Format    string
+		Name      string
+		Languages []string
+		Read      term.Report
+	}
+	e.call("POST", "/api/termfiles/inspect?filename=orchard.sdltb", benTok, sdltb, 200, &orchard)
+	if orchard.Format != "sdltb" || orchard.Name != "Orchard" || orchard.Read.Entries != 5 || len(orchard.Languages) != 5 {
+		t.Fatalf("termbase file %+v", orchard)
+	}
+
 	// Definition and structure belong to managers.
 	if r := e.do("PUT", base+"/definition", benTok, term.Definition{Languages: []string{"de-DE", "en-GB", "fr-FR"}}); r.status != 403 {
 		t.Fatalf("an editor changes the definition: %d", r.status)

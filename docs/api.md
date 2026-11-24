@@ -27,6 +27,7 @@ Every route may also answer with an [Error](#error): 422 for a request with prob
 - [Termbases](#termbases)
 - [Merge requests](#merge-requests)
 - [Live feed](#live-feed)
+- [Other](#other)
 - [Types](#types)
 
 ## Signing in
@@ -1181,13 +1182,13 @@ Access: manage on the termbase.
 
 Reads a termbase file (the request body: TBX, MultiTerm XML, a MultiTerm termbase file (.sdltb), CSV, TSV or Excel) into the termbase.
 
-?match=term|id|none and ?onMatch=merge|overwrite|skip|add say what happens to entries that are there already; ?dryRun=1 reports without changing anything.
+?match=term|id|none and ?onMatch=merge|overwrite|skip|add say what happens to entries that are there already; ?dryRun=1 reports without changing anything, with the first lines of what would happen. ?mapping= (JSON) says what a spreadsheet's columns hold, ?languages= (a JSON object) which termbase language each language of the file goes under, with "" to leave one out, and ?status=approved|proposed which status terms without one get.
 
 Access: edit on the termbase.
 
-- Parameters: `name` (path), `filename` (query), `format` (query), `match` (query), `lang` (query), `onMatch` (query), `dryRun` (query)
+- Parameters: `name` (path), `filename` (query), `format` (query), `mapping` (query), `languages` (query), `status` (query), `match` (query), `lang` (query), `onMatch` (query), `dryRun` (query)
 - Body: the file's bytes
-- Answer: 200 OK: {`actions`: integer, `added`: integer, `fields`: list of string, `imported`: boolean, `invalid`: integer, `languages`: list of string, `merged`: integer, `overwritten`: integer, `read`: [term.Report](#termreport), `skipped`: integer, `unchanged`: integer, `warnings`: list of string}
+- Answer: 200 OK: {`actions`: integer, `added`: integer, `dropped`: integer, `fields`: list of string, `imported`: boolean, `invalid`: integer, `languages`: list of string, `merged`: integer, `overwritten`: integer, `plan`: list of [PlannedEntry](#plannedentry), `read`: [term.Report](#termreport), `skipped`: integer, `unchanged`: integer, `warnings`: list of string}
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `DELETE /api/termbases/{name}/languages/{lang}`
@@ -1463,6 +1464,21 @@ Access: signed in; each event is sent only to those who may see it.
 - Answer: 200 OK: `text/event-stream`
 - Errors: 401, 403, 422 (see [Error](#error))
 
+## Other
+
+### `POST /api/termfiles/inspect`
+
+Reads a termbase file (the request body, named by ?filename=) and says what it holds: its format, entries, terms, languages and fields, and for spreadsheets the first rows with what each column is taken for.
+
+?mapping= (JSON) reads a spreadsheet with a column mapping of your own. Nothing is kept.
+
+Access: signed in.
+
+- Parameters: `format` (query), `filename` (query), `mapping` (query)
+- Body: the file's bytes
+- Answer: 200 OK: [TermFileInspection](#termfileinspection)
+- Errors: 401, 403, 422 (see [Error](#error))
+
 ## Types
 
 ### Access
@@ -1726,6 +1742,16 @@ person is what everyone signed in may see of an account, to choose whom work goe
 | `name` | string |  |
 | `username` | string |  |
 
+### PlannedEntry
+
+plannedEntry is a line of an import's plan.
+
+| Field | Type | Description |
+|---|---|---|
+| `entry` | string | Entry names the file's entry by its first terms, Existing the entry it meets in the termbase. |
+| `existing` | string |  |
+| `kind` | string | Kind is add, merge, overwrite or skip. |
+
 ### ProjectView
 
 | Field | Type | Description |
@@ -1796,6 +1822,22 @@ signinResult is the answer to a sign-in.
 | Field | Type | Description |
 |---|---|---|
 | `correct` | list of boolean | Correct says, for each word, whether it is spelled right. |
+
+### TermFileInspection
+
+termFileInspection says what a termbase file holds.
+
+| Field | Type | Description |
+|---|---|---|
+| `fields` | list of [term.Field](#termfield) |  |
+| `format` | [term.Format](#termformat) |  |
+| `languages` | list of string |  |
+| `mapping` | [term.Mapping](#termmapping) |  |
+| `name` | string | Name is the termbase's name in the file, if it has one. |
+| `read` | [term.Report](#termreport) |  |
+| `rows` | list of list of string | Rows are the first rows of a spreadsheet, Total how many it has, and Mapping what each column was read as: the guess, or the one sent. |
+| `tabular` | boolean | Tabular is set for spreadsheets, whose columns need a mapping. |
+| `total` | integer |  |
 
 ### TermHit
 
@@ -2453,6 +2495,19 @@ Change is a difference between two versions of an entry, for showing a reviewer 
 | `old` | string |  |
 | `path` | string |  |
 
+### term.Column
+
+Column maps one spreadsheet column.
+
+| Field | Type | Description |
+|---|---|---|
+| `field` | string |  |
+| `header` | string |  |
+| `index` | integer |  |
+| `lang` | string |  |
+| `level` | [term.Level](#termlevel) |  |
+| `role` | [term.Role](#termrole) |  |
+
 ### term.Conflict
 
 Conflict is a place where both sides changed an entry differently since their common version.
@@ -2499,6 +2554,12 @@ Field describes a field of the termbase definition.
 | `name` | string |  |
 | `values` | list of string | picklist values |
 
+### term.Format
+
+Format is a termbase exchange format.
+
+One of `csv`, `multiterm`, `sdltb`, `tbx`, `tbx2`, `tsv`, `xdt`, `xlsx`.
+
 ### term.Kind
 
 Kind is the type of a field's values.
@@ -2521,6 +2582,16 @@ Level says where a field lives.
 
 One of `entry`, `language`, `term`.
 
+### term.Mapping
+
+Mapping says how to read a spreadsheet, as memoQ's and MultiTerm Convert's column mapping do.
+
+| Field | Type | Description |
+|---|---|---|
+| `columns` | list of [term.Column](#termcolumn) |  |
+| `header` | boolean | Header is true when the first row holds column names. |
+| `separator` | string | Separator splits several terms (synonyms) in one cell; default ";". |
+
 ### term.Report
 
 Report tells what an import read and what it had to leave out.
@@ -2531,6 +2602,12 @@ Report tells what an import read and what it had to leave out.
 | `skipped` | integer |  |
 | `terms` | integer |  |
 | `warnings` | list of string |  |
+
+### term.Role
+
+Role is what a spreadsheet column holds.
+
+One of `field`, `id`, `ignore`, `status`, `term`.
 
 ### term.Term
 

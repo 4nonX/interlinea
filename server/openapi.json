@@ -646,6 +646,23 @@
         },
         "type": "object"
       },
+      "PlannedEntry": {
+        "description": "plannedEntry is a line of an import's plan.",
+        "properties": {
+          "entry": {
+            "description": "Entry names the file's entry by its first terms, Existing the entry it meets in the termbase.",
+            "type": "string"
+          },
+          "existing": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind is add, merge, overwrite or skip.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ProjectView": {
         "properties": {
           "access": {
@@ -794,6 +811,54 @@
               "type": "boolean"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "TermFileInspection": {
+        "description": "termFileInspection says what a termbase file holds.",
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/term.Field"
+            },
+            "type": "array"
+          },
+          "format": {
+            "$ref": "#/components/schemas/term.Format"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/term.Mapping"
+          },
+          "name": {
+            "description": "Name is the termbase's name in the file, if it has one.",
+            "type": "string"
+          },
+          "read": {
+            "$ref": "#/components/schemas/term.Report"
+          },
+          "rows": {
+            "description": "Rows are the first rows of a spreadsheet, Total how many it has, and Mapping what each column was read as: the guess, or the one sent.",
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array"
+          },
+          "tabular": {
+            "description": "Tabular is set for spreadsheets, whose columns need a mapping.",
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer"
           }
         },
         "type": "object"
@@ -2339,6 +2404,30 @@
         },
         "type": "object"
       },
+      "term.Column": {
+        "description": "Column maps one spreadsheet column.",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "header": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "level": {
+            "$ref": "#/components/schemas/term.Level"
+          },
+          "role": {
+            "$ref": "#/components/schemas/term.Role"
+          }
+        },
+        "type": "object"
+      },
       "term.Conflict": {
         "description": "Conflict is a place where both sides changed an entry differently since their common version.",
         "properties": {
@@ -2437,6 +2526,20 @@
         },
         "type": "object"
       },
+      "term.Format": {
+        "description": "Format is a termbase exchange format.",
+        "enum": [
+          "csv",
+          "multiterm",
+          "sdltb",
+          "tbx",
+          "tbx2",
+          "tsv",
+          "xdt",
+          "xlsx"
+        ],
+        "type": "string"
+      },
       "term.Kind": {
         "description": "Kind is the type of a field's values.",
         "enum": [
@@ -2478,6 +2581,26 @@
         ],
         "type": "string"
       },
+      "term.Mapping": {
+        "description": "Mapping says how to read a spreadsheet, as memoQ's and MultiTerm Convert's column mapping do.",
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/term.Column"
+            },
+            "type": "array"
+          },
+          "header": {
+            "description": "Header is true when the first row holds column names.",
+            "type": "boolean"
+          },
+          "separator": {
+            "description": "Separator splits several terms (synonyms) in one cell; default \";\".",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "term.Report": {
         "description": "Report tells what an import read and what it had to leave out.",
         "properties": {
@@ -2498,6 +2621,17 @@
           }
         },
         "type": "object"
+      },
+      "term.Role": {
+        "description": "Role is what a spreadsheet column holds.",
+        "enum": [
+          "field",
+          "id",
+          "ignore",
+          "status",
+          "term"
+        ],
+        "type": "string"
       },
       "term.Term": {
         "description": "Term is a term with its status and fields.",
@@ -8906,7 +9040,7 @@
     },
     "/api/termbases/{name}/import": {
       "post": {
-        "description": "?match=term|id|none and ?onMatch=merge|overwrite|skip|add say what happens to entries that are there already; ?dryRun=1 reports without changing anything.\n\nAccess: edit on the termbase.",
+        "description": "?match=term|id|none and ?onMatch=merge|overwrite|skip|add say what happens to entries that are there already; ?dryRun=1 reports without changing anything, with the first lines of what would happen. ?mapping= (JSON) says what a spreadsheet's columns hold, ?languages= (a JSON object) which termbase language each language of the file goes under, with \"\" to leave one out, and ?status=approved|proposed which status terms without one get.\n\nAccess: edit on the termbase.",
         "operationId": "importTermbase",
         "parameters": [
           {
@@ -8928,6 +9062,27 @@
           {
             "in": "query",
             "name": "format",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mapping",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "languages",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
             "schema": {
               "type": "string"
             }
@@ -8985,6 +9140,10 @@
                     "added": {
                       "type": "integer"
                     },
+                    "dropped": {
+                      "description": "Dropped counts entries left without a term by ?languages=.",
+                      "type": "integer"
+                    },
                     "fields": {
                       "items": {
                         "type": "string"
@@ -9010,6 +9169,13 @@
                     },
                     "overwritten": {
                       "type": "integer"
+                    },
+                    "plan": {
+                      "description": "Plan lists the first lines of what a dry run would do.",
+                      "items": {
+                        "$ref": "#/components/schemas/PlannedEntry"
+                      },
+                      "type": "array"
                     },
                     "read": {
                       "$ref": "#/components/schemas/term.Report"
@@ -9798,6 +9964,75 @@
         ]
       }
     },
+    "/api/termfiles/inspect": {
+      "post": {
+        "description": "?mapping= (JSON) reads a spreadsheet with a column mapping of your own. Nothing is kept.\n\nAccess: signed in.",
+        "operationId": "inspectTermFile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filename",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mapping",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file's bytes.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TermFileInspection"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Reads a termbase file (the request body, named by ?filename=) and says what it holds: its format, entries, terms, languages and fields, and for spreadsheets the first rows with what each column is taken for.",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
     "/api/users": {
       "get": {
         "description": "Access: administrators.",
@@ -10422,6 +10657,9 @@
     },
     {
       "name": "Live feed"
+    },
+    {
+      "name": "Other"
     }
   ]
 }

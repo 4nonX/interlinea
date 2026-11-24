@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/4nonX/interlinea/auth/authdb"
+	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/term"
@@ -45,6 +47,7 @@ func (s *Server) termbaseRoutes() {
 	s.handle("GET /api/termbases/{name}/removals", s.signedIn(s.removals))
 	s.handle("GET /api/termbases/{name}/export", s.signedIn(s.exportTermbase))
 	s.handle("POST /api/termbases/{name}/import", s.signedIn(s.importTermbase))
+	s.handle("POST /api/termfiles/inspect", s.signedIn(s.inspectTermFile))
 	s.handle("GET /api/termbases/{name}/changes", s.signedIn(s.termbaseChanges))
 	s.handle("GET /api/termbases/{name}/review-rules", s.signedIn(s.reviewRules))
 	s.handle("PUT /api/termbases/{name}/review-rules", s.signedIn(s.setReviewRules))
@@ -896,11 +899,122 @@ func (s *Server) exportTermbase(w http.ResponseWriter, r *http.Request, me sessi
 	w.Write(data)
 }
 
+// termFileInspection says what a termbase file holds.
+type termFileInspection struct {
+	Format term.Format `json:"format"`
+	// Tabular is set for spreadsheets, whose columns need a mapping.
+	Tabular bool `json:"tabular"`
+	// Rows are the first rows of a spreadsheet, Total how many it has, and
+	// Mapping what each column was read as: the guess, or the one sent.
+	Rows    [][]string    `json:"rows,omitempty"`
+	Total   int           `json:"total,omitempty"`
+	Mapping *term.Mapping `json:"mapping,omitempty"`
+	// Name is the termbase's name in the file, if it has one.
+	Name      string       `json:"name,omitempty"`
+	Read      term.Report  `json:"read"`
+	Languages []string     `json:"languages"`
+	Fields    []term.Field `json:"fields"`
+}
+
+// termFilePreviewRows is how many rows of a spreadsheet an inspection shows.
+const termFilePreviewRows = 12
+
+// termMapping reads ?mapping= (a column mapping as JSON) for spreadsheets.
+func termMapping(w http.ResponseWriter, r *http.Request) (*term.Mapping, bool) {
+	v := r.URL.Query().Get("mapping")
+	if v == "" {
+		return nil, true
+	}
+	m := new(term.Mapping)
+	if err := json.Unmarshal([]byte(v), m); err != nil {
+		invalid(w, "mapping", "The column mapping is not valid JSON: "+err.Error())
+		return nil, false
+	}
+	return m, true
+}
+
+// inspectTermFile reads a termbase file (the request body, named by
+// ?filename=) and says what it holds: its format, entries, terms, languages
+// and fields, and for spreadsheets the first rows with what each column is
+// taken for. ?mapping= (JSON) reads a spreadsheet with a column mapping of
+// your own. Nothing is kept.
+//
+// Access: signed in.
+func (s *Server) inspectTermFile(w http.ResponseWriter, r *http.Request, me session) {
+	q := r.URL.Query()
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxFileBody))
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "tooLarge", fmt.Sprintf("The file is larger than %d MB.", maxFileBody>>20))
+		return
+	}
+	f := term.Format(q.Get("format"))
+	if f == "" {
+		if f, err = term.Detect(q.Get("filename"), data); err != nil {
+			invalid(w, "file", err.Error())
+			return
+		}
+	}
+	m, ok := termMapping(w, r)
+	if !ok {
+		return
+	}
+	out := termFileInspection{Format: f, Tabular: f.IsTabular(), Languages: []string{}, Fields: []term.Field{}}
+	if out.Tabular {
+		rows, err := term.Rows(f, data)
+		if err != nil {
+			invalid(w, "file", "The file could not be read: "+err.Error())
+			return
+		}
+		if m == nil {
+			g := term.GuessMapping(rows)
+			m = &g
+		}
+		out.Mapping, out.Total = m, len(rows)
+		if len(rows) > termFilePreviewRows {
+			rows = rows[:termFilePreviewRows]
+		}
+		out.Rows = rows
+	}
+	in, rep, err := term.Read(f, data, m)
+	if err != nil {
+		// A spreadsheet whose columns were guessed wrong is still shown,
+		// so the mapping can be set right.
+		if out.Tabular && q.Get("mapping") == "" {
+			out.Read.Warnings = []string{err.Error()}
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+		invalid(w, "file", "The file could not be read: "+err.Error())
+		return
+	}
+	out.Name, out.Read = in.Name, rep
+	out.Languages = nonNil(in.FileLanguages())
+	out.Fields = nonNil(in.Fields)
+	writeJSON(w, http.StatusOK, out)
+}
+
+// plannedEntry is a line of an import's plan.
+type plannedEntry struct {
+	// Kind is add, merge, overwrite or skip.
+	Kind string `json:"kind"`
+	// Entry names the file's entry by its first terms, Existing the entry
+	// it meets in the termbase.
+	Entry    string `json:"entry"`
+	Existing string `json:"existing,omitempty"`
+}
+
+// importPlanRows is how many lines of the plan a dry run lists.
+const importPlanRows = 40
+
 // importTermbase reads a termbase file (the request body: TBX, MultiTerm
 // XML, a MultiTerm termbase file (.sdltb), CSV, TSV or Excel) into the
-// termbase. ?match=term|id|none and
-// ?onMatch=merge|overwrite|skip|add say what happens to entries that are
-// there already; ?dryRun=1 reports without changing anything.
+// termbase. ?match=term|id|none and ?onMatch=merge|overwrite|skip|add say
+// what happens to entries that are there already; ?dryRun=1 reports
+// without changing anything, with the first lines of what would happen.
+// ?mapping= (JSON) says what a spreadsheet's columns hold, ?languages= (a
+// JSON object) which termbase language each language of the file goes
+// under, with "" to leave one out, and ?status=approved|proposed which
+// status terms without one get.
 //
 // Access: edit on the termbase.
 func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me session) {
@@ -922,9 +1036,42 @@ func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me sessi
 			return
 		}
 	}
-	in, rep, err := term.Read(f, data, nil)
+	m, ok := termMapping(w, r)
+	if !ok {
+		return
+	}
+	in, rep, err := term.Read(f, data, m)
 	if err != nil {
 		invalid(w, "file", "The file could not be read: "+err.Error())
+		return
+	}
+	dropped := 0
+	if v := q.Get("languages"); v != "" {
+		to := map[string]string{}
+		if err := json.Unmarshal([]byte(v), &to); err != nil {
+			invalid(w, "languages", "The languages are not a JSON object: "+err.Error())
+			return
+		}
+		for from, code := range to {
+			if code == "" {
+				continue
+			}
+			norm, err := langtag.Normalize(code)
+			if err != nil {
+				invalid(w, "languages", fmt.Sprintf("%q is not a language tag.", code))
+				return
+			}
+			to[from] = norm
+		}
+		in.Entries, dropped = term.Remap(in.Entries, to)
+		in.Definition = term.InferDefinition(in.Name, in.Entries)
+	}
+	switch st := q.Get("status"); st {
+	case "":
+	case term.StatusApproved, term.StatusProposed:
+		term.SetDefaultStatus(in.Entries, st)
+	default:
+		invalid(w, "status", "status is approved or proposed.")
 		return
 	}
 	p := term.Policy{Match: term.Match(q.Get("match")), Lang: q.Get("lang"), OnMatch: term.OnMatch(q.Get("onMatch"))}
@@ -951,6 +1098,10 @@ func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me sessi
 		Read     term.Report `json:"read"`
 		Actions  int         `json:"actions,omitempty"`
 		Imported bool        `json:"imported"`
+		// Dropped counts entries left without a term by ?languages=.
+		Dropped int `json:"dropped,omitempty"`
+		// Plan lists the first lines of what a dry run would do.
+		Plan []plannedEntry `json:"plan,omitempty"`
 	}
 	if q.Get("dryRun") == "1" {
 		acts, ir, err := tb.Plan(r.Context(), in, p)
@@ -958,7 +1109,26 @@ func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me sessi
 			s.fail(w, r, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, result{ImportReport: ir, Read: rep, Actions: len(acts)})
+		var plan []plannedEntry
+		for _, a := range acts {
+			if len(plan) == importPlanRows {
+				break
+			}
+			line := plannedEntry{Kind: a.Kind}
+			if a.Incoming >= 0 && a.Incoming < len(in.Entries) {
+				line.Entry = in.Entries[a.Incoming].Label()
+			}
+			if a.Existing != "" {
+				line.Existing = a.Existing
+				if old, err := tb.Get(r.Context(), a.Existing); err == nil {
+					if l := old.Entry.Label(); l != "" {
+						line.Existing = l
+					}
+				}
+			}
+			plan = append(plan, line)
+		}
+		writeJSON(w, http.StatusOK, result{ImportReport: ir, Read: rep, Actions: len(acts), Dropped: dropped, Plan: plan})
 		return
 	}
 	source := name
@@ -972,7 +1142,7 @@ func (s *Server) importTermbase(w http.ResponseWriter, r *http.Request, me sessi
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, result{ImportReport: ir, Read: rep, Imported: true})
+	writeJSON(w, http.StatusOK, result{ImportReport: ir, Read: rep, Imported: true, Dropped: dropped})
 }
 
 // termbaseChanges lists the termbase's changes after ?since= (a change
