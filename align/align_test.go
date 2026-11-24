@@ -162,3 +162,83 @@ func TestEmptyAndLong(t *testing.T) {
 		t.Fatalf("%d source and %d target segments in pairs, %d right", ns, nt, good)
 	}
 }
+
+func TestRealign(t *testing.T) {
+	// The translation has a long passage the document lacks, and after it
+	// the lengths alone pair everything one off. One pair set right by
+	// hand sets right what follows it.
+	var de, en []string
+	for i := 0; i < 4; i++ {
+		de = append(de, german...)
+		en = append(en, english...)
+	}
+	extra := []string{"This clause was added later.", "It has no counterpart.", "Nor has this one."}
+	en = append(append(append([]string{}, en[:7]...), extra...), en[7:]...)
+	src, tgt := segs("", de...), segs("", en...)
+	// German 9 is English 12; say so, and say that German 7 is English 10.
+	ps := Realign(src, tgt, []Fixed{{Source: []int{9}, Target: []int{12}}, {Source: []int{7}, Target: []int{10}}})
+	ns, nt, fixed := 0, 0, 0
+	for _, p := range ps {
+		ns += len(p.SourceSegments)
+		nt += len(p.TargetSegments)
+		if p.Fixed {
+			fixed++
+			if p.Score != 100 || len(p.SourceSegments) != 1 || p.TargetSegments[0] != p.SourceSegments[0]+3 {
+				t.Errorf("fixed pair %+v", p)
+			}
+			continue
+		}
+		// After the fixed pairs every sentence is three on; which of the
+		// sentences next to the passage it belongs to, lengths cannot tell.
+		if len(p.SourceSegments) == 1 && len(p.TargetSegments) == 1 && (p.SourceSegments[0] < 6 || p.SourceSegments[0] > 7) {
+			want := p.SourceSegments[0]
+			if want > 7 {
+				want += 3
+			}
+			if p.TargetSegments[0] != want {
+				t.Errorf("%v=%v", p.SourceSegments, p.TargetSegments)
+			}
+		}
+	}
+	if ns != len(de) || nt != len(en) || fixed != 2 {
+		t.Fatalf("%d and %d segments in pairs, %d fixed: %s", ns, nt, fixed, show(ps))
+	}
+	// A fixed pair of several segments that do not follow each other, and
+	// one that crosses another: both stay, and every segment is in one pair.
+	ps = Realign(segs("", german...), segs("", english...), []Fixed{{Source: []int{0, 2}, Target: []int{1}}, {Source: []int{4}, Target: []int{0}}})
+	seenS, seenT := map[int]int{}, map[int]int{}
+	for _, p := range ps {
+		for _, i := range p.SourceSegments {
+			seenS[i]++
+		}
+		for _, i := range p.TargetSegments {
+			seenT[i]++
+		}
+	}
+	if len(seenS) != 6 || len(seenT) != 6 {
+		t.Fatalf("segments in pairs: %v %v: %s", seenS, seenT, show(ps))
+	}
+	for _, n := range seenS {
+		if n != 1 {
+			t.Fatalf("a segment twice: %s", show(ps))
+		}
+	}
+	if !strings.Contains(show(ps), "[0 2]=[1]") || !strings.Contains(show(ps), "[4]=[0]") {
+		t.Errorf("the fixed pairs: %s", show(ps))
+	}
+	if got := ps[0].Source.Plain(); !ps[0].Fixed || got != german[0]+" "+german[2] {
+		t.Errorf("first pair %q", got)
+	}
+	// Nothing fixed is the plain alignment.
+	if show(Realign(segs("", german...), segs("", english...), nil)) != show(Align(segs("", german...), segs("", english...))) {
+		t.Error("nothing fixed differs from Align")
+	}
+	for _, bad := range [][]Fixed{{{Source: []int{0}}}, {{Source: []int{6}, Target: []int{0}}}, {{Source: []int{0}, Target: []int{1}}, {Source: []int{1}, Target: []int{1}}}} {
+		if CheckFixed(bad, 6, 6) == "" {
+			t.Errorf("%+v passes", bad)
+		}
+	}
+	if msg := CheckFixed([]Fixed{{Source: []int{0, 2}, Target: []int{1}}}, 6, 6); msg != "" {
+		t.Error(msg)
+	}
+}

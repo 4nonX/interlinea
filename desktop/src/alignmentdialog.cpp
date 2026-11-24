@@ -281,10 +281,13 @@ void AlignBoard::paintEvent(QPaintEvent *e)
         const QLineF l = place(lines.at(i));
         if (l.isNull() || !e->rect().intersects(QRectF(l.p1(), l.p2()).normalized().adjusted(-3, -3, 3, 3).toRect()))
             continue;
+        // Paired for the translator: dotted. Drawn or confirmed: solid.
         QPen pen(Theme::color("text2"), 1.5);
-        if (lookLines.contains(lines.at(i))) {
-            pen = QPen(Theme::color("warn"), 2);
-            pen.setDashPattern({2.5, 2});
+        if (!mineLines.contains(lines.at(i))) {
+            const bool look = lookLines.contains(lines.at(i));
+            pen = QPen(Theme::color(look ? "warn" : "text2"), look ? 2.5 : 2);
+            pen.setCapStyle(Qt::RoundCap);
+            pen.setDashPattern({0.05, 5 / pen.widthF()});
         }
         if (i == m_hover)
             pen = QPen(Theme::color("danger"), 2.5);
@@ -411,6 +414,27 @@ void AlignmentDialog::setFile(Side side, const QString &path)
 
 void AlignmentDialog::pair()
 {
+    request({});
+}
+
+void AlignmentDialog::pairAgain()
+{
+    QJsonArray fixed;
+    for (const Unit &u : fixedUnits()) {
+        QJsonArray a, b;
+        for (int i : u.source)
+            a.append(i);
+        for (int i : u.target)
+            b.append(i);
+        fixed.append(QJsonObject{{QStringLiteral("source"), a}, {QStringLiteral("target"), b}});
+    }
+    if (m_hasResult && !fixed.isEmpty())
+        request(fixed);
+}
+
+// Sends both files to be paired, around the pairs that are fixed.
+void AlignmentDialog::request(const QJsonArray &fixed)
+{
     if (m_busy || m_paths[Source].isEmpty() || m_paths[Target].isEmpty())
         return;
     QJsonObject body;
@@ -426,9 +450,14 @@ void AlignmentDialog::pair()
         body.insert(QLatin1String(fields[s]),
                     QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("lang"), langs[s]}, {QStringLiteral("data"), QString::fromLatin1(f.readAll().toBase64())}});
     }
+    if (!fixed.isEmpty())
+        body.insert(QStringLiteral("fixed"), fixed);
     m_busy = true;
     setError(QString());
-    render();
+    if (m_hasResult)
+        refresh();
+    else
+        render();
     QPointer<AlignmentDialog> self(this);
     onResult(m_api->post(QStringLiteral("/api/align"), body), this, [self](const ApiResult &r) {
         if (!self)
@@ -436,25 +465,33 @@ void AlignmentDialog::pair()
         self->m_busy = false;
         if (!r.ok()) {
             self->setError(r.error.message);
-            self->render();
+            if (self->m_hasResult)
+                self->refresh();
+            else
+                self->render();
             return;
         }
         const QJsonObject o = r.object();
         self->m_segments[Source] = o.value(QLatin1String("source")).toArray();
         self->m_segments[Target] = o.value(QLatin1String("target")).toArray();
         self->m_links.clear();
+        self->m_mine.clear();
         self->m_scores.clear();
-        const auto link = [&self](int s, int t) {
-            if (!self->m_links.contains({s, t}))
-                self->m_links.append({s, t});
-        };
         for (const QJsonValue &v : o.value(QLatin1String("pairs")).toArray()) {
             const QJsonObject p = v.toObject();
             const QList<int> a = ints(p.value(QLatin1String("sourceSegments")).toArray());
             const QList<int> b = ints(p.value(QLatin1String("targetSegments")).toArray());
-            self->m_scores.insert(keyOf(a, b), p.value(QLatin1String("score")).toInt());
+            const bool fixedPair = p.value(QLatin1String("fixed")).toBool();
+            if (!fixedPair)
+                self->m_scores.insert(keyOf(a, b), p.value(QLatin1String("score")).toInt());
             if (a.isEmpty() || b.isEmpty())
                 continue;
+            const auto link = [&self, fixedPair](int s, int t) {
+                if (!self->m_links.contains({s, t}))
+                    self->m_links.append({s, t});
+                if (fixedPair && !self->m_mine.contains({s, t}))
+                    self->m_mine.append({s, t});
+            };
             // Every segment of a pair hangs together: each sentence on the
             // first translation, each translation on the last sentence.
             for (int s : a)
@@ -501,6 +538,64 @@ QStringList AlignmentDialog::lines() const
     for (const auto &l : sorted)
         out << QStringLiteral("%1|%2").arg(l.first).arg(l.second);
     return out;
+}
+
+QStringList AlignmentDialog::mineLines() const
+{
+    QList<QPair<int, int>> sorted = m_mine;
+    std::sort(sorted.begin(), sorted.end());
+    QStringList out;
+    for (const auto &l : sorted)
+        out << QStringLiteral("%1|%2").arg(l.first).arg(l.second);
+    return out;
+}
+
+// Makes the lines of a segment's unit the translator's own.
+void AlignmentDialog::own(Side side, int index)
+{
+    for (const Unit &u : units()) {
+        if (!(side == Source ? u.source : u.target).contains(index))
+            continue;
+        for (const auto &l : m_links) {
+            if (u.source.contains(l.first) && !m_mine.contains(l))
+                m_mine.append(l);
+        }
+    }
+}
+
+// A line added is its maker's, and so is what it joins.
+void AlignmentDialog::draw(const QPair<int, int> &line)
+{
+    if (!m_links.contains(line))
+        m_links.append(line);
+    own(Source, line.first);
+}
+
+// The units whose lines are all the translator's own: what stays when the
+// rest is paired again.
+QList<AlignmentDialog::Unit> AlignmentDialog::fixedUnits() const
+{
+    QList<Unit> out;
+    for (const Unit &u : units()) {
+        bool all = true;
+        for (const auto &l : m_links) {
+            if (u.source.contains(l.first) && !m_mine.contains(l))
+                all = false;
+        }
+        if (all)
+            out << u;
+    }
+    return out;
+}
+
+void AlignmentDialog::confirmPicked()
+{
+    if (!m_hasResult || m_picked < 0)
+        return;
+    own(Side(m_pickedSide), m_picked);
+    m_picked = -1;
+    m_pickedSide = -1;
+    refresh();
 }
 
 bool AlignmentDialog::alone(Side side, int index) const
@@ -557,10 +652,14 @@ QList<AlignmentDialog::Unit> AlignmentDialog::units() const
 
 QList<AlignmentDialog::Unit> AlignmentDialog::lookUnits(const QList<Unit> &units) const
 {
+    // A pair that was checked needs no look any more.
+    QList<int> checked;
+    for (const Unit &f : fixedUnits())
+        checked << f.source.first();
     QList<Unit> out;
     for (const Unit &u : units) {
         const auto it = m_scores.constFind(keyOf(u.source, u.target));
-        if (it != m_scores.constEnd() && *it < LookBelow)
+        if (it != m_scores.constEnd() && *it < LookBelow && !checked.contains(u.source.first()))
             out << u;
     }
     return out;
@@ -583,6 +682,8 @@ QString AlignmentDialog::status() const
     QString out = tr("%1 from %2 and %3.")
                       .arg(plural(int(us.size()), tr("unit"), tr("units")), QLocale(QLocale::English).toString(m_segments[Source].size()),
                            plural(int(m_segments[Target].size()), tr("segment"), tr("segments")));
+    if (const int checked = checkedCount(); checked > 0)
+        out += QLatin1Char(' ') + tr("%1 checked.").arg(plural(checked, tr("unit is"), tr("units are")));
     if (lone > 0)
         out += QLatin1Char(' ') + tr("%1 no pair and %2 left out.").arg(plural(lone, tr("segment has"), tr("segments have")), lone == 1 ? tr("is") : tr("are"));
     if (look > 0)
@@ -598,10 +699,12 @@ void AlignmentDialog::choose(Side side, int index)
         return;
     if (m_picked >= 0 && m_pickedSide != side) {
         const QPair<int, int> l = side == Target ? qMakePair(m_picked, index) : qMakePair(index, m_picked);
-        if (m_links.contains(l))
+        if (m_links.contains(l)) {
             m_links.removeAll(l);
-        else
-            m_links.append(l);
+            m_mine.removeAll(l);
+        } else {
+            draw(l);
+        }
         m_picked = -1;
         m_pickedSide = -1;
     } else if (m_picked == index && m_pickedSide == side) {
@@ -621,8 +724,7 @@ void AlignmentDialog::pull(Side from, int index, int other)
     const QPair<int, int> l = from == Source ? qMakePair(index, other) : qMakePair(other, index);
     if (l.first < 0 || l.first >= m_segments[Source].size() || l.second < 0 || l.second >= m_segments[Target].size())
         return;
-    if (!m_links.contains(l))
-        m_links.append(l);
+    draw(l);
     m_picked = -1;
     m_pickedSide = -1;
     refresh();
@@ -631,6 +733,7 @@ void AlignmentDialog::pull(Side from, int index, int other)
 void AlignmentDialog::takeLine(int source, int target)
 {
     m_links.removeAll({source, target});
+    m_mine.removeAll({source, target});
     refresh();
 }
 
@@ -716,6 +819,7 @@ void AlignmentDialog::refresh()
     }
     const QList<Unit> us = units();
     m_board->lines = m_links;
+    m_board->mineLines = m_mine;
     m_board->lookLines.clear();
     for (const Unit &u : lookUnits(us)) {
         for (const auto &l : m_links) {
@@ -726,6 +830,20 @@ void AlignmentDialog::refresh()
     m_board->update();
     m_status->setText(status());
     m_next->setEnabled(!lookPlaces().isEmpty());
+    bool unchecked = false;
+    for (const auto &l : m_links) {
+        if (m_picked >= 0 && (m_pickedSide == Source ? l.first : l.second) == m_picked && !m_mine.contains(l))
+            unchecked = true;
+    }
+    m_confirm->setEnabled(unchecked);
+    const int checked = checkedCount();
+    bool anyAlone = false;
+    for (int s = 0; s < 2 && !anyAlone; ++s) {
+        for (int i = 0; i < m_segments[s].size() && !anyAlone; ++i)
+            anyAlone = alone(Side(s), i);
+    }
+    m_again->setText(m_busy ? tr("Pairing…") : tr("Pair the rest again"));
+    m_again->setEnabled(!m_busy && checked > 0 && !(checked == us.size() && !anyAlone));
     m_go->setText(tr("Add %1 to %2").arg(plural(int(us.size()), tr("unit"), tr("units")), m_memory));
     m_go->setEnabled(!us.isEmpty() && !m_busy);
 }
@@ -737,6 +855,8 @@ void AlignmentDialog::render()
     m_scroll = nullptr;
     m_status = nullptr;
     m_next = nullptr;
+    m_confirm = nullptr;
+    m_again = nullptr;
     m_other->setVisible(m_hasResult);
     if (!m_hasResult) {
         auto *help = Web::text(tr("Choose a document and its translation. Their sentences are paired, and you check the pairs before they go into the memory. "
@@ -780,7 +900,8 @@ void AlignmentDialog::render()
     body()->addWidget(m_status);
     auto *help = Web::text(tr("A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means "
                               "nothing is joined there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same "
-                              "takes a line away, as does choosing the line. Sentences joined by lines become one unit."),
+                              "takes a line away, as does choosing the line. Sentences joined by lines become one unit. A dotted line was paired for you; one you draw or "
+                              "confirm is solid, and stays when the rest is paired again around it."),
                            "help", this);
     help->setWordWrap(true);
     body()->addWidget(help);
@@ -790,10 +911,19 @@ void AlignmentDialog::render()
     hl->setContentsMargins(0, 0, 0, 0);
     m_next = Web::button(tr("Next to look at"), Web::Quiet | Web::Small, head);
     m_next->setObjectName(QStringLiteral("nextToLook"));
+    m_confirm = Web::button(tr("Confirm"), Web::Quiet | Web::Small, head);
+    m_confirm->setObjectName(QStringLiteral("confirmLines"));
+    m_again = Web::button(tr("Pair the rest again"), Web::Quiet | Web::Small, head);
+    m_again->setObjectName(QStringLiteral("pairAgain"));
+    hl->setSpacing(S2);
     hl->addWidget(Web::langChip(m_sourceLang, head));
     hl->addStretch();
+    hl->addWidget(m_confirm);
+    hl->addWidget(m_again);
     hl->addWidget(m_next);
     hl->addStretch();
+    connect(m_confirm, &QPushButton::clicked, this, &AlignmentDialog::confirmPicked);
+    connect(m_again, &QPushButton::clicked, this, &AlignmentDialog::pairAgain);
     hl->addWidget(Web::langChip(m_targetLang, head));
     connect(m_next, &QPushButton::clicked, this, &AlignmentDialog::next);
     body()->addWidget(head);

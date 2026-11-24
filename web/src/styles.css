@@ -2832,16 +2832,23 @@ table[aria-label="Units found"] .cell-action .row {
   pointer-events: none;
 }
 
+/* A line paired for the translator is dotted; one drawn or confirmed is solid. */
 .align-line {
   fill: none;
   stroke: var(--text-2);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 0.1 5;
+}
+
+.align-line.is-mine {
   stroke-width: 1.5;
+  stroke-dasharray: none;
 }
 
 .align-line.is-look {
   stroke: var(--warn);
-  stroke-width: 2;
-  stroke-dasharray: 5 4;
+  stroke-width: 2.5;
 }
 
 .align-hit {
@@ -2855,6 +2862,10 @@ table[aria-label="Units found"] .cell-action .row {
 g:hover > .align-line {
   stroke: var(--danger);
   stroke-width: 2.5;
+}
+
+.align-head .row {
+  justify-content: center;
 }
 
 /* Analysis */

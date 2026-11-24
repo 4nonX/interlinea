@@ -461,7 +461,7 @@ private slots:
         QTRY_VERIFY(board->segments[0].at(0)->width() > 100);
         auto *s0 = board->segments[0].at(0);
         auto *t0 = board->segments[1].at(0);
-        const QLineF line = board->place({0, 0});
+        QLineF line = board->place({0, 0});
         QVERIFY(qAbs(line.x1() - (s0->geometry().right() + 1)) < 2 && qAbs(line.x2() - t0->geometry().left()) < 2);
         QVERIFY(qAbs(line.y1() - s0->geometry().center().y()) < 2 && qAbs(line.y2() - t0->geometry().center().y()) < 2);
         QVERIFY(line.x2() - line.x1() > 80);
@@ -473,18 +473,42 @@ private slots:
         QCOMPARE(board->lineIndexAt(QPointF(slanted.x1() + 8, slanted.y1())), int(board->lines.indexOf({3, 2})));
         QCOMPARE(board->lineIndexAt(QPointF(slanted.x1() + 8, slanted.y2())), -1);
         if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
-            al->choose(AlignmentDialog::Source, 4);
-            al->choose(AlignmentDialog::Target, 3);
-            al->choose(AlignmentDialog::Source, 1);
             QTest::qWait(300);
-            al->grab().save(dir + QStringLiteral("/memory-align.png"));
-            al->choose(AlignmentDialog::Source, 1);
-            al->choose(AlignmentDialog::Source, 4);
-            al->choose(AlignmentDialog::Target, 3);
+            al->grab().save(dir + QStringLiteral("/memory-align-paired.png"));
         }
+        // What was paired for the translator is dotted. A pair confirmed is
+        // solid and stays when the rest is paired again around it.
+        auto *confirm = al->findChild<QPushButton *>(QStringLiteral("confirmLines"));
+        auto *again = al->findChild<QPushButton *>(QStringLiteral("pairAgain"));
+        QVERIFY(confirm && again && !confirm->isEnabled() && !again->isEnabled());
+        QVERIFY(al->mineLines().isEmpty() && board->mineLines.isEmpty());
+        al->choose(AlignmentDialog::Source, 1);
+        QVERIFY(confirm->isEnabled());
+        confirm->click();
+        QCOMPARE(al->mineLines().join(' '), QStringLiteral("1|1"));
+        QVERIFY(board->mineLines.contains({1, 1}) && !confirm->isEnabled());
+        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. 1 unit is checked. All of them fit."));
+        al->takeLine(0, 0);
+        al->takeLine(4, 3);
+        QVERIFY(again->isEnabled());
+        again->click();
+        QTRY_COMPARE_WITH_TIMEOUT(pairedSpy.size(), 2, 20000);
+        QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 3|2 4|3"));
+        QCOMPARE(al->mineLines().join(' '), QStringLiteral("1|1"));
+        board = al->board();
+        go = al->findChild<QPushButton *>(QStringLiteral("save"));
+        QTRY_VERIFY(board->segments[0].at(0)->width() > 100);
+        s0 = board->segments[0].at(0);
+        t0 = board->segments[1].at(0);
+        // A line drawn by hand is the translator's own, with the unit it joins.
+        al->takeLine(3, 2);
+        al->choose(AlignmentDialog::Source, 3);
+        al->choose(AlignmentDialog::Target, 2);
+        QCOMPARE(al->mineLines().join(' '), QStringLiteral("1|1 2|2 3|2"));
         // Every segment has a point in the gap beside it, where its lines begin.
         QVERIFY(qAbs(board->port(0, 0).x() - (s0->geometry().right() + 7)) < 2 && qAbs(board->port(0, 0).y() - line.y1()) < 2);
         QVERIFY(qAbs(board->port(1, 0).x() - (t0->geometry().left() - 6)) < 2 && qAbs(board->port(1, 0).y() - line.y2()) < 2);
+        line = board->place({0, 0});
         QCOMPARE(board->segmentAt(board->port(1, 3).toPoint()), board->segments[1].at(3));
         // Pulled from one point to the other, a line is taken up by both; the
         // point pressed alone chooses its segment.
@@ -503,18 +527,18 @@ private slots:
         QVERIFY(board->segments[0].at(3)->property("picked").toBool());
         QTest::mouseClick(board->segments[1].at(2), Qt::LeftButton);
         QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 4|3"));
-        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. 1 segment has no pair and is left out."));
+        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. 3 units are checked. 1 segment has no pair and is left out."));
         QVERIFY(board->segments[0].at(3)->property("alone").toBool() && !board->segments[0].at(3)->property("picked").toBool());
         QVERIFY(board->segments[0].at(3)->accessibleName().startsWith(QStringLiteral("Sentence 4, no pair: Der Vermieter")));
         // The same draws it again, from the keyboard as well.
         QTest::keyClick(board->segments[1].at(2), Qt::Key_Space);
         QTest::keyClick(board->segments[0].at(3), Qt::Key_Return);
         QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 3|2 4|3"));
-        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. All of them fit."));
+        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. 3 units are checked. All of them fit."));
         // A line is taken away by choosing it, and drawn by pulling from one text to the other.
         QTest::mouseClick(board, Qt::LeftButton, {}, line.center().toPoint());
         QCOMPARE(al->lines().join(' '), QStringLiteral("1|1 2|2 3|2 4|3"));
-        QCOMPARE(al->status(), QStringLiteral("3 units from 5 and 4 segments. 2 segments have no pair and are left out."));
+        QCOMPARE(al->status(), QStringLiteral("3 units from 5 and 4 segments. 3 units are checked. 2 segments have no pair and are left out."));
         QCOMPARE(go->text(), QStringLiteral("Add 3 units to Mietrecht"));
         QTest::mousePress(s0, Qt::LeftButton, {}, s0->rect().center());
         QTest::mouseRelease(s0, Qt::LeftButton, {}, s0->mapFromGlobal(t0->mapToGlobal(t0->rect().center())));
@@ -528,6 +552,12 @@ private slots:
         QCOMPARE(al->unitCount(), 4);
         // The first sentence is left out, and the rest is added.
         al->takeLine(0, 0);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            al->choose(AlignmentDialog::Source, 1);
+            QTest::qWait(300);
+            al->grab().save(dir + QStringLiteral("/memory-align.png"));
+            al->choose(AlignmentDialog::Source, 1);
+        }
         QCOMPARE(go->text(), QStringLiteral("Add 3 units to Mietrecht"));
         QVERIFY(al->findChild<QPushButton *>(QStringLiteral("nextToLook"))->isEnabled());
         go->click();

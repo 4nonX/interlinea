@@ -40,6 +40,8 @@ type Pair struct {
 	// Score says how well the two sides fit, from 0 to 100: their lengths
 	// and their numbers. Pairs below about 50 deserve a look.
 	Score int `json:"score"`
+	// Fixed marks a pair that was given as fixed when pairing again.
+	Fixed bool `json:"fixed,omitempty"`
 }
 
 // Costs of a pairing besides its lengths, as Gale and Church weigh them
@@ -433,9 +435,10 @@ type Result struct {
 	Pairs []Pair `json:"pairs"`
 }
 
-// Documents aligns two documents and keeps their segments with the pairs.
-func Documents(source, target []Segment) Result {
-	r := Result{Source: make([]content.Content, len(source)), Target: make([]content.Content, len(target)), Pairs: Align(source, target)}
+// Documents aligns two documents, around the pairs that are fixed if there
+// are any, and keeps their segments with the pairs.
+func Documents(source, target []Segment, fixed []Fixed) Result {
+	r := Result{Source: make([]content.Content, len(source)), Target: make([]content.Content, len(target)), Pairs: Realign(source, target, fixed)}
 	for i, s := range source {
 		r.Source[i] = s.Content
 	}
@@ -443,4 +446,166 @@ func Documents(source, target []Segment) Result {
 		r.Target[i] = s.Content
 	}
 	return r
+}
+
+// Fixed is a pair someone made or checked by hand: these segments of the
+// document belong to these of the translation, whatever their lengths say.
+type Fixed struct {
+	Source []int `json:"source"`
+	Target []int `json:"target"`
+}
+
+// Realign pairs the segments again around the pairs that are fixed: those
+// stay as they are, and each stretch of the documents between two of them
+// is paired on its own, so a pair set right by hand sets right what
+// follows it. A fixed pair is in the result with Fixed set.
+//
+// The fixed pairs must name segments that exist, each at most once, and
+// have both sides.
+func Realign(source, target []Segment, fixed []Fixed) []Pair {
+	if len(fixed) == 0 {
+		return Align(source, target)
+	}
+	src, tgt := measure(source), measure(target)
+	r := ratio(src, tgt)
+	fs := make([]Fixed, len(fixed))
+	usedS, usedT := make([]bool, len(source)), make([]bool, len(target))
+	for i, f := range fixed {
+		fs[i] = Fixed{Source: append([]int(nil), f.Source...), Target: append([]int(nil), f.Target...)}
+		sort.Ints(fs[i].Source)
+		sort.Ints(fs[i].Target)
+		for _, s := range f.Source {
+			usedS[s] = true
+		}
+		for _, t := range f.Target {
+			usedT[t] = true
+		}
+	}
+	sort.Slice(fs, func(a, b int) bool { return fs[a].Source[0] < fs[b].Source[0] })
+
+	// The fixed pairs that follow each other in both documents bound the
+	// stretches: the longest run of them whose translations are in order
+	// as well. A fixed pair that crosses others stays, but bounds nothing.
+	best, prev := make([]int, len(fs)), make([]int, len(fs))
+	end := 0
+	for i := range fs {
+		best[i], prev[i] = 1, -1
+		for j := 0; j < i; j++ {
+			if last(fs[j].Source) < fs[i].Source[0] && last(fs[j].Target) < fs[i].Target[0] && best[j]+1 > best[i] {
+				best[i], prev[i] = best[j]+1, j
+			}
+		}
+		if best[i] > best[end] {
+			end = i
+		}
+	}
+	bound := make([]bool, len(fs))
+	for i := end; i >= 0; i = prev[i] {
+		bound[i] = true
+	}
+
+	fixedPair := func(f Fixed) Pair {
+		var p Pair
+		p.Source, _ = joinedAt(source, f.Source)
+		p.Target, _ = joinedAt(target, f.Target)
+		p.SourceSegments, p.TargetSegments = f.Source, f.Target
+		p.Score = 100
+		p.Fixed = true
+		return p
+	}
+	out := []Pair{}
+	// stretch pairs the free segments from (s0, t0) up to but not
+	// including (s1, t1).
+	stretch := func(s0, s1, t0, t1 int) {
+		var si, ti []int
+		for i := s0; i < s1; i++ {
+			if !usedS[i] {
+				si = append(si, i)
+			}
+		}
+		for i := t0; i < t1; i++ {
+			if !usedT[i] {
+				ti = append(ti, i)
+			}
+		}
+		a, b := make([]item, len(si)), make([]item, len(ti))
+		for k, i := range si {
+			a[k] = src[i]
+		}
+		for k, i := range ti {
+			b[k] = tgt[i]
+		}
+		for _, st := range path(a, b, r) {
+			var p Pair
+			p.Source, p.SourceSegments = joinedAt(source, si[st.si:st.si+st.bead.ds])
+			p.Target, p.TargetSegments = joinedAt(target, ti[st.ti:st.ti+st.bead.dt])
+			p.Score = score(st)
+			out = append(out, p)
+		}
+	}
+	s0, t0 := 0, 0
+	for i, f := range fs {
+		if !bound[i] {
+			continue
+		}
+		stretch(s0, f.Source[0], t0, f.Target[0])
+		out = append(out, fixedPair(f))
+		s0, t0 = f.Source[0], f.Target[0]
+	}
+	stretch(s0, len(source), t0, len(target))
+	// The fixed pairs that bound nothing go where their first sentence is.
+	for i, f := range fs {
+		if bound[i] {
+			continue
+		}
+		at := len(out)
+		for k, p := range out {
+			if len(p.SourceSegments) > 0 && p.SourceSegments[0] > f.Source[0] {
+				at = k
+				break
+			}
+		}
+		out = append(out, Pair{})
+		copy(out[at+1:], out[at:])
+		out[at] = fixedPair(f)
+	}
+	return out
+}
+
+func last(a []int) int { return a[len(a)-1] }
+
+// joinedAt joins the segments at the given positions, which need not
+// follow each other.
+func joinedAt(segs []Segment, which []int) (content.Content, []int) {
+	picked := make([]Segment, len(which))
+	for k, i := range which {
+		picked[k] = segs[i]
+	}
+	c, _ := joined(picked, 0, len(picked))
+	idx := append([]int{}, which...)
+	return c, idx
+}
+
+// CheckFixed says what is wrong with fixed pairs for documents of ns and
+// nt segments, or nothing.
+func CheckFixed(fixed []Fixed, ns, nt int) string {
+	seenS, seenT := make([]bool, ns), make([]bool, nt)
+	for _, f := range fixed {
+		if len(f.Source) == 0 || len(f.Target) == 0 {
+			return "A fixed pair needs segments on both sides."
+		}
+		for _, s := range f.Source {
+			if s < 0 || s >= ns || seenS[s] {
+				return "The fixed pairs name a segment of the document that is not there, or twice."
+			}
+			seenS[s] = true
+		}
+		for _, t := range f.Target {
+			if t < 0 || t >= nt || seenT[t] {
+				return "The fixed pairs name a segment of the translation that is not there, or twice."
+			}
+			seenT[t] = true
+		}
+	}
+	return ""
 }

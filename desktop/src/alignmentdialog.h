@@ -56,6 +56,9 @@ public:
     // and those of pairs that need a look.
     QList<QPair<int, int>> lines;
     QList<QPair<int, int>> lookLines;
+    // The lines someone drew or confirmed, drawn solid; the others, paired
+    // for them, are dotted.
+    QList<QPair<int, int>> mineLines;
     // Where a line starts and ends on the board; it is drawn as a curve
     // that leaves and arrives level.
     QLineF place(const QPair<int, int> &line) const;
@@ -104,6 +107,13 @@ public:
     void setFile(Side side, const QString &path);
     // Sends both files to be paired.
     void pair();
+    // Makes the lines of the chosen segment's unit the translator's own.
+    void confirmPicked();
+    // Pairs everything again around the units that are the translator's own.
+    void pairAgain();
+    // The lines that are the translator's own, as lines() gives them.
+    QStringList mineLines() const;
+    int checkedCount() const { return int(fixedUnits().size()); }
 
     int segmentCount(Side side) const { return int(m_segments[side].size()); }
     QString text(Side side, int index) const;
@@ -139,6 +149,10 @@ private:
     };
     void render();
     void refresh();
+    void request(const QJsonArray &fixed);
+    void draw(const QPair<int, int> &line);
+    void own(Side side, int index);
+    QList<Unit> fixedUnits() const;
     void fitHeight();
     QList<Unit> units() const;
     QList<Unit> lookUnits(const QList<Unit> &units) const;
@@ -154,6 +168,7 @@ private:
     bool m_hasResult = false;
     QJsonArray m_segments[2];
     QList<QPair<int, int>> m_links;
+    QList<QPair<int, int>> m_mine;
     QHash<QString, int> m_scores;
     int m_pickedSide = -1;
     int m_picked = -1;
@@ -162,6 +177,8 @@ private:
     QScrollArea *m_scroll = nullptr;
     QLabel *m_status = nullptr;
     QPushButton *m_next = nullptr;
+    QPushButton *m_confirm = nullptr;
+    QPushButton *m_again = nullptr;
     QPushButton *m_other;
     QPushButton *m_cancel;
     QPushButton *m_go;

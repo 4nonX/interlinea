@@ -30,7 +30,9 @@ client and the desktop app, with installers and a server image.
 - Alignment: a document and its translation, done before, are paired
   sentence by sentence and shown side by side with a line from each
   sentence to its translation. Lines are drawn and taken away by hand,
-  and what is paired goes into a memory.
+  and what is paired goes into a memory. A line paired automatically is
+  dotted; one drawn or confirmed is solid and stays when the rest is
+  paired again around it.
 - Translation memories with TMX in and out. The units of a memory are
   searched, added, changed with their formatting tags kept, and deleted.
 - Languages: number formats and digits of every listed script, sentence

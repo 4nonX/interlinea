@@ -8,7 +8,7 @@
 //
 // options is JSON: {"keepRevisions": true}.
 //
-//	align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang) -> JSON {source, target, pairs}
+//	align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang, fixed?) -> JSON {source, target, pairs}
 //
 // plus translation memory (tm*, see tm.go), termbase (term*, see
 // term.go), XLIFF, package, spelling and QA (spell*, qa*, see qa.go)
@@ -135,10 +135,11 @@ func merge(_ js.Value, args []js.Value) (out any) {
 
 // alignFiles pairs the segments of a document with those of its
 // translation: align(sourceName, sourceBytes, sourceLang, targetName,
-// targetBytes, targetLang). The names tell the formats.
+// targetBytes, targetLang, fixed?). The names tell the formats; fixed is
+// JSON [{source: [positions], target: [positions]}], pairs that stay.
 func alignFiles(args []js.Value) (any, error) {
-	if len(args) != 6 {
-		return nil, fmt.Errorf("align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang)")
+	if len(args) != 6 && len(args) != 7 {
+		return nil, fmt.Errorf("align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang, fixed)")
 	}
 	read := func(i int) ([]align.Segment, error) {
 		name := args[i].String()
@@ -163,7 +164,16 @@ func alignFiles(args []js.Value) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return jsonOut(align.Documents(src, tgt))
+	var fixed []align.Fixed
+	if len(args) == 7 && args[6].String() != "" {
+		if err := json.Unmarshal([]byte(args[6].String()), &fixed); err != nil {
+			return nil, err
+		}
+		if msg := align.CheckFixed(fixed, len(src), len(tgt)); msg != "" {
+			return nil, fmt.Errorf("%s", msg)
+		}
+	}
+	return jsonOut(align.Documents(src, tgt, fixed))
 }
 
 func main() {

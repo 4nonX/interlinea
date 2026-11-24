@@ -415,6 +415,24 @@ export default () =>
           "alignment: every segment has a point in the gap beside it, where its lines begin",
         );
         check((await dlg()).includes("Add 4 units to Weber DE-FR"), "alignment: all four would be added");
+        // What was paired for the translator is dotted. A pair confirmed is
+        // solid and stays when the rest is paired again around it.
+        const mine = () => evaluate("[...document.querySelectorAll('dialog[open] svg .align-line.is-mine')].map(l => l.parentElement.dataset.line).sort().join(' ')");
+        const enabled = (label) => evaluate(`![...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}).disabled`);
+        check((await mine()) === "" && !(await enabled("Confirm")) && !(await enabled("Pair the rest again")), "alignment: nothing is checked at first");
+        check(await evaluate("getComputedStyle(document.querySelector('dialog[open] svg [data-line=\"1|1\"] .align-line')).strokeDasharray !== 'none'"), "alignment: a line paired for the translator is dotted");
+        await choose("source", 1);
+        check(await enabled("Confirm"), "alignment: a pair chosen can be confirmed");
+        await click("dialog[open] button", "Confirm");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg .align-line.is-mine').length === 1"), "alignment: confirmed, its line is the translator's own");
+        check((await mine()) === "1|1" && (await evaluate("getComputedStyle(document.querySelector('dialog[open] svg [data-line=\"1|1\"] .align-line')).strokeDasharray === 'none'")), "alignment: and drawn solid");
+        check((await status()).includes("1 unit is checked.") && (await status()).includes("All of them fit."), "alignment: the status counts what is checked: " + (await status()));
+        await evaluate("document.querySelector('dialog[open] svg [data-line=\"0|0\"] .align-hit').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
+        await evaluate("document.querySelector('dialog[open] svg [data-line=\"4|3\"] .align-hit').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 3") && (await enabled("Pair the rest again")), "alignment: with a pair checked the rest can be paired again");
+        await click("dialog[open] button", "Pair the rest again");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5", 20000), "alignment: the rest is paired again");
+        check((await lines()) === "0|0 1|1 2|2 3|2 4|3" && (await mine()) === "1|1", "alignment: around the checked pair, which stays the translator's own: " + (await mine()));
         // A sentence chosen and then its translation takes their line away.
         await choose("source", 3);
         check(await evaluate(`document.querySelector(${JSON.stringify(seg("source", 3))}).getAttribute('aria-pressed') === 'true'`), "alignment: a sentence is chosen");
@@ -430,6 +448,7 @@ export default () =>
         await choose("target", 2);
         await choose("source", 3);
         check((await lines()) === "0|0 1|1 2|2 3|2 4|3" && (await status()).includes("All of them fit."), "alignment: choosing both ends draws the line");
+        check((await mine()) === "1|1 2|2 3|2", "alignment: a line drawn by hand is the translator's own, with the unit it joins: " + (await mine()));
         // A line is taken away by choosing it, and drawn by pulling from one text to the other.
         await evaluate("document.querySelector('dialog[open] svg [data-line=\"0|0\"] .align-hit').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
         check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 4"), "alignment: a line chosen is taken away");

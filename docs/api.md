@@ -1542,7 +1542,7 @@ Access: signed in; each event is sent only to those who may see it.
 
 Pairs the segments of a document with those of its translation, so that translations done before can be put into a memory (POST /api/memories/{name}/units/batch).
 
-The two documents may be of different formats. The answer has the segments of both documents and the pairs made of them; a review joins and splits them otherwise. Nothing is kept.
+The two documents may be of different formats. The answer has the segments of both documents and the pairs made of them; a review joins and splits them otherwise. Sent again with the pairs the review fixed, the rest is paired around them. Nothing is kept.
 
 Access: signed in.
 
@@ -1612,6 +1612,7 @@ access is what someone may do in a project.
 
 | Field | Type | Description |
 |---|---|---|
+| `fixed` | list of [align.Fixed](#alignfixed) | Fixed are pairs made or checked by hand, by the positions of their segments in an earlier answer for the same documents: they stay, and the rest is paired again around them. |
 | `source` | [AlignedFile](#alignedfile) |  |
 | `target` | [AlignedFile](#alignedfile) |  |
 
@@ -2102,12 +2103,22 @@ unitView is a memory unit as the API shows it.
 | `email` | string or null |  |
 | `name` | string or null |  |
 
+### align.Fixed
+
+Fixed is a pair someone made or checked by hand: these segments of the document belong to these of the translation, whatever their lengths say.
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | list of integer |  |
+| `target` | list of integer |  |
+
 ### align.Pair
 
 Pair is a stretch of the source with its translation. A stretch nothing was found for has an empty other side.
 
 | Field | Type | Description |
 |---|---|---|
+| `fixed` | boolean | Fixed marks a pair that was given as fixed when pairing again. |
 | `score` | integer | Score says how well the two sides fit, from 0 to 100: their lengths and their numbers. Pairs below about 50 deserve a look. |
 | `source` | [content.Content](#contentcontent) |  |
 | `sourceSegments` | list of integer | SourceSegments and TargetSegments are the segments joined on each side, by their position in the documents. |

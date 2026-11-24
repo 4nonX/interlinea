@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { lang, type LangCode } from "../data";
 import { alignDocuments, loadCore, type Alignment } from "../core";
 import { coreToRuns, plain, type CoreRun } from "../editor/model";
-import { joined, linkKey, linksOf, needsLook, scoresOf, toggle, unitsOf, type Link } from "../align";
+import { confirm, draw, fixedOf, joined, linkKey, linksOf, needsLook, scoresOf, toggle, unchecked, unitsOf, type Link, type Unit } from "../align";
 import { fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { Modal } from "./TermbaseDialogs";
@@ -82,7 +82,7 @@ export function AlignDocuments({
     return () => ro.disconnect();
   }, [result, measure]);
 
-  async function pair() {
+  async function pair(fixed: Unit[] = []) {
     if (!source || !target) return;
     setBusy(true);
     setProblem("");
@@ -92,6 +92,7 @@ export function AlignDocuments({
         c,
         { name: source.name, bytes: new Uint8Array(await source.arrayBuffer()), lang: sourceLang },
         { name: target.name, bytes: new Uint8Array(await target.arrayBuffer()), lang: targetLang },
+        fixed,
       );
       setResult(a);
       setLinks(linksOf(a));
@@ -143,7 +144,9 @@ export function AlignDocuments({
     );
 
   const units = unitsOf(links);
-  const look = units.filter((u) => needsLook(u, scores));
+  const fixed = fixedOf(links);
+  // A pair that was checked needs no look any more.
+  const look = units.filter((u) => needsLook(u, scores) && !fixed.some((f) => f.source[0] === u.source[0]));
   const paired = { source: new Set(links.map((l) => l.source)), target: new Set(links.map((l) => l.target)) };
   const alone = result.source.length - paired.source.size + result.target.length - paired.target.size;
   // The lines of a pair that needs a look, to draw them otherwise.
@@ -213,6 +216,7 @@ export function AlignDocuments({
       <div className="dialog-form align-review">
         <p role="status">
           {plural(units.length, "unit", "units")} from {fmtNum(result.source.length)} and {plural(result.target.length, "segment", "segments")}.{" "}
+          {fixed.length > 0 && `${plural(fixed.length, "unit is", "units are")} checked. `}
           {alone > 0 && `${plural(alone, "segment has", "segments have")} no pair and ${alone === 1 ? "is" : "are"} left out. `}
           {look.length > 0 && `${plural(look.length, "pair needs", "pairs need")} a look: the lengths or numbers do not fit.`}
           {alone === 0 && look.length === 0 && "All of them fit."}
@@ -220,13 +224,31 @@ export function AlignDocuments({
         <p className="help">
           A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means nothing is joined
           there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same takes a line away, as does choosing
-          the line. Sentences joined by lines become one unit.
+          the line. Sentences joined by lines become one unit. A dotted line was paired for you; one you draw or confirm is solid, and stays when the rest is
+          paired again around it.
         </p>
         <div className="align-head">
           <LangChip code={sourceLang} />
-          <button type="button" className="btn btn-quiet btn-small" disabled={alone === 0 && look.length === 0} onClick={next}>
-            Next to look at
-          </button>
+          <span className="row">
+            <button
+              type="button"
+              className="btn btn-quiet btn-small"
+              disabled={!picked || !unchecked(links, picked.side, picked.i)}
+              onClick={() => {
+                if (!picked) return;
+                setLinks(confirm(links, picked.side, picked.i));
+                setPicked(null);
+              }}
+            >
+              Confirm
+            </button>
+            <button type="button" className="btn btn-quiet btn-small" disabled={busy || fixed.length === 0 || (fixed.length === units.length && alone === 0)} onClick={() => void pair(fixed)}>
+              {busy ? "Pairing…" : "Pair the rest again"}
+            </button>
+            <button type="button" className="btn btn-quiet btn-small" disabled={alone === 0 && look.length === 0} onClick={next}>
+              Next to look at
+            </button>
+          </span>
           <LangChip code={targetLang} />
         </div>
         <div className="align-scroll" ref={scroller}>
@@ -241,7 +263,7 @@ export function AlignDocuments({
               const to = { side: el.dataset.side as Side, i: Number(el.dataset.i) };
               if (to.side === from.side) return;
               const l = from.side === "source" ? { source: from.i, target: to.i } : { source: to.i, target: from.i };
-              if (!links.some((x) => linkKey(x) === linkKey(l))) setLinks([...links, l]);
+              setLinks(draw(links, l));
               setPicked(null);
             }}
           >
@@ -261,7 +283,7 @@ export function AlignDocuments({
                   const d = `M ${places.x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${places.x2} ${y2}`;
                   return (
                     <g key={k} data-line={k}>
-                      <path d={d} className={lookLines.has(k) ? "align-line is-look" : "align-line"} />
+                      <path d={d} className={`align-line${l.mine ? " is-mine" : ""}${lookLines.has(k) ? " is-look" : ""}`} />
                       <path d={d} className="align-hit" onClick={() => setLinks(toggle(links, l))}>
                         <title>Take this line away</title>
                       </path>

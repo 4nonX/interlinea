@@ -27,13 +27,18 @@ type alignedFile struct {
 type alignRequest struct {
 	Source alignedFile `json:"source"`
 	Target alignedFile `json:"target"`
+	// Fixed are pairs made or checked by hand, by the positions of their
+	// segments in an earlier answer for the same documents: they stay, and
+	// the rest is paired again around them.
+	Fixed []align.Fixed `json:"fixed,omitempty"`
 }
 
 // alignFiles pairs the segments of a document with those of its
 // translation, so that translations done before can be put into a memory
 // (POST /api/memories/{name}/units/batch). The two documents may be of
 // different formats. The answer has the segments of both documents and
-// the pairs made of them; a review joins and splits them otherwise.
+// the pairs made of them; a review joins and splits them otherwise. Sent
+// again with the pairs the review fixed, the rest is paired around them.
 // Nothing is kept.
 //
 // Access: signed in.
@@ -72,7 +77,11 @@ func (s *Server) alignFiles(w http.ResponseWriter, r *http.Request, me session) 
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, align.Documents(src, tgt))
+	if msg := align.CheckFixed(req.Fixed, len(src), len(tgt)); msg != "" {
+		invalid(w, "fixed", msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, align.Documents(src, tgt, req.Fixed))
 }
 
 // maxUnitBatch is how many units one request may add.

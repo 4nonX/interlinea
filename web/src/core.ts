@@ -58,6 +58,7 @@ export interface CoreApi {
     targetName: string,
     target: Uint8Array,
     targetLang: string,
+    fixed?: string,
   ): Res<string>;
   merge(
     bytes: Uint8Array,
@@ -148,17 +149,21 @@ export interface MemUnit {
 export interface Alignment {
   source: CoreRun[][];
   target: CoreRun[][];
-  pairs: { sourceSegments: number[]; targetSegments: number[]; score: number }[];
+  pairs: { sourceSegments: number[]; targetSegments: number[]; score: number; fixed?: boolean }[];
 }
 
-/** Pairs the segments of a document with those of its translation. */
+/**
+ * Pairs the segments of a document with those of its translation. Pairs
+ * given as fixed stay, and the rest is paired around them.
+ */
 export function alignDocuments(
   c: CoreApi,
   source: { name: string; bytes: Uint8Array; lang: string },
   target: { name: string; bytes: Uint8Array; lang: string },
+  fixed: { source: number[]; target: number[] }[] = [],
 ): Alignment {
   return JSON.parse(
-    unwrap(c.align(source.name, source.bytes, source.lang, target.name, target.bytes, target.lang)),
+    unwrap(c.align(source.name, source.bytes, source.lang, target.name, target.bytes, target.lang, fixed.length ? JSON.stringify(fixed) : "")),
   ) as Alignment;
 }
 

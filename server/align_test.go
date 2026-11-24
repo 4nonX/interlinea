@@ -33,6 +33,20 @@ func TestAlignFiles(t *testing.T) {
 		}
 	}
 
+	// Sent again with a pair fixed by hand, that pair stays and the rest is
+	// paired around it.
+	again := req
+	again.Fixed = []align.Fixed{{Source: []int{1, 2}, Target: []int{1}}}
+	var re align.Result
+	te.call("POST", "/api/align", te.ben, again, 200, &re)
+	if len(re.Pairs) != 4 || !re.Pairs[1].Fixed || len(re.Pairs[1].SourceSegments) != 2 || re.Pairs[0].Fixed || len(re.Pairs[2].SourceSegments) != 0 || re.Pairs[2].TargetSegments[0] != 2 {
+		t.Fatalf("around a fixed pair: %+v", re.Pairs)
+	}
+	again.Fixed = []align.Fixed{{Source: []int{9}, Target: []int{1}}}
+	if r := te.do("POST", "/api/align", te.ben, again); r.status != 422 || r.err().Problems[0].Field != "fixed" {
+		t.Fatalf("a fixed pair of a segment that is not there: %d %s", r.status, r.body)
+	}
+
 	// What can't be aligned says which file and why.
 	for field, change := range map[string]func(*alignRequest){
 		"source.name": func(r *alignRequest) { r.Source.Name = " " },

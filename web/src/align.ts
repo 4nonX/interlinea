@@ -7,10 +7,15 @@
 import type { Alignment } from "./core";
 import type { CoreRun } from "./editor/model";
 
-/** A line from a segment of the document to one of its translation. */
+/**
+ * A line from a segment of the document to one of its translation. A line
+ * someone drew or confirmed is theirs: it is drawn solid, and stays when
+ * the rest is paired again.
+ */
 export interface Link {
   source: number;
   target: number;
+  mine?: boolean;
 }
 
 /** Segments joined by lines: what is added to the memory as one unit. */
@@ -36,8 +41,8 @@ export function linksOf(a: Alignment): Link[] {
     if (first === undefined || last === undefined) continue;
     // Every segment of a pair hangs together: each sentence on the first
     // translation, each translation on the last sentence.
-    for (const s of p.sourceSegments) add({ source: s, target: first });
-    for (const t of p.targetSegments) add({ source: last, target: t });
+    for (const s of p.sourceSegments) add({ source: s, target: first, mine: p.fixed });
+    for (const t of p.targetSegments) add({ source: last, target: t, mine: p.fixed });
   }
   return [...out.values()];
 }
@@ -49,10 +54,33 @@ export function scoresOf(a: Alignment): Map<string, number> {
   return out;
 }
 
-/** Adds the line, or takes it away if it is there. */
+/** Adds the line, or takes it away if it is there. A line added is its maker's, and so is what it joins. */
 export function toggle(links: Link[], l: Link): Link[] {
   const k = linkKey(l);
-  return links.some((x) => linkKey(x) === k) ? links.filter((x) => linkKey(x) !== k) : [...links, l];
+  return links.some((x) => linkKey(x) === k) ? links.filter((x) => linkKey(x) !== k) : draw(links, l);
+}
+
+/** Adds the line as its maker's own, with the lines of the unit it joins. */
+export function draw(links: Link[], l: Link): Link[] {
+  const k = linkKey(l);
+  return confirm(links.some((x) => linkKey(x) === k) ? links : [...links, { source: l.source, target: l.target }], "source", l.source);
+}
+
+/** Makes the lines of a segment's unit someone's own: checked, and kept when the rest is paired again. */
+export function confirm(links: Link[], side: "source" | "target", i: number): Link[] {
+  const unit = unitsOf(links).find((u) => u[side].includes(i));
+  if (!unit) return links;
+  return links.map((l) => (unit.source.includes(l.source) ? { ...l, mine: true } : l));
+}
+
+/** Whether a segment has a line that is not yet someone's own. */
+export function unchecked(links: Link[], side: "source" | "target", i: number): boolean {
+  return links.some((l) => l[side] === i && !l.mine);
+}
+
+/** The units whose lines are all someone's own: what stays when the rest is paired again. */
+export function fixedOf(links: Link[]): Unit[] {
+  return unitsOf(links).filter((u) => links.every((l) => !u.source.includes(l.source) || l.mine));
 }
 
 /** The units the lines make, in the order of the document. */
