@@ -828,11 +828,23 @@ void Stepper::setSteps(const QStringList &names, int current)
         num->setFixedSize(22, 22);
         const QString state = i == current ? QStringLiteral("current") : i < current ? QStringLiteral("done") : QStringLiteral("todo");
         num->setProperty("stepNum", state);
-        auto *name = new QLabel(names[i], step);
-        name->setProperty("stepName", state);
         h->addWidget(num);
-        h->addWidget(name);
-        step->setAccessibleName(i == current ? tr("Step %1, %2, current").arg(i + 1).arg(names[i]) : tr("Step %1, %2").arg(i + 1).arg(names[i]));
+        if (i < current && m_clickable) {
+            // A step that is done is a link back to it.
+            num->setPixmap(Icons::get(QStringLiteral("check"), Theme::color("ok")).pixmap(14, 14));
+            auto *back = new QPushButton(names[i], step);
+            back->setProperty("stepLink", true);
+            back->setFlat(true);
+            back->setCursor(Qt::PointingHandCursor);
+            back->setAccessibleName(tr("Back to step %1, %2").arg(i + 1).arg(names[i]));
+            connect(back, &QPushButton::clicked, this, [this, i] { emit stepClicked(i); });
+            h->addWidget(back);
+        } else {
+            auto *name = new QLabel(names[i], step);
+            name->setProperty("stepName", state);
+            h->addWidget(name);
+            step->setAccessibleName(i == current ? tr("Step %1, %2, current").arg(i + 1).arg(names[i]) : tr("Step %1, %2").arg(i + 1).arg(names[i]));
+        }
         m_row->addWidget(step);
     }
     m_row->addStretch();

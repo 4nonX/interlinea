@@ -93,12 +93,12 @@ void addWarnings(QVBoxLayout *into, const QJsonArray &items, QWidget *parent)
 QList<TermFormat> termExportFormats()
 {
     return {
-        {QStringLiteral("tbx"), QObject::tr("TBX 3"), QStringLiteral(".tbx"), QObject::tr("The ISO standard (30042:2019). Phrase, memoQ and current Trados read it.")},
+        {QStringLiteral("tbx"), QObject::tr("TBX 3"), QStringLiteral(".tbx"), QObject::tr("The ISO standard (30042:2019), read by current terminology tools.")},
         {QStringLiteral("tbx2"), QObject::tr("TBX 2"), QStringLiteral(".tbx"), QObject::tr("The older <martif> form, for tools that do not read TBX 3 yet.")},
-        {QStringLiteral("multiterm"), QObject::tr("MultiTerm XML"), QStringLiteral(".xml"), QObject::tr("For importing into Trados MultiTerm.")},
-        {QStringLiteral("xlsx"), QObject::tr("Excel workbook"), QStringLiteral(".xlsx"),
+        {QStringLiteral("multiterm"), QObject::tr("Termbase XML"), QStringLiteral(".xml"), QObject::tr("The XML exchange format of .sdltb termbases.")},
+        {QStringLiteral("xlsx"), QObject::tr("XLSX workbook"), QStringLiteral(".xlsx"),
          QObject::tr("One row per entry, one column per language and field. Synonyms share a cell, separated by “; ”.")},
-        {QStringLiteral("csv"), QObject::tr("CSV"), QStringLiteral(".csv"), QObject::tr("Comma-separated, UTF-8. Opens in Excel and imports into memoQ.")},
+        {QStringLiteral("csv"), QObject::tr("CSV"), QStringLiteral(".csv"), QObject::tr("Comma-separated, UTF-8. Opens in spreadsheet programs.")},
         {QStringLiteral("tsv"), QObject::tr("Tab-separated text"), QStringLiteral(".tsv"), QObject::tr("UTF-8, one row per entry.")},
     };
 }
@@ -110,9 +110,9 @@ QString termFormatLabel(const QString &id)
             return f.label;
     }
     if (id == QLatin1String("sdltb"))
-        return QObject::tr("MultiTerm termbase");
+        return QObject::tr(".sdltb termbase");
     if (id == QLatin1String("xdt"))
-        return QObject::tr("MultiTerm termbase definition");
+        return QObject::tr(".xdt termbase definition");
     return id;
 }
 
@@ -1216,7 +1216,7 @@ void ImportDialog::showFile()
     choose->setObjectName(QStringLiteral("chooseFile"));
     choose->setEnabled(place() != nullptr);
     zv->addWidget(choose, 0, Qt::AlignHCenter);
-    auto *help = Web::text(tr("TBX (2 or 3), a MultiTerm termbase (.sdltb) or its XML export, Excel, CSV or tab-separated text. A MultiTerm definition (.xdt) brings only the languages."),
+    auto *help = Web::text(tr("TBX (2 or 3), an .sdltb termbase or its XML export, an XLSX workbook, CSV or tab-separated text. A termbase definition (.xdt) brings only the languages."),
                            "help", zone);
     help->setWordWrap(true);
     help->setAlignment(Qt::AlignHCenter);

@@ -236,17 +236,16 @@ private slots:
         projects.open(m.local()->id(), id);
         ProjectPage *page = projects.openProject();
         QVERIFY(page);
-        auto *files = page->findChild<QTreeWidget *>();
-        QTreeWidgetItem *lang = nullptr;
-        QTRY_VERIFY_WITH_TIMEOUT(files->topLevelItemCount() == 2, 10000);
-        for (int i = 0; i < files->topLevelItemCount(); ++i) {
-            QTreeWidgetItem *f = files->topLevelItem(i);
-            if (f->data(0, Qt::UserRole).toString() == "Mietvertrag.txt" && f->childCount() > 0)
-                lang = f->child(0);
-        }
-        QVERIFY(lang);
-        files->setCurrentItem(lang);
-        button(page, "Translate")->click();
+        // Each file says how far it is in each language; that opens the editor.
+        QPushButton *open = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            open = nullptr;
+            for (QPushButton *b : page->findChildren<QPushButton *>(QStringLiteral("progress")))
+                if (b->property("file").toString() == "Mietvertrag.txt")
+                    open = b;
+            return open != nullptr;
+        }(), 10000);
+        open->click();
         EditorPage *ed = projects.openEditor();
         QVERIFY(ed);
         QCOMPARE(ed->file(), QStringLiteral("Mietvertrag.txt"));

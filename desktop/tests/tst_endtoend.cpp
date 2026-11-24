@@ -16,11 +16,10 @@
 #include "reviewpage.h"
 #include "termdata.h"
 #include "terminologypage.h"
-#include "newprojectdialog.h"
+#include "newprojectpage.h"
 #include "projectpage.h"
 #include "projectsmodel.h"
 #include "projectspage.h"
-#include "settingseditor.h"
 #include "settingspage.h"
 #include "testcore.h"
 #include "theme.h"
@@ -33,6 +32,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QScrollArea>
 #include <QSettings>
 #include <QSignalSpy>
@@ -257,27 +257,41 @@ private slots:
 
         // A project on each: this computer and the team server.
         for (Connection *where : {m.local(), team}) {
-            NewProjectDialog dlg(&m, &w);
-            dlg.show();
-            auto *first = dlg.findChild<QStackedWidget *>()->widget(0);
-            auto *combo = named<QComboBox>(first, QStringLiteral("Kept on"));
-            QTRY_VERIFY(combo->findData(where->id()) >= 0);
-            combo->setCurrentIndex(combo->findData(where->id()));
-            dlg.addFiles({doc});
-            auto *files = named<QTreeWidget>(first, QStringLiteral("Documents"));
-            QTRY_COMPARE_WITH_TIMEOUT(files->topLevelItem(0)->text(1), QStringLiteral("To translate"), 10000);
-            button(&dlg, QStringLiteral("Next"))->click();
-            auto *editor = dlg.findChild<SettingsEditor *>();
-            QTRY_VERIFY_WITH_TIMEOUT(editor->isVisible(), 10000);
-            named<LanguageCombo>(editor, QStringLiteral("Target language to add"))->setLanguage(QStringLiteral("en-GB"));
-            button(editor, QStringLiteral("Add"))->click();
-            QSignalSpy accepted(&dlg, &QDialog::accepted);
-            button(&dlg, QStringLiteral("Make the project"))->click();
-            QTRY_COMPARE_WITH_TIMEOUT(accepted.size(), 1, 20000);
-            QCOMPARE(dlg.connectionId(), where->id());
+            projects->newProject({doc});
+            NewProjectPage *np = projects->newProjectPage();
+            QVERIFY(np);
+            // With a team server signed in, the first step asks where the project is kept.
+            QRadioButton *place = nullptr;
+            const QString placeText = where->isLocal() ? QStringLiteral("On this computer") : QStringLiteral("On the team server %1").arg(where->displayName());
+            QTRY_VERIFY_WITH_TIMEOUT([&] {
+                place = nullptr;
+                for (QRadioButton *b : np->findChildren<QRadioButton *>())
+                    if (b->text() == placeText)
+                        place = b;
+                return place != nullptr;
+            }(), 15000);
+            place->setChecked(true);
+            QTRY_VERIFY_WITH_TIMEOUT(np->connection() == where && button(np, QStringLiteral("Continue to files and languages")) &&
+                                         button(np, QStringLiteral("Continue to files and languages"))->isEnabled(),
+                                     15000);
+            button(np, QStringLiteral("Continue to files and languages"))->click();
+            QTRY_VERIFY_WITH_TIMEOUT(named<QComboBox>(np, QStringLiteral("Use of Mietvertrag.txt")) && named<QComboBox>(np, QStringLiteral("Use of Mietvertrag.txt"))->isEnabled(), 15000);
+            named<LanguageCombo>(np, QStringLiteral("Add another target language"))->setLanguage(QStringLiteral("en-GB"));
+            named<QPushButton>(np, QStringLiteral("Add the target language"))->click();
+            QTRY_VERIFY(button(np, QStringLiteral("Continue to memories"))->isEnabled());
+            button(np, QStringLiteral("Continue to memories"))->click();
+            button(np, QStringLiteral("Continue to terminology"))->click();
+            button(np, QStringLiteral("Continue to review"))->click();
+            const QString createText = where->isLocal() ? QStringLiteral("Create project") : QStringLiteral("Create on the server");
+            QTRY_VERIFY_WITH_TIMEOUT(button(np, createText) && button(np, createText)->isEnabled(), 20000);
+            QSignalSpy made(np, &NewProjectPage::created);
+            button(np, createText)->click();
+            QTRY_COMPARE_WITH_TIMEOUT(made.size(), 1, 20000);
+            QCOMPARE(made.first().at(0).toString(), where->id());
+            const qint64 madeId = made.first().at(1).toLongLong();
 
             // Translate both segments where the project is kept.
-            const QString base = QStringLiteral("/api/projects/%1").arg(dlg.projectId());
+            const QString base = QStringLiteral("/api/projects/%1").arg(madeId);
             const QUrlQuery fq{{"file", "Mietvertrag.txt"}, {"lang", "en-GB"}};
             ApiResult r = wait(where->api()->get(base + "/segments", fq));
             QVERIFY2(r.ok(), qPrintable(r.error.message));
@@ -293,11 +307,19 @@ private slots:
                 QVERIFY2(saved.ok(), qPrintable(saved.error.message));
             }
             // The project page shows it done, and the document comes back translated.
-            projects->open(where->id(), dlg.projectId());
-            auto *progress = named<QTreeWidget>(projects->openProject(), QStringLiteral("Files and their progress"));
-            QTRY_VERIFY_WITH_TIMEOUT(progress->topLevelItemCount() == 1 && progress->topLevelItem(0)->childCount() == 1 &&
-                                         progress->topLevelItem(0)->child(0)->text(4) == QStringLiteral("2 of 2"),
+            projects->open(where->id(), madeId);
+            ProjectPage *pp = projects->openProject();
+            QTRY_VERIFY_WITH_TIMEOUT(pp->findChild<QPushButton *>(QStringLiteral("progress")) &&
+                                         pp->findChild<QPushButton *>(QStringLiteral("progress"))->text() == QStringLiteral("100%"),
                                      15000);
+            // On the server it has the work, who is working now and who may use it.
+            QStringList panels;
+            for (QFrame *f : pp->findChildren<QFrame *>(QStringLiteral("panel")))
+                if (!f->isHidden())
+                    panels << f->accessibleName();
+            QCOMPARE(panels.contains(QStringLiteral("Work")), !where->isLocal());
+            QCOMPARE(panels.contains(QStringLiteral("Working now")), !where->isLocal());
+            QVERIFY(panels.contains(QStringLiteral("Delete the project")));
             r = wait(where->api()->get(base + "/files/translated", QUrlQuery{{"name", "Mietvertrag.txt"}, {"lang", "en-GB"}}));
             QVERIFY2(r.ok(), qPrintable(r.error.message));
             QCOMPARE(QString::fromUtf8(r.body).trimmed(), en.join(QLatin1Char(' ')));

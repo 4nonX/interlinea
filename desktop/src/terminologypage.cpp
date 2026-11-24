@@ -1516,7 +1516,7 @@ void TerminologyPage::showEntries()
         m_emptyHolder->addWidget(Web::text(tr("No entries yet"), "emptyTitle", host));
         auto *p = Web::text(isProject() && !m_masterEntries.isEmpty()
                                 ? tr("The project has no entries of its own yet: it uses the master's, which are under Master. Add an entry above, or change one of the master's for this project.")
-                                : tr("Add an entry above, import a TBX, MultiTerm or Excel file, or add terms while you translate."),
+                                : tr("Add an entry above, import a TBX, .sdltb or XLSX file, or add terms while you translate."),
                             "secondary", host);
         p->setWordWrap(true);
         m_emptyHolder->addWidget(p);

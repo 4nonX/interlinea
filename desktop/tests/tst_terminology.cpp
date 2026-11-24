@@ -620,7 +620,7 @@ private slots:
         imp->chooseFile(sdltb);
         QTRY_VERIFY_WITH_TIMEOUT(imp->step() == ImportDialog::LanguagesStep && !imp->busy(), 15000);
         QCOMPARE(byName<QLineEdit>(imp, QStringLiteral("newName")), nullptr);
-        QCOMPARE(byName<QLabel>(imp, QStringLiteral("fileSummary"))->text(), QStringLiteral("MultiTerm termbase: 5 entries, 15 terms."));
+        QCOMPARE(byName<QLabel>(imp, QStringLiteral("fileSummary"))->text(), QStringLiteral(".sdltb termbase: 5 entries, 15 terms."));
         QCOMPARE(imp->fileLanguages().size(), 5);
         // MultiTerm's "EN" goes under a listed English.
         QVERIFY(imp->mappedTo(QStringLiteral("en")).startsWith(QStringLiteral("en")));

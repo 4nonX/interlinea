@@ -261,7 +261,7 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
     auto *pv = new QVBoxLayout(m_previewBox);
     pv->setContentsMargins(S4, S3, S4, S3);
     pv->setSpacing(S2);
-    pv->addWidget(label(tr("Layout from the Word file. Untranslated text appears in the source language. The saved file is exact."),
+    pv->addWidget(label(tr("Layout from the document. Untranslated text appears in the source language. The saved file is exact."),
                         "muted", m_previewBox));
     m_previewPane = new QTextBrowser(m_previewBox);
     m_previewPane->setOpenLinks(false);
@@ -791,7 +791,7 @@ QWidget *EditorPage::buildPanel()
         grid->addWidget(label(tr(what), "secondary", m_shortcuts), r, 1);
         ++r;
     }
-    grid->addWidget(label(tr("These follow Trados, memoQ and Phrase where they agree."), "secondary", m_shortcuts), r, 0, 1, 2);
+    grid->addWidget(label(tr("These are the shortcuts usual in translation tools."), "secondary", m_shortcuts), r, 0, 1, 2);
     grid->setColumnStretch(1, 1);
     m_shortcuts->hide();
     connect(keysToggle, &QPushButton::toggled, m_shortcuts, &QWidget::setVisible);
@@ -2170,7 +2170,7 @@ void EditorPage::showAnalysisDialog()
                      memories << m.toString();
                  const int files = int(report.value(QLatin1String("files")).toArray().size());
                  const QString projectMemory = QStringLiteral("%1 (%2)").arg(settings().value(QLatin1String("name")).toString(), m_lang);
-                 QString text = tr("%1 in %2 against %3, counted as in Trados: context matches first, then repetitions within a file and "
+                 QString text = tr("%1 in %2 against %3, counted in this order: context matches first, then repetitions within a file and "
                                    "across files, then the best match. Below 50% counts as new.")
                                     .arg(plural(files, tr("file"), tr("files")), Languages::name(m_lang),
                                          memories.isEmpty() ? tr("no memory") : memories.join(tr(" and ")));

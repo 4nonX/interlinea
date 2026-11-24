@@ -5,6 +5,7 @@
 
 class ConnectionManager;
 class EditorPage;
+class NewProjectPage;
 class ProjectPage;
 class ProjectsModel;
 class QLayout;
@@ -20,6 +21,7 @@ public:
     ProjectsModel *model() const { return m_model; }
     ProjectPage *openProject() const { return m_project; }
     EditorPage *openEditor() const { return m_editor; }
+    NewProjectPage *newProjectPage() const { return m_new; }
     void edit(const QString &file, const QString &lang);
     void open(const QString &connectionId, qint64 projectId);
     void newProject(const QStringList &files = {});
@@ -42,5 +44,7 @@ private:
     QVBoxLayout *m_sections;
     ProjectPage *m_project = nullptr;
     EditorPage *m_editor = nullptr;
+    NewProjectPage *m_new = nullptr;
     void closeEditor();
+    void closeNew();
 };

@@ -209,11 +209,18 @@ public:
     void setSteps(const QStringList &names, int current);
     QStringList steps() const { return m_names; }
     int current() const { return m_current; }
+    // Steps already done are links back to them (stepClicked).
+    void setClickable(bool clickable) { m_clickable = clickable; }
+
+signals:
+    // A step already done was chosen, to go back to it.
+    void stepClicked(int index);
 
 private:
     QBoxLayout *m_row;
     QStringList m_names;
     int m_current = 0;
+    bool m_clickable = false;
 };
 
 // Two states of one part, such as a button and the form it opens: only

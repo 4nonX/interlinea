@@ -59,6 +59,13 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(5, 20);
         path.cubicTo(5.5, 15, 8.5, 13.5, 12, 13.5);
         path.cubicTo(15.5, 13.5, 18.5, 15, 19, 20);
+    } else if (name == QLatin1String("arrow-up") || name == QLatin1String("arrow-down")) {
+        const bool up = name == QLatin1String("arrow-up");
+        path.moveTo(12, up ? 19 : 5);
+        path.lineTo(12, up ? 5 : 19);
+        path.moveTo(6, up ? 11 : 13);
+        path.lineTo(12, up ? 5 : 19);
+        path.lineTo(18, up ? 11 : 13);
     } else if (name == QLatin1String("arrow-left")) {
         path.moveTo(19, 12);
         path.lineTo(5, 12);

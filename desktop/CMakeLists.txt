@@ -38,8 +38,8 @@ add_library(interlinea_app STATIC
     src/mainwindow.cpp
     src/languages.cpp
     src/projectsmodel.cpp
-    src/settingseditor.cpp
-    src/newprojectdialog.cpp
+    src/projectform.cpp
+    src/newprojectpage.cpp
     src/projectpage.cpp
     src/projectspage.cpp
     src/theme.cpp

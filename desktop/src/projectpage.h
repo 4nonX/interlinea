@@ -2,23 +2,26 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QUrlQuery>
 #include <QPointer>
 #include <QTimer>
+#include <QUrlQuery>
 #include <QWidget>
 
 class Connection;
-class LanguageCombo;
-class QComboBox;
+class ProjectForm;
 class QLabel;
 class QPushButton;
-class QTabWidget;
-class QTableWidget;
-class QTreeWidget;
-class SettingsEditor;
+class QVBoxLayout;
 
-// One project: its files and how far they are, its settings, its
-// analysis, and on a team server the people who work on it.
+namespace Web {
+class Toast;
+}
+
+// One project, laid out as the web's project page: its details, files,
+// languages, memories, terminology, checks and analysis and
+// pre-translation in panels down the page, saved together; on a team
+// server the work given out in it, who is working now and who may use it;
+// then saving it as a template and deleting it.
 class ProjectPage : public QWidget {
     Q_OBJECT
 public:
@@ -27,77 +30,89 @@ public:
     qint64 projectId() const { return m_id; }
     Connection *connection() const { return m_conn; }
     QJsonObject project() const { return m_project; }
+    ProjectForm *form() const { return m_form; }
+    bool unsaved() const { return m_dirty; }
+    QString lastNotice() const;
 
 signals:
     void back();
     // The project was deleted.
     void gone();
-    // Translate a file into a language.
+    // Translate a file into a language; both empty for the first file.
     void openEditor(const QString &file, const QString &lang);
 
+protected:
+    void resizeEvent(QResizeEvent *e) override;
+
 private:
-    QWidget *filesTab();
-    QWidget *settingsTab();
-    QWidget *analysisTab();
-    QWidget *peopleTab();
     void reload();
     void showProject();
-    void showProgress(const QJsonArray &progress);
+    void fillFiles();
+    void fillLanguages();
+    void fillProjectMemories();
+    void fillAnalysis();
+    void fillPretranslate();
+    void fillWork();
+    void fillNow();
+    void fillTemplate();
+    void refreshBar();
     bool manages() const;
     void say(const QString &message);
-    QString currentFile() const;
-    QString currentLang() const;
-    void saveTranslated();
-    void saveReturnPackage();
-    void addFiles();
-    void removeFile();
+    void addFiles(const QStringList &paths);
+    void removeFile(const QString &name);
+    void download(const QString &path, const QUrlQuery &query, const QString &what);
+    void save();
+    void putSettings(QJsonObject settings);
+    void discard();
     void pretranslate();
-    void saveSettings();
-    void saveTemplate();
     void runAnalysis();
     void saveAnalysis();
-    void reloadPeople();
-    void addGrant();
-    void removeGrant();
-    void addAssignment();
-    void toggleDone();
-    void removeAssignment();
+    void saveTemplate(const QString &name);
     void deleteProject();
-    void download(const QString &path, const QUrlQuery &query, const QString &what);
+    QJsonObject settings() const;
 
     QPointer<Connection> m_conn;
     qint64 m_id;
     QJsonObject m_project;
     QJsonObject m_access;
+    QJsonArray m_progress;
     QJsonArray m_analysis;
-    QJsonArray m_people;
+    QString m_analysisLang;
+    bool m_analysing = false;
     QJsonArray m_assignments;
+    QJsonArray m_presence;
+    QJsonArray m_people;
+    QJsonArray m_templates;
     QTimer m_reload;
-    bool m_settingsDirty = false;
+    bool m_dirty = false;
+    bool m_saving = false;
+    bool m_loaded = false;
+    QString m_busy;
+    QString m_saveError;
+    QString m_workError;
 
+    ProjectForm *m_form;
+    Web::Toast *m_toast;
     QLabel *m_title;
-    QLabel *m_meta;
-    QLabel *m_message;
-    QPushButton *m_delete;
-    QTabWidget *m_tabs;
-    // Files.
-    QTreeWidget *m_files;
-    QPushButton *m_openEditor;
-    QPushButton *m_saveTranslated;
-    QPushButton *m_returnPackage;
-    QPushButton *m_addFiles;
-    QPushButton *m_removeFile;
-    QPushButton *m_pretranslate;
-    // Settings.
-    SettingsEditor *m_editor;
-    QPushButton *m_saveSettings;
-    QPushButton *m_saveTemplate;
-    // Analysis.
-    QComboBox *m_analysisLang;
-    QTableWidget *m_analysisTable;
-    QPushButton *m_saveAnalysis;
-    // People.
-    QWidget *m_peopleTab = nullptr;
-    QTableWidget *m_grants;
-    QTableWidget *m_work;
+    QLabel *m_where;
+    QPushButton *m_open;
+    QVBoxLayout *m_files = nullptr;
+    QVBoxLayout *m_languages = nullptr;
+    QVBoxLayout *m_projectMemories = nullptr;
+    QVBoxLayout *m_analysisBody = nullptr;
+    QVBoxLayout *m_pretranslate = nullptr;
+    QVBoxLayout *m_work = nullptr;
+    QVBoxLayout *m_now = nullptr;
+    QVBoxLayout *m_template = nullptr;
+    QVBoxLayout *m_access_ = nullptr;
+    QWidget *m_workPanel = nullptr;
+    QWidget *m_nowPanel = nullptr;
+    QWidget *m_accessPanel = nullptr;
+    QWidget *m_templatePanel = nullptr;
+    QWidget *m_deletePanel = nullptr;
+    QLabel *m_deleteHelp = nullptr;
+    QWidget *m_bar;
+    QLabel *m_barError;
+    QPushButton *m_discard;
+    QPushButton *m_save;
 };

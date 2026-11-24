@@ -55,13 +55,11 @@ platforms.
 
 ## Stages
 
-Done: 1 to 7, and the installers of 8. Next: the project page, new
-projects and Settings in the web layout, then the rest of 8. The editor,
-the project list, Memories, Terminology, the review of merge requests and
-Accounts are laid out as the same screens of the browser client, which is
-the model for every page; the project page, the new project dialog and
-Settings still have their first layout and follow. The browser client's
-editor:
+Done: 1 to 7, and the installers of 8. Every page is laid out as the same
+screen of the browser client, which is the model: the editor, the project
+list, New project in its five steps, the project page, Memories,
+Terminology, the review of merge requests, Accounts and Settings. The
+browser client's editor:
 
 ![The editor in the browser client](screenshots/editor.png)
 
@@ -149,7 +147,7 @@ and return packages, and checks that each step shows in the app. CI runs it
 on Linux against a server it starts.
 
 `INTERLINEA_SCREENSHOTS=<folder>` makes `tst_projects` save the
-screenshots of the project page and the New project dialog used here.
+screenshots of the project page and the New project page used here.
 
 ## Conventions
 

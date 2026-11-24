@@ -7,7 +7,7 @@
 #include <QTimer>
 
 #include "connectionmanager.h"
-#include "newprojectdialog.h"
+#include "newprojectpage.h"
 #include "projectpage.h"
 #include "projectsmodel.h"
 
@@ -60,7 +60,7 @@ ProjectsPage::ProjectsPage(ConnectionManager *manager, QWidget *parent)
     zt->setSpacing(2);
     auto *zh = Web::text(tr("Start a project from files"), "sectionTitle16", zone);
     zt->addWidget(zh);
-    zt->addWidget(Web::text(tr("Drop files, a folder, or a Trados or memoQ package here. Interlinea detects the source language and suggests memories and termbases for the client."),
+    zt->addWidget(Web::text(tr("Drop files, a folder, or a project package here. Interlinea detects the source language and suggests memories and termbases for the client."),
                             "secondary", zone));
     zl->addLayout(zt, 1);
     auto *choose = Web::button(tr("Choose files"), Web::Primary, zone);
@@ -350,6 +350,25 @@ void ProjectsPage::edit(const QString &file, const QString &lang)
 {
     if (!m_project || !m_project->connection())
         return;
+    if (file.isEmpty() || lang.isEmpty()) {
+        // "Open in the editor": the first file to translate, in its first language.
+        onResult(m_project->connection()->api()->get(QStringLiteral("/api/projects/%1").arg(m_project->projectId())), m_project, [this](const ApiResult &r) {
+            if (!r.ok())
+                return;
+            const QJsonObject s = r.object().value(QLatin1String("settings")).toObject();
+            for (const QJsonValue &v : s.value(QLatin1String("files")).toArray()) {
+                const QJsonObject f = v.toObject();
+                if (f.value(QLatin1String("role")).toString() != QLatin1String("translatable"))
+                    continue;
+                const QString l = f.value(QLatin1String("targetLang")).toString().isEmpty() ? s.value(QLatin1String("targetLangs")).toArray().at(0).toString()
+                                                                                          : f.value(QLatin1String("targetLang")).toString();
+                if (!l.isEmpty())
+                    edit(f.value(QLatin1String("name")).toString(), l);
+                return;
+            }
+        });
+        return;
+    }
     closeEditor();
     m_editor = new EditorPage(m_project->connection(), m_project->projectId(), file, lang, m_stack);
     m_stack->addWidget(m_editor);
@@ -391,14 +410,37 @@ void ProjectsPage::showList()
     m_stack->setCurrentIndex(0);
 }
 
+// New project is a page of its own, as on the web: the list comes back
+// when it is cancelled, the editor opens when the project is made.
 void ProjectsPage::newProject(const QStringList &files)
 {
-    NewProjectDialog dlg(m_manager, this);
+    closeEditor();
+    if (!m_new) {
+        m_new = new NewProjectPage(m_manager, m_stack);
+        m_stack->addWidget(m_new);
+        connect(m_new, &NewProjectPage::cancelled, this, [this] {
+            showList();
+            closeNew();
+        });
+        connect(m_new, &NewProjectPage::created, this, [this](const QString &connectionId, qint64 projectId) {
+            closeNew();
+            if (Connection *c = m_manager->find(connectionId))
+                m_model->reload(c);
+            open(connectionId, projectId);
+            edit(QString(), QString());
+        });
+    }
+    m_stack->setCurrentWidget(m_new);
     if (!files.isEmpty())
-        dlg.addFiles(files);
-    if (dlg.exec() != QDialog::Accepted)
+        m_new->addFiles(files);
+}
+
+void ProjectsPage::closeNew()
+{
+    if (!m_new)
         return;
-    if (Connection *c = m_manager->find(dlg.connectionId()))
-        m_model->reload(c);
-    open(dlg.connectionId(), dlg.projectId());
+    m_stack->removeWidget(m_new);
+    m_new->hide();
+    m_new->deleteLater();
+    m_new = nullptr;
 }

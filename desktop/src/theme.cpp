@@ -279,6 +279,9 @@ QLabel[stepNum="current"] { background: @accent; border-color: @accent; color: #
 QLabel[stepNum="done"] { border-color: transparent; color: @ok; }
 QLabel[stepName] { color: @text3; font-size: 13px; font-weight: 500; }
 QLabel[stepName="current"] { color: @text; font-weight: 600; }
+QPushButton[stepLink="true"] { border: 0; background: transparent; color: @accentText; font-size: 13px; font-weight: 500; padding: 0 2px; min-height: 22px; text-align: left; }
+QPushButton[stepLink="true"]:hover { text-decoration: underline; }
+QPushButton[stepLink="true"]:focus { border: 2px solid @accent; border-radius: 4px; padding: 0; }
 QLineEdit[small="true"] { padding: 2px 8px; min-height: 18px; font-size: 13px; }
 QLineEdit[small="true"]:focus { padding: 1px 7px; }
 QLineEdit[invalid="true"] { border-color: @danger; }

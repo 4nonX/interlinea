@@ -1,312 +1,248 @@
 #include "projectpage.h"
 
-#include "roles.h"
-
+#include "accesspanel.h"
 #include "apiclient.h"
+#include "bands.h"
 #include "connection.h"
 #include "eventfeed.h"
+#include "icons.h"
 #include "languages.h"
-#include "progressdelegate.h"
-#include "settingseditor.h"
-
+#include "projectform.h"
+#include "roles.h"
 #include "theme.h"
+#include "webui.h"
 
 #include <QCheckBox>
 #include <QComboBox>
-#include <QDateTimeEdit>
-#include <QDialog>
-#include <QDialogButtonBox>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
-#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
-#include <QMessageBox>
 #include <QPushButton>
 #include <QSaveFile>
-#include <QSpinBox>
 #include <QStandardPaths>
-#include <QTabWidget>
 #include <QTableWidget>
-#include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include <memory>
 
 namespace {
 
-QTableWidgetItem *cell(const QString &text, const QVariant &data = {})
+QString plural(qint64 n, const QString &one, const QString &many)
 {
-    auto *i = new QTableWidgetItem(text);
-    i->setFlags(i->flags() & ~Qt::ItemIsEditable);
-    if (data.isValid())
-        i->setData(Qt::UserRole, data);
-    return i;
+    return n == 1 ? one : many.arg(QLocale().toString(n));
 }
 
-QString roleName(const QString &role)
+QStringList strings(const QJsonValue &v)
 {
-    if (role == QLatin1String("read"))
-        return ProjectPage::tr("Reads");
-    if (role == QLatin1String("suggest"))
-        return ProjectPage::tr("Suggests");
-    if (role == QLatin1String("edit"))
-        return ProjectPage::tr("Edits");
-    if (role == QLatin1String("approve"))
-        return ProjectPage::tr("Approves");
-    if (role == QLatin1String("manage"))
-        return ProjectPage::tr("Manages");
-    return role;
+    QStringList out;
+    for (const QJsonValue &x : v.toArray())
+        out << x.toString();
+    return out;
 }
 
-const QStringList roles{QStringLiteral("read"), QStringLiteral("suggest"), QStringLiteral("edit"), QStringLiteral("approve"), QStringLiteral("manage")};
+void clear(QLayout *l)
+{
+    while (QLayoutItem *item = l->takeAt(0)) {
+        if (QWidget *w = item->widget()) {
+            w->hide();
+            w->setParent(nullptr);
+            w->deleteLater();
+        } else if (item->layout()) {
+            clear(item->layout());
+        }
+        delete item;
+    }
+}
+
+QLabel *legend(const QString &text, QWidget *parent)
+{
+    auto *l = new QLabel(QStringLiteral("<b>%1</b>").arg(text.toHtmlEscaped()), parent);
+    l->setAccessibleName(text);
+    return l;
+}
+
+QVBoxLayout *host(QVBoxLayout *into, int spacing = 8)
+{
+    auto *v = new QVBoxLayout;
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(spacing);
+    into->addLayout(v);
+    return v;
+}
+
+QString packageKind(const QString &name)
+{
+    return name.endsWith(QLatin1String(".mqout"), Qt::CaseInsensitive) ? ProjectPage::tr("handoff package") : ProjectPage::tr("project package");
+}
 
 } // namespace
 
 ProjectPage::ProjectPage(Connection *connection, qint64 projectId, QWidget *parent)
-    : QWidget(parent), m_conn(connection), m_id(projectId)
+    : QWidget(parent)
+    , m_conn(connection)
+    , m_id(projectId)
+    , m_form(new ProjectForm(this))
 {
     setObjectName(QStringLiteral("project"));
-    auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(28, 18, 28, 20);
-    auto *head = new QHBoxLayout;
-    auto *backButton = new QPushButton(tr("← &Projects"), this);
-    backButton->setFlat(true);
-    backButton->setAccessibleName(tr("Back to the projects"));
-    head->addWidget(backButton);
-    m_title = new QLabel(this);
-    Theme::title(m_title);
-    head->addWidget(m_title, 1);
-    m_delete = new QPushButton(tr("&Delete project…"), this);
-    head->addWidget(m_delete);
-    layout->addLayout(head);
-    m_meta = new QLabel(this);
-    m_meta->setWordWrap(true);
-    Theme::secondary(m_meta);
-    layout->addWidget(m_meta);
-    m_message = new QLabel(this);
-    m_message->setWordWrap(true);
-    m_message->setAccessibleName(tr("Status"));
-    layout->addWidget(m_message);
-    m_tabs = new QTabWidget(this);
-    m_tabs->addTab(filesTab(), tr("&Files"));
-    m_tabs->addTab(settingsTab(), tr("&Settings"));
-    m_tabs->addTab(analysisTab(), tr("&Analysis"));
-    if (!connection->isLocal()) {
-        m_peopleTab = peopleTab();
-        m_tabs->addTab(m_peopleTab, tr("&People and work"));
-    }
-    layout->addWidget(m_tabs, 1);
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+    outer->setSpacing(0);
+    Web::Page page = Web::page(this, 760);
+    page.scroll->setAccessibleName(tr("Project"));
+    QWidget *p = page.scroll->widget();
 
+    auto *backButton = Web::button(tr("Projects"), Web::Quiet, p, QStringLiteral("arrow-left"));
+    backButton->setAccessibleName(tr("Back to the projects"));
+    m_open = Web::button(tr("Open in the editor"), Web::Normal, p, QStringLiteral("pencil-line"));
+    QWidget *header = Web::header(QString(), QString(), {backButton, m_open}, p);
+    m_title = header->findChild<QLabel *>(QStringLiteral("pageTitle"));
+    page.body->addWidget(header);
+    m_where = Web::text(QString(), "help", p);
+    page.body->addWidget(m_where);
     connect(backButton, &QPushButton::clicked, this, &ProjectPage::back);
-    connect(m_delete, &QPushButton::clicked, this, &ProjectPage::deleteProject);
+    connect(m_open, &QPushButton::clicked, this, [this] { emit openEditor(QString(), QString()); });
+
+    QVBoxLayout *body = nullptr;
+    page.body->addWidget(Web::panel(tr("Details"), p, &body));
+    body->addWidget(m_form->details(p));
+
+    page.body->addWidget(Web::panel(tr("Files"), p, &body));
+    m_files = host(body, 12);
+
+    page.body->addWidget(Web::panel(tr("Languages"), p, &body));
+    m_languages = host(body);
+    {
+        auto *targets = new QWidget(p);
+        auto *tv = new QVBoxLayout(targets);
+        tv->setContentsMargins(0, 0, 0, 0);
+        tv->setSpacing(8);
+        tv->addWidget(legend(tr("Target languages"), targets));
+        tv->addWidget(m_form->targets(targets));
+        tv->addWidget(Web::text(tr("A language you add gets every file to translate, with nothing translated yet. A language you take out loses its translations."), "help", targets));
+        body->addWidget(targets);
+    }
+
+    page.body->addWidget(Web::panel(tr("Memories"), p, &body));
+    body->addWidget(m_form->memories(p));
+    m_projectMemories = host(body);
+
+    page.body->addWidget(Web::panel(tr("Terminology"), p, &body));
+    body->addWidget(m_form->terminology(p));
+
+    page.body->addWidget(Web::panel(tr("Checks and analysis"), p, &body));
+    body->addWidget(m_form->checks(p));
+    m_analysisBody = host(body);
+
+    page.body->addWidget(Web::panel(tr("Pre-translation"), p, &body));
+    body->addWidget(m_form->prepare(p));
+    m_pretranslate = host(body);
+
+    if (!connection->isLocal()) {
+        m_workPanel = Web::panel(tr("Work"), p, &body);
+        m_work = host(body, 12);
+        page.body->addWidget(m_workPanel);
+        m_nowPanel = Web::panel(tr("Working now"), p, &body);
+        m_now = host(body);
+        page.body->addWidget(m_nowPanel);
+        auto *access = new QWidget(p);
+        m_access_ = new QVBoxLayout(access);
+        m_access_->setContentsMargins(0, 0, 0, 0);
+        m_accessPanel = access;
+        page.body->addWidget(access);
+    }
+
+    m_templatePanel = Web::panel(tr("Template"), p, &body);
+    m_template = host(body);
+    page.body->addWidget(m_templatePanel);
+
+    m_deletePanel = Web::panel(tr("Delete the project"), p, &body);
+    m_deleteHelp = Web::text(QString(), "help", m_deletePanel);
+    body->addWidget(m_deleteHelp);
+    auto *del = new Web::ConfirmButton(tr("Delete project"), QString(), tr("Delete"), m_deletePanel, false, QStringLiteral("trash"));
+    del->setObjectName(QStringLiteral("deleteProject"));
+    body->addWidget(del);
+    connect(del, &Web::ConfirmButton::confirmed, this, &ProjectPage::deleteProject);
+    page.body->addWidget(m_deletePanel);
+    page.body->addStretch();
+    outer->addWidget(page.scroll, 1);
+
+    // .save-bar: what was changed is saved together, from the foot of the page.
+    m_bar = new QFrame(this);
+    m_bar->setObjectName(QStringLiteral("saveBar"));
+    m_bar->setStyleSheet(QStringLiteral("QFrame#saveBar { background: %1; border-top: 1px solid %2; }").arg(Theme::color("surface").name(), Theme::color("border").name()));
+    auto *bh = new QHBoxLayout(m_bar);
+    bh->setContentsMargins(32, 10, 32, 10);
+    bh->setSpacing(8);
+    m_barError = Web::text(QString(), "error", m_bar);
+    m_barError->setAccessibleName(tr("Why the changes were not saved"));
+    m_barError->setVisible(false);
+    bh->addWidget(m_barError, 1);
+    bh->addStretch();
+    m_discard = Web::button(tr("Discard changes"), Web::Quiet, m_bar);
+    m_save = Web::button(tr("Save changes"), Web::Primary, m_bar);
+    bh->addWidget(m_discard);
+    bh->addWidget(m_save);
+    outer->addWidget(m_bar);
+    connect(m_discard, &QPushButton::clicked, this, &ProjectPage::discard);
+    connect(m_save, &QPushButton::clicked, this, &ProjectPage::save);
+    m_toast = new Web::Toast(this);
+
+    connect(m_form, &ProjectForm::changed, this, [this] {
+        if (!m_loaded)
+            return;
+        m_dirty = true;
+        refreshBar();
+        fillPretranslate();
+        fillTemplate();
+    });
     m_reload.setSingleShot(true);
     m_reload.setInterval(400);
     connect(&m_reload, &QTimer::timeout, this, &ProjectPage::reload);
     connect(connection->feed(), &EventFeed::event, this, [this](const QString &type, const QJsonObject &data) {
-        if (type == QLatin1String("project") && data.value(QLatin1String("projectId")).toInteger() == m_id)
+        if ((type == QLatin1String("project") || type == QLatin1String("presence")) && data.value(QLatin1String("projectId")).toInteger() == m_id)
             m_reload.start();
         if (type == QLatin1String("account"))
             m_reload.start();
     });
     connect(connection->feed(), &EventFeed::reset, &m_reload, qOverload<>(&QTimer::start));
+    refreshBar();
     reload();
 }
 
-QWidget *ProjectPage::filesTab()
+void ProjectPage::resizeEvent(QResizeEvent *e)
 {
-    auto *w = new QWidget(this);
-    auto *l = new QVBoxLayout(w);
-    m_files = new QTreeWidget(w);
-    m_files->setAccessibleName(tr("Files and their progress"));
-    m_files->setHeaderLabels({tr("File"), tr("Language"), tr("Confirmed"), tr("Words"), tr("Segments")});
-    m_files->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    m_files->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    m_files->header()->setStretchLastSection(false);
-    m_files->setRootIsDecorated(true);
-    m_files->setItemDelegateForColumn(2, new ProgressDelegate(m_files));
-    l->addWidget(m_files, 1);
-    auto *row = new QHBoxLayout;
-    m_openEditor = new QPushButton(tr("Tra&nslate"), w);
-    m_openEditor->setToolTip(tr("Opens the file in the editor, in the language chosen."));
-    Theme::primary(m_openEditor);
-    m_saveTranslated = new QPushButton(tr("Save &translated file…"), w);
-    m_returnPackage = new QPushButton(tr("Save &return package…"), w);
-    m_addFiles = new QPushButton(tr("A&dd files…"), w);
-    m_removeFile = new QPushButton(tr("Re&move file…"), w);
-    m_pretranslate = new QPushButton(tr("Fill from &memories…"), w);
-    m_pretranslate->setToolTip(tr("Fills empty segments with the best memory match, as the preparation settings say."));
-    for (QPushButton *b : {m_openEditor, m_saveTranslated, m_returnPackage, m_addFiles, m_removeFile, m_pretranslate})
-        row->addWidget(b);
-    row->addStretch();
-    l->addLayout(row);
-    connect(m_openEditor, &QPushButton::clicked, this, [this] {
-        if (!currentFile().isEmpty() && !currentLang().isEmpty())
-            emit openEditor(currentFile(), currentLang());
-    });
-    connect(m_files, &QTreeWidget::itemActivated, this, [this] {
-        if (!currentFile().isEmpty() && !currentLang().isEmpty())
-            emit openEditor(currentFile(), currentLang());
-    });
-    connect(m_saveTranslated, &QPushButton::clicked, this, &ProjectPage::saveTranslated);
-    connect(m_returnPackage, &QPushButton::clicked, this, &ProjectPage::saveReturnPackage);
-    connect(m_addFiles, &QPushButton::clicked, this, &ProjectPage::addFiles);
-    connect(m_removeFile, &QPushButton::clicked, this, &ProjectPage::removeFile);
-    connect(m_pretranslate, &QPushButton::clicked, this, &ProjectPage::pretranslate);
-    connect(m_files, &QTreeWidget::currentItemChanged, this, [this] {
-        m_saveTranslated->setEnabled(!currentFile().isEmpty());
-        m_openEditor->setEnabled(!currentFile().isEmpty() && !currentLang().isEmpty());
-        m_removeFile->setEnabled(manages() && !currentFile().isEmpty());
-    });
-    return w;
+    QWidget::resizeEvent(e);
+    m_toast->place();
 }
 
-QWidget *ProjectPage::settingsTab()
+QString ProjectPage::lastNotice() const
 {
-    auto *w = new QWidget(this);
-    auto *l = new QVBoxLayout(w);
-    m_editor = new SettingsEditor(w);
-    l->addWidget(m_editor, 1);
-    auto *row = new QHBoxLayout;
-    m_saveSettings = new QPushButton(tr("Sa&ve settings"), w);
-    Theme::primary(m_saveSettings);
-    m_saveTemplate = new QPushButton(tr("Save as te&mplate…"), w);
-    row->addWidget(m_saveSettings);
-    row->addWidget(m_saveTemplate);
-    row->addStretch();
-    l->addLayout(row);
-    connect(m_editor, &SettingsEditor::changed, this, [this] { m_settingsDirty = true; });
-    connect(m_saveSettings, &QPushButton::clicked, this, &ProjectPage::saveSettings);
-    connect(m_saveTemplate, &QPushButton::clicked, this, &ProjectPage::saveTemplate);
-    return w;
-}
-
-QWidget *ProjectPage::analysisTab()
-{
-    auto *w = new QWidget(this);
-    auto *l = new QVBoxLayout(w);
-    auto *row = new QHBoxLayout;
-    m_analysisLang = new QComboBox(w);
-    m_analysisLang->setAccessibleName(tr("Target language"));
-    auto *ll = new QLabel(tr("&Language:"), w);
-    ll->setBuddy(m_analysisLang);
-    auto *run = new QPushButton(tr("&Analyse"), w);
-    Theme::primary(run);
-    m_saveAnalysis = new QPushButton(tr("Save as &CSV…"), w);
-    m_saveAnalysis->setEnabled(false);
-    row->addWidget(ll);
-    row->addWidget(m_analysisLang, 1);
-    row->addWidget(run);
-    row->addWidget(m_saveAnalysis);
-    l->addLayout(row);
-    auto *intro = new QLabel(tr("Counts the words to translate by how well the project's memories match them."), w);
-    intro->setWordWrap(true);
-    Theme::secondary(intro);
-    l->addWidget(intro);
-    m_analysisTable = new QTableWidget(0, 5, w);
-    m_analysisTable->setAccessibleName(tr("Analysis"));
-    m_analysisTable->setHorizontalHeaderLabels({tr("Match"), tr("Segments"), tr("Words"), tr("Characters"), tr("Share of words")});
-    m_analysisTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    m_analysisTable->verticalHeader()->setVisible(false);
-    l->addWidget(m_analysisTable, 1);
-    connect(run, &QPushButton::clicked, this, &ProjectPage::runAnalysis);
-    connect(m_analysisLang, &QComboBox::currentIndexChanged, this, [this] {
-        // Shows the report of the language chosen, if analysed.
-        m_analysisTable->setRowCount(0);
-        const QString lang = m_analysisLang->currentData().toString();
-        for (const QJsonValue &v : std::as_const(m_analysis)) {
-            const QJsonObject rep = v.toObject();
-            if (rep.value(QLatin1String("targetLang")).toString() != lang)
-                continue;
-            const int total = rep.value(QLatin1String("total")).toObject().value(QLatin1String("words")).toInt();
-            QJsonArray rows = rep.value(QLatin1String("rows")).toArray();
-            rows.append(QJsonObject{{QStringLiteral("name"), tr("Total")}, {QStringLiteral("segments"), rep.value(QLatin1String("total")).toObject().value(QLatin1String("segments"))},
-                                    {QStringLiteral("words"), total}, {QStringLiteral("characters"), rep.value(QLatin1String("total")).toObject().value(QLatin1String("characters"))}});
-            for (const QJsonValue &rv : rows) {
-                const QJsonObject r = rv.toObject();
-                const int i = m_analysisTable->rowCount();
-                m_analysisTable->insertRow(i);
-                const int words = r.value(QLatin1String("words")).toInt();
-                m_analysisTable->setItem(i, 0, cell(r.value(QLatin1String("name")).toString()));
-                m_analysisTable->setItem(i, 1, cell(QLocale().toString(r.value(QLatin1String("segments")).toInt())));
-                m_analysisTable->setItem(i, 2, cell(QLocale().toString(words)));
-                m_analysisTable->setItem(i, 3, cell(QLocale().toString(r.value(QLatin1String("characters")).toInt())));
-                m_analysisTable->setItem(i, 4, cell(total ? QStringLiteral("%1 %").arg(QLocale().toString(100.0 * words / total, 'f', 1)) : QString()));
-                for (int c = 1; c < 5; ++c)
-                    m_analysisTable->item(i, c)->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            }
-        }
-        m_saveAnalysis->setEnabled(m_analysisTable->rowCount() > 0);
-    });
-    connect(m_saveAnalysis, &QPushButton::clicked, this, &ProjectPage::saveAnalysis);
-    return w;
-}
-
-QWidget *ProjectPage::peopleTab()
-{
-    auto *w = new QWidget(this);
-    auto *l = new QVBoxLayout(w);
-    auto *gl = new QLabel(tr("&Who may see and change the project:"), w);
-    m_grants = new QTableWidget(0, 2, w);
-    gl->setBuddy(m_grants);
-    m_grants->setAccessibleName(tr("Roles on the project"));
-    m_grants->setHorizontalHeaderLabels({tr("Person"), tr("Role")});
-    m_grants->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    m_grants->verticalHeader()->setVisible(false);
-    m_grants->setSelectionBehavior(QAbstractItemView::SelectRows);
-    l->addWidget(gl);
-    l->addWidget(m_grants, 1);
-    auto *grow = new QHBoxLayout;
-    auto *addGrant = new QPushButton(tr("&Give a role…"), w);
-    auto *removeGrant = new QPushButton(tr("Take the role &back"), w);
-    grow->addWidget(addGrant);
-    grow->addWidget(removeGrant);
-    grow->addStretch();
-    l->addLayout(grow);
-    auto *wl = new QLabel(tr("&Work given out:"), w);
-    m_work = new QTableWidget(0, 6, w);
-    wl->setBuddy(m_work);
-    m_work->setAccessibleName(tr("Work given out"));
-    m_work->setHorizontalHeaderLabels({tr("Person"), tr("Task"), tr("File"), tr("Language"), tr("Segments"), tr("Due")});
-    m_work->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-    m_work->verticalHeader()->setVisible(false);
-    m_work->setSelectionBehavior(QAbstractItemView::SelectRows);
-    l->addWidget(wl);
-    l->addWidget(m_work, 2);
-    auto *wrow = new QHBoxLayout;
-    auto *assign = new QPushButton(tr("Give out &work…"), w);
-    auto *done = new QPushButton(tr("Mark d&one or not done"), w);
-    auto *unassign = new QPushButton(tr("Ta&ke the work back"), w);
-    wrow->addWidget(assign);
-    wrow->addWidget(done);
-    wrow->addWidget(unassign);
-    wrow->addStretch();
-    l->addLayout(wrow);
-    connect(addGrant, &QPushButton::clicked, this, &ProjectPage::addGrant);
-    connect(removeGrant, &QPushButton::clicked, this, &ProjectPage::removeGrant);
-    connect(assign, &QPushButton::clicked, this, &ProjectPage::addAssignment);
-    connect(done, &QPushButton::clicked, this, &ProjectPage::toggleDone);
-    connect(unassign, &QPushButton::clicked, this, &ProjectPage::removeAssignment);
-    // Managers only give roles and work; the person reports their own done.
-    for (QPushButton *b : {addGrant, removeGrant, assign, unassign})
-        b->setProperty("managersOnly", true);
-    return w;
+    return m_toast->last();
 }
 
 void ProjectPage::say(const QString &message)
 {
-    m_message->setText(message);
+    if (!message.isEmpty())
+        m_toast->say(message);
 }
 
 bool ProjectPage::manages() const
 {
     const QString role = m_access.value(QLatin1String("role")).toString();
     return Roles::allows(role, QStringLiteral("manage")) || (m_conn && m_conn->isAdmin());
+}
+
+QJsonObject ProjectPage::settings() const
+{
+    return m_project.value(QLatin1String("settings")).toObject();
 }
 
 void ProjectPage::reload()
@@ -326,337 +262,426 @@ void ProjectPage::reload()
         m_access = m_project.value(QLatin1String("access")).toObject();
         showProject();
         onResult(m_conn->api()->get(base + QStringLiteral("/progress")), this, [this](const ApiResult &p) {
-            if (p.ok())
-                showProgress(p.array());
+            if (!p.ok())
+                return;
+            m_progress = p.array();
+            fillFiles();
         });
-        if (m_peopleTab)
-            reloadPeople();
+        onResult(m_conn->api()->get(QStringLiteral("/api/templates")), this, [this](const ApiResult &t) {
+            m_templates = t.ok() ? t.array() : QJsonArray();
+            fillTemplate();
+        });
+        if (m_conn->isLocal())
+            return;
+        onResult(m_conn->api()->get(base + QStringLiteral("/assignments")), this, [this](const ApiResult &a) {
+            if (!a.ok())
+                return;
+            m_assignments = a.array();
+            fillWork();
+        });
+        onResult(m_conn->api()->get(base + QStringLiteral("/presence")), this, [this](const ApiResult &a) {
+            m_presence = a.ok() ? a.array() : QJsonArray();
+            fillNow();
+        });
+        if (manages()) {
+            onResult(m_conn->api()->get(QStringLiteral("/api/people")), this, [this](const ApiResult &a) {
+                if (!a.ok() || a.array() == m_people)
+                    return;
+                m_people = a.array();
+                fillWork();
+            });
+        }
     });
 }
 
 void ProjectPage::showProject()
 {
-    const QJsonObject s = m_project.value(QLatin1String("settings")).toObject();
-    m_title->setText(s.value(QLatin1String("name")).toString());
-    QStringList meta;
+    const QJsonObject s = settings();
+    const QString name = s.value(QLatin1String("name")).toString();
+    m_title->setText(tr("%1: settings").arg(name));
+    m_title->setAccessibleName(m_title->text());
+    QString where = m_conn->isLocal() ? tr("On this computer") : tr("On the team server %1").arg(m_conn->displayName());
     if (!s.value(QLatin1String("client")).toString().isEmpty())
-        meta << s.value(QLatin1String("client")).toString();
-    QStringList targets;
-    for (const QJsonValue &t : s.value(QLatin1String("targetLangs")).toArray())
-        targets << Languages::name(t.toString());
-    meta << tr("from %1 into %2").arg(Languages::name(s.value(QLatin1String("sourceLang")).toString()), QLocale().createSeparatedList(targets));
-    const QDateTime due = QDateTime::fromString(s.value(QLatin1String("due")).toString(), Qt::ISODate);
-    if (due.isValid())
-        meta << tr("due %1").arg(Languages::when(due));
-    meta << (m_conn->isLocal() ? tr("kept on this computer") : tr("kept on %1").arg(m_conn->displayName()));
-    QString line = meta.join(QStringLiteral(", "));
-    line[0] = line[0].toUpper();
-    m_meta->setText(line + QLatin1Char('.'));
+        where += tr(", for %1").arg(s.value(QLatin1String("client")).toString());
+    where += QLatin1Char('.');
+    const QDateTime made = QDateTime::fromString(m_project.value(QLatin1String("createdAt")).toString(), Qt::ISODate);
+    const QString by = m_project.value(QLatin1String("createdBy")).toString();
+    if (made.isValid())
+        where += QLatin1Char(' ') + (by.isEmpty() ? tr("Made on %1.").arg(QLocale().toString(made.toLocalTime().date(), QLocale::ShortFormat))
+                                                 : tr("Made by %1 on %2.").arg(by, QLocale().toString(made.toLocalTime().date(), QLocale::ShortFormat)));
+    m_where->setText(where);
     const bool manage = manages();
-    m_delete->setVisible(manage);
-    m_addFiles->setEnabled(manage);
-    m_pretranslate->setEnabled(manage);
-    m_saveSettings->setEnabled(manage);
-    m_editor->setReadOnly(!manage);
-    bool package = false;
-    for (const QJsonValue &v : s.value(QLatin1String("files")).toArray())
-        package = package || v.toObject().value(QLatin1String("role")).toString() == QLatin1String("package");
-    m_returnPackage->setVisible(package);
-    if (m_peopleTab) {
-        for (QPushButton *b : m_peopleTab->findChildren<QPushButton *>()) {
-            if (b->property("managersOnly").toBool())
-                b->setEnabled(manage);
-        }
-    }
-    // Languages for the analysis.
-    const QString keep = m_analysisLang->currentData().toString();
-    {
-        const QSignalBlocker block(m_analysisLang);
-        m_analysisLang->clear();
-        m_analysisLang->addItem(tr("All languages"), QString());
-        for (const QJsonValue &t : s.value(QLatin1String("targetLangs")).toArray())
-            m_analysisLang->addItem(Languages::label(t.toString()), t.toString());
-        m_analysisLang->setCurrentIndex(qMax(0, m_analysisLang->findData(keep)));
+    m_form->setReadOnly(!manage);
+    m_bar->setVisible(manage);
+    m_templatePanel->setVisible(manage);
+    m_deletePanel->setVisible(manage);
+    m_deleteHelp->setText(m_conn->isLocal() ? tr("The project, its files and translations are deleted. Its memories and termbase stay; delete them on their own if nothing else uses them.")
+                                            : tr("The project, its files and translations and the work given out in it are removed from the server for everyone. Its memories and termbase stay; delete them on their own if nothing else uses them."));
+    if (auto *del = findChild<Web::ConfirmButton *>(QStringLiteral("deleteProject")))
+        del->setQuestion(m_conn->isLocal() ? tr("Delete “%1” and its translations?").arg(name) : tr("Delete “%1” on %2 for everyone?").arg(name, m_conn->displayName()));
+    if (m_accessPanel) {
+        m_accessPanel->setVisible(manage);
+        if (manage && m_access_->count() == 0)
+            m_access_->addWidget(new AccessPanel(m_conn, QStringLiteral("project"), QString::number(m_id), tr("People with access"), m_accessPanel));
     }
     // Settings being edited are not replaced under the person's hands.
-    if (!m_settingsDirty) {
-        m_editor->load(m_conn, [this, s](const QString &error) {
+    if (!m_dirty) {
+        m_form->load(m_conn, [this](const QString &error) {
             if (!error.isEmpty()) {
                 say(error);
                 return;
             }
-            m_editor->setSettings(s, false);
-            m_settingsDirty = false;
-        });
-    }
-}
-
-void ProjectPage::showProgress(const QJsonArray &progress)
-{
-    const QString keepFile = currentFile(), keepLang = currentLang();
-    m_files->clear();
-    const QJsonObject s = m_project.value(QLatin1String("settings")).toObject();
-    for (const QJsonValue &fv : s.value(QLatin1String("files")).toArray()) {
-        const QJsonObject f = fv.toObject();
-        const QString name = f.value(QLatin1String("name")).toString();
-        const QString role = f.value(QLatin1String("role")).toString();
-        auto *item = new QTreeWidgetItem(m_files, {name});
-        item->setData(0, Qt::UserRole, name);
-        if (role == QLatin1String("reference"))
-            item->setText(1, tr("reference"));
-        else if (role == QLatin1String("package"))
-            item->setText(1, name.endsWith(QLatin1String(".mqout"), Qt::CaseInsensitive) ? tr("memoQ handoff package") : tr("Trados package"));
-        for (const QJsonValue &pv : progress) {
-            const QJsonObject p = pv.toObject();
-            if (p.value(QLatin1String("file")).toString() != name)
-                continue;
-            const int segs = p.value(QLatin1String("segments")).toInt();
-            const int conf = p.value(QLatin1String("confirmed")).toInt();
-            const QString lang = p.value(QLatin1String("lang")).toString();
-            auto *child = new QTreeWidgetItem(item, {QString(), Languages::label(lang),
-                                                     segs ? QStringLiteral("%1 %").arg(qRound(100.0 * conf / segs)) : QStringLiteral("100 %"),
-                                                     QLocale().toString(p.value(QLatin1String("words")).toInt()),
-                                                     tr("%1 of %2").arg(conf).arg(segs)});
-            child->setData(0, Qt::UserRole, name);
-            child->setData(1, Qt::UserRole, lang);
-            child->setData(2, ProgressDelegate::ShareRole, segs ? double(conf) / segs : 1.0);
-            child->setData(2, Qt::AccessibleTextRole, tr("%1 of %2 segments confirmed").arg(conf).arg(segs));
-            if (name == keepFile && lang == keepLang)
-                m_files->setCurrentItem(child);
-        }
-        item->setExpanded(true);
-        if (name == keepFile && keepLang.isEmpty() && !m_files->currentItem())
-            m_files->setCurrentItem(item);
-    }
-    m_saveTranslated->setEnabled(!currentFile().isEmpty());
-    m_openEditor->setEnabled(!currentFile().isEmpty() && !currentLang().isEmpty());
-    m_removeFile->setEnabled(manages() && !currentFile().isEmpty());
-}
-
-QString ProjectPage::currentFile() const
-{
-    QTreeWidgetItem *i = m_files->currentItem();
-    return i ? i->data(0, Qt::UserRole).toString() : QString();
-}
-
-QString ProjectPage::currentLang() const
-{
-    QTreeWidgetItem *i = m_files->currentItem();
-    return i ? i->data(1, Qt::UserRole).toString() : QString();
-}
-
-void ProjectPage::download(const QString &path, const QUrlQuery &query, const QString &what)
-{
-    say(tr("Writing %1…").arg(what));
-    onResult(m_conn->api()->get(path, query), this, [this, what](const ApiResult &r) {
-        if (!r.ok()) {
-            say(r.error.message);
-            return;
-        }
-        const QString dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-        const QString to = QFileDialog::getSaveFileName(this, tr("Save %1").arg(what), dir + QLatin1Char('/') + r.fileName());
-        if (to.isEmpty()) {
-            say(QString());
-            return;
-        }
-        QSaveFile f(to);
-        if (!f.open(QIODevice::WriteOnly) || f.write(r.body) != r.body.size() || !f.commit()) {
-            say(tr("%1 could not be saved: %2").arg(QDir::toNativeSeparators(to), f.errorString()));
-            return;
-        }
-        say(tr("Saved %1.").arg(QDir::toNativeSeparators(to)));
-    });
-}
-
-void ProjectPage::saveTranslated()
-{
-    const QString file = currentFile();
-    if (file.isEmpty())
-        return;
-    QString lang = currentLang();
-    const QJsonObject s = m_project.value(QLatin1String("settings")).toObject();
-    if (lang.isEmpty()) {
-        // A monolingual file chosen without a language: ask which.
-        QStringList targets;
-        for (const QJsonValue &t : s.value(QLatin1String("targetLangs")).toArray())
-            targets << t.toString();
-        for (const QJsonValue &fv : s.value(QLatin1String("files")).toArray()) {
-            const QJsonObject f = fv.toObject();
-            if (f.value(QLatin1String("name")).toString() == file && !f.value(QLatin1String("targetLang")).toString().isEmpty())
-                targets = {f.value(QLatin1String("targetLang")).toString()};
-        }
-        if (targets.size() > 1) {
-            bool ok = false;
-            lang = QInputDialog::getItem(this, tr("Save translated file"), tr("Language:"), targets, 0, false, &ok);
-            if (!ok)
+            if (m_dirty)
                 return;
-        } else if (!targets.isEmpty()) {
-            lang = targets.first();
-        }
-    }
-    download(QStringLiteral("/api/projects/%1/files/translated").arg(m_id), QUrlQuery{{QStringLiteral("name"), file}, {QStringLiteral("lang"), lang}},
-             tr("the translated file"));
-}
-
-void ProjectPage::saveReturnPackage()
-{
-    download(QStringLiteral("/api/projects/%1/return-package").arg(m_id), {}, tr("the return package"));
-}
-
-void ProjectPage::addFiles()
-{
-    const QStringList paths = QFileDialog::getOpenFileNames(this, tr("Files to add"));
-    for (const QString &path : paths) {
-        QFile f(path);
-        if (!f.open(QIODevice::ReadOnly)) {
-            say(tr("%1 can't be read: %2").arg(QDir::toNativeSeparators(path), f.errorString()));
-            return;
-        }
-        const QString name = QFileInfo(path).fileName();
-        const QByteArray data = f.readAll();
-        // Inspected first: what can't be translated goes in for reference.
-        onResult(m_conn->api()->upload("POST", QStringLiteral("/api/files/inspect"), data, QStringLiteral("application/octet-stream"), QUrlQuery{{QStringLiteral("name"), name}}), this,
-                 [this, name, data](const ApiResult &in) {
-                     if (!in.ok()) {
-                         say(in.error.message);
-                         return;
-                     }
-                     QJsonObject body{{QStringLiteral("name"), name}, {QStringLiteral("data"), QString::fromLatin1(data.toBase64())}};
-                     if (in.object().value(QLatin1String("translatable")).toBool()) {
-                         body.insert(QStringLiteral("role"), QStringLiteral("translatable"));
-                     } else {
-                         body.insert(QStringLiteral("role"), QStringLiteral("reference"));
-                         body.insert(QStringLiteral("format"), QFileInfo(name).suffix().toLower());
-                     }
-                     say(tr("Adding %1…").arg(name));
-                     onResult(m_conn->api()->post(QStringLiteral("/api/projects/%1/files").arg(m_id), body,
-                                                  QUrlQuery{{QStringLiteral("version"), QString::number(m_project.value(QLatin1String("version")).toInt())}}),
-                              this, [this, name](const ApiResult &r) {
-                                  say(r.ok() ? tr("Added %1.").arg(name) : r.error.message);
-                                  reload();
-                              });
-                 });
-    }
-}
-
-void ProjectPage::removeFile()
-{
-    const QString file = currentFile();
-    if (file.isEmpty())
-        return;
-    if (QMessageBox::question(this, tr("Remove the file?"), tr("%1 and its translations are removed from the project.").arg(file),
-                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
-        return;
-    onResult(m_conn->api()->del(QStringLiteral("/api/projects/%1/files").arg(m_id), QUrlQuery{{QStringLiteral("name"), file}},
-                                m_project.value(QLatin1String("version")).toInt()),
-             this, [this, file](const ApiResult &r) {
-                 say(r.ok() ? tr("Removed %1.").arg(file) : r.error.message);
-                 reload();
-             });
-}
-
-void ProjectPage::pretranslate()
-{
-    say(tr("Filling segments from the memories…"));
-    onResult(m_conn->api()->post(QStringLiteral("/api/projects/%1/pretranslate").arg(m_id), QJsonObject{}), this, [this](const ApiResult &r) {
-        if (!r.ok()) {
-            say(r.error.message);
-            return;
-        }
-        int filled = 0;
-        for (const QJsonValue &v : r.array())
-            filled += v.toObject().value(QLatin1String("filled")).toInt();
-        say(filled ? tr("%n segment(s) filled.", nullptr, filled) : tr("No segment had a good enough match."));
-        reload();
-    });
-}
-
-void ProjectPage::saveSettings()
-{
-    const QJsonObject s = m_editor->settings();
-    say(tr("Saving the settings…"));
-    onResult(m_conn->api()->put(QStringLiteral("/api/projects/%1/settings").arg(m_id), s, m_project.value(QLatin1String("version")).toInt()), this,
-             [this](const ApiResult &r) {
-                 if (!r.ok()) {
-                     say(r.error.code == QLatin1String("conflict") ? tr("Someone changed the project meanwhile. The settings were read again; make your changes once more.")
-                                                                   : r.error.message);
-                     m_editor->showProblems(r.error.problems);
-                     if (r.error.code == QLatin1String("conflict")) {
-                         m_settingsDirty = false;
-                         reload();
-                     }
-                     return;
-                 }
-                 m_settingsDirty = false;
-                 say(tr("Settings saved."));
-                 m_project = r.object();
-                 showProject();
-             });
-}
-
-void ProjectPage::saveTemplate()
-{
-    bool ok = false;
-    const QString name = QInputDialog::getText(this, tr("Save as template"), tr("Template name:"), QLineEdit::Normal,
-                                               m_project.value(QLatin1String("settings")).toObject().value(QLatin1String("client")).toString(), &ok)
-                             .trimmed();
-    if (!ok || name.isEmpty())
-        return;
-    QJsonObject s = m_editor->settings();
-    QJsonObject t{{QStringLiteral("name"), name}};
-    for (const char *key : {"description", "client", "sourceLang", "targetLangs", "memories", "projectMemory", "terminology", "analysis", "qa", "prepare"})
-        t.insert(QLatin1String(key), s.value(QLatin1String(key)));
-    QJsonObject term = t.value(QLatin1String("terminology")).toObject();
-    term.remove(QStringLiteral("termbase")); // a new project makes its own
-    t.insert(QStringLiteral("terminology"), term);
-    // The project's own memories belong to it, not to the template.
-    QJsonObject mems = t.value(QLatin1String("memories")).toObject();
-    const QString pname = s.value(QLatin1String("name")).toString();
-    for (const QString &lang : mems.keys()) {
-        QJsonArray kept;
-        for (const QJsonValue &m : mems.value(lang).toArray()) {
-            if (m.toObject().value(QLatin1String("memory")).toString() != QStringLiteral("%1 (%2)").arg(pname, lang))
-                kept.append(m);
-        }
-        mems.insert(lang, kept);
-    }
-    t.insert(QStringLiteral("memories"), mems);
-    // Saving over a template of the same name needs its version.
-    onResult(m_conn->api()->get(QStringLiteral("/api/templates")), this, [this, t, name](const ApiResult &list) {
-        int version = 0;
-        for (const QJsonValue &v : list.array()) {
-            if (v.toObject().value(QLatin1String("name")).toString().compare(name, Qt::CaseInsensitive) == 0)
-                version = v.toObject().value(QLatin1String("version")).toInt();
-        }
-        if (version && QMessageBox::question(this, tr("Replace the template?"), tr("A template called %1 exists. Replace it?").arg(name)) != QMessageBox::Yes)
-            return;
-        onResult(m_conn->api()->put(QStringLiteral("/api/templates"), t, version), this, [this, name](const ApiResult &r) {
-            say(r.ok() ? tr("Saved the template %1.").arg(name) : r.error.message);
+            m_loaded = false;
+            QStringList fixed;
+            for (const QJsonValue &f : settings().value(QLatin1String("files")).toArray()) {
+                const QString t = f.toObject().value(QLatin1String("targetLang")).toString();
+                if (!t.isEmpty() && !fixed.contains(t))
+                    fixed << t;
+            }
+            m_form->setFixedTargets(fixed);
+            m_form->setSuggestedTargets(strings(settings().value(QLatin1String("targetLangs"))));
+            m_form->setSettings(settings(), false);
+            m_form->setReadOnly(!manages());
+            m_loaded = true;
+            fillProjectMemories();
+            fillPretranslate();
+            fillTemplate();
         });
+    }
+    fillFiles();
+    fillLanguages();
+    fillProjectMemories();
+    fillAnalysis();
+    fillPretranslate();
+    fillWork();
+    fillNow();
+    fillTemplate();
+    refreshBar();
+}
+
+void ProjectPage::refreshBar()
+{
+    m_discard->setEnabled(m_dirty && !m_saving);
+    m_save->setEnabled(m_dirty && !m_saving);
+    m_save->setText(m_saving ? tr("Saving…") : tr("Save changes"));
+    m_barError->setText(m_saveError);
+    m_barError->setVisible(!m_saveError.isEmpty());
+}
+
+// Files: what each is for and how far it is, the original and the
+// translation to save, and files to add.
+void ProjectPage::fillFiles()
+{
+    clear(m_files);
+    QWidget *p = m_files->parentWidget();
+    const QJsonObject s = settings();
+    const QJsonArray files = s.value(QLatin1String("files")).toArray();
+    const QStringList targets = strings(s.value(QLatin1String("targetLangs")));
+    const bool manage = manages();
+    bool package = false;
+    if (files.isEmpty()) {
+        m_files->addWidget(Web::text(tr("The project has no files yet."), "muted", p));
+    } else {
+        auto *table = new Web::Table({tr("File"), tr("Words"), tr("Done"), QString()}, p);
+        table->setAccessibleName(tr("Files"));
+        table->setNumeric({1});
+        table->setStretch(0);
+        for (const QJsonValue &fv : files) {
+            const QJsonObject f = fv.toObject();
+            const QString name = f.value(QLatin1String("name")).toString();
+            const QString role = f.value(QLatin1String("role")).toString();
+            const QString only = f.value(QLatin1String("targetLang")).toString();
+            package = package || role == QLatin1String("package");
+            QStringList names;
+            for (const QString &t : targets)
+                names << Languages::name(t);
+            const QString sub = role == QLatin1String("reference") ? tr("Reference file")
+                : role == QLatin1String("package")                 ? tr("The %1 the project was made from").arg(packageKind(name))
+                : !only.isEmpty()                                  ? tr("Translated into %1 only").arg(Languages::name(only))
+                : targets.size() > 1                               ? tr("Translated into every target language")
+                                                                   : tr("Translated into %1").arg(names.join(QStringLiteral(", ")));
+            auto *cell = Web::cell(name, sub, table);
+            // How far it is in each language, each a way into the editor.
+            int words = 0;
+            auto *done = new QWidget(table);
+            auto *dv = new QVBoxLayout(done);
+            dv->setContentsMargins(0, 0, 0, 0);
+            dv->setSpacing(4);
+            QStringList langs;
+            for (const QJsonValue &pv : std::as_const(m_progress)) {
+                const QJsonObject pr = pv.toObject();
+                if (pr.value(QLatin1String("file")).toString() != name)
+                    continue;
+                const QString lang = pr.value(QLatin1String("lang")).toString();
+                langs << lang;
+                const int segs = pr.value(QLatin1String("segments")).toInt();
+                const int conf = pr.value(QLatin1String("confirmed")).toInt();
+                words = qMax(words, pr.value(QLatin1String("words")).toInt());
+                const int pct = segs ? qRound(100.0 * conf / segs) : 100;
+                auto *open = new QPushButton(QStringLiteral("%1%").arg(pct), done);
+                open->setProperty("stepLink", true);
+                open->setFlat(true);
+                open->setCursor(Qt::PointingHandCursor);
+                open->setAccessibleName(tr("Translate %1 into %2: %3 of %4 segments confirmed").arg(name, Languages::name(lang)).arg(conf).arg(segs));
+                open->setToolTip(tr("%1 of %2 segments confirmed. Opens the file in the editor.").arg(conf).arg(segs));
+                open->setObjectName(QStringLiteral("progress"));
+                open->setProperty("file", name);
+                open->setProperty("lang", lang);
+                open->setProperty("confirmed", conf);
+                open->setProperty("segments", segs);
+                connect(open, &QPushButton::clicked, this, [this, name, lang] { emit openEditor(name, lang); });
+                dv->addWidget(Web::row({Web::langChip(lang, done), open}, done, 6));
+            }
+            if (langs.isEmpty())
+                dv->addWidget(Web::text(QStringLiteral("–"), "muted", done));
+            // What can be saved or taken away.
+            QList<QWidget *> acts;
+            auto *original = Web::button(tr("Original"), Web::Quiet | Web::Small, table, QStringLiteral("download"));
+            original->setAccessibleName(tr("Save the original of %1").arg(name));
+            connect(original, &QPushButton::clicked, this, [this, name] {
+                download(QStringLiteral("/api/projects/%1/files/content").arg(m_id), QUrlQuery{{QStringLiteral("name"), name}}, tr("the original of %1").arg(name));
+            });
+            acts << original;
+            if (role == QLatin1String("translatable")) {
+                auto *translated = Web::button(tr("Translation"), Web::Quiet | Web::Small, table, QStringLiteral("download"));
+                translated->setAccessibleName(tr("Save the translation of %1").arg(name));
+                connect(translated, &QPushButton::clicked, this, [this, name, langs] {
+                    QString lang = langs.value(0);
+                    if (langs.size() > 1) {
+                        QStringList labels;
+                        for (const QString &l : langs)
+                            labels << Languages::label(l);
+                        bool ok = false;
+                        const QString pick = QInputDialog::getItem(this, tr("Save the translation"), tr("Language:"), labels, 0, false, &ok);
+                        if (!ok)
+                            return;
+                        lang = langs.value(labels.indexOf(pick));
+                    }
+                    download(QStringLiteral("/api/projects/%1/files/translated").arg(m_id), QUrlQuery{{QStringLiteral("name"), name}, {QStringLiteral("lang"), lang}},
+                             tr("the translation of %1").arg(name));
+                });
+                acts << translated;
+            }
+            if (manage) {
+                auto *remove = new Web::ConfirmButton(tr("Remove"),
+                                                      m_conn->isLocal() ? tr("Remove %1 with its translations?").arg(name)
+                                                                        : tr("Remove %1 with its translations and the work given out in it, for everyone?").arg(name),
+                                                      tr("Remove"), table, true, QStringLiteral("trash"));
+                remove->button()->setAccessibleName(tr("Remove %1").arg(name));
+                connect(remove, &Web::ConfirmButton::confirmed, this, [this, name] { removeFile(name); });
+                acts << remove;
+            }
+            table->addRow({cell, Web::cellText(words ? QLocale().toString(words) : QStringLiteral("–"), table, true), done, Web::cellActions(acts, table)});
+        }
+        table->fit();
+        m_files->addWidget(table);
+    }
+    if (package) {
+        auto *back = Web::button(tr("Save the return package"), Web::Small, p, QStringLiteral("download"));
+        m_files->addWidget(back, 0, Qt::AlignLeft);
+        connect(back, &QPushButton::clicked, this, [this] { download(QStringLiteral("/api/projects/%1/return-package").arg(m_id), {}, tr("the return package")); });
+    }
+    if (!manage)
+        return;
+    m_files->addWidget(Web::text(tr("Add files"), "fieldLabel", p));
+    auto *zone = new Web::DropZone(p);
+    zone->setAccessibleName(tr("Add files"));
+    auto *zh = new QHBoxLayout(zone);
+    zh->setContentsMargins(16, 12, 16, 12);
+    zh->setSpacing(12);
+    auto *icon = new QLabel(zone);
+    icon->setPixmap(Icons::get(QStringLiteral("upload"), Theme::color("text2")).pixmap(18, 18));
+    zh->addWidget(icon, 0, Qt::AlignVCenter);
+    zh->addWidget(Web::text(m_busy.isEmpty()
+                                ? tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf) keep their translations and states.")
+                                : m_busy,
+                            "secondary", zone),
+                  1);
+    auto *addFilesButton = Web::button(tr("Add files"), Web::Small, zone, QStringLiteral("file-text"));
+    auto *addFolder = Web::button(tr("Add a folder"), Web::Small, zone, QStringLiteral("folder-open"));
+    addFilesButton->setEnabled(m_busy.isEmpty());
+    addFolder->setEnabled(m_busy.isEmpty());
+    zh->addWidget(addFilesButton, 0, Qt::AlignVCenter);
+    zh->addWidget(addFolder, 0, Qt::AlignVCenter);
+    connect(zone, &Web::DropZone::dropped, this, &ProjectPage::addFiles);
+    connect(addFilesButton, &QPushButton::clicked, this, [this] { addFiles(QFileDialog::getOpenFileNames(this, tr("Files to add"))); });
+    connect(addFolder, &QPushButton::clicked, this, [this] {
+        const QString dir = QFileDialog::getExistingDirectory(this, tr("A folder of files"));
+        if (!dir.isEmpty())
+            addFiles({dir});
     });
+    m_files->addWidget(zone);
+    m_files->addWidget(Web::text(tr("Reference files (a style guide, an earlier version) travel with the project for the translators to read; they are not translated."), "help", p));
+}
+
+void ProjectPage::fillLanguages()
+{
+    clear(m_languages);
+    QWidget *p = m_languages->parentWidget();
+    const QString src = settings().value(QLatin1String("sourceLang")).toString();
+    m_languages->addWidget(legend(tr("Source language"), p));
+    m_languages->addWidget(Web::row({new QLabel(Languages::name(src), p), Web::langChip(src, p)}, p));
+    m_languages->addWidget(Web::text(tr("The source language stays: every file was segmented by its rules."), "help", p));
+}
+
+// The project's own memories, and adding their units to a main memory
+// once the project is done.
+void ProjectPage::fillProjectMemories()
+{
+    clear(m_projectMemories);
+    QWidget *p = m_projectMemories->parentWidget();
+    const QJsonObject s = settings();
+    const QString name = s.value(QLatin1String("name")).toString();
+    const QJsonArray catalog = m_form->catalog().value(QLatin1String("memories")).toArray();
+    QList<QJsonObject> own;
+    for (const QString &t : strings(s.value(QLatin1String("targetLangs")))) {
+        for (const QJsonValue &m : s.value(QLatin1String("memories")).toObject().value(t).toArray()) {
+            if (m.toObject().value(QLatin1String("memory")).toString() != QStringLiteral("%1 (%2)").arg(name, t))
+                continue;
+            for (const QJsonValue &c : catalog) {
+                if (c.toObject().value(QLatin1String("name")).toString() == m.toObject().value(QLatin1String("memory")).toString())
+                    own << c.toObject();
+            }
+        }
+    }
+    if (own.isEmpty() || !manages())
+        return;
+    m_projectMemories->addWidget(Web::text(tr("Project memories"), "fieldLabel", p));
+    for (const QJsonObject &m : std::as_const(own)) {
+        const QString mname = m.value(QLatin1String("name")).toString();
+        const int units = m.value(QLatin1String("units")).toInt();
+        auto *title = new QLabel(QStringLiteral("<b>%1</b> <span style=\"color:%2\">%3</span>")
+                                     .arg(mname.toHtmlEscaped(), Theme::color("text3").name(), plural(units, tr("1 unit"), tr("%1 units")).toHtmlEscaped()),
+                                 p);
+        auto *pick = new QComboBox(p);
+        pick->setAccessibleName(tr("Main memory for the units of %1").arg(mname));
+        for (const QJsonValue &cv : catalog) {
+            const QJsonObject c = cv.toObject();
+            const QString cname = c.value(QLatin1String("name")).toString();
+            bool projects = false;
+            for (const QJsonObject &o : std::as_const(own))
+                projects = projects || o.value(QLatin1String("name")).toString() == cname;
+            if (!projects && Languages::samePrimary(c.value(QLatin1String("sourceLang")).toString(), m.value(QLatin1String("sourceLang")).toString()) &&
+                Languages::samePrimary(c.value(QLatin1String("targetLang")).toString(), m.value(QLatin1String("targetLang")).toString()))
+                pick->addItem(cname, cname);
+        }
+        if (pick->count() == 0) {
+            pick->deleteLater();
+            pick->hide();
+            m_projectMemories->addWidget(
+                Web::row({title, Web::text(tr("No main memory for %1 to add them to.").arg(Languages::name(m.value(QLatin1String("targetLang")).toString())), "muted", p)}, p));
+            continue;
+        }
+        auto *add = Web::button(tr("Add its units"), Web::Small, p);
+        add->setAccessibleName(tr("Add the units of %1 to the main memory").arg(mname));
+        add->setEnabled(units > 0);
+        m_projectMemories->addWidget(Web::row({title, pick, add}, p));
+        connect(add, &QPushButton::clicked, this, [this, mname, pick, add] {
+            const QString main = pick->currentData().toString();
+            add->setEnabled(false);
+            onResult(m_conn->api()->get(QStringLiteral("/api/memories/%1/export").arg(ApiClient::seg(mname))), this, [this, mname, main](const ApiResult &tmx) {
+                if (!tmx.ok()) {
+                    say(tmx.error.message);
+                    fillProjectMemories();
+                    return;
+                }
+                onResult(m_conn->api()->upload("POST", QStringLiteral("/api/memories/%1/import").arg(ApiClient::seg(main)), tmx.body, QStringLiteral("application/xml")), this,
+                         [this, mname, main](const ApiResult &r) {
+                             say(r.ok() ? tr("Added %1 of %2 to %3").arg(plural(r.object().value(QLatin1String("stored")).toInt(), tr("1 unit"), tr("%1 units")), mname, main)
+                                        : r.error.message);
+                             fillProjectMemories();
+                         });
+            });
+        });
+    }
+    m_projectMemories->addWidget(Web::text(tr("Units already in the main memory with the same translation are updated, not added twice."), "help", p));
+}
+
+// The match analysis of the files as they are, against the saved settings.
+void ProjectPage::fillAnalysis()
+{
+    clear(m_analysisBody);
+    QWidget *p = m_analysisBody->parentWidget();
+    m_analysisBody->addWidget(legend(tr("Match analysis"), p));
+    auto *run = Web::button(m_analysing ? tr("Analysing…") : m_analysis.isEmpty() ? tr("Analyse the files") : tr("Analyse again"), Web::Small, p, QStringLiteral("bar-chart"));
+    run->setEnabled(!m_analysing);
+    connect(run, &QPushButton::clicked, this, &ProjectPage::runAnalysis);
+    QList<QWidget *> row{run};
+    if (!m_analysis.isEmpty()) {
+        auto *csv = Web::button(tr("Save as CSV"), Web::Quiet | Web::Small, p, QStringLiteral("download"));
+        connect(csv, &QPushButton::clicked, this, &ProjectPage::saveAnalysis);
+        row << csv;
+    }
+    m_analysisBody->addWidget(Web::row(row, p));
+    if (m_analysis.isEmpty()) {
+        m_analysisBody->addWidget(Web::text(tr("Counts the words to translate by how well the project's memories match them, with the saved settings."), "help", p));
+        return;
+    }
+    QStringList langs;
+    for (const QJsonValue &v : std::as_const(m_analysis))
+        langs << v.toObject().value(QLatin1String("targetLang")).toString();
+    if (!langs.contains(m_analysisLang))
+        m_analysisLang = langs.value(0);
+    if (langs.size() > 1) {
+        auto *tabs = new Web::Tabs(tr("Target language"), p, true);
+        for (const QString &l : std::as_const(langs))
+            tabs->add(Languages::name(l));
+        tabs->setCurrent(int(langs.indexOf(m_analysisLang)));
+        connect(tabs, &Web::Tabs::changed, this, [this, langs](int i) {
+            m_analysisLang = langs.value(i);
+            fillAnalysis();
+        });
+        m_analysisBody->addWidget(tabs);
+    }
+    for (const QJsonValue &v : std::as_const(m_analysis)) {
+        const QJsonObject rep = v.toObject();
+        if (rep.value(QLatin1String("targetLang")).toString() != m_analysisLang)
+            continue;
+        QStringList mems;
+        for (const QJsonValue &m : settings().value(QLatin1String("memories")).toObject().value(m_analysisLang).toArray()) {
+            if (m.toObject().value(QLatin1String("lookup")).toBool())
+                mems << m.toObject().value(QLatin1String("memory")).toString();
+        }
+        m_analysisBody->addWidget(Web::text(mems.isEmpty() ? tr("No memory for this language, so only repetitions count.")
+                                                           : tr("Against %1, counted in this order: context matches first, then repetitions within a file and across files, then the best match.")
+                                                                 .arg(mems.join(tr(" and "))),
+                                            "help", p));
+        QTableWidget *table = Bands::analysisTable(rep, p);
+        table->setAccessibleName(tr("Match analysis, %1").arg(Languages::name(m_analysisLang)));
+        table->setObjectName(QStringLiteral("analysis"));
+        // As tall as its rows: the page scrolls, not the table.
+        table->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        table->resizeRowsToContents();
+        int height = table->horizontalHeader()->height() + 2 * table->frameWidth();
+        for (int r = 0; r < table->rowCount(); ++r)
+            height += table->rowHeight(r);
+        table->setFixedHeight(height);
+        m_analysisBody->addWidget(table);
+    }
 }
 
 void ProjectPage::runAnalysis()
 {
-    say(tr("Analysing…"));
+    m_analysing = true;
+    fillAnalysis();
     onResult(m_conn->api()->post(QStringLiteral("/api/projects/%1/analysis").arg(m_id), QJsonObject{}), this, [this](const ApiResult &r) {
-        if (!r.ok()) {
-            say(r.error.message);
-            return;
-        }
-        m_analysis = r.array();
-        say(QString());
-        if (m_analysisLang->currentIndex() == 0 && m_analysisLang->count() > 1)
-            m_analysisLang->setCurrentIndex(1);
+        m_analysing = false;
+        if (r.ok())
+            m_analysis = r.array();
         else
-            emit m_analysisLang->currentIndexChanged(m_analysisLang->currentIndex());
+            say(r.error.message);
+        fillAnalysis();
     });
 }
 
 void ProjectPage::saveAnalysis()
 {
+    const QString name = settings().value(QLatin1String("name")).toString();
     const QString to = QFileDialog::getSaveFileName(this, tr("Save the analysis"),
-                                                    QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/%1 analysis.csv").arg(m_title->text()),
+                                                    QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QStringLiteral("/%1 analysis.csv").arg(name),
                                                     tr("CSV files (*.csv)"));
     if (to.isEmpty())
         return;
@@ -683,249 +708,574 @@ void ProjectPage::saveAnalysis()
     if (!f.open(QIODevice::WriteOnly) || f.write("\xEF\xBB\xBF" + csv) < 0 || !f.commit())
         say(tr("The analysis could not be saved: %1").arg(f.errorString()));
     else
-        say(tr("Saved %1.").arg(QDir::toNativeSeparators(to)));
+        say(tr("Saved %1").arg(QDir::toNativeSeparators(to)));
 }
 
-void ProjectPage::reloadPeople()
+void ProjectPage::fillPretranslate()
 {
-    const QUrlQuery q{{QStringLiteral("kind"), QStringLiteral("project")}, {QStringLiteral("resource"), QString::number(m_id)}};
-    if (manages()) {
-        onResult(m_conn->api()->get(QStringLiteral("/api/grants"), q), this, [this](const ApiResult &r) {
-            m_grants->setRowCount(0);
-            for (const QJsonValue &v : r.array()) {
-                const QJsonObject g = v.toObject();
-                const int i = m_grants->rowCount();
-                m_grants->insertRow(i);
-                const QString who = g.value(QLatin1String("name")).toString().isEmpty() ? g.value(QLatin1String("username")).toString() : g.value(QLatin1String("name")).toString();
-                m_grants->setItem(i, 0, cell(who, g.value(QLatin1String("userId")).toInteger()));
-                m_grants->setItem(i, 1, cell(roleName(g.value(QLatin1String("role")).toString())));
-            }
-        });
-        onResult(m_conn->api()->get(QStringLiteral("/api/people")), this, [this](const ApiResult &r) {
-            if (r.ok())
-                m_people = r.array();
-        });
-    }
-    onResult(m_conn->api()->get(QStringLiteral("/api/projects/%1/assignments").arg(m_id)), this, [this](const ApiResult &r) {
-        if (!r.ok())
+    clear(m_pretranslate);
+    QWidget *p = m_pretranslate->parentWidget();
+    if (!manages())
+        return;
+    auto *now = Web::button(tr("Pre-translate now"), Web::Normal, p);
+    now->setEnabled(!m_dirty);
+    connect(now, &QPushButton::clicked, this, &ProjectPage::pretranslate);
+    m_pretranslate->addWidget(now, 0, Qt::AlignLeft);
+    m_pretranslate->addWidget(Web::text(m_dirty ? tr("Save your changes first; pre-translation uses the saved settings.")
+                                                : tr("Fills the empty segments of every file and language with matches of %1% or more from the memories set for lookup.")
+                                                      .arg(settings().value(QLatin1String("prepare")).toObject().value(QLatin1String("minScore")).toInt(100)),
+                                        "help", p));
+}
+
+void ProjectPage::pretranslate()
+{
+    onResult(m_conn->api()->post(QStringLiteral("/api/projects/%1/pretranslate").arg(m_id), QJsonObject{}), this, [this](const ApiResult &r) {
+        if (!r.ok()) {
+            say(r.error.message);
             return;
-        m_assignments = r.array();
-        m_work->setRowCount(0);
+        }
+        int filled = 0;
+        for (const QJsonValue &v : r.array())
+            filled += v.toObject().value(QLatin1String("filled")).toInt();
+        say(filled ? tr("Pre-translated %1").arg(plural(filled, tr("1 segment"), tr("%1 segments"))) : tr("No empty segment has a match good enough to insert"));
+        reload();
+    });
+}
+
+// The work given out, on a team server.
+void ProjectPage::fillWork()
+{
+    if (!m_work)
+        return;
+    clear(m_work);
+    QWidget *p = m_workPanel;
+    const QJsonObject s = settings();
+    const bool manage = manages();
+    const qint64 me = m_conn->user().value(QLatin1String("id")).toInteger();
+    if (m_assignments.isEmpty()) {
+        m_work->addWidget(Web::text(tr("No work given out yet."), "muted", p));
+    } else {
+        auto *table = new Web::Table({tr("Who"), tr("Task"), tr("Part"), tr("Done"), QString()}, p);
+        table->setAccessibleName(tr("Work given out"));
+        table->setStretch(2);
         for (const QJsonValue &v : std::as_const(m_assignments)) {
             const QJsonObject a = v.toObject();
-            const int i = m_work->rowCount();
-            m_work->insertRow(i);
-            const QString range = a.value(QLatin1String("fromSegment")).toString().isEmpty()
-                ? tr("all")
-                : QStringLiteral("%1 to %2").arg(a.value(QLatin1String("fromSegment")).toString(), a.value(QLatin1String("toSegment")).toString());
+            const QString who = a.value(QLatin1String("userName")).toString();
+            QStringList part;
+            part << (a.value(QLatin1String("file")).toString().isEmpty() ? tr("All files") : a.value(QLatin1String("file")).toString());
+            if (!a.value(QLatin1String("targetLang")).toString().isEmpty())
+                part << Languages::name(a.value(QLatin1String("targetLang")).toString());
+            if (!a.value(QLatin1String("fromSegment")).toString().isEmpty())
+                part << tr("segments %1 to %2").arg(a.value(QLatin1String("fromSegment")).toString(), a.value(QLatin1String("toSegment")).toString());
             const QDateTime due = QDateTime::fromString(a.value(QLatin1String("due")).toString(), Qt::ISODate);
-            QString person = a.value(QLatin1String("userName")).toString();
-            if (a.value(QLatin1String("done")).toBool())
-                person = tr("%1 (done)").arg(person);
-            m_work->setItem(i, 0, cell(person, a.value(QLatin1String("id")).toInteger()));
-            m_work->setItem(i, 1, cell(a.value(QLatin1String("task")).toString() == QLatin1String("review") ? tr("Review") : tr("Translate")));
-            m_work->setItem(i, 2, cell(a.value(QLatin1String("file")).toString().isEmpty() ? tr("all files") : a.value(QLatin1String("file")).toString()));
-            m_work->setItem(i, 3, cell(a.value(QLatin1String("targetLang")).toString().isEmpty() ? tr("all") : a.value(QLatin1String("targetLang")).toString()));
-            m_work->setItem(i, 4, cell(range));
-            m_work->setItem(i, 5, cell(due.isValid() ? Languages::when(due) : tr("the project's")));
+            if (due.isValid())
+                part << tr("due %1").arg(Languages::when(due));
+            auto *done = new QCheckBox(table);
+            done->setAccessibleName(tr("%1's work is done").arg(who));
+            done->setChecked(a.value(QLatin1String("done")).toBool());
+            done->setEnabled(manage || a.value(QLatin1String("userId")).toInteger() == me);
+            connect(done, &QCheckBox::toggled, this, [this, a](bool on) {
+                QJsonObject next = a;
+                next.insert(QStringLiteral("done"), on);
+                onResult(m_conn->api()->put(QStringLiteral("/api/projects/%1/assignments/%2").arg(m_id).arg(a.value(QLatin1String("id")).toInteger()), next,
+                                            a.value(QLatin1String("version")).toInt()),
+                         this, [this, on](const ApiResult &r) {
+                             say(r.ok() ? (on ? tr("Reported done") : tr("Reported not done")) : r.error.message);
+                             reload();
+                         });
+            });
+            QWidget *take = new QWidget(table);
+            if (manage) {
+                auto *back = new Web::ConfirmButton(tr("Take back"), tr("Take this work back from %1?").arg(who), tr("Take back"), table);
+                back->button()->setAccessibleName(tr("Take the work back from %1").arg(who));
+                connect(back, &Web::ConfirmButton::confirmed, this, [this, a] {
+                    onResult(m_conn->api()->del(QStringLiteral("/api/projects/%1/assignments/%2").arg(m_id).arg(a.value(QLatin1String("id")).toInteger())), this,
+                             [this](const ApiResult &r) {
+                                 if (!r.ok())
+                                     say(r.error.message);
+                                 reload();
+                             });
+                });
+                take->deleteLater();
+                take = back;
+            }
+            table->addRow({Web::cell(who, QString(), table), Web::cellText(a.value(QLatin1String("task")).toString() == QLatin1String("review") ? tr("Review") : tr("Translate"), table),
+                           Web::cellText(part.join(QStringLiteral(", ")), table), done, take});
         }
-    });
-}
-
-void ProjectPage::addGrant()
-{
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Give a role"));
-    auto *form = new QFormLayout(&dlg);
-    auto *person = new QComboBox(&dlg);
-    for (const QJsonValue &v : std::as_const(m_people)) {
-        const QJsonObject p = v.toObject();
-        person->addItem(QStringLiteral("%1 (%2)").arg(p.value(QLatin1String("name")).toString(), p.value(QLatin1String("username")).toString()),
-                        p.value(QLatin1String("id")).toInteger());
+        table->fit();
+        m_work->addWidget(table);
     }
-    auto *role = new QComboBox(&dlg);
-    for (const QString &r : roles)
-        role->addItem(roleName(r), r);
-    role->setCurrentIndex(2);
-    auto *pl = new QLabel(tr("&Person:"), &dlg);
-    pl->setBuddy(person);
-    auto *rl = new QLabel(tr("&Role:"), &dlg);
-    rl->setBuddy(role);
-    form->addRow(pl, person);
-    form->addRow(rl, role);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-    form->addRow(buttons);
-    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    if (dlg.exec() != QDialog::Accepted || person->currentIndex() < 0)
+    if (!manage)
         return;
-    const QJsonObject g{{QStringLiteral("userId"), person->currentData().toLongLong()}, {QStringLiteral("kind"), QStringLiteral("project")},
-                        {QStringLiteral("resource"), QString::number(m_id)}, {QStringLiteral("role"), role->currentData().toString()}};
-    onResult(m_conn->api()->put(QStringLiteral("/api/grants"), g), this, [this](const ApiResult &r) {
-        say(r.ok() ? tr("Role given.") : r.error.message);
-        reloadPeople();
-    });
-}
-
-void ProjectPage::removeGrant()
-{
-    const int row = m_grants->currentRow();
-    if (row < 0)
-        return;
-    const QUrlQuery q{{QStringLiteral("userId"), m_grants->item(row, 0)->data(Qt::UserRole).toString()},
-                      {QStringLiteral("kind"), QStringLiteral("project")},
-                      {QStringLiteral("resource"), QString::number(m_id)}};
-    onResult(m_conn->api()->del(QStringLiteral("/api/grants"), q), this, [this](const ApiResult &r) {
-        say(r.ok() ? tr("Role taken back.") : r.error.message);
-        reloadPeople();
-    });
-}
-
-void ProjectPage::addAssignment()
-{
-    const QJsonObject s = m_project.value(QLatin1String("settings")).toObject();
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Give out work"));
-    auto *form = new QFormLayout(&dlg);
-    const auto row = [&](const QString &label, QWidget *w) {
-        auto *l = new QLabel(label, &dlg);
-        l->setBuddy(w);
-        form->addRow(l, w);
-    };
-    auto *person = new QComboBox(&dlg);
+    // Giving out work.
+    auto *form = new QWidget(p);
+    form->setAccessibleName(tr("Give out work"));
+    auto *fv = new QVBoxLayout(form);
+    fv->setContentsMargins(0, 0, 0, 0);
+    fv->setSpacing(12);
+    fv->addWidget(Web::text(tr("Give out work"), "fieldLabel", form));
+    auto *who = new QComboBox(form);
+    who->addItem(tr("Choose someone"), 0);
     for (const QJsonValue &v : std::as_const(m_people)) {
-        const QJsonObject p = v.toObject();
-        person->addItem(p.value(QLatin1String("name")).toString(), p.value(QLatin1String("id")).toInteger());
+        const QJsonObject x = v.toObject();
+        who->addItem(QStringLiteral("%1 (%2)").arg(x.value(QLatin1String("name")).toString(), x.value(QLatin1String("username")).toString()), x.value(QLatin1String("id")).toInteger());
     }
-    row(tr("&Person:"), person);
-    auto *task = new QComboBox(&dlg);
+    fv->addWidget(Web::labelled(tr("Who"), who, form));
+    auto *task = new QComboBox(form);
     task->addItem(tr("Translate"), QStringLiteral("translate"));
     task->addItem(tr("Review"), QStringLiteral("review"));
-    row(tr("&Task:"), task);
-    auto *file = new QComboBox(&dlg);
+    fv->addWidget(Web::labelled(tr("Task"), task, form));
+    auto *file = new QComboBox(form);
     file->addItem(tr("All files"), QString());
     for (const QJsonValue &v : s.value(QLatin1String("files")).toArray()) {
-        const QJsonObject f = v.toObject();
-        if (f.value(QLatin1String("role")).toString() == QLatin1String("translatable"))
-            file->addItem(f.value(QLatin1String("name")).toString(), f.value(QLatin1String("name")).toString());
+        if (v.toObject().value(QLatin1String("role")).toString() == QLatin1String("translatable"))
+            file->addItem(v.toObject().value(QLatin1String("name")).toString(), v.toObject().value(QLatin1String("name")).toString());
     }
-    row(tr("&File:"), file);
-    auto *lang = new QComboBox(&dlg);
-    lang->addItem(tr("All languages"), QString());
-    for (const QJsonValue &t : s.value(QLatin1String("targetLangs")).toArray())
-        lang->addItem(Languages::label(t.toString()), t.toString());
-    row(tr("&Language:"), lang);
-    auto *whole = new QCheckBox(tr("The &whole file"), &dlg);
-    whole->setChecked(true);
-    form->addRow(QString(), whole);
-    auto *from = new QSpinBox(&dlg);
-    auto *to = new QSpinBox(&dlg);
-    from->setMinimum(1);
-    to->setMinimum(1);
-    row(tr("From se&gment:"), from);
-    row(tr("T&o segment:"), to);
-    auto *hasDue = new QCheckBox(tr("&Due earlier than the project"), &dlg);
-    auto *due = new QDateTimeEdit(QDateTime::currentDateTime().addDays(3), &dlg);
-    due->setCalendarPopup(true);
-    due->setAccessibleName(tr("Due"));
-    form->addRow(QString(), hasDue);
-    form->addRow(QString(), due);
-    auto *error = new QLabel(&dlg);
-    error->setWordWrap(true);
-    form->addRow(error);
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-    form->addRow(buttons);
-    // A range needs one file in one language, whose segments are counted.
-    auto segIds = std::make_shared<QStringList>();
-    const auto update = [&, segIds] {
-        const bool one = !file->currentData().toString().isEmpty() && !lang->currentData().toString().isEmpty();
-        whole->setEnabled(one);
-        if (!one)
-            whole->setChecked(true);
-        from->setEnabled(!whole->isChecked());
-        to->setEnabled(!whole->isChecked());
-        due->setEnabled(hasDue->isChecked());
-        if (!one)
+    fv->addWidget(Web::labelled(tr("File"), file, form));
+    auto *lang = new QComboBox(form);
+    fv->addWidget(Web::labelled(tr("Language"), lang, form));
+    auto *from = new QComboBox(form);
+    auto *to = new QComboBox(form);
+    auto *fromField = Web::labelled(tr("From segment"), from, form);
+    auto *toField = Web::labelled(tr("To segment"), to, form);
+    auto *range = Web::row({fromField, toField}, form, 16);
+    fv->addWidget(range);
+    auto *due = new DueEdit(tr("Due"), form);
+    fv->addWidget(Web::labelled(tr("Due (optional)"), due, form));
+    auto *error = Web::text(QString(), "error", form);
+    error->setVisible(false);
+    fv->addWidget(error);
+    auto *give = Web::button(tr("Give out"), Web::Primary, form, QStringLiteral("user-plus"));
+    give->setEnabled(false);
+    fv->addWidget(give, 0, Qt::AlignLeft);
+    fv->addWidget(Web::text(tr("%1 in this project. Each segment has one translator and one reviewer.").arg(plural(m_assignments.size(), tr("1 piece of work"), tr("%1 pieces of work"))),
+                            "cellSub", form));
+    m_work->addWidget(form);
+
+    const QStringList targets = strings(s.value(QLatin1String("targetLangs")));
+    auto segs = std::make_shared<QStringList>();
+    // A file made for one language is given out in that language.
+    const auto fileLangs = [s, targets](const QString &name) {
+        for (const QJsonValue &v : s.value(QLatin1String("files")).toArray()) {
+            if (v.toObject().value(QLatin1String("name")).toString() == name && !v.toObject().value(QLatin1String("targetLang")).toString().isEmpty())
+                return QStringList{v.toObject().value(QLatin1String("targetLang")).toString()};
+        }
+        return targets;
+    };
+    const auto showRange = [range, toField, from] {
+        range->setVisible(from->count() > 1);
+        toField->setVisible(!from->currentData().toString().isEmpty());
+    };
+    const auto loadSegments = [this, form, file, lang, from, to, segs, fileLangs, showRange] {
+        const QString f = file->currentData().toString();
+        const QStringList ls = fileLangs(f);
+        const QString l = lang->currentData().toString().isEmpty() && ls.size() == 1 ? ls.first() : lang->currentData().toString();
+        from->clear();
+        to->clear();
+        segs->clear();
+        from->addItem(tr("The whole file"), QString());
+        showRange();
+        if (f.isEmpty() || l.isEmpty())
             return;
-        onResult(m_conn->api()->get(QStringLiteral("/api/projects/%1/segments").arg(m_id),
-                                    QUrlQuery{{QStringLiteral("file"), file->currentData().toString()}, {QStringLiteral("lang"), lang->currentData().toString()}}),
-                 &dlg, [segIds, from, to](const ApiResult &r) {
-                     segIds->clear();
-                     for (const QJsonValue &v : r.array())
-                         *segIds << v.toObject().value(QLatin1String("id")).toString();
-                     from->setMaximum(qMax(1, int(segIds->size())));
-                     to->setMaximum(qMax(1, int(segIds->size())));
-                     to->setValue(int(segIds->size()));
+        onResult(m_conn->api()->get(QStringLiteral("/api/projects/%1/segments").arg(m_id), QUrlQuery{{QStringLiteral("file"), f}, {QStringLiteral("lang"), l}}), form,
+                 [from, segs, showRange](const ApiResult &r) {
+                     int i = 0;
+                     for (const QJsonValue &v : r.array()) {
+                         const QString id = v.toObject().value(QLatin1String("id")).toString();
+                         *segs << id;
+                         from->addItem(QString::number(++i), id);
+                     }
+                     showRange();
                  });
     };
-    connect(file, &QComboBox::currentIndexChanged, &dlg, update);
-    connect(lang, &QComboBox::currentIndexChanged, &dlg, update);
-    connect(whole, &QCheckBox::toggled, &dlg, update);
-    connect(hasDue, &QCheckBox::toggled, &dlg, update);
-    update();
-    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    connect(buttons, &QDialogButtonBox::accepted, &dlg, [&, segIds] {
-        QJsonObject a{{QStringLiteral("userId"), person->currentData().toLongLong()}, {QStringLiteral("task"), task->currentData().toString()},
-                      {QStringLiteral("file"), file->currentData().toString()}, {QStringLiteral("targetLang"), lang->currentData().toString()}};
-        if (!whole->isChecked()) {
-            if (from->value() > to->value() || to->value() > segIds->size()) {
-                error->setText(tr("The range runs from a segment to a later one."));
-                return;
-            }
-            a.insert(QStringLiteral("fromSegment"), segIds->at(from->value() - 1));
-            a.insert(QStringLiteral("toSegment"), segIds->at(to->value() - 1));
+    const auto fillLangs = [lang, file, fileLangs] {
+        const QSignalBlocker block(lang);
+        lang->clear();
+        const QStringList ls = fileLangs(file->currentData().toString());
+        lang->addItem(ls.size() == 1 ? Languages::name(ls.first()) : tr("All languages"), QString());
+        if (ls.size() > 1) {
+            for (const QString &t : ls)
+                lang->addItem(Languages::name(t), t);
         }
-        if (hasDue->isChecked())
-            a.insert(QStringLiteral("due"), due->dateTime().toUTC().toString(Qt::ISODate));
-        onResult(m_conn->api()->post(QStringLiteral("/api/projects/%1/assignments").arg(m_id), a), &dlg, [&](const ApiResult &r) {
+    };
+    fillLangs();
+    loadSegments();
+    connect(who, &QComboBox::currentIndexChanged, give, [give, who] { give->setEnabled(who->currentData().toLongLong() > 0); });
+    connect(file, &QComboBox::currentIndexChanged, form, [fillLangs, loadSegments] {
+        fillLangs();
+        loadSegments();
+    });
+    connect(lang, &QComboBox::currentIndexChanged, form, loadSegments);
+    connect(from, &QComboBox::currentIndexChanged, form, [from, to, segs, showRange] {
+        const QString first = from->currentData().toString();
+        to->clear();
+        const int at = int(segs->indexOf(first));
+        if (!first.isEmpty() && at >= 0) {
+            for (int i = at; i < segs->size(); ++i)
+                to->addItem(QString::number(i + 1), segs->at(i));
+            to->setCurrentIndex(to->count() - 1);
+        }
+        showRange();
+    });
+    connect(give, &QPushButton::clicked, this, [this, who, task, file, lang, from, to, due, error] {
+        QJsonObject a{{QStringLiteral("userId"), who->currentData().toLongLong()}, {QStringLiteral("task"), task->currentData().toString()}};
+        if (!file->currentData().toString().isEmpty())
+            a.insert(QStringLiteral("file"), file->currentData().toString());
+        if (!lang->currentData().toString().isEmpty())
+            a.insert(QStringLiteral("targetLang"), lang->currentData().toString());
+        if (!from->currentData().toString().isEmpty()) {
+            a.insert(QStringLiteral("fromSegment"), from->currentData().toString());
+            a.insert(QStringLiteral("toSegment"), to->currentData().toString().isEmpty() ? from->currentData().toString() : to->currentData().toString());
+        }
+        if (!due->iso().isEmpty())
+            a.insert(QStringLiteral("due"), due->iso());
+        onResult(m_conn->api()->post(QStringLiteral("/api/projects/%1/assignments").arg(m_id), a), this, [this, error](const ApiResult &r) {
             if (!r.ok()) {
-                error->setText(r.error.message);
+                if (error) {
+                    error->setText(r.error.message);
+                    error->setVisible(true);
+                }
                 return;
             }
-            dlg.accept();
+            say(tr("Work given out"));
+            reload();
         });
     });
-    if (dlg.exec() == QDialog::Accepted) {
-        say(tr("Work given out."));
-        reloadPeople();
+}
+
+void ProjectPage::fillNow()
+{
+    if (!m_now)
+        return;
+    clear(m_now);
+    QWidget *p = m_nowPanel;
+    if (m_presence.isEmpty()) {
+        m_now->addWidget(Web::text(tr("Nobody has the project open."), "muted", p));
+        return;
+    }
+    for (const QJsonValue &v : std::as_const(m_presence)) {
+        const QJsonObject x = v.toObject();
+        const QDateTime since = QDateTime::fromString(x.value(QLatin1String("since")).toString(), Qt::ISODate);
+        m_now->addWidget(Web::cell(x.value(QLatin1String("userName")).toString(),
+                                   tr("%1, %2, segment %3, since %4")
+                                       .arg(x.value(QLatin1String("file")).toString(), x.value(QLatin1String("targetLang")).toString(), x.value(QLatin1String("segment")).toString(),
+                                            since.isValid() ? Languages::when(since) : QString()),
+                                   p));
     }
 }
 
-void ProjectPage::toggleDone()
+void ProjectPage::fillTemplate()
 {
-    const int row = m_work->currentRow();
-    if (row < 0 || row >= m_assignments.size())
+    // The name being typed is kept while the rest is shown again.
+    QString typed;
+    bool had = false;
+    if (auto *old = m_templatePanel->findChild<QLineEdit *>(QStringLiteral("templateName"))) {
+        typed = old->text();
+        had = true;
+        if (old->hasFocus() && m_template->count() > 0)
+            return;
+    }
+    clear(m_template);
+    QWidget *p = m_templatePanel;
+    const QJsonObject s = settings();
+    auto *name = new QLineEdit(had ? typed : s.value(QLatin1String("client")).toString().isEmpty() ? s.value(QLatin1String("name")).toString() : s.value(QLatin1String("client")).toString(),
+                               p);
+    name->setObjectName(QStringLiteral("templateName"));
+    name->setAccessibleName(tr("Template name"));
+    name->setMinimumWidth(320);
+    auto *save = Web::button(QString(), Web::Normal, p);
+    save->setObjectName(QStringLiteral("saveTemplate"));
+    const auto label = [this, name, save] {
+        bool clash = false;
+        for (const QJsonValue &v : std::as_const(m_templates))
+            clash = clash || v.toObject().value(QLatin1String("name")).toString().compare(name->text().trimmed(), Qt::CaseInsensitive) == 0;
+        save->setText(clash ? tr("Replace template") : tr("Save as template"));
+        save->setEnabled(!name->text().trimmed().isEmpty() && !m_dirty);
+    };
+    label();
+    connect(name, &QLineEdit::textChanged, save, label);
+    connect(save, &QPushButton::clicked, this, [this, name] { saveTemplate(name->text().trimmed()); });
+    auto *field = Web::field(tr("Template name"), Web::row({name, save}, p), p);
+    if (auto *l = field->findChild<QLabel *>())
+        l->setBuddy(name);
+    m_template->addWidget(field);
+    m_template->addWidget(Web::text(m_dirty ? tr("Save your changes first; the template takes the saved settings.")
+                                            : tr("Languages, memories, termbases, checks and pre-translation; not the files, name or due date. New projects can start from it."),
+                                    "help", p));
+}
+
+void ProjectPage::saveTemplate(const QString &name)
+{
+    if (name.isEmpty())
         return;
-    QJsonObject a = m_assignments.at(row).toObject();
-    a.insert(QStringLiteral("done"), !a.value(QLatin1String("done")).toBool());
-    onResult(m_conn->api()->put(QStringLiteral("/api/projects/%1/assignments/%2").arg(m_id).arg(a.value(QLatin1String("id")).toInteger()), a,
-                                a.value(QLatin1String("version")).toInt()),
-             this, [this](const ApiResult &r) {
-                 say(r.ok() ? QString() : r.error.message);
-                 reloadPeople();
+    // Saving over a template of the same name needs its version.
+    int version = 0;
+    for (const QJsonValue &v : std::as_const(m_templates)) {
+        if (v.toObject().value(QLatin1String("name")).toString().compare(name, Qt::CaseInsensitive) == 0)
+            version = v.toObject().value(QLatin1String("version")).toInt();
+    }
+    onResult(m_conn->api()->put(QStringLiteral("/api/templates"), ProjectForm::templateOf(name, settings()), version), this, [this, name, version](const ApiResult &r) {
+        say(!r.ok() ? r.error.message : version ? tr("Updated the template “%1”").arg(name) : tr("Saved the template “%1”").arg(name));
+        onResult(m_conn->api()->get(QStringLiteral("/api/templates")), this, [this](const ApiResult &t) {
+            if (t.ok())
+                m_templates = t.array();
+            fillTemplate();
+        });
+    });
+}
+
+void ProjectPage::download(const QString &path, const QUrlQuery &query, const QString &what)
+{
+    onResult(m_conn->api()->get(path, query), this, [this, what](const ApiResult &r) {
+        if (!r.ok()) {
+            say(r.error.message);
+            return;
+        }
+        const QString dir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+        const QString to = QFileDialog::getSaveFileName(this, tr("Save %1").arg(what), dir + QLatin1Char('/') + r.fileName());
+        if (to.isEmpty())
+            return;
+        QSaveFile f(to);
+        if (!f.open(QIODevice::WriteOnly) || f.write(r.body) != r.body.size() || !f.commit()) {
+            say(tr("%1 could not be saved: %2").arg(QDir::toNativeSeparators(to), f.errorString()));
+            return;
+        }
+        say(tr("Saved %1").arg(QDir::toNativeSeparators(to)));
+    });
+}
+
+// Files are added one after the other: each is read where the project is
+// kept first, and what can't be translated goes in for reference.
+void ProjectPage::addFiles(const QStringList &paths)
+{
+    QList<QPair<QString, QString>> files;
+    for (const QString &path : paths) {
+        const QFileInfo info(path);
+        if (info.isDir()) {
+            const QDir base(info.absolutePath());
+            QStringList inside;
+            QDirIterator it(path, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext())
+                inside << it.next();
+            inside.sort();
+            for (const QString &f : std::as_const(inside))
+                files.append({f, base.relativeFilePath(f)});
+        } else if (info.exists()) {
+            files.append({path, info.fileName()});
+        }
+    }
+    if (files.isEmpty())
+        return;
+    auto added = std::make_shared<int>(0);
+    auto next = std::make_shared<std::function<void(int)>>();
+    *next = [this, files, added, next](int i) {
+        if (i >= files.size()) {
+            m_busy.clear();
+            if (*added)
+                say(tr("Added %1").arg(plural(*added, tr("1 file"), tr("%1 files"))));
+            reload();
+            return;
+        }
+        const auto &[path, name] = files.at(i);
+        for (const QJsonValue &v : settings().value(QLatin1String("files")).toArray()) {
+            if (v.toObject().value(QLatin1String("name")).toString().compare(name, Qt::CaseInsensitive) == 0) {
+                say(tr("%1 is in the project already; remove it first to replace it").arg(name));
+                (*next)(i + 1);
+                return;
+            }
+        }
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) {
+            say(tr("%1 can't be read: %2").arg(QDir::toNativeSeparators(path), f.errorString()));
+            (*next)(i + 1);
+            return;
+        }
+        const QByteArray data = f.readAll();
+        m_busy = tr("Reading %1…").arg(name);
+        fillFiles();
+        const QString fileName = name;
+        onResult(m_conn->api()->upload("POST", QStringLiteral("/api/files/inspect"), data, QStringLiteral("application/octet-stream"), QUrlQuery{{QStringLiteral("name"), fileName}}), this,
+                 [this, fileName, data, added, next, i](const ApiResult &in) {
+                     if (!in.ok()) {
+                         say(in.error.message);
+                         (*next)(i + 1);
+                         return;
+                     }
+                     if (in.object().value(QLatin1String("format")).toString() == QLatin1String("package")) {
+                         say(tr("%1 is a package: a project is made from it, it is not added to one").arg(fileName));
+                         (*next)(i + 1);
+                         return;
+                     }
+                     QJsonObject body{{QStringLiteral("name"), fileName}, {QStringLiteral("data"), QString::fromLatin1(data.toBase64())}};
+                     if (in.object().value(QLatin1String("translatable")).toBool()) {
+                         body.insert(QStringLiteral("role"), QStringLiteral("translatable"));
+                     } else {
+                         body.insert(QStringLiteral("role"), QStringLiteral("reference"));
+                         body.insert(QStringLiteral("format"), QFileInfo(fileName).suffix().toLower());
+                     }
+                     m_busy = tr("Adding %1…").arg(fileName);
+                     fillFiles();
+                     onResult(m_conn->api()->post(QStringLiteral("/api/projects/%1/files").arg(m_id), body,
+                                                  QUrlQuery{{QStringLiteral("version"), QString::number(m_project.value(QLatin1String("version")).toInt())}}),
+                              this, [this, added, next, i](const ApiResult &r) {
+                                  if (r.ok()) {
+                                      // The next file is added to the project as it is now.
+                                      const QJsonObject access = m_project.value(QLatin1String("access")).toObject();
+                                      m_project = r.object();
+                                      if (!m_project.contains(QLatin1String("access")))
+                                          m_project.insert(QStringLiteral("access"), access);
+                                      ++*added;
+                                  } else {
+                                      say(r.error.message);
+                                  }
+                                  (*next)(i + 1);
+                              });
+                 });
+    };
+    (*next)(0);
+}
+
+void ProjectPage::removeFile(const QString &name)
+{
+    onResult(m_conn->api()->del(QStringLiteral("/api/projects/%1/files").arg(m_id), QUrlQuery{{QStringLiteral("name"), name}}, m_project.value(QLatin1String("version")).toInt()), this,
+             [this, name](const ApiResult &r) {
+                 say(r.ok() ? tr("Removed %1").arg(name) : r.error.message);
+                 reload();
              });
 }
 
-void ProjectPage::removeAssignment()
+void ProjectPage::discard()
 {
-    const int row = m_work->currentRow();
-    if (row < 0 || row >= m_assignments.size())
+    m_dirty = false;
+    m_saveError.clear();
+    m_loaded = false;
+    m_form->setSettings(settings(), false);
+    m_form->setReadOnly(!manages());
+    m_loaded = true;
+    refreshBar();
+    fillPretranslate();
+    fillTemplate();
+}
+
+// Saving: the memories made here first, then the project termbase where
+// the masters changed, then the settings themselves.
+void ProjectPage::save()
+{
+    if (m_saving)
         return;
-    const qint64 id = m_assignments.at(row).toObject().value(QLatin1String("id")).toInteger();
-    onResult(m_conn->api()->del(QStringLiteral("/api/projects/%1/assignments/%2").arg(m_id).arg(id)), this, [this](const ApiResult &r) {
-        say(r.ok() ? tr("Work taken back.") : r.error.message);
-        reloadPeople();
+    m_saving = true;
+    m_saveError.clear();
+    refreshBar();
+    const auto failed = [this](const QString &why) {
+        m_saving = false;
+        m_saveError = tr("Could not save: %1").arg(why);
+        refreshBar();
+    };
+    m_form->createNewMemories(m_conn, [this, failed](const QString &error) {
+        if (!error.isEmpty()) {
+            failed(error);
+            return;
+        }
+        QJsonObject s = m_form->settings();
+        const QJsonObject was = settings();
+        // Files are added and removed on their own.
+        s.insert(QStringLiteral("files"), was.value(QLatin1String("files")));
+        QJsonObject t = s.value(QLatin1String("terminology")).toObject();
+        const QString mode = t.value(QLatin1String("mode")).toString();
+        const QJsonArray masters = t.value(QLatin1String("masters")).toArray();
+        QString termbase = mode == QLatin1String("direct") ? QString() : was.value(QLatin1String("terminology")).toObject().value(QLatin1String("termbase")).toString();
+        if (mode == QLatin1String("direct")) {
+            t.remove(QStringLiteral("termbase"));
+            s.insert(QStringLiteral("terminology"), t);
+            putSettings(s);
+        } else if (termbase.isEmpty()) {
+            // A project that now keeps its own terms gets its termbase.
+            termbase = QStringLiteral("%1 (project)").arg(s.value(QLatin1String("name")).toString());
+            QJsonObject def{{QStringLiteral("name"), termbase}};
+            QJsonObject body{{QStringLiteral("definition"), def}};
+            if (mode == QLatin1String("layered")) {
+                body.insert(QStringLiteral("upstreams"), masters);
+            } else {
+                QJsonArray langs{s.value(QLatin1String("sourceLang"))};
+                for (const QJsonValue &l : s.value(QLatin1String("targetLangs")).toArray())
+                    langs.append(l);
+                def.insert(QStringLiteral("languages"), langs);
+                body.insert(QStringLiteral("definition"), def);
+            }
+            onResult(m_conn->api()->post(QStringLiteral("/api/termbases"), body), this, [this, s, t, termbase, failed](const ApiResult &r) mutable {
+                if (!r.ok() && r.error.code != QLatin1String("exists")) {
+                    failed(r.error.message);
+                    return;
+                }
+                t.insert(QStringLiteral("termbase"), termbase);
+                s.insert(QStringLiteral("terminology"), t);
+                putSettings(s);
+            });
+        } else if (mode == QLatin1String("layered") && masters != was.value(QLatin1String("terminology")).toObject().value(QLatin1String("masters")).toArray()) {
+            // A layered one follows the masters chosen.
+            onResult(m_conn->api()->put(QStringLiteral("/api/termbases/%1/upstreams").arg(ApiClient::seg(termbase)), QJsonObject{{QStringLiteral("upstreams"), masters}}), this,
+                     [this, s, t, termbase, failed](const ApiResult &r) mutable {
+                         if (!r.ok()) {
+                             failed(r.error.message);
+                             return;
+                         }
+                         t.insert(QStringLiteral("termbase"), termbase);
+                         s.insert(QStringLiteral("terminology"), t);
+                         putSettings(s);
+                     });
+        } else {
+            t.insert(QStringLiteral("termbase"), termbase);
+            s.insert(QStringLiteral("terminology"), t);
+            putSettings(s);
+        }
     });
+}
+
+void ProjectPage::putSettings(QJsonObject s)
+{
+    const QStringList before = strings(settings().value(QLatin1String("targetLangs")));
+    onResult(m_conn->api()->put(QStringLiteral("/api/projects/%1/settings").arg(m_id), s, m_project.value(QLatin1String("version")).toInt()), this,
+             [this, before](const ApiResult &r) {
+                 m_saving = false;
+                 if (!r.ok()) {
+                     const bool conflict = r.error.code == QLatin1String("conflict");
+                     const QStringList rest = m_form->showProblems(r.error.problems);
+                     m_saveError = conflict ? tr("The project changed in the meantime. It is loaded again; make your change once more.")
+                         : r.error.problems.isEmpty() ? tr("Could not save: %1").arg(r.error.message)
+                         : rest.isEmpty()             ? tr("Could not save: see what is marked above.")
+                                                      : tr("Could not save: %1").arg(rest.join(QLatin1Char(' ')));
+                     if (conflict) {
+                         m_dirty = false;
+                         reload();
+                     }
+                     refreshBar();
+                     return;
+                 }
+                 m_dirty = false;
+                 m_saveError.clear();
+                 const QJsonObject access = m_project.value(QLatin1String("access")).toObject();
+                 m_project = r.object();
+                 if (!m_project.contains(QLatin1String("access")))
+                     m_project.insert(QStringLiteral("access"), access);
+                 const QJsonObject s = settings();
+                 QStringList fresh;
+                 for (const QString &t : strings(s.value(QLatin1String("targetLangs")))) {
+                     if (!before.contains(t))
+                         fresh << Languages::name(t);
+                 }
+                 say(fresh.isEmpty() ? tr("Saved the settings of “%1”").arg(s.value(QLatin1String("name")).toString())
+                                     : tr("Saved the settings of “%1”; %2 added to every file").arg(s.value(QLatin1String("name")).toString(), fresh.join(QStringLiteral(", "))));
+                 // The analysis was of the settings before.
+                 m_analysis = {};
+                 showProject();
+                 reload();
+             });
 }
 
 void ProjectPage::deleteProject()
 {
-    const QString name = m_title->text();
-    if (QMessageBox::question(this, tr("Delete the project?"),
-                              tr("%1 is deleted with its files and translations. Its memories and termbase stay; delete them on their own pages.").arg(name),
-                              QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes)
-        return;
-    onResult(m_conn->api()->del(QStringLiteral("/api/projects/%1").arg(m_id)), this, [this](const ApiResult &r) {
+    const QString name = settings().value(QLatin1String("name")).toString();
+    onResult(m_conn->api()->del(QStringLiteral("/api/projects/%1").arg(m_id)), this, [this, name](const ApiResult &r) {
         if (!r.ok()) {
             say(r.error.message);
             return;
