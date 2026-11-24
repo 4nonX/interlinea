@@ -123,7 +123,7 @@ var tieBreakers = map[string]string{
 	"de-DE": "äöüß", "fr-FR": "éèêàçù", "es-ES": "ñ¿¡", "pl-PL": "ąęłńśźż", "pt-PT": "ãõ", "sv-SE": "åä", "da-DK": "æø",
 	"nb-NO": "æø", "et-EE": "õ", "cs-CZ": "ěřů", "sk-SK": "ľĺŕô", "hu-HU": "őű", "ro-RO": "țșă", "tr-TR": "ğış", "hr-HR": "đ",
 	"lt-LT": "ėįųū", "lv-LV": "ļņķģ", "vi-VN": "ơưạảấầậđệộ", "ca-ES": "·", "is-IS": "ðþ", "mt-MT": "ħġż", "az-AZ": "ə",
-	"sq-AL": "ë", "uk-UA": "іїєґ", "be-BY": "ў", "mk-MK": "ѓќѕ", "sr-Cyrl-RS": "ђћљњџ", "kk-KZ": "әғқңұһ", "mn-MN": "өү",
+	"sq-AL": "ë", "uk-UA": "їєґі", "be-BY": "ў", "mk-MK": "ѓќѕ", "sr-Cyrl-RS": "ђћљњџ", "kk-KZ": "әғқңұһ", "mn-MN": "өү",
 	"bg-BG": "ъ", "fa-IR": "پچژگ", "ur-PK": "ٹڈڑےں", "mr-IN": "ळ",
 }
 
@@ -180,10 +180,11 @@ func Detect(text string) Detection {
 		if lang == "zh-CN" {
 			simp, trad := 0, 0
 			for _, r := range text {
+				inSimp, inTrad := strings.ContainsRune(simplifiedOnly, r), strings.ContainsRune(traditionalOnly, r)
 				switch {
-				case strings.ContainsRune(simplifiedOnly, r):
+				case inSimp && !inTrad:
 					simp++
-				case strings.ContainsRune(traditionalOnly, r):
+				case inTrad && !inSimp:
 					trad++
 				}
 			}
@@ -226,10 +227,23 @@ func amongWritten(text string, family []string, basis int, scriptConfidence floa
 	if d.Lang != "" && d.Reason == OK {
 		return d
 	}
-	for _, l := range family[1:] {
-		if chars, ok := tieBreakers[l]; ok && l != "bg-BG" && strings.ContainsAny(text, chars) {
-			return Detection{Lang: l, Confidence: math.Min(scriptConfidence, 0.7), Alternatives: []Guess{{Lang: family[0], Confidence: 0.3}}, Basis: basis, Unit: "characters", Reason: OK}
+	// The languages whose letters no other of the family writes come
+	// first; і is Ukrainian, Belarusian and Kazakh, so it decides last.
+	lower := strings.ToLower(text)
+	for _, l := range []string{"be-BY", "mk-MK", "sr-Cyrl-RS", "kk-KZ", "mn-MN", "uk-UA", "fa-IR", "ur-PK", "mr-IN", "bg-BG"} {
+		in := false
+		for _, f := range family {
+			in = in || f == l
 		}
+		chars, ok := tieBreakers[l]
+		if !in || !ok || !strings.ContainsAny(lower, chars) {
+			continue
+		}
+		if l == "bg-BG" && (strings.Count(lower, "ъ") < 2 || strings.ContainsAny(lower, "ыэё")) {
+			// Russian writes ъ too, but rarely, and Bulgarian has no ы, э or ё.
+			continue
+		}
+		return Detection{Lang: l, Confidence: math.Min(scriptConfidence, 0.7), Alternatives: []Guess{{Lang: family[0], Confidence: 0.3}}, Basis: basis, Unit: "characters", Reason: OK}
 	}
 	// The script is certain, the language within it is not.
 	alt := []Guess{}

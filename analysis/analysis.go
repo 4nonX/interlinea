@@ -236,6 +236,10 @@ func joins(text string, start, i int, r rune, size int) bool {
 	prev, _ := utf8.DecodeLastRuneInString(text[start:i])
 	next, _ := utf8.DecodeRuneInString(text[i+size:])
 	switch r {
+	case '\u200c', '\u200d':
+		// The joiners of Persian and the Indic scripts shape the letters
+		// around them; they do not end the word.
+		return unicode.IsLetter(prev) || unicode.IsMark(prev)
 	case '\'', '’', '-', '‐', '­':
 		return (unicode.IsLetter(prev) || unicode.IsDigit(prev)) && (unicode.IsLetter(next) || unicode.IsDigit(next)) && !perCharacter(next)
 	case '.', ',', ' ', ' ':
@@ -245,7 +249,10 @@ func joins(text string, start, i int, r rune, size int) bool {
 }
 
 func perCharacter(r rune) bool {
-	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar)
+	// Their letters, digits and signs; their punctuation (the Burmese and
+	// Khmer full stops) is no word.
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar) &&
+		(unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r))
 }
 
 func isNumber(w string) bool {

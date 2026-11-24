@@ -171,10 +171,13 @@
           <beforebreak>(?:\.\.\.|…)</beforebreak>
           <afterbreak>\s+\p{Ll}</afterbreak>
         </rule>
-        <!-- Sentence end: terminal punctuation, optional closing quotes or brackets, then space and a sentence start. -->
+        <!-- Sentence end: terminal punctuation, optional closing quotes or brackets, then space and a sentence start.
+             A sentence starts with a capital, a digit, an opening mark, or a letter of a script without capitals;
+             the Georgian letters are named because Unicode files them as small letters, though Georgian is
+             written without capitals. -->
         <rule break="yes">
           <beforebreak>[.?!…؟۔।॥։።፧]+["'“”‘’»«›‹)\]]*</beforebreak>
-          <afterbreak>\s+[\p{Lu}\p{Lt}\p{N}"'“„‚«»(\[¿¡\p{Lo}]</afterbreak>
+          <afterbreak>\s+[\p{Lu}\p{Lt}\p{N}"'“„‚«»(\[¿¡\p{Lo}\x{10D0}-\x{10FF}]</afterbreak>
         </rule>
         <!-- Full-width punctuation also ends sentences in mixed text, and so
              do the Burmese, Khmer and Tibetan full stops, which need no

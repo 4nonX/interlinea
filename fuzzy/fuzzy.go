@@ -85,7 +85,8 @@ func TokenizeText(s string) []Token {
 // Each of their characters is a token of its own, so a sentence with one
 // word changed still scores as a close match.
 func isIdeographic(r rune) bool {
-	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar)
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar) &&
+		(unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r))
 }
 
 func isWordRune(r rune) bool {
@@ -93,6 +94,9 @@ func isWordRune(r rune) bool {
 }
 
 func appendTextTokens(out []Token, s string) []Token {
+	// Composed first, so the same words score the same however a file
+	// stores their accents.
+	s = textnorm.NFC(s)
 	for i := 0; i < len(s); {
 		r, n := utf8.DecodeRuneInString(s[i:])
 		switch {
@@ -208,7 +212,7 @@ func total(ts []Token) float64 {
 // 100 is reserved for segments with identical text and identical tags
 // (compared by kind and type); any difference yields at most 99.
 func Score(a, b content.Content) int {
-	if a.Plain() == b.Plain() && sameTagShape(a, b) {
+	if textnorm.NFC(a.Plain()) == textnorm.NFC(b.Plain()) && sameTagShape(a, b) {
 		return 100
 	}
 	return score(Tokenize(a), Tokenize(b))
@@ -216,7 +220,7 @@ func Score(a, b content.Content) int {
 
 // ScoreText is Score for plain text.
 func ScoreText(a, b string) int {
-	if a == b {
+	if textnorm.NFC(a) == textnorm.NFC(b) {
 		return 100
 	}
 	return score(TokenizeText(a), TokenizeText(b))

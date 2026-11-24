@@ -17,7 +17,7 @@ var stopwords = map[string][]string{
 	"da-DK":      {"og", "i", "at", "det", "som", "en", "på", "er", "af", "for", "med", "til", "den", "har", "de", "ikke", "om", "et", "men", "var", "sig", "så", "kan", "man", "fra", "eller", "skal", "blev", "efter"},
 	"nb-NO":      {"og", "i", "at", "det", "som", "en", "på", "er", "av", "for", "med", "til", "den", "har", "de", "ikke", "om", "et", "men", "var", "seg", "så", "kan", "man", "fra", "eller", "skal", "ble", "etter"},
 	"fi-FI":      {"ja", "on", "ei", "että", "se", "oli", "hän", "joka", "mutta", "tai", "kun", "niin", "myös", "ovat", "sekä", "tämä", "olla", "kuin", "jos", "vain", "voi", "sen", "ole", "mukaan"},
-	"et-EE":      {"ja", "on", "ei", "et", "see", "oli", "ta", "kui", "ka", "või", "mis", "aga", "siis", "oma", "selle", "kes", "nii", "veel", "ning", "tema", "nende", "olla", "pole"},
+	"et-EE":      {"ole", "iga", "sel", "kuu", "ja", "on", "ei", "et", "see", "oli", "ta", "kui", "ka", "või", "mis", "aga", "siis", "oma", "selle", "kes", "nii", "veel", "ning", "tema", "nende", "olla", "pole"},
 	"cs-CZ":      {"a", "je", "v", "na", "se", "že", "to", "s", "z", "do", "o", "pro", "jako", "ale", "nebo", "by", "být", "který", "jsou", "tak", "za", "při", "podle", "také", "jeho"},
 	"sk-SK":      {"a", "je", "v", "na", "sa", "že", "to", "s", "z", "do", "o", "pre", "ako", "ale", "alebo", "by", "byť", "ktorý", "sú", "tak", "za", "pri", "podľa", "tiež", "jeho"},
 	"hu-HU":      {"a", "az", "és", "hogy", "nem", "is", "egy", "van", "volt", "meg", "vagy", "de", "ez", "azt", "csak", "már", "még", "mint", "aki", "ami", "lesz", "kell", "szerint", "között"},

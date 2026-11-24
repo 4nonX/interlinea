@@ -89,8 +89,8 @@ var (
 		endings: set("a i u ja t të ve s n in un ës e et it ave së"),
 		drop:    1, tails: set("ë e"), min: 4, every: true,
 	}
-	amharic = inflection{open: 6, min: 2}
-	arabic    = inflection{
+	amharic = inflection{open: 6, drop: 1, min: 3}
+	arabic  = inflection{
 		prefixes: []string{"وبال", "فبال", "ولل", "فلل", "وال", "فال", "بال", "كال", "لل", "ال", "و", "ف", "ب", "ك", "ل"},
 		endings:  set("ة ات ون ين ان ه ها هم هن نا ي ك كم ية تين تان"),
 		drop:     1, tails: set("ة ه"), min: 3, every: true,

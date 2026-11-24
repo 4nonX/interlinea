@@ -16,7 +16,7 @@ var decimalComma = map[string]bool{
 	"nn": true, "no": true, "fi": true, "et": true, "lv": true, "lt": true, "ru": true, "uk": true,
 	"be": true, "bg": true, "ro": true, "hu": true, "el": true, "tr": true, "az": true, "id": true,
 	"vi": true, "ca": true, "gl": true, "eu": true, "is": true, "lb": true, "kk": true, "ka": true,
-	"sq": true, "mk": true, "hy": true, "af": true, "uz": true, "fo": true, "ky": true,
+	"sq": true, "mk": true, "hy": true, "af": true, "uz": true, "fo": true, "ky": true, "km": true, "lo": true,
 	"tg": true, "tk": true,
 }
 
@@ -351,7 +351,12 @@ func (c *checker) punctuation(out *[]Issue, s Segment, src, tgt string) {
 	}
 }
 
-func hasCase(r rune) bool { return unicode.IsUpper(r) || unicode.IsLower(r) }
+// hasCase reports whether a letter belongs to a script written with
+// capitals. Georgian is not: Unicode gives its letters a case, but
+// sentences do not start with a capital.
+func hasCase(r rune) bool {
+	return (unicode.IsUpper(r) || unicode.IsLower(r)) && !unicode.Is(unicode.Georgian, r)
+}
 
 // firstLetter is the first character of the text after opening quotes,
 // brackets and the Spanish inverted marks; 0 if that is not a letter.
