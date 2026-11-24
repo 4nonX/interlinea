@@ -169,6 +169,9 @@ var migrations = []string{
 	INSERT INTO changes(memory_id, memory, unit_id, version, kind, at, author)
 		SELECT u.memory_id, m.name, u.id, 1, 'created', u.created_at, u.created_by
 		FROM units u JOIN memories m ON m.id = u.memory_id ORDER BY u.id;`,
+
+	// Version 3: who a memory is kept for.
+	`ALTER TABLE memories ADD COLUMN client TEXT NOT NULL DEFAULT '';`,
 }
 
 var pgMigrations = []string{
@@ -220,6 +223,8 @@ var pgMigrations = []string{
 		author    TEXT NOT NULL
 	);
 	CREATE INDEX changes_by_memory ON changes(memory_id, seq);`,
+
+	`ALTER TABLE memories ADD COLUMN client TEXT NOT NULL DEFAULT '';`,
 }
 
 func logChange(ctx context.Context, tx *sqlstore.Tx, memoryID int64, memory string, unitID int64, version int, kind, by string, now time.Time) error {
@@ -267,8 +272,8 @@ func (d *DB) CreateBy(ctx context.Context, info tm.Info, by string) (*Memory, er
 	now := d.now()
 	var id int64
 	err = tx.QueryRowContext(ctx,
-		`INSERT INTO memories(name, source_lang, target_lang, created_at) VALUES (?, ?, ?, ?) RETURNING id`,
-		info.Name, info.SourceLang, info.TargetLang, now.Format(timeLayout)).Scan(&id)
+		`INSERT INTO memories(name, source_lang, target_lang, client, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id`,
+		info.Name, info.SourceLang, info.TargetLang, noNUL(info.Client), now.Format(timeLayout)).Scan(&id)
 	if err != nil {
 		if d.d.IsUnique(err) {
 			return nil, ErrExists
@@ -288,8 +293,8 @@ func (d *DB) CreateBy(ctx context.Context, info tm.Info, by string) (*Memory, er
 func (d *DB) Memory(ctx context.Context, name string) (*Memory, error) {
 	m := &Memory{db: d}
 	err := d.sql.QueryRowContext(ctx,
-		`SELECT id, name, source_lang, target_lang FROM memories WHERE lower(name) = lower(?)`, strings.TrimSpace(name)).
-		Scan(&m.id, &m.info.Name, &m.info.SourceLang, &m.info.TargetLang)
+		`SELECT id, name, source_lang, target_lang, client FROM memories WHERE lower(name) = lower(?)`, strings.TrimSpace(name)).
+		Scan(&m.id, &m.info.Name, &m.info.SourceLang, &m.info.TargetLang, &m.info.Client)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -302,7 +307,7 @@ func (d *DB) Memory(ctx context.Context, name string) (*Memory, error) {
 // List returns all memories ordered by name.
 func (d *DB) List(ctx context.Context) ([]Summary, error) {
 	rows, err := d.sql.QueryContext(ctx, `
-		SELECT m.name, m.source_lang, m.target_lang, m.created_at,
+		SELECT m.name, m.source_lang, m.target_lang, m.client, m.created_at,
 		       (SELECT count(*) FROM units u WHERE u.memory_id = m.id)
 		FROM memories m ORDER BY lower(m.name)`)
 	if err != nil {
@@ -313,7 +318,7 @@ func (d *DB) List(ctx context.Context) ([]Summary, error) {
 	for rows.Next() {
 		var s Summary
 		var created string
-		if err := rows.Scan(&s.Name, &s.SourceLang, &s.TargetLang, &created, &s.Units); err != nil {
+		if err := rows.Scan(&s.Name, &s.SourceLang, &s.TargetLang, &s.Client, &created, &s.Units); err != nil {
 			return nil, err
 		}
 		s.CreatedAt = parseTime(created)

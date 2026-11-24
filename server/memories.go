@@ -33,12 +33,14 @@ func (s *Server) memoryRoutes() {
 }
 
 type memoryView struct {
-	Name       string    `json:"name"`
-	SourceLang string    `json:"sourceLang"`
-	TargetLang string    `json:"targetLang"`
-	Units      int       `json:"units"`
-	CreatedAt  time.Time `json:"createdAt"`
-	Role       string    `json:"role"`
+	Name       string `json:"name"`
+	SourceLang string `json:"sourceLang"`
+	TargetLang string `json:"targetLang"`
+	// Client is who the memory is kept for, if anyone.
+	Client    string    `json:"client,omitempty"`
+	Units     int       `json:"units"`
+	CreatedAt time.Time `json:"createdAt"`
+	Role      string    `json:"role"`
 }
 
 // listMemories lists the memories the person may read, with their role on each.
@@ -59,7 +61,7 @@ func (s *Server) listMemories(w http.ResponseWriter, r *http.Request, me session
 			return
 		}
 		if role.Includes(authdb.RoleRead) {
-			out = append(out, memoryView{Name: m.Name, SourceLang: m.SourceLang, TargetLang: m.TargetLang, Units: m.Units, CreatedAt: m.CreatedAt, Role: string(role)})
+			out = append(out, memoryView{Name: m.Name, SourceLang: m.SourceLang, TargetLang: m.TargetLang, Client: m.Client, Units: m.Units, CreatedAt: m.CreatedAt, Role: string(role)})
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -85,11 +87,13 @@ func (s *Server) createMemory(w http.ResponseWriter, r *http.Request, me session
 		Name       string `json:"name"`
 		SourceLang string `json:"sourceLang"`
 		TargetLang string `json:"targetLang"`
+		// Client is who the memory is kept for; it may be left out.
+		Client string `json:"client"`
 	}
 	if !readJSON(w, r, &req, maxBody) {
 		return
 	}
-	info, err := tm.ValidateInfo(tm.Info{Name: req.Name, SourceLang: req.SourceLang, TargetLang: req.TargetLang})
+	info, err := tm.ValidateInfo(tm.Info{Name: req.Name, SourceLang: req.SourceLang, TargetLang: req.TargetLang, Client: req.Client})
 	if err != nil {
 		invalid(w, "name", "A memory needs a name and its source and target languages.")
 		return
@@ -105,7 +109,7 @@ func (s *Server) createMemory(w http.ResponseWriter, r *http.Request, me session
 			return
 		}
 	}
-	writeJSON(w, http.StatusCreated, memoryView{Name: m.Info().Name, SourceLang: m.Info().SourceLang, TargetLang: m.Info().TargetLang, CreatedAt: s.cfg.Now().UTC(), Role: string(authdb.RoleManage)})
+	writeJSON(w, http.StatusCreated, memoryView{Name: m.Info().Name, SourceLang: m.Info().SourceLang, TargetLang: m.Info().TargetLang, Client: m.Info().Client, CreatedAt: s.cfg.Now().UTC(), Role: string(authdb.RoleManage)})
 }
 
 // openMemoryFor loads the memory in the path if someone has the role on
@@ -151,7 +155,7 @@ func (s *Server) getMemory(w http.ResponseWriter, r *http.Request, me session) {
 		s.fail(w, r, err)
 		return
 	}
-	v := memoryView{Name: info.Name, SourceLang: info.SourceLang, TargetLang: info.TargetLang, Units: n, Role: string(role)}
+	v := memoryView{Name: info.Name, SourceLang: info.SourceLang, TargetLang: info.TargetLang, Client: info.Client, Units: n, Role: string(role)}
 	for _, x := range ms {
 		if x.Name == info.Name {
 			v.CreatedAt = x.CreatedAt

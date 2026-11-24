@@ -45,6 +45,8 @@ type Info struct {
 	Name       string
 	SourceLang string
 	TargetLang string
+	// Client is who the memory is kept for, if anyone.
+	Client string
 }
 
 // Match is a lookup result.
@@ -135,7 +137,11 @@ func ValidateInfo(info Info) (Info, error) {
 	if err != nil {
 		return Info{}, ErrInvalidInfo
 	}
+	if strings.IndexFunc(info.Client, unicode.IsControl) >= 0 {
+		return Info{}, ErrInvalidInfo
+	}
 	info.Name = strings.TrimSpace(info.Name)
+	info.Client = strings.TrimSpace(info.Client)
 	info.SourceLang, info.TargetLang = src, tgt
 	return info, nil
 }

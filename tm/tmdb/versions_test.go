@@ -307,3 +307,25 @@ func TestNULInStoredText(t *testing.T) {
 		t.Fatalf("changes = %+v %v", cs, err)
 	}
 }
+
+func TestClient(t *testing.T) {
+	db, _ := openTemp(t)
+	m, err := db.Create(ctx, tm.Info{Name: "Weber", SourceLang: "de-DE", TargetLang: "en-GB", Client: "  Kanzlei Weber "})
+	if err != nil || m.Info().Client != "Kanzlei Weber" {
+		t.Fatalf("created for %q, %v", m.Info().Client, err)
+	}
+	if _, err := db.Create(ctx, tm.Info{Name: "Frei", SourceLang: "de-DE", TargetLang: "en-GB"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.Memory(ctx, "weber")
+	if err != nil || got.Info().Client != "Kanzlei Weber" {
+		t.Fatalf("loaded for %q, %v", got.Info().Client, err)
+	}
+	list, err := db.List(ctx)
+	if err != nil || len(list) != 2 || list[0].Client != "" || list[1].Client != "Kanzlei Weber" {
+		t.Fatalf("listed %+v, %v", list, err)
+	}
+	if _, err := db.Create(ctx, tm.Info{Name: "Bruch", SourceLang: "de-DE", TargetLang: "en-GB", Client: "a\nb"}); err != tm.ErrInvalidInfo {
+		t.Fatalf("a client with a line break: %v", err)
+	}
+}

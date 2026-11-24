@@ -863,7 +863,7 @@ The person who makes it manages it.
 
 Access: those who manage memories (a manage grant on all memories) and administrators.
 
-- Body: {`name`: string, `sourceLang`: string, `targetLang`: string}
+- Body: {`client`: string, `name`: string, `sourceLang`: string, `targetLang`: string}
 - Answer: 201 Created: [MemoryView](#memoryview)
 - Errors: 401, 403, 422 (see [Error](#error))
 
@@ -1656,6 +1656,7 @@ inspection is what the server finds in a document before a project is made from 
 
 | Field | Type | Description |
 |---|---|---|
+| `client` | string | Client is who the memory is kept for, if anyone. |
 | `createdAt` | string (date-time) |  |
 | `name` | string |  |
 | `role` | string |  |
@@ -2770,6 +2771,7 @@ Info describes a memory.
 
 | Field | Type | Description |
 |---|---|---|
+| `Client` | string | Client is who the memory is kept for, if anyone. |
 | `Name` | string |  |
 | `SourceLang` | string |  |
 | `TargetLang` | string |  |

@@ -30,6 +30,19 @@ func TestMemories(t *testing.T) {
 	if m.Role != "manage" {
 		t.Fatalf("made %+v", m)
 	}
+	// A memory can be kept for a client.
+	var kept memoryView
+	e.call("POST", "/api/memories", carl, map[string]string{"name": "Hofmann DE-EN", "sourceLang": "de-DE", "targetLang": "en-GB", "client": " Hofmann GmbH "}, 201, &kept)
+	if kept.Client != "Hofmann GmbH" {
+		t.Fatalf("made for %q", kept.Client)
+	}
+	e.call("GET", "/api/memories/Hofmann%20DE-EN", carl, nil, 200, &kept)
+	var all []memoryView
+	e.call("GET", "/api/memories", carl, nil, 200, &all)
+	if kept.Client != "Hofmann GmbH" || len(all) != 2 || all[0].Client != "Hofmann GmbH" || all[1].Client != "" {
+		t.Fatalf("clients: %+v, %+v", kept, all)
+	}
+	e.call("DELETE", "/api/memories/Hofmann%20DE-EN", carl, nil, 204, nil)
 	if r := e.do("POST", "/api/memories", carl, map[string]string{"name": "weber de-en", "sourceLang": "de-DE", "targetLang": "en-GB"}); r.status != 409 {
 		t.Fatalf("same name: %d", r.status)
 	}

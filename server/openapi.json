@@ -495,6 +495,10 @@
       },
       "MemoryView": {
         "properties": {
+          "client": {
+            "description": "Client is who the memory is kept for, if anyone.",
+            "type": "string"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -3052,6 +3056,10 @@
       "tm.Info": {
         "description": "Info describes a memory.",
         "properties": {
+          "Client": {
+            "description": "Client is who the memory is kept for, if anyone.",
+            "type": "string"
+          },
           "Name": {
             "type": "string"
           },
@@ -4230,6 +4238,10 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "client": {
+                    "description": "Client is who the memory is kept for; it may be left out.",
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
