@@ -15,6 +15,8 @@
 #include <QHBoxLayout>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCryptographicHash>
+#include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
@@ -137,6 +139,7 @@ void ReviewPage::open(Connection *conn, int id)
     m_reviewers = {};
     m_people = {};
     m_comments.clear();
+    m_drawn.clear();
     m_assignWho.clear();
     m_assignPart.clear();
     m_problem.clear();
@@ -191,8 +194,35 @@ void ReviewPage::reload()
         if (reading != m_reading)
             return;
         m_problem = problem;
+        const bool was = m_read;
         m_read = problem.isEmpty();
+        // Read again with nothing new, as after someone's change elsewhere
+        // in the termbase: the page stays, with what is being written.
+        const QJsonObject all{{QLatin1String("request"), m_request},     {QLatin1String("progress"), m_progress}, {QLatin1String("items"), m_items},     {QLatin1String("total"), m_total},
+                              {QLatin1String("target"), m_target},       {QLatin1String("reviewers"), m_reviewers}, {QLatin1String("people"), m_people}, {QLatin1String("problem"), m_problem},
+                              {QLatin1String("view"), m_view},           {QLatin1String("mine"), m_mine}};
+        const QByteArray now = QCryptographicHash::hash(QJsonDocument(all).toJson(QJsonDocument::Compact), QCryptographicHash::Sha1);
+        if (was && m_read && now == m_drawn) {
+            emit loaded();
+            return;
+        }
+        m_drawn = now;
+        // A note being written keeps its place when the page is drawn again.
+        int writing = 0, at = 0;
+        if (auto *edit = qobject_cast<QLineEdit *>(focusWidget()); edit && edit->objectName() == QLatin1String("comment")) {
+            writing = edit->property("item").toInt();
+            at = edit->cursorPosition();
+        }
         render();
+        if (writing) {
+            for (QLineEdit *edit : findChildren<QLineEdit *>(QStringLiteral("comment"))) {
+                // The one just drawn, not the one being put away.
+                if (edit->property("item").toInt() == writing && !(edit->isHidden() && edit->testAttribute(Qt::WA_WState_ExplicitShowHide))) {
+                    edit->setFocus();
+                    edit->setCursorPosition(at);
+                }
+            }
+        }
         emit loaded();
     };
     onResult(m_conn->api()->get(base), this, [this, reading, done](const ApiResult &r) {
@@ -718,6 +748,7 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
         // What the author is told with the decision.
         auto *comment = new QLineEdit(m_comments.value(id), panel);
         comment->setObjectName(QStringLiteral("comment"));
+        comment->setProperty("item", id);
         comment->setPlaceholderText(tr("A note for the author, with your decision"));
         comment->setAccessibleName(tr("A note for the author"));
         comment->setMaximumWidth(520);

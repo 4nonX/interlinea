@@ -71,6 +71,7 @@ private:
     QJsonArray m_people;
     // What is being written for an item, kept while the page is drawn again.
     QHash<int, QString> m_comments;
+    QByteArray m_drawn;
     QString m_assignWho;
     QString m_assignPart;
     QString m_problem;

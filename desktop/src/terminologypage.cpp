@@ -1060,7 +1060,9 @@ void TerminologyPage::loadTermbase()
     const int reading = m_reading;
     Connection *c = conn();
     m_problem.clear();
+    m_loading = true;
     if (!c || m_name.isEmpty()) {
+        m_loading = false;
         m_detail = {};
         m_entries.clear();
         m_bases.clear();
@@ -1074,6 +1076,7 @@ void TerminologyPage::loadTermbase()
         if (reading != m_reading)
             return;
         if (!r.ok()) {
+            m_loading = false;
             m_detail = {};
             m_entries.clear();
             m_opened = false;
@@ -1132,6 +1135,7 @@ void TerminologyPage::loadEntries(int offset, int reading)
             if (reading != m_reading)
                 return;
             const bool was = m_opened;
+            m_loading = false;
             m_entries = m_pendingEntries;
             m_pendingEntries.clear();
             m_opened = true;

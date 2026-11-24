@@ -67,6 +67,9 @@ public:
     QJsonArray removals() const { return m_removals; }
     QJsonArray deleted() const { return m_deleted; }
     void selectMasterEntry(const QString &master, const QString &id);
+    // The opened termbase is read and shown, and nothing of it is being
+    // read again.
+    bool ready() const { return m_opened && !m_loading; }
     // Changes waiting to be saved or being saved.
     bool busy() const { return m_saving || !m_queue.isEmpty(); }
 
@@ -204,6 +207,7 @@ private:
     // The form makes a project termbase, over these masters.
     bool m_newProject = false;
     bool m_createOpen = false;
+    bool m_loading = false;
     QByteArray m_drawn;
     QByteArray m_listsDrawn;
     QStringList m_newUpstreams;

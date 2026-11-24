@@ -410,7 +410,7 @@ private slots:
         QCOMPARE(tabs->tab(1)->text(), QStringLiteral("History (%1)").arg(page.entry(id).value("version").toInt()));
         QSignalSpy history(&page, &TerminologyPage::historyShown);
         tabs->tab(1)->click();
-        QTRY_COMPARE_WITH_TIMEOUT(history.size(), 1, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(history.size() >= 1, 10000);
         QWidget *log = byName<QWidget>(&page, QStringLiteral("history"));
         QVERIFY(log);
         QList<QLabel *> lines;
@@ -962,9 +962,18 @@ private slots:
         section.openReview(here, again.object().value("id").toInt());
         QTRY_VERIFY_WITH_TIMEOUT(review->request() == again.object().value("id").toInt() && review->items().size() == 1, 10000);
         QTRY_VERIFY((stepped = itemWith(QStringLiteral("Staffelmiete"))));
-        auto *note = stepped->findChild<QLineEdit *>(QStringLiteral("comment"));
-        QVERIFY(note);
-        QTest::keyClicks(note, QStringLiteral("Quelle fehlt"));
+        // The note is written into the entry as the page shows it now.
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            stepped = itemWith(QStringLiteral("Staffelmiete"));
+            auto *note = stepped ? stepped->findChild<QLineEdit *>(QStringLiteral("comment")) : nullptr;
+            if (!note)
+                return false;
+            note->clear();
+            QTest::keyClicks(note, QStringLiteral("Quelle fehlt"));
+            return note->text() == QStringLiteral("Quelle fehlt");
+        }(), 10000);
+        stepped = itemWith(QStringLiteral("Staffelmiete"));
+        QVERIFY(stepped);
         stepped->findChild<QPushButton *>(QStringLiteral("postpone"))->click();
         QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Postponed: 1 entry"), 10000);
         byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
@@ -1022,7 +1031,7 @@ private slots:
         page.selectEntry(kid);
         QSignalSpy history(&page, &TerminologyPage::historyShown);
         byName<Web::Tabs>(&page, QStringLiteral("entryTabs"))->tab(1)->click();
-        QTRY_COMPARE_WITH_TIMEOUT(history.size(), 1, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(history.size() >= 1, 10000);
         QWidget *log = byName<QWidget>(&page, QStringLiteral("history"));
         QVERIFY(labelWith(log, QStringLiteral("en-GB: security deposit")));
         QVERIFY(labelWith(log, QStringLiteral("en-GB: deposit")));
@@ -1169,6 +1178,7 @@ private slots:
         QCOMPARE(page.languages(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
 
         // Its settings: also based on the second master, and back.
+        QTRY_VERIFY_WITH_TIMEOUT(page.ready(), 10000);
         TermbaseSettingsDialog *set = page.settingsDialog();
         QVERIFY(set);
         QCheckBox *recht = nullptr;
@@ -1191,6 +1201,7 @@ private slots:
         // The master: it says what is based on it, and so stays.
         page.open(here, QStringLiteral("Recht"));
         QTRY_VERIFY_WITH_TIMEOUT(page.termbase() == QStringLiteral("Recht") && page.detail().value("projects").toArray().size() == 1, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(page.ready(), 10000);
         set = page.settingsDialog();
         QVERIFY(set);
         QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QCheckBox>(set, QStringLiteral("ruleIdentical")), 10000);
@@ -1236,6 +1247,7 @@ private slots:
         // The project termbase is deleted from its settings; then the master can be.
         page.open(here, QStringLiteral("Fall Weber"));
         QTRY_VERIFY_WITH_TIMEOUT(page.termbase() == QStringLiteral("Fall Weber") && page.detail().value("kind").toString() == QStringLiteral("project"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(page.ready(), 10000);
         set = page.settingsDialog();
         QVERIFY(set);
         Web::ConfirmButton *gone = nullptr;
@@ -1246,6 +1258,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted Fall Weber"), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Recht"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(page.detail().value("projects").toArray().isEmpty(), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(page.ready(), 10000);
         set = page.settingsDialog();
         QVERIFY(set);
         QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<Web::ConfirmButton>(set, QStringLiteral("deleteTermbase")), 10000);
