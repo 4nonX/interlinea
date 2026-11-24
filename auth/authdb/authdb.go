@@ -1207,13 +1207,14 @@ func (d *DB) RenameResource(ctx context.Context, kind Kind, from, to, by string)
 		return nil
 	}
 	return d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
-		rows, err := tx.QueryContext(ctx, `SELECT user_id, resource, role FROM grants WHERE kind = ? AND (resource = ? OR resource = ?)`, string(kind), from, to)
+		// The definitions are read first: a transaction reads one result
+		// at a time.
+		defs, err := defined(ctx, tx)
 		if err != nil {
 			return err
 		}
-		defs, err := defined(ctx, tx)
+		rows, err := tx.QueryContext(ctx, `SELECT user_id, resource, role FROM grants WHERE kind = ? AND (resource = ? OR resource = ?)`, string(kind), from, to)
 		if err != nil {
-			rows.Close()
 			return err
 		}
 		// Someone with a role under both names keeps the one that allows

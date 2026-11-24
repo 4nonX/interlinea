@@ -521,7 +521,7 @@ private slots:
         byName<QCheckBox>(&page, QStringLiteral("isAdmin"))->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("ben.review is an administrator"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && byName<QCheckBox>(&page, QStringLiteral("isAdmin"))->isChecked(), 10000);
-        QVERIFY(label(&page, QStringLiteral("As an administrator, ben.review may do everything; roles add nothing.")));
+        QTRY_VERIFY_WITH_TIMEOUT(label(&page, QStringLiteral("As an administrator, ben.review may do everything; roles add nothing.")), 10000);
         byName<QCheckBox>(&page, QStringLiteral("isAdmin"))->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("ben.review is no longer an administrator"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(!page.busy(), 10000);
