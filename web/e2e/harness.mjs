@@ -282,6 +282,9 @@ export async function start({ teamServer = false } = {}) {
       await sleep(wait);
       return;
     }
+    // The page saves a moment after each change; a reload that keeps the
+    // work waits for that, as a person's next click does.
+    if (keep) await sleep(500);
     const q = new URLSearchParams({ load: String(++loads) });
     if (!keep) {
       q.set("reset", "1");
