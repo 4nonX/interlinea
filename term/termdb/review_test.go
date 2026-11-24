@@ -315,6 +315,11 @@ func TestMergeThreeWayAndConflicts(t *testing.T) {
 	if len(is) != 1 || is[0].Conflicts[0].Path != "entry field Subject" || is[0].Conflicts[0].Ours != "Contract law" || is[0].Conflicts[0].Theirs != "Civil law" {
 		t.Fatalf("conflict: %+v", is)
 	}
+	// Both ways out are offered: the master's value kept, or the project's taken.
+	if is[0].Merged == nil || is[0].MergedOurs == nil || is[0].Merged.Fields[0].Value != "Civil law" || is[0].MergedOurs.Fields[0].Value != "Contract law" ||
+		is[0].MergedOurs.ID != is[0].Merged.ID || len(terms(*is[0].MergedOurs, "en-GB")) != len(terms(*is[0].Merged, "en-GB")) {
+		t.Fatalf("the two resolutions: %+v / %+v", is[0].Merged, is[0].MergedOurs)
+	}
 	if _, err := mr2.Decide(ctx, Filter{IDs: []int64{is[0].ID}}, Decision{State: StateApproved}, "rita"); !errors.Is(err, ErrNeedsResolution) {
 		t.Fatalf("conflict approved: %v", err)
 	}

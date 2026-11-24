@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Check, Clock, X } from "lucide-react";
-import { useStore } from "../store";
+import { useStore, useWords } from "../store";
 import { errorText, useRemote } from "../remote";
 import { ApiError, type MergeFilter, type MergeItem, type MergeProgress, type MergeRequest } from "../server";
 import type { CoreEntry } from "../termio";
@@ -25,6 +25,16 @@ const STATE_TEXT: Record<string, string> = {
 };
 
 type View = "waiting" | "decided" | "all";
+
+/**
+ * What goes into the master at the conflicting places if one side is
+ * taken: the value itself for one conflict, how many places for several.
+ */
+function resolution(it: MergeItem, side: "ours" | "theirs"): string {
+  const cs = it.conflicts ?? [];
+  if (cs.length === 1) return `“${cs[0]![side] || "nothing"}”`;
+  return `${cs.length} places`;
+}
 const DECIDED = ["approved", "approved-with-edits", "changes-requested", "rejected", "postponed", "reverted"];
 
 function Terms({ entry }: { entry: CoreEntry }) {
@@ -48,6 +58,7 @@ function Terms({ entry }: { entry: CoreEntry }) {
  */
 export function ServerMergeReview({ id }: { id: number }) {
   const { notify } = useStore();
+  const w = useWords();
   const r = useRemote();
   const [mr, setMr] = useState<MergeRequest | null>(null);
   const [progress, setProgress] = useState<MergeProgress | null>(null);
@@ -215,6 +226,11 @@ export function ServerMergeReview({ id }: { id: number }) {
                         </li>
                       ))}
                     </ul>
+                    {open && it.state === "waiting" && it.merged && (
+                      <p className="cell-sub">
+                        Choose which of the two goes into {mr.target}. What only one side changed is merged either way.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -226,9 +242,22 @@ export function ServerMergeReview({ id }: { id: number }) {
               {open && it.state === "waiting" && (
                 <div className="server-actions">
                   {it.conflicts?.length && it.merged ? (
-                    <button type="button" className="btn btn-small btn-primary" onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.merged, "Approved the merged entry")}>
-                      <Check size={14} aria-hidden="true" /> Approve the merged entry
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.mergedOurs ?? it.entry, `Used the project version (${resolution(it, "ours")})`)}
+                      >
+                        <Check size={14} aria-hidden="true" /> {w("useProject")}: {resolution(it, "ours")}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.merged, `Kept the master version (${resolution(it, "theirs")})`)}
+                      >
+                        <Check size={14} aria-hidden="true" /> {w("keepMaster")}: {resolution(it, "theirs")}
+                      </button>
+                    </>
                   ) : (
                     <button type="button" className="btn btn-small btn-primary" onClick={() => void decide({ ids: [it.id] }, "approved")}>
                       <Check size={14} aria-hidden="true" /> Approve

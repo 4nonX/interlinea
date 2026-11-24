@@ -383,6 +383,8 @@ export interface MergeItem {
   changes?: { path: string; old: string; new: string }[];
   conflicts?: { path: string; ours?: string; theirs?: string; base?: string }[];
   merged?: CoreEntry;
+  /** As merged, with the project's value where the two disagree. */
+  mergedOurs?: CoreEntry;
   forbidden?: boolean;
   duplicates?: string[];
 }

@@ -83,7 +83,7 @@ signals:
 
 private:
     void refresh();
-    void show();
+    void render();
     void rename();
     void putDefinition(const QJsonObject &definition, const QString &done);
     int termsIn(const QString &lang) const;
@@ -149,7 +149,7 @@ private:
     Connection *place() const;
     QList<Connection *> places() const;
     QStringList destinationLanguages() const;
-    void show();
+    void render();
     void showFile();
     void showColumns();
     void showLanguages();

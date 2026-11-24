@@ -92,11 +92,14 @@ type Item struct {
 	Master *Stored    `json:"master,omitempty"`
 	// Changes are what the project changed since its copy (all of the
 	// entry for a new one); Conflicts where the master changed the same
-	// places since then; Merged the three-way merge, the starting point
-	// of a resolution.
-	Changes   []term.Change   `json:"changes,omitempty"`
-	Conflicts []term.Conflict `json:"conflicts,omitempty"`
-	Merged    *term.Entry     `json:"merged,omitempty"`
+	// places since then. Merged and MergedOurs are the two ways out of a
+	// conflict: both have every change either side made alone, and at the
+	// conflicting places Merged keeps the master's value and MergedOurs
+	// takes the project's. MergedOurs is set only where they differ.
+	Changes    []term.Change   `json:"changes,omitempty"`
+	Conflicts  []term.Conflict `json:"conflicts,omitempty"`
+	Merged     *term.Entry     `json:"merged,omitempty"`
+	MergedOurs *term.Entry     `json:"mergedOurs,omitempty"`
 	// Forbidden is set if the entry has a forbidden term; Duplicates lists
 	// master entries that share a term with it (new entries).
 	Forbidden  bool     `json:"forbidden,omitempty"`
@@ -631,6 +634,13 @@ func (mr *MergeRequest) loadItems(ctx context.Context, q querier) ([]*Item, erro
 				merged, cs := term.Merge3(base, it.Entry, it.Master.Entry)
 				it.Conflicts = cs
 				it.Merged = &merged
+				if len(cs) > 0 {
+					// The same merge seen from the other side keeps the
+					// project's value where the two disagree.
+					ours, _ := term.Merge3(base, it.Master.Entry, it.Entry)
+					ours.ID = merged.ID
+					it.MergedOurs = &ours
+				}
 			}
 		case ItemDeleted:
 			if it.Master == nil {

@@ -8,6 +8,7 @@
 #include "languages.h"
 #include "termdata.h"
 #include "theme.h"
+#include "words.h"
 
 #include <QDateTime>
 #include <QHBoxLayout>
@@ -125,7 +126,7 @@ void ReviewPage::open(Connection *conn, int id)
     m_progress = {};
     m_items = {};
     m_problem.clear();
-    show();
+    render();
     reload();
 }
 
@@ -157,7 +158,7 @@ void ReviewPage::reload()
             return;
         m_problem = problem;
         m_read = problem.isEmpty();
-        show();
+        render();
         emit loaded();
     };
     onResult(m_conn->api()->get(base), this, [this, reading, done](const ApiResult &r) {
@@ -210,7 +211,7 @@ void ReviewPage::decide(const QJsonObject &filter, const QString &state, const Q
              });
 }
 
-void ReviewPage::show()
+void ReviewPage::render()
 {
     clear(m_body);
     QWidget *host = m_body->parentWidget();
@@ -407,6 +408,12 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
             l->setTextFormat(Qt::PlainText);
             nv->addWidget(l);
         }
+        if (open && state == QLatin1String("waiting") && !it.value(QLatin1String("merged")).toObject().isEmpty()) {
+            auto *choose = Web::text(tr("Choose which of the two goes into %1. What only one side changed is merged either way.").arg(str(m_request, "target")), "cellSub", notice);
+            choose->setProperty("part", QStringLiteral("chooseSide"));
+            choose->setWordWrap(true);
+            nv->addWidget(choose);
+        }
         nh->addLayout(nv, 1);
         v->addWidget(notice);
     }
@@ -430,22 +437,41 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
         // .server-actions
         const QJsonObject only{{QLatin1String("ids"), QJsonArray{id}}};
         const QJsonObject merged = it.value(QLatin1String("merged")).toObject();
-        QPushButton *approve = nullptr;
+        QList<QWidget *> actions;
         if (!conflicts.isEmpty() && !merged.isEmpty()) {
-            approve = Web::button(tr("Approve the merged entry"), Web::Primary | Web::Small, panel, QStringLiteral("check"));
-            connect(approve, &QPushButton::clicked, this, [this, only, merged] { decide(only, QStringLiteral("approved-with-edits"), merged, tr("Approved the merged entry")); });
+            // Each way out names what it puts into the master: the value
+            // itself for one conflict, how many places for several.
+            const auto result = [&conflicts, &nothing](const char *side) {
+                if (conflicts.size() != 1)
+                    return tr("%1 places").arg(conflicts.size());
+                const QString value = str(conflicts.first().toObject(), side);
+                return tr("“%1”").arg(value.isEmpty() ? nothing : value);
+            };
+            QJsonObject ours = it.value(QLatin1String("mergedOurs")).toObject();
+            if (ours.isEmpty())
+                ours = entry;
+            const QString mine = result("ours"), theirs = result("theirs");
+            auto *useProject = Web::button(QStringLiteral("%1: %2").arg(Words::get("useProject"), mine), Web::Small, panel, QStringLiteral("check"));
+            useProject->setObjectName(QStringLiteral("useProject"));
+            connect(useProject, &QPushButton::clicked, this, [this, only, ours, mine] { decide(only, QStringLiteral("approved-with-edits"), ours, tr("Used the project version (%1)").arg(mine)); });
+            auto *keepMaster = Web::button(QStringLiteral("%1: %2").arg(Words::get("keepMaster"), theirs), Web::Small, panel, QStringLiteral("check"));
+            keepMaster->setObjectName(QStringLiteral("keepMaster"));
+            connect(keepMaster, &QPushButton::clicked, this, [this, only, merged, theirs] { decide(only, QStringLiteral("approved-with-edits"), merged, tr("Kept the master version (%1)").arg(theirs)); });
+            actions << useProject << keepMaster;
         } else {
-            approve = Web::button(tr("Approve"), Web::Primary | Web::Small, panel, QStringLiteral("check"));
+            auto *approve = Web::button(tr("Approve"), Web::Primary | Web::Small, panel, QStringLiteral("check"));
+            approve->setObjectName(QStringLiteral("approve"));
             connect(approve, &QPushButton::clicked, this, [this, only] { decide(only, QStringLiteral("approved"), {}, QString()); });
+            actions << approve;
         }
-        approve->setObjectName(QStringLiteral("approve"));
         auto *postpone = Web::button(tr("Postpone"), Web::Small, panel, QStringLiteral("clock"));
         postpone->setObjectName(QStringLiteral("postpone"));
         auto *reject = Web::button(tr("Reject"), Web::Small, panel, QStringLiteral("x"));
         reject->setObjectName(QStringLiteral("reject"));
         connect(postpone, &QPushButton::clicked, this, [this, only] { decide(only, QStringLiteral("postponed"), {}, QString()); });
         connect(reject, &QPushButton::clicked, this, [this, only] { decide(only, QStringLiteral("rejected"), {}, QString()); });
-        v->addWidget(Web::row({approve, postpone, reject}, panel));
+        actions << postpone << reject;
+        v->addWidget(Web::row(actions, panel));
     }
     return panel;
 }

@@ -2,6 +2,7 @@
 #include "corelauncher.h"
 #include "icons.h"
 #include "mainwindow.h"
+#include "accountspage.h"
 #include "memoriespage.h"
 #include "terminologypage.h"
 #include "projectspage.h"
@@ -69,6 +70,9 @@ int main(int argc, char *argv[])
     });
     window.addPage(QStringLiteral("terminology"), QObject::tr("Terminology"), Icons::get(QStringLiteral("terminology")), terminology,
                    QKeySequence(QStringLiteral("Ctrl+3")));
+    auto *accounts = new AccountsPage(&connections, &window);
+    window.addPage(QStringLiteral("accounts"), QObject::tr("Accounts"), Icons::get(QStringLiteral("accounts")), accounts, QKeySequence(QStringLiteral("Ctrl+4")));
+    QObject::connect(accounts, &AccountsPage::openSettings, &window, [&window] { window.showPage(QStringLiteral("settings")); });
     window.addPage(QStringLiteral("settings"), QObject::tr("Settings"), Icons::get(QStringLiteral("settings")),
                    new SettingsPage(&connections, &window), QKeySequence(QStringLiteral("Ctrl+,")));
     QObject::connect(&instance, &SingleInstance::activated, &window, [&window, projects](const QStringList &files) {

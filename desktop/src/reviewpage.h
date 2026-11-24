@@ -43,7 +43,7 @@ protected:
     void resizeEvent(QResizeEvent *e) override;
 
 private:
-    void show();
+    void render();
     QWidget *item(const QJsonObject &it, QWidget *parent);
     void decide(const QJsonObject &filter, const QString &state, const QJsonObject &edited, const QString &what);
 

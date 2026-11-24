@@ -2744,7 +2744,7 @@ Item is one entry of a merge request with what the reviewer needs to decide it.
 | `author` | string |  |
 | `base` | [termdb.BaseRef](#termdbbaseref) |  |
 | `changedAt` | string (date-time) |  |
-| `changes` | list of [term.Change](#termchange) | Changes are what the project changed since its copy (all of the entry for a new one); Conflicts where the master changed the same places since then; Merged the three-way merge, the starting point of a resolution. |
+| `changes` | list of [term.Change](#termchange) | Changes are what the project changed since its copy (all of the entry for a new one); Conflicts where the master changed the same places since then. Merged and MergedOurs are the two ways out of a conflict: both have every change either side made alone, and at the conflicting places Merged keeps the master's value and MergedOurs takes the project's. MergedOurs is set only where they differ. |
 | `comment` | string |  |
 | `conflicts` | list of [term.Conflict](#termconflict) |  |
 | `decidedAt` | string (date-time) |  |
@@ -2757,6 +2757,7 @@ Item is one entry of a merge request with what the reviewer needs to decide it.
 | `kind` | string |  |
 | `master` | [termdb.Stored](#termdbstored) |  |
 | `merged` | [term.Entry](#termentry) |  |
+| `mergedOurs` | [term.Entry](#termentry) |  |
 | `projectVersion` | integer |  |
 | `result` | [termdb.BaseRef](#termdbbaseref) | Result is the master entry the approval wrote. |
 | `reviewer` | string |  |

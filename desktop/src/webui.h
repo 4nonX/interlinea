@@ -73,9 +73,11 @@ public:
 
 protected:
     void resizeEvent(QResizeEvent *e) override;
+    void showEvent(QShowEvent *e) override;
 
 private:
     QList<int> m_numeric;
+    bool m_refit = false;
 };
 
 // A cell's title and grey line under it (.cell-title, .cell-sub). With

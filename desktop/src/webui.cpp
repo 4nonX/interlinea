@@ -255,6 +255,11 @@ int Table::addRow(const QList<QWidget *> &cells)
         if (!w)
             continue;
         w->setParent(this);
+        // A button or a choice is never narrower than what it says.
+        if (qobject_cast<QAbstractButton *>(w) || w->inherits("QComboBox")) {
+            w->ensurePolished();
+            w->setMinimumWidth(w->sizeHint().width() + 4);
+        }
         auto *wrap = new QWidget(this);
         auto *l = new QHBoxLayout(wrap);
         l->setContentsMargins(S3, 10, S3, 10);
@@ -294,6 +299,21 @@ void Table::fit()
     }
     resizeRowsToContents();
     updateGeometry();
+    // Cells are styled for good only once they are shown, and may then be
+    // larger than they said: measure once more after that.
+    if (!m_refit) {
+        m_refit = true;
+        QTimer::singleShot(0, this, [this] {
+            fit();
+            m_refit = false;
+        });
+    }
+}
+
+void Table::showEvent(QShowEvent *e)
+{
+    QTableWidget::showEvent(e);
+    fit();
 }
 
 void Table::resizeEvent(QResizeEvent *e)
@@ -342,6 +362,11 @@ QWidget *cell(const QString &title, const QString &sub, QWidget *parent, std::fu
     v->addWidget(t);
     if (!sub.isEmpty())
         v->addWidget(text(sub, "cellSub", w));
+    // Both lines keep their full height in a table row, which is measured
+    // before the style has set the fonts.
+    QFont small = f;
+    small.setPixelSize(13);
+    w->setMinimumHeight(QFontMetrics(f).lineSpacing() + 2 + (sub.isEmpty() ? 0 : 2 + QFontMetrics(small).lineSpacing() + 2));
     w->setAccessibleName(sub.isEmpty() ? title : QStringLiteral("%1, %2").arg(title, sub));
     return w;
 }

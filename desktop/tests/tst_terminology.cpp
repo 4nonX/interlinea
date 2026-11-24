@@ -825,21 +825,32 @@ private slots:
         byName<QPushButton>(review, QStringLiteral("approveAll"))->click();
         QTRY_VERIFY_WITH_TIMEOUT(review->message().startsWith(QStringLiteral("Approved all waiting entries without conflicts: 2 entries")), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(review->items().size() == 1 && review->progress().value("states").toObject().value("waiting").toInt() == 1, 10000);
-        QPushButton *merged = nullptr;
-        QTRY_VERIFY((merged = byName<QPushButton>(review, QStringLiteral("approve"))));
-        QCOMPARE(merged->text(), QStringLiteral("Approve the merged entry"));
+        // The conflict offers both ways out and names what each puts into
+        // the master; there is no plain approval for it.
+        QPushButton *useProject = nullptr;
+        QTRY_VERIFY((useProject = byName<QPushButton>(review, QStringLiteral("useProject"))));
+        QCOMPARE(useProject->text(), QStringLiteral("Use project version: “forbidden”"));
+        QCOMPARE(byName<QPushButton>(review, QStringLiteral("keepMaster"))->text(), QStringLiteral("Keep master version: “proposed”"));
+        QVERIFY(!byName<QPushButton>(review, QStringLiteral("approve")));
+        QVERIFY(label(review, QStringLiteral("Choose which of the two goes into Recht. What only one side changed is merged either way.")));
         QVERIFY(byName<QPushButton>(review, QStringLiteral("postpone")) && byName<QPushButton>(review, QStringLiteral("reject")));
-        // Postponed first, which the Decided list shows.
-        byName<QPushButton>(review, QStringLiteral("postpone"))->click();
-        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Postponed: 1 entry"), 10000);
+        const auto rentStatus = [&] {
+            const ApiResult r = wait(api->get(QStringLiteral("/api/termbases/Recht/entries/") + miete.object().value("id").toString()));
+            return TermData::terms(r.object(), QStringLiteral("en-GB")).first().toObject().value("status").toString();
+        };
+        QCOMPARE(rentStatus(), QStringLiteral("proposed"));
+        useProject->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Used the project version (“forbidden”): 1 entry"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(review->items().isEmpty() && byName<QLabel>(review, QStringLiteral("none")), 10000);
         QCOMPARE(byName<QLabel>(review, QStringLiteral("none"))->text(), QStringLiteral("Nothing is waiting."));
+        // The master now forbids the term, as the project did.
+        QCOMPARE(rentStatus(), QStringLiteral("forbidden"));
         byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
         QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 3, 10000);
-        QVERIFY(label(review, QStringLiteral("Postponed")) && label(review, QStringLiteral("Approved")));
-        QVERIFY(!byName<QPushButton>(review, QStringLiteral("approve")));
+        QVERIFY(label(review, QStringLiteral("Approved with edits")) && label(review, QStringLiteral("Approved")));
+        QVERIFY(!byName<QPushButton>(review, QStringLiteral("approve")) && !byName<QPushButton>(review, QStringLiteral("useProject")));
 
-        // The master has what was approved, and not the postponed change.
+        // The master has what was approved.
         const ApiResult master = wait(api->get(QStringLiteral("/api/termbases/Recht/entries"), [] {
             QUrlQuery q;
             q.addQueryItem(QStringLiteral("limit"), QStringLiteral("100"));
@@ -850,7 +861,7 @@ private slots:
             for (const QJsonValue &t : TermData::terms(v.toObject(), QStringLiteral("en-GB")))
                 english << t.toObject().value("text").toString() + QLatin1Char('/') + t.toObject().value("status").toString();
         }
-        QVERIFY2(english.contains(QStringLiteral("stepped rent/approved")) && english.contains(QStringLiteral("security deposit/approved")) && english.contains(QStringLiteral("rent/proposed")),
+        QVERIFY2(english.contains(QStringLiteral("stepped rent/approved")) && english.contains(QStringLiteral("security deposit/approved")) && english.contains(QStringLiteral("rent/forbidden")),
                  qPrintable(english.join(QStringLiteral(", "))));
 
         // Closing asks, and says what is still open.

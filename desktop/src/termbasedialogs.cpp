@@ -270,7 +270,7 @@ TermbaseSettingsDialog::TermbaseSettingsDialog(Connection *conn, const QJsonObje
         rename();
         accept();
     });
-    show();
+    render();
     // Which projects use it decides whether it can be deleted.
     if (m_conn) {
         request(m_conn->api()->get(QStringLiteral("/api/projects")), [this](const ApiResult &r) {
@@ -284,7 +284,7 @@ TermbaseSettingsDialog::TermbaseSettingsDialog(Connection *conn, const QJsonObje
                 if (uses)
                     m_usedBy << str(set, "name");
             }
-            show();
+            render();
         });
     }
 }
@@ -371,7 +371,7 @@ void TermbaseSettingsDialog::refresh()
                 m_entries = *all;
                 delete all;
                 delete page;
-                show();
+                render();
             });
         };
         (*page)(0);
@@ -385,7 +385,7 @@ void TermbaseSettingsDialog::putDefinition(const QJsonObject &definition, const 
     request(m_conn->api()->put(QStringLiteral("/api/termbases/") + ApiClient::seg(m_name) + QStringLiteral("/definition"), definition), [this, done](const ApiResult &r) {
         if (!r.ok()) {
             setError(r.error.message);
-            show();
+            render();
             return;
         }
         setError(QString());
@@ -393,11 +393,11 @@ void TermbaseSettingsDialog::putDefinition(const QJsonObject &definition, const 
         if (!done.isEmpty())
             emit said(done);
         emit changed(m_name);
-        show();
+        render();
     });
 }
 
-void TermbaseSettingsDialog::show()
+void TermbaseSettingsDialog::render()
 {
     clear(m_content);
     QWidget *host = m_content->parentWidget();
@@ -680,7 +680,7 @@ ImportDialog::ImportDialog(ConnectionManager *manager, const QString &connection
         if (all[i]->id() == connectionId)
             m_place = i;
     }
-    show();
+    render();
     // What the termbase has decides how the file's languages map and
     // whether existing entries can be met.
     if (!m_termbase.isEmpty()) {
@@ -736,7 +736,7 @@ QStringList ImportDialog::destinationLanguages() const
 void ImportDialog::setIntoNew(bool intoNew)
 {
     m_intoNew = intoNew || m_termbase.isEmpty();
-    show();
+    render();
 }
 
 void ImportDialog::setNewName(const QString &name)
@@ -750,14 +750,14 @@ void ImportDialog::setPlace(int index)
 {
     m_place = index;
     if (m_step == File)
-        show();
+        render();
 }
 
 void ImportDialog::setMapping(const QJsonObject &mapping)
 {
     m_mapping = mapping;
     if (m_step == Columns)
-        show();
+        render();
 }
 
 void ImportDialog::mapLanguage(const QString &fileLang, const QString &to)
@@ -771,7 +771,7 @@ void ImportDialog::setFallbackStatus(const QString &status)
 {
     m_fallback = status;
     if (m_step == LanguagesStep)
-        show();
+        render();
 }
 
 void ImportDialog::setPolicy(const QString &match, const QString &lang, const QString &onMatch)
@@ -783,7 +783,7 @@ void ImportDialog::setPolicy(const QString &match, const QString &lang, const QS
         loadPlan();
 }
 
-void ImportDialog::show()
+void ImportDialog::render()
 {
     clear(m_content);
     setError(QString());
@@ -939,7 +939,7 @@ void ImportDialog::chooseFile(const QString &path)
         if (o.value(QLatin1String("tabular")).toBool()) {
             m_mapping = o.value(QLatin1String("mapping")).toObject();
             m_step = Columns;
-            show();
+            render();
             return;
         }
         if (o.value(QLatin1String("read")).toObject().value(QLatin1String("entries")).toInt() == 0 && str(o, "format") != QLatin1String("xdt")) {
@@ -1037,7 +1037,7 @@ void ImportDialog::readLanguages()
         }
         m_read = r.object();
         if (m_step == LanguagesStep)
-            show();
+            render();
     });
 }
 
@@ -1067,7 +1067,7 @@ void ImportDialog::showColumns()
     m_content->addWidget(Web::row({first, sepLabel, sep}, host, S3));
     connect(first, &QCheckBox::toggled, this, [this](bool on) {
         m_mapping.insert(QLatin1String("header"), on);
-        show();
+        render();
     });
     connect(sep, &QLineEdit::textChanged, this, [this](const QString &t) { m_mapping.insert(QLatin1String("separator"), t); });
 
@@ -1097,7 +1097,7 @@ void ImportDialog::showColumns()
             cols.append(now);
         m_mapping.insert(QLatin1String("columns"), cols);
         if (redraw)
-            show();
+            render();
         else
             m_next->setEnabled([&] {
                 for (const QJsonValue &c : cols) {
@@ -1348,7 +1348,7 @@ void ImportDialog::loadPlan()
             lines.append(QJsonObject{{QLatin1String("kind"), QStringLiteral("add")}, {QLatin1String("entry"), s.toString()}});
         m_plan = QJsonObject{{QLatin1String("added"), incoming}, {QLatin1String("actions"), incoming}, {QLatin1String("plan"), lines}};
         if (m_step == Review)
-            show();
+            render();
         return;
     }
     Connection *c = place();
@@ -1369,7 +1369,7 @@ void ImportDialog::loadPlan()
                     return;
                 m_plan = r.ok() ? r.object() : QJsonObject();
                 if (m_step == Review) {
-                    show();
+                    render();
                     if (!r.ok())
                         setError(tr("The import could not be planned: %1").arg(r.error.message));
                 }
@@ -1536,7 +1536,7 @@ void ImportDialog::back()
         m_step = LanguagesStep;
         break;
     }
-    show();
+    render();
 }
 
 void ImportDialog::next()
@@ -1560,7 +1560,7 @@ void ImportDialog::next()
     case LanguagesStep:
         m_step = Review;
         m_plan = {};
-        show();
+        render();
         loadPlan();
         return;
     case Review:

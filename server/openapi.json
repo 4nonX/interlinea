@@ -2876,7 +2876,7 @@
             "type": "string"
           },
           "changes": {
-            "description": "Changes are what the project changed since its copy (all of the entry for a new one); Conflicts where the master changed the same places since then; Merged the three-way merge, the starting point of a resolution.",
+            "description": "Changes are what the project changed since its copy (all of the entry for a new one); Conflicts where the master changed the same places since then. Merged and MergedOurs are the two ways out of a conflict: both have every change either side made alone, and at the conflicting places Merged keeps the master's value and MergedOurs takes the project's. MergedOurs is set only where they differ.",
             "items": {
               "$ref": "#/components/schemas/term.Change"
             },
@@ -2931,6 +2931,9 @@
             "$ref": "#/components/schemas/termdb.Stored"
           },
           "merged": {
+            "$ref": "#/components/schemas/term.Entry"
+          },
+          "mergedOurs": {
             "$ref": "#/components/schemas/term.Entry"
           },
           "projectVersion": {

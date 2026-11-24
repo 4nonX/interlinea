@@ -245,6 +245,26 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(12, 7);
         path.lineTo(12, 12);
         path.lineTo(15.5, 14);
+    } else if (name == QLatin1String("user-plus")) {
+        path.addEllipse(QPointF(9, 8), 4, 4);
+        path.moveTo(2, 21);
+        path.cubicTo(2, 16, 5, 14, 9, 14);
+        path.cubicTo(13, 14, 16, 16, 16, 21);
+        path.moveTo(19, 8);
+        path.lineTo(19, 14);
+        path.moveTo(16, 11);
+        path.lineTo(22, 11);
+    } else if (name == QLatin1String("link")) {
+        path.moveTo(9, 17);
+        path.lineTo(7, 17);
+        path.cubicTo(0.5, 17, 0.5, 7, 7, 7);
+        path.lineTo(9, 7);
+        path.moveTo(15, 7);
+        path.lineTo(17, 7);
+        path.cubicTo(23.5, 7, 23.5, 17, 17, 17);
+        path.lineTo(15, 17);
+        path.moveTo(8, 12);
+        path.lineTo(16, 12);
     } else if (name == QLatin1String("refresh")) {
         path.arcMoveTo(QRectF(4, 4, 16, 16), 30);
         path.arcTo(QRectF(4, 4, 16, 16), 30, 300);
