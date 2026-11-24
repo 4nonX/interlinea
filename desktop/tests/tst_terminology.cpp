@@ -870,7 +870,7 @@ private slots:
         // The master now forbids the term, as the project did.
         QCOMPARE(rentStatus(), QStringLiteral("forbidden"));
         byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
-        QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 3, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 3 && review->items().first().toObject().value("state").toString() != QStringLiteral("waiting"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(label(review, QStringLiteral("Approved with edits")) && label(review, QStringLiteral("Approved")), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(!byName<QPushButton>(review, QStringLiteral("approve")) && !byName<QPushButton>(review, QStringLiteral("useProject")), 10000);
 
@@ -978,7 +978,10 @@ private slots:
         stepped->findChild<QPushButton *>(QStringLiteral("postpone"))->click();
         QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Postponed: 1 entry"), 10000);
         byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
-        QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 1 && (stepped = itemWith(QStringLiteral("Staffelmiete"))), 10000);
+        // The entry as decided, not as it was shown while it waited.
+        QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 1 && review->items().first().toObject().value("state").toString() == QStringLiteral("postponed")
+                                     && (stepped = itemWith(QStringLiteral("Staffelmiete"))) && stepped->findChild<QPushButton *>(QStringLiteral("approve")),
+                                 10000);
         QCOMPARE(review->items().first().toObject().value("comment").toString(), QStringLiteral("Quelle fehlt"));
         QVERIFY(labelWith(stepped, QStringLiteral("“Quelle fehlt”")));
         // Not put off a second time: approved or rejected.
