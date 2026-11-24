@@ -69,14 +69,32 @@ func LangFromName(s string) (string, bool) {
 			}
 		}
 	}
-	// A tag on its own: two or three letters, optionally with a region.
-	if len(k) <= 10 {
-		if t, err := langtag.Normalize(k); err == nil {
-			p := langtag.Primary(t)
-			for _, l := range langNames {
-				if langtag.Primary(l.code) == p {
-					return t, true
-				}
+	// The names of the languages the apps list: "Thai (Thailand)", "Thai",
+	// "ไทย".
+	for _, l := range langtag.Languages() {
+		if k == strings.ToLower(l.Name) {
+			return l.Tag, true
+		}
+	}
+	for _, l := range langtag.Languages() {
+		bare, _, _ := strings.Cut(strings.ToLower(l.Name), " (")
+		if k == bare || k == strings.ToLower(l.Native) {
+			return langtag.Primary(l.Tag), true
+		}
+	}
+	// A tag on its own: a known language, optionally with a script and a
+	// region. A field named "Nl-term" has the shape of a tag but is none.
+	if langtag.WellFormed(k) {
+		t := langtag.MustNormalize(k)
+		p := langtag.Primary(t)
+		for _, l := range langNames {
+			if langtag.Primary(l.code) == p {
+				return t, true
+			}
+		}
+		for _, l := range langtag.Languages() {
+			if langtag.Primary(l.Tag) == p {
+				return t, true
 			}
 		}
 	}
@@ -86,6 +104,9 @@ func LangFromName(s string) (string, bool) {
 // LangName is the English name of a language tag ("German (Germany)").
 func LangName(code string) string {
 	c := NormalizeLang(code)
+	if l, ok := langtag.Lookup(c); ok {
+		return l.Name
+	}
 	for _, l := range langNames {
 		if strings.EqualFold(l.code, c) {
 			return titleCase(l.names[0])
@@ -95,6 +116,13 @@ func LangName(code string) string {
 	for _, l := range langNames {
 		if strings.EqualFold(l.code, p) {
 			return titleCase(l.names[0])
+		}
+	}
+	// A language listed only with its regions: its name without one.
+	for _, l := range langtag.Languages() {
+		if langtag.Primary(l.Tag) == p {
+			bare, _, _ := strings.Cut(l.Name, " (")
+			return bare
 		}
 	}
 	return code

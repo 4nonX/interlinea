@@ -68,7 +68,7 @@ func tbxFromField(name string) (elem, typ string, ok bool) {
 	return "", "", false
 }
 
-var bracketNote = regexp.MustCompile(`^\[([^\]]{1,60})\] (.*)$`)
+var bracketNote = regexp.MustCompile(`(?s)^\[([^\]]{1,60})\] (.*)$`)
 
 // ReadTBX reads TBX version 3 (ISO 30042:2019, <tbx>) and version 2
 // (ISO 30042:2008, <martif>), in any dialect. Unknown data categories are
@@ -178,6 +178,13 @@ func tbxValues(n *xnode) []Value {
 		return []Value{{Field: "Cross reference", Value: v}}
 	case "descrip", "admin", "termNote", "ref":
 		return []Value{{Field: fieldFromTBX(n.XMLName.Local, n.attr("type")), Value: n.text()}}
+	}
+	// An element of the tool's own (<ShortInfo> in an .ibex glossary): its
+	// text is kept as a field named after the element, not dropped.
+	if len(n.Nodes) == 0 {
+		if t := n.text(); t != "" {
+			return []Value{{Field: n.XMLName.Local, Value: t}}
+		}
 	}
 	return nil
 }

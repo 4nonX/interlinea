@@ -60,8 +60,10 @@ func (n *xnode) child(local string) *xnode {
 // full, while streaming through the document. It returns the local name
 // of the root element.
 func eachElement(data []byte, names map[string]bool, fn func(*xnode) error) (string, error) {
-	d := xml.NewDecoder(bytes.NewReader(ToUTF8(data)))
+	d := xml.NewDecoder(bytes.NewReader(repairAmpersands(ToUTF8(data))))
 	d.CharsetReader = xmlCharset
+	// Glossary tools write &nbsp; and the like without declaring them.
+	d.Entity = xml.HTMLEntity
 	root := ""
 	for {
 		tok, err := d.Token()
@@ -99,4 +101,67 @@ func esc(s string) string {
 
 func escAttr(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "\n", "&#10;", "\t", "&#9;").Replace(s)
+}
+
+// repairAmpersands escapes every & that does not start an entity or a
+// character reference. Exports of glossary tools often carry a bare "&"
+// in their text ("syn & lay"), which is not well-formed XML; the text is
+// plainly meant, so it is read as written instead of refusing the file.
+// CDATA sections, comments and processing instructions are left alone.
+func repairAmpersands(data []byte) []byte {
+	if !bytes.Contains(data, []byte("&")) {
+		return data
+	}
+	var out []byte
+	last := 0
+	for i := 0; i < len(data); i++ {
+		switch {
+		case bytes.HasPrefix(data[i:], []byte("<![CDATA[")):
+			i = skipTo(data, i, "]]>")
+		case bytes.HasPrefix(data[i:], []byte("<!--")):
+			i = skipTo(data, i, "-->")
+		case bytes.HasPrefix(data[i:], []byte("<?")):
+			i = skipTo(data, i, "?>")
+		case data[i] == '&' && !startsReference(data[i+1:]):
+			if out == nil {
+				out = make([]byte, 0, len(data)+16)
+			}
+			out = append(out, data[last:i]...)
+			out = append(out, "&amp;"...)
+			last = i + 1
+		}
+	}
+	if out == nil {
+		return data
+	}
+	return append(out, data[last:]...)
+}
+
+// skipTo returns the index of the last byte of the first end after i, or
+// of the data's last byte when there is none.
+func skipTo(data []byte, i int, end string) int {
+	k := bytes.Index(data[i:], []byte(end))
+	if k < 0 {
+		return len(data) - 1
+	}
+	return i + k + len(end) - 1
+}
+
+// startsReference reports whether s, the text after an &, goes on as an
+// entity ("amp;", "nbsp;") or a character reference ("#160;", "#xA0;").
+func startsReference(s []byte) bool {
+	n := 0
+	for n < len(s) && n < 32 {
+		c := s[n]
+		switch {
+		case c == ';':
+			return n > 0 && (s[0] != '#' || n > 1)
+		case c == '#' && n == 0:
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
+		default:
+			return false
+		}
+		n++
+	}
+	return false
 }

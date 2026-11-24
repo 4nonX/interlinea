@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/ncruces/go-sqlite3 v0.27.1
 	golang.org/x/crypto v0.40.0
+	golang.org/x/text v0.27.0
 )
 
 require (
@@ -16,5 +17,4 @@ require (
 	github.com/tetratelabs/wazero v1.9.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
-	golang.org/x/text v0.27.0 // indirect
 )

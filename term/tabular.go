@@ -257,21 +257,15 @@ func FromRows(rows [][]string, m Mapping) (*Termbase, Report, error) {
 	var entries []Entry
 	split := func(s string) []string {
 		var out []string
-		for _, p := range strings.Split(s, sep) {
-			if p = strings.TrimSpace(p); p != "" {
+		for _, p := range splitCell(s, sep) {
+			if p != "" {
 				out = append(out, p)
 			}
 		}
 		return out
 	}
 	// Status and term fields line up with the terms, so empty places count.
-	aligned := func(s string) []string {
-		parts := strings.Split(s, sep)
-		for i := range parts {
-			parts[i] = strings.TrimSpace(parts[i])
-		}
-		return parts
-	}
+	aligned := func(s string) []string { return splitCell(s, sep) }
 	for r := start; r < len(rows); r++ {
 		row := rows[r]
 		cell := func(i int) string {
@@ -377,7 +371,7 @@ func ToRows(tb *Termbase) [][]string {
 			for _, t := range l.Terms {
 				ts = append(ts, t.Text)
 			}
-			return strings.Join(ts, "; ")
+			return joinCell(ts)
 		}})
 		cols = append(cols, col{lg + " Status", func(e *Entry) string {
 			l := e.Lang(lg)
@@ -398,7 +392,7 @@ func ToRows(tb *Termbase) [][]string {
 			if !has {
 				return ""
 			}
-			return strings.Join(ss, "; ")
+			return joinCell(ss)
 		}})
 		for _, f := range langFields[lg] {
 			cols = append(cols, col{lg + " " + f, func(e *Entry) string {
@@ -426,7 +420,7 @@ func ToRows(tb *Termbase) [][]string {
 				if !has {
 					return ""
 				}
-				return strings.Join(vs, "; ")
+				return joinCell(vs)
 			}})
 		}
 	}
@@ -516,4 +510,44 @@ func WriteCSV(rows [][]string, delim rune) []byte {
 	}
 	w.Flush()
 	return buf.Bytes()
+}
+
+// joinCell writes the values of an entry's terms into one cell, separated
+// by "; ". A semicolon inside a value is written "\;", so a term or a
+// definition with a semicolon in it comes back as one value.
+func joinCell(values []string) string {
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = strings.ReplaceAll(strings.ReplaceAll(v, `\`, `\\`), ";", `\;`)
+	}
+	return strings.Join(out, "; ")
+}
+
+// splitCell splits a cell at the separator, trims the parts and reads
+// "\;" as a semicolon that belongs to the value.
+func splitCell(s, sep string) []string {
+	if !strings.Contains(s, `\`) {
+		parts := strings.Split(s, sep)
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		return parts
+	}
+	var parts []string
+	var cur strings.Builder
+	for i := 0; i < len(s); {
+		switch {
+		case s[i] == '\\' && i+1 < len(s) && (s[i+1] == ';' || s[i+1] == '\\'):
+			cur.WriteByte(s[i+1])
+			i += 2
+		case strings.HasPrefix(s[i:], sep):
+			parts = append(parts, strings.TrimSpace(cur.String()))
+			cur.Reset()
+			i += len(sep)
+		default:
+			cur.WriteByte(s[i])
+			i++
+		}
+	}
+	return append(parts, strings.TrimSpace(cur.String()))
 }

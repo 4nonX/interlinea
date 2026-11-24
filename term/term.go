@@ -196,8 +196,38 @@ func (e *Entry) Clean() bool {
 			langs = append(langs, l)
 		}
 	}
-	e.Languages = langs
+	e.Languages = mergeSameLanguage(langs)
 	return e.TermCount() > 0
+}
+
+// mergeSameLanguage joins the blocks of an entry that are in the same
+// language into one, in the order they came. MultiTerm exports write a
+// block for each term; left apart, only the first would be found by its
+// language.
+func mergeSameLanguage(langs []Language) []Language {
+	at := map[string]int{}
+	out := langs[:0]
+	for _, l := range langs {
+		k := strings.ToLower(l.Lang)
+		i, ok := at[k]
+		if !ok {
+			at[k] = len(out)
+			out = append(out, l)
+			continue
+		}
+		seen := map[string]bool{}
+		for _, t := range out[i].Terms {
+			seen[Key(t.Text)] = true
+		}
+		for _, t := range l.Terms {
+			if !seen[Key(t.Text)] {
+				seen[Key(t.Text)] = true
+				out[i].Terms = append(out[i].Terms, t)
+			}
+		}
+		out[i].Fields = append(out[i].Fields, l.Fields...)
+	}
+	return out
 }
 
 func cleanValues(vs []Value) []Value {
