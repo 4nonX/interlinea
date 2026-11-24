@@ -189,8 +189,7 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
                     <td>{plain(coreToRuns(h.unit.source))}</td>
                     <td>{plain(coreToRuns(h.unit.target))}</td>
                     <td className="cell-sub">
-                      {h.unit.changedBy ?? ""}
-                      {h.unit.changedAt ? `, ${fmtDate(h.unit.changedAt)}` : ""}
+                      {[h.unit.changedBy, h.unit.changedAt && fmtDate(h.unit.changedAt)].filter(Boolean).join(", ")}
                     </td>
                   </tr>
                 ))}

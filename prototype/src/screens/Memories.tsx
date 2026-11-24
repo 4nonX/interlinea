@@ -105,153 +105,155 @@ function MemoryTable({
   const [importInto, setImportInto] = useState("");
   if (!memories.length) return <p className="muted">No memory yet.</p>;
   return (
-    <div className="table-wrap">
-      <table className="table">
-        <thead>
-          <tr>
-            <th scope="col">Memory</th>
-            <th scope="col">Languages</th>
-            <th scope="col" className="num">
-              Units
-            </th>
-            <th scope="col">Used by</th>
-            <th scope="col">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {memories.map((m) => {
-            openMemory(c, m, state.projects);
-            const units = tm.count(c, m.name);
-            const users = state.projects.filter(
-              (p) =>
-                p.id === m.projectId ||
-                Object.values(p.memories).some((ms) =>
+    <>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th scope="col">Memory</th>
+              <th scope="col">Languages</th>
+              <th scope="col" className="num">
+                Units
+              </th>
+              <th scope="col">Used by</th>
+              <th scope="col">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {memories.map((m) => {
+              openMemory(c, m, state.projects);
+              const units = tm.count(c, m.name);
+              const users = state.projects.filter(
+                (p) =>
+                  p.id === m.projectId ||
+                  Object.values(p.memories).some((ms) =>
+                    ms.some((x) => x.memory === m.name),
+                  ),
+              );
+              const inTemplates = state.templates.filter((t) =>
+                Object.values(t.memories).some((ms) =>
                   ms.some((x) => x.memory === m.name),
                 ),
-            );
-            const inTemplates = state.templates.filter((t) =>
-              Object.values(t.memories).some((ms) =>
-                ms.some((x) => x.memory === m.name),
-              ),
-            );
-            return (
-              <tr key={m.name}>
-                <th scope="row">
-                  <span className="cell-title">{m.name}</span>
-                  <span className="cell-sub">
-                    {m.client ? `${m.client}, ` : ""}created{" "}
-                    {fmtDate(m.createdAt)}
-                  </span>
-                </th>
-                <td>
-                  <span className="lang-pair">
-                    <LangChip code={m.sourceLang} /> →{" "}
-                    <LangChip code={m.targetLang} />
-                  </span>
-                </td>
-                <td className="num">{fmtNum(units)}</td>
-                <td>
-                  {users.length || inTemplates.length ? (
-                    [
-                      ...users.map((p) => p.name),
-                      ...inTemplates.map((t) => `template ${t.name}`),
-                    ].join(", ")
-                  ) : (
-                    <span className="muted">No project</span>
-                  )}
-                </td>
-                <td>
-                  <span className="row">
-                    {!m.projectId && (
+              );
+              return (
+                <tr key={m.name}>
+                  <th scope="row">
+                    <span className="cell-title">{m.name}</span>
+                    <span className="cell-sub">
+                      {m.client ? `${m.client}, ` : ""}created{" "}
+                      {fmtDate(m.createdAt)}
+                    </span>
+                  </th>
+                  <td>
+                    <span className="lang-pair">
+                      <LangChip code={m.sourceLang} /> →{" "}
+                      <LangChip code={m.targetLang} />
+                    </span>
+                  </td>
+                  <td className="num">{fmtNum(units)}</td>
+                  <td>
+                    {users.length || inTemplates.length ? (
+                      [
+                        ...users.map((p) => p.name),
+                        ...inTemplates.map((t) => `template ${t.name}`),
+                      ].join(", ")
+                    ) : (
+                      <span className="muted">No project</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className="row">
+                      {!m.projectId && (
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          onClick={() => {
+                            setImportInto(m.name);
+                            input.current?.click();
+                          }}
+                        >
+                          <Upload size={14} aria-hidden="true" />
+                          Import TMX
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className="btn btn-small"
-                        onClick={() => {
-                          setImportInto(m.name);
-                          input.current?.click();
-                        }}
-                      >
-                        <Upload size={14} aria-hidden="true" />
-                        Import TMX
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-quiet btn-small"
-                      disabled={units === 0}
-                      onClick={() =>
-                        download(
-                          tm.exportTMX(c, m.name),
-                          `${m.name.replace(/[^\p{L}\p{N}]+/gu, "_")}.tmx`,
-                          "application/x-tmx+xml",
-                        )
-                      }
-                    >
-                      <Download size={14} aria-hidden="true" />
-                      Export TMX
-                    </button>
-                    {!m.projectId && (
-                      <ConfirmButton
-                        label={
-                          <>
-                            <Trash2 size={14} aria-hidden="true" />
-                            Delete
-                          </>
+                        className="btn btn-quiet btn-small"
+                        disabled={units === 0}
+                        onClick={() =>
+                          download(
+                            tm.exportTMX(c, m.name),
+                            `${m.name.replace(/[^\p{L}\p{N}]+/gu, "_")}.tmx`,
+                            "application/x-tmx+xml",
+                          )
                         }
-                        disabled={users.length > 0 || inTemplates.length > 0}
-                        confirm={`Delete ${m.name} and its ${plural(units, "unit", "units")}?`}
-                        action="Delete"
-                        onConfirm={() => {
-                          void dropMemory(m.name);
-                          dispatch({ type: "deleteMemory", name: m.name });
-                          notify(`Deleted the memory ${m.name}`);
-                          onChange();
-                        }}
-                      />
-                    )}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      >
+                        <Download size={14} aria-hidden="true" />
+                        Export TMX
+                      </button>
+                      {!m.projectId && (
+                        <ConfirmButton
+                          label={
+                            <>
+                              <Trash2 size={14} aria-hidden="true" />
+                              Delete
+                            </>
+                          }
+                          disabled={users.length > 0 || inTemplates.length > 0}
+                          confirm={`Delete ${m.name} and its ${plural(units, "unit", "units")}?`}
+                          action="Delete"
+                          onConfirm={() => {
+                            void dropMemory(m.name);
+                            dispatch({ type: "deleteMemory", name: m.name });
+                            notify(`Deleted the memory ${m.name}`);
+                            onChange();
+                          }}
+                        />
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <input
+          ref={input}
+          type="file"
+          accept=".tmx,application/x-tmx+xml,text/xml"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (!f || !importInto) return;
+            try {
+              const st = tm.importTMX(
+                c,
+                importInto,
+                new Uint8Array(await f.arrayBuffer()),
+              );
+              const kept = await persistMemory(c, importInto);
+              notify(
+                `Imported ${plural(st.stored, "unit", "units")} into ${importInto}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
+              );
+              onChange();
+            } catch (err) {
+              notify(
+                `Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }}
+        />
+      </div>
       {memories.some((m) => !m.projectId) && (
         <p className="help">
           A memory a project or template uses can't be deleted; remove it there
           first.
         </p>
       )}
-      <input
-        ref={input}
-        type="file"
-        accept=".tmx,application/x-tmx+xml,text/xml"
-        hidden
-        onChange={async (e) => {
-          const f = e.target.files?.[0];
-          e.target.value = "";
-          if (!f || !importInto) return;
-          try {
-            const st = tm.importTMX(
-              c,
-              importInto,
-              new Uint8Array(await f.arrayBuffer()),
-            );
-            const kept = await persistMemory(c, importInto);
-            notify(
-              `Imported ${plural(st.stored, "unit", "units")} into ${importInto}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
-            );
-            onChange();
-          } catch (err) {
-            notify(
-              `Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
-        }}
-      />
-    </div>
+    </>
   );
 }
 
