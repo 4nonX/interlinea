@@ -287,7 +287,13 @@ void ReviewPage::decide(const QJsonObject &filter, const QString &state, const Q
     // What was written for the one entry goes with its decision.
     const QJsonArray ids = filter.value(QLatin1String("ids")).toArray();
     if (ids.size() == 1) {
-        const QString comment = m_comments.take(ids.first().toInt()).trimmed();
+        // The field as it is now counts, should a change not have been told.
+        const int id = ids.first().toInt();
+        for (const QLineEdit *edit : findChildren<QLineEdit *>(QStringLiteral("comment"))) {
+            if (edit->property("item").toInt() == id && !(edit->isHidden() && edit->testAttribute(Qt::WA_WState_ExplicitShowHide)))
+                m_comments.insert(id, edit->text());
+        }
+        const QString comment = m_comments.take(id).trimmed();
         if (!comment.isEmpty())
             decision.insert(QLatin1String("comment"), comment);
     }
@@ -752,7 +758,9 @@ QWidget *ReviewPage::item(const QJsonObject &it, QWidget *parent)
         comment->setPlaceholderText(tr("A note for the author, with your decision"));
         comment->setAccessibleName(tr("A note for the author"));
         comment->setMaximumWidth(520);
-        connect(comment, &QLineEdit::textEdited, this, [this, id](const QString &t) { m_comments.insert(id, t); });
+        // However the text gets there: typed, pasted, or put in by an
+        // input method.
+        connect(comment, &QLineEdit::textChanged, this, [this, id](const QString &t) { m_comments.insert(id, t); });
         v->addWidget(comment);
     }
     if (open && waits && may("approve")) {
