@@ -2552,6 +2552,119 @@ kbd {
   gap: var(--s3);
 }
 
+/* Termbases on the team server: read-only entries, history, deleted
+   entries and the master's entries under a project termbase */
+
+button.entry-row {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pane-pad {
+  margin: 0;
+  padding: var(--s3) var(--s4);
+}
+
+.pane-bar {
+  margin: 0;
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--border);
+}
+
+.fields-read {
+  display: grid;
+  gap: var(--s1);
+  margin: 0 0 var(--s2);
+}
+
+.fields-read div {
+  display: flex;
+  gap: var(--s2);
+}
+
+.fields-read dt {
+  color: var(--text-2);
+}
+
+.fields-read dt::after {
+  content: ":";
+}
+
+.fields-read dd {
+  margin: 0;
+}
+
+.history-held {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+}
+
+.history .confirm,
+.history > li > .btn {
+  margin-top: var(--s1);
+}
+
+.deleted-list {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: var(--s3);
+  list-style: none;
+}
+
+.deleted-entry {
+  display: grid;
+  gap: var(--s1);
+  justify-items: start;
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.deleted-entry .mr-terms,
+.deleted-entry p {
+  margin: 0;
+}
+
+.left-out {
+  display: grid;
+  gap: var(--s1);
+  padding: var(--s4);
+}
+
+.left-out ul {
+  display: grid;
+  gap: var(--s3);
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.left-out li {
+  display: grid;
+  gap: var(--s1);
+  justify-items: start;
+}
+
+.left-out p {
+  margin: 0;
+}
+
+.notice-plain {
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.875rem;
+}
+
 /* The units of a memory */
 
 .role-add label.check {

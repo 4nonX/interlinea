@@ -537,6 +537,8 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
         infoTypes,
         remote: true,
         opened: true,
+        role: info.role,
+        dependents: info.projects,
       };
       const entries: Entry[] = [];
       for (let offset = 0; ; offset += 1000) {

@@ -51,6 +51,20 @@ import {
 import { fromCoreEntry, term, toCoreEntry } from "../termio";
 import { errorText, useRemote } from "../remote";
 import { ReloadButton, ServerReviewNote, ServerTermbaseGroup } from "./ServerTerminology";
+import {
+  may,
+  masterKey,
+  NewServerProjectTermbase,
+  ReadStoreEntry,
+  ServerBranchNote,
+  ServerDeleted,
+  ServerHistory,
+  ServerMasterDetail,
+  ServerMasterList,
+  ServerTermbaseSettings,
+  useMasterEntries,
+} from "./ServerTermbase";
+import { roleText } from "./Accounts";
 
 type DialogKind = "import" | "import-new" | "export" | "settings" | null;
 
@@ -115,9 +129,20 @@ function TerminologyPage({
   );
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<TermStatus | "all">("all");
-  const [view, setView] = useState<"entries" | "duplicates">("entries");
+  const [view, setView] = useState<"entries" | "duplicates" | "deleted" | "master">("entries");
   const [dialog, setDialog] = useState<DialogKind>(null);
   useEffect(() => setView("entries"), [tb.id]);
+  // What the signed-in person may do in a termbase on the team server.
+  const edit = may(tb, "edit");
+  const manage = may(tb, "manage");
+  // A project termbase on the server: its masters' entries, in a view of their own.
+  const layered = useMasterEntries(tb);
+  const [masterSel, setMasterSel] = useState("");
+  const masterEntry = layered.masters.find((e) => masterKey(e) === masterSel) ?? layered.masters[0];
+  const serverProject = !!tb.remote && tb.kind === "project";
+  useEffect(() => {
+    if ((view === "master" && !serverProject) || (view === "deleted" && !tb.remote) || (view === "duplicates" && !edit)) setView("entries");
+  }, [view, serverProject, tb.remote, edit]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
@@ -155,14 +180,16 @@ function TerminologyPage({
                 role="toolbar"
                 aria-label={`${tb.name} tools`}
               >
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-small"
-                  onClick={() => setDialog("import")}
-                >
-                  <Upload size={14} aria-hidden="true" />
-                  Import
-                </button>
+                {edit && (
+                  <button
+                    type="button"
+                    className="btn btn-quiet btn-small"
+                    onClick={() => setDialog("import")}
+                  >
+                    <Upload size={14} aria-hidden="true" />
+                    Import
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn-quiet btn-small"
@@ -172,9 +199,8 @@ function TerminologyPage({
                   <Download size={14} aria-hidden="true" />
                   Export
                 </button>
-                {tb.remote ? (
-                  <ReloadButton tb={tb} />
-                ) : (
+                {tb.remote && <ReloadButton tb={tb} />}
+                {manage && (
                   <button
                     type="button"
                     className="btn btn-quiet btn-small"
@@ -207,9 +233,17 @@ function TerminologyPage({
                   ))}
                 </span>
               )}
+              {tb.remote && !manage && (
+                <span className="tag" title="What you may do in this termbase">
+                  {(tb.role ?? "read").split("+").map(roleText).join(", ")}
+                </span>
+              )}
             </div>
             {tb.remote ? (
-              <ServerReviewNote tb={tb} />
+              <>
+                <ServerBranchNote tb={tb} />
+                <ServerReviewNote tb={tb} />
+              </>
             ) : (
               tb.kind === "project" && <ProjectBranchNote tb={tb} />
             )}
@@ -227,19 +261,48 @@ function TerminologyPage({
             >
               Entries
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "duplicates"}
-              onClick={() => setView("duplicates")}
-              disabled={entries.length < 2}
-            >
-              <Copy size={14} aria-hidden="true" />
-              Duplicates
-            </button>
+            {edit && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "duplicates"}
+                onClick={() => setView("duplicates")}
+                disabled={entries.length < 2}
+              >
+                <Copy size={14} aria-hidden="true" />
+                Duplicates
+              </button>
+            )}
+            {tb.remote && (
+              <button type="button" role="tab" aria-selected={view === "deleted"} onClick={() => setView("deleted")}>
+                Deleted
+              </button>
+            )}
+            {serverProject && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "master"}
+                aria-label={`The master's entries (${layered.masters.length})`}
+                onClick={() => setView("master")}
+              >
+                Master ({layered.masters.length})
+              </button>
+            )}
           </div>
           {view === "duplicates" ? (
             <Duplicates tb={tb} entries={entries} />
+          ) : view === "deleted" ? (
+            <ServerDeleted tb={tb} />
+          ) : view === "master" ? (
+            <ServerMasterList
+              tb={tb}
+              masters={layered.masters}
+              removals={layered.removals}
+              selected={masterEntry ? masterKey(masterEntry) : ""}
+              onSelect={setMasterSel}
+              reload={layered.reload}
+            />
           ) : (
             <>
               <div className="filters">
@@ -272,15 +335,25 @@ function TerminologyPage({
                   <option value="forbidden">Forbidden</option>
                 </select>
               </div>
-              <NewEntry tb={tb} initial={query} />
+              {edit && <NewEntry tb={tb} initial={query} />}
               {filtered.length === 0 ? (
                 <div className="empty">
-                  {entries.length === 0 ? (
+                  {entries.length === 0 && !edit ? (
                     <>
                       <p className="empty-title">No entries yet</p>
                       <p>
-                        Add an entry above, import a TBX, MultiTerm or Excel
-                        file, or add terms while you translate.
+                        {serverProject && layered.masters.length > 0
+                          ? "The project has no entries of its own. The master's are under Master."
+                          : "Those who may edit this termbase add its entries."}
+                      </p>
+                    </>
+                  ) : entries.length === 0 ? (
+                    <>
+                      <p className="empty-title">No entries yet</p>
+                      <p>
+                        {serverProject && layered.masters.length > 0
+                          ? "The project has no entries of its own yet: it uses the master's, which are under Master. Add an entry above, or change one of the master's for this project."
+                          : "Add an entry above, import a TBX, MultiTerm or Excel file, or add terms while you translate."}
                       </p>
                       <button
                         type="button"
@@ -323,7 +396,9 @@ function TerminologyPage({
           )}
         </section>
 
-        {selected ? (
+        {view === "master" && masterEntry ? (
+          <ServerMasterDetail key={masterKey(masterEntry)} tb={tb} entry={masterEntry} reload={layered.reload} onTaken={() => setView("entries")} />
+        ) : selected && view !== "master" ? (
           <EntryDetail key={selected.id} entry={selected} tb={tb} />
         ) : (
           <section className="pane pane-detail" aria-label="Entry" />
@@ -344,9 +419,12 @@ function TerminologyPage({
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog === "settings" && (
-        <SettingsDialog tb={tb} onClose={() => setDialog(null)} />
-      )}
+      {dialog === "settings" &&
+        (tb.remote ? (
+          <ServerTermbaseSettings tb={tb} entries={entries} onClose={() => setDialog(null)} />
+        ) : (
+          <SettingsDialog tb={tb} onClose={() => setDialog(null)} />
+        ))}
     </div>
   );
 }
@@ -360,7 +438,9 @@ function TermbaseList({
 }) {
   const { state, dispatch, notify } = useStore();
   const w = useWords();
+  const r = useRemote();
   const [creating, setCreating] = useState(false);
+  const [newProject, setNewProject] = useState(false);
   const [name, setName] = useState("");
   const [loc, setLoc] = useState<Location>("local");
   const [langs, setLangs] = useState<LangCode[]>([]);
@@ -415,6 +495,22 @@ function TermbaseList({
           onSubmit={(e) => {
             e.preventDefault();
             if (!name.trim()) return;
+            // On the team server the master is made there, and opened from it.
+            if (loc === "server" && r.api) {
+              const n = name.trim();
+              void r.api.createTermbase({ name: n, languages: langs }).then(
+                async () => {
+                  notify(`Created master “${n}”`);
+                  setCreating(false);
+                  setName("");
+                  setLangs([]);
+                  const made = await r.openTermbase(n);
+                  window.location.hash = `#/terminology/${made}`;
+                },
+                (err) => notify(errorText(err)),
+              );
+              return;
+            }
             const id = `tb-${Date.now().toString(36)}`;
             dispatch({
               type: "createMaster",
@@ -422,9 +518,7 @@ function TermbaseList({
                 id,
                 name: name.trim(),
                 kind: "master",
-                location: loc,
-                server:
-                  loc === "server" ? "terms.kanzlei-weber.example" : undefined,
+                location: "local",
                 languages: langs,
                 infoTypes: [],
               },
@@ -444,7 +538,7 @@ function TermbaseList({
             onChange={(e) => setName(e.target.value)}
             placeholder="For example a client"
           />
-          <div
+          {r.api && <div
             className="segmented segmented-small"
             role="radiogroup"
             aria-label="Store on"
@@ -467,7 +561,7 @@ function TermbaseList({
               />
               <span>Server</span>
             </label>
-          </div>
+          </div>}
           <label htmlFor="new-tb-lang">
             Languages <span className="optional">optional</span>
           </label>
@@ -521,6 +615,8 @@ function TermbaseList({
             </button>
           </div>
         </form>
+      ) : newProject ? (
+        <NewServerProjectTermbase onDone={() => setNewProject(false)} />
       ) : (
         <div className="tb-actions">
           <button
@@ -531,6 +627,12 @@ function TermbaseList({
             <Plus size={14} aria-hidden="true" />
             New master
           </button>
+          {r.api && (
+            <button type="button" className="btn btn-quiet btn-small tb-new" onClick={() => setNewProject(true)}>
+              <GitBranch size={14} aria-hidden="true" />
+              New project termbase
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-quiet btn-small tb-new"
@@ -834,21 +936,21 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
           <h2 id="detail-title" className="pane-title">
             {head ? <InLang code={head.code}>{head.text}</InLang> : "Entry"}
           </h2>
-          <ConfirmButton
+          {may(tb, "edit") && <ConfirmButton
             label={
               <>
                 <Trash2 size={14} aria-hidden="true" />
                 Delete entry
               </>
             }
-            confirm="Delete this entry and its history?"
+            confirm={tb.remote ? "Delete this entry? It can be brought back from Deleted, without its history." : "Delete this entry and its history?"}
             action="Delete"
             onConfirm={() => {
               dispatch({ type: "deleteEntries", entryIds: [entry.id] });
               notify(`Deleted the entry${head ? ` “${head.text}”` : ""}`);
               go({ page: "terminology", termbaseId: tb.id });
             }}
-          />
+          />}
         </div>
         <div className="pane-sub">
           {latest && (
@@ -892,11 +994,19 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
           onClick={() => setTab("history")}
         >
           <History size={14} aria-hidden="true" />
-          {w("history")} ({entry.history.length})
+          {w("history")} ({tb.remote ? Math.max(1, entry.version ?? 1) : entry.history.length})
         </button>
       </div>
 
-      {tab === "entry" ? (
+      {tab === "entry" && !may(tb, "edit") ? (
+        <div role="tabpanel" id="panel-entry" aria-labelledby="tab-entry" className="detail-body">
+          <ReadStoreEntry tb={tb} entry={entry} />
+        </div>
+      ) : tab === "history" && tb.remote ? (
+        <div role="tabpanel" id="panel-history" aria-labelledby="tab-history" className="detail-body">
+          <ServerHistory tb={tb} entry={entry} />
+        </div>
+      ) : tab === "entry" ? (
         <div
           role="tabpanel"
           id="panel-entry"

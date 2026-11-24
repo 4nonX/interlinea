@@ -473,6 +473,50 @@ export interface CatalogTermbase {
   role?: Role;
 }
 
+/** A termbase as the server describes it, with what the signed-in person may do in it. */
+export interface TermbaseDetail {
+  name: string;
+  kind: "master" | "project";
+  upstreams?: string[];
+  /** The project termbases based on a master; it is not deleted while it has any. */
+  projects?: string[];
+  definition: ProjectTermbase["definition"];
+  entries: number;
+  role: Role;
+}
+
+/** A version of an entry in its history. */
+export interface EntryVersion {
+  version: number;
+  at: string;
+  by: string;
+  summary: string;
+  entry: CoreEntry;
+}
+
+export interface DeletedEntry {
+  entryId: string;
+  at: string;
+  by: string;
+  summary: string;
+  entry: CoreEntry;
+}
+
+/** A master entry a project termbase leaves out. */
+export interface Removal {
+  termbase: string;
+  entryId: string;
+  at: string;
+  by: string;
+}
+
+/** What merges into a master without waiting for a reviewer. */
+export interface ReviewRules {
+  keepIdentical?: boolean;
+  minorFields?: string[];
+  trusted?: { author: string; scope: MergeFilter }[];
+}
+
 export interface LayeredEntry extends CoreEntry {
   version: number;
   termbase: string;
@@ -622,10 +666,7 @@ export function client(conn: Connection) {
       new Uint8Array(await (await call(`/api/memories/${encodeURIComponent(name)}/export`)).arrayBuffer()),
     // Termbases on the server.
     termbases: () => get<(CatalogTermbase & { upstreams?: string[]; role: Role; terms: number })[]>("/api/termbases"),
-    termbase: (name: string) =>
-      get<{ name: string; kind: "master" | "project"; upstreams?: string[]; definition: ProjectTermbase["definition"]; entries: number; role: Role }>(
-        `/api/termbases/${encodeURIComponent(name)}`,
-      ),
+    termbase: (name: string) => get<TermbaseDetail>(`/api/termbases/${encodeURIComponent(name)}`),
     entries: (name: string, offset: number, limit: number) =>
       get<{ entries: (CoreEntry & { version: number; changedAt?: string; changedBy?: string })[]; total: number }>(
         `/api/termbases/${encodeURIComponent(name)}/entries?${q({ offset: String(offset), limit: String(limit) })}`,
@@ -644,6 +685,39 @@ export function client(conn: Connection) {
     exportTermbase: async (name: string, format: string) =>
       new Uint8Array(await (await call(`/api/termbases/${encodeURIComponent(name)}/export?${q({ format })}`)).arrayBuffer()),
     deleteTermbase: (name: string) => send<void>("DELETE", `/api/termbases/${encodeURIComponent(name)}`),
+    renameTermbase: (name: string, to: string) => send<TermbaseDetail>("PUT", `/api/termbases/${encodeURIComponent(name)}/name`, { name: to }),
+    setDefinition: (name: string, definition: TermbaseDetail["definition"]) =>
+      send<TermbaseDetail>("PUT", `/api/termbases/${encodeURIComponent(name)}/definition`, definition),
+    removeLanguage: (name: string, language: string) =>
+      send<unknown>("DELETE", `/api/termbases/${encodeURIComponent(name)}/languages/${encodeURIComponent(language)}`),
+    removeField: (name: string, field: string) =>
+      send<unknown>("DELETE", `/api/termbases/${encodeURIComponent(name)}/fields/${encodeURIComponent(field)}`),
+    renameField: (name: string, field: string, to: string) =>
+      send<unknown>("PUT", `/api/termbases/${encodeURIComponent(name)}/fields/${encodeURIComponent(field)}`, { name: to }),
+    // What was changed or deleted, to take back.
+    entryHistory: (name: string, id: string) =>
+      get<EntryVersion[]>(`/api/termbases/${encodeURIComponent(name)}/entries/${encodeURIComponent(id)}/history`),
+    revertEntry: (name: string, id: string, version: number) =>
+      send<CoreEntry & { version: number }>("POST", `/api/termbases/${encodeURIComponent(name)}/entries/${encodeURIComponent(id)}/revert`, { version }),
+    deletedEntries: (name: string) => get<DeletedEntry[]>(`/api/termbases/${encodeURIComponent(name)}/deleted`),
+    restoreEntry: (name: string, id: string) =>
+      send<CoreEntry & { version: number }>("POST", `/api/termbases/${encodeURIComponent(name)}/deleted/${encodeURIComponent(id)}/restore`),
+    // A project termbase and its masters' entries.
+    layered: (name: string) =>
+      get<(LayeredEntry & { base?: { termbase: string; entryId: string; version: number }; changedAt?: string; createdAt?: string })[]>(
+        `/api/termbases/${encodeURIComponent(name)}/layered`,
+      ),
+    overrideEntry: (name: string, master: string, entry: string) =>
+      send<CoreEntry & { version: number }>("POST", `/api/termbases/${encodeURIComponent(name)}/overrides`, { master, entry }),
+    leaveOut: (name: string, master: string, entry: string) =>
+      send<void>("POST", `/api/termbases/${encodeURIComponent(name)}/removals`, { master, entry }),
+    removals: (name: string) => get<Removal[]>(`/api/termbases/${encodeURIComponent(name)}/removals`),
+    bringBack: (name: string, master: string, entry: string) =>
+      send<void>("DELETE", `/api/termbases/${encodeURIComponent(name)}/removals?${q({ master, entry })}`),
+    entry: (name: string, id: string) =>
+      get<CoreEntry & { version: number }>(`/api/termbases/${encodeURIComponent(name)}/entries/${encodeURIComponent(id)}`),
+    reviewRules: (name: string) => get<ReviewRules>(`/api/termbases/${encodeURIComponent(name)}/review-rules`),
+    setReviewRules: (name: string, rules: ReviewRules) => send<ReviewRules>("PUT", `/api/termbases/${encodeURIComponent(name)}/review-rules`, rules),
     // Merge requests.
     mergeRequests: (termbase: string) => get<MergeRequest[]>(`/api/termbases/${encodeURIComponent(termbase)}/merge-requests`),
     openMergeRequest: (termbase: string, master: string, title: string) =>
@@ -678,7 +752,7 @@ export function client(conn: Connection) {
     createTermbase: (definition: { name: string; languages?: string[]; fields?: unknown[] }, upstreams?: string[]) =>
       send<unknown>("POST", "/api/termbases", { definition, upstreams }),
     setUpstreams: (name: string, upstreams: string[]) =>
-      send<unknown>("PUT", `/api/termbases/${encodeURIComponent(name)}/upstreams`, { upstreams }),
+      send<TermbaseDetail>("PUT", `/api/termbases/${encodeURIComponent(name)}/upstreams`, { upstreams }),
     addFile: (id: number, f: FileUpload, version: number) => send<ServerProject>("POST", `${p(id)}/files`, f, version),
     removeFile: (id: number, name: string, version: number) =>
       send<ServerProject>("DELETE", `${p(id)}/files?${q({ name })}`, undefined, version),

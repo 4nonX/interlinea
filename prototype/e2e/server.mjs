@@ -470,6 +470,101 @@ export default () =>
         check(await waitFor(`document.querySelector(${JSON.stringify(panel)}).innerText.includes('Nothing found.')`, 10000), "server memory: and no longer found");
       }
 
+      // Termbases on the server, through their whole life: an earlier
+      // version restored, a deleted entry brought back, the master's
+      // entries under a project termbase, settings, and a project termbase
+      // made and deleted by hand.
+      {
+        const tbPath = (n) => `/api/termbases/${encodeURIComponent(n)}`;
+        const toast = (part) => waitFor(`document.querySelector('.toast')?.textContent.includes(${JSON.stringify(part)})`, 10000);
+        const entryOf = (de, en) => ({ languages: [{ lang: "de-DE", terms: [{ text: de, status: "approved" }] }, { lang: "en-GB", terms: [{ text: en, status: "approved" }] }] });
+        await api("POST", "/api/termbases", admin, { definition: { name: "E2E Recht", languages: ["de-DE", "en-GB"], fields: [{ name: "Note", level: "entry", kind: "text" }] } });
+        const first = await api("POST", `${tbPath("E2E Recht")}/entries`, admin, { entry: entryOf("Nebenkosten", "service charges") });
+        await api("PUT", `${tbPath("E2E Recht")}/entries/${first.id}?version=1`, admin, { entry: { ...entryOf("Nebenkosten", "ancillary costs"), id: first.id } });
+        await api("POST", `${tbPath("E2E Recht")}/entries`, admin, { entry: entryOf("Staffelmiete", "stepped rent") });
+
+        await open(`/terminology/srv:${encodeURIComponent("E2E Recht")}/srv:${encodeURIComponent("E2E Recht")}:${first.id}`, { keep: true });
+        check(await waitFor("document.querySelector('#detail-title')?.textContent.includes('Nebenkosten')", 15000), "a master on the server opens with its entry");
+        check(await evaluate("[...document.querySelectorAll('.pane-tools button')].some(b => b.textContent.includes('Settings'))"), "who manages a server termbase has its settings");
+        await click("#tab-history", "");
+        check(await waitFor("document.querySelector('#panel-history')?.innerText.includes('en-GB: service charges')", 10000), "the history says what each version held");
+        await click("#panel-history button", "Restore this version");
+        await sleep(150);
+        check((await text()).includes("Set the entry back to this version?"), "restoring asks first");
+        await click("#panel-history .confirm button", "Restore");
+        check(await toast("Restored the version of"), "an earlier version is restored");
+        {
+          const now = await api("GET", `${tbPath("E2E Recht")}/entries/${first.id}`, admin);
+          check(now.version === 3 && now.languages.find((l) => l.lang === "en-GB").terms[0].text === "service charges", "the entry is as it was, as a new version");
+        }
+
+        // Deleted, listed, and brought back.
+        await click("#tab-entry", "");
+        await click(".pane-detail button", "Delete entry");
+        await sleep(150);
+        await click(".pane-detail .confirm button", "Delete");
+        check(await toast("Deleted the entry"), "the entry is deleted");
+        await click(".pane-entries [role=tab]", "Deleted");
+        check(await waitFor("document.querySelector('.deleted-entry')?.innerText.includes('Nebenkosten')", 10000), "the deleted entry is listed");
+        await click(".deleted-entry button", "Bring back");
+        check(await toast("Brought back “Nebenkosten”"), "it is brought back");
+        check(await waitFor("document.querySelector('.pane-entries').innerText.includes('Nothing deleted')", 10000), "and no longer listed as deleted");
+        check((await api("GET", `${tbPath("E2E Recht")}/entries/${first.id}`, admin)).version === 1, "it has its ID again");
+
+        // How the master is reviewed, in its settings.
+        await click(".pane-tools button", "Settings");
+        check(await waitFor("document.querySelector('dialog[open]')?.innerText.includes('Trusted authors')", 10000), "the settings of a master say how it is reviewed");
+        check((await evaluate("document.querySelector('dialog[open]').innerText")).includes("Who may use it"), "and who may use it");
+        check(await waitFor("[...document.querySelectorAll('dialog[open] [aria-label=\"Fields that need no approval\"] label.check')].some(l => l.textContent.includes('Note'))", 10000), "the master's fields are offered as needing no approval");
+        await evaluate("[...document.querySelectorAll('dialog[open] [aria-label=\"Fields that need no approval\"] label.check')].find(l => l.textContent.includes('Note')).querySelector('input').click()");
+        check(await toast("Changes to Note only are merged without review"), "a field that needs no approval is set");
+        check(((await api("GET", `${tbPath("E2E Recht")}/review-rules`, admin)).minorFields ?? []).join() === "Note", "the rule is on the server");
+        await click("dialog[open] button", "Done");
+
+        // A project termbase made by hand over the master.
+        await click(".pane-tbs button", "New project termbase");
+        check(await waitFor("!!document.querySelector('form[aria-label=\"New project termbase\"]')"), "a project termbase can be made by hand");
+        await setValue("#new-ptb", "E2E Fall");
+        check(await waitFor("[...document.querySelectorAll('form[aria-label=\"New project termbase\"] label.check')].some(l => l.textContent.includes('E2E Recht'))", 10000), "the masters of the server are offered to base it on");
+        await evaluate("[...document.querySelectorAll('form[aria-label=\"New project termbase\"] label.check')].find(l => l.textContent.includes('E2E Recht')).querySelector('input').click()");
+        await sleep(100);
+        await click("form[aria-label='New project termbase'] button", "Create");
+        check(await toast("Created project termbase “E2E Fall”"), "the project termbase is made");
+        check(await waitFor("[...document.querySelectorAll('.pane-entries [role=tab]')].some(t => t.textContent.includes('Master (2)'))", 15000), "it shows its master's entries in a view of their own");
+        check((await text()).includes("Based on E2E Recht."), "and says what it is based on");
+        await click(".pane-entries [role=tab]", "Master (2)");
+        check(await waitFor("document.querySelector('#master-entry-title')?.textContent.length > 0", 10000), "a master's entry opens to read");
+        await click(".pane-detail button", "Leave out of this project");
+        await sleep(150);
+        await click(".pane-detail .confirm button", "Leave out");
+        check(await toast("Left the entry out of the project"), "a master's entry is left out");
+        check(await waitFor("document.querySelector('.left-out')?.innerText.includes('Left out of this project')", 10000), "what is left out is listed, by its term");
+        check((await api("GET", `${tbPath("E2E Fall")}/removals`, admin)).length === 1, "the server has the removal");
+        await click(".left-out button", "Bring back");
+        check(await toast("Brought the entry back into the project"), "it is brought back into the project");
+        check(await waitFor("!document.querySelector('.left-out')", 10000), "nothing is left out any more");
+        await click(".pane-detail button", "Change in this project");
+        check(await toast("Took the entry into the project"), "a master's entry is taken into the project to be changed");
+        check(await waitFor("!!document.querySelector('#detail-title') && [...document.querySelectorAll('.pane-entries [role=tab]')].some(t => t.textContent.includes('Master (1)'))", 15000), "the project's copy opens, and the master has one entry less to show");
+        check((await api("GET", `${tbPath("E2E Fall")}/entries`, admin)).total === 1, "the copy is in the project termbase");
+
+        // The master stays while a project termbase is based on it.
+        await open(`/terminology/srv:${encodeURIComponent("E2E Recht")}`, { keep: true });
+        check(await waitFor("[...document.querySelectorAll('.pane-tools button')].some(b => b.textContent.includes('Settings'))", 15000), "the master opens again");
+        await click(".pane-tools button", "Settings");
+        check(await waitFor("document.querySelector('dialog[open]')?.innerText.includes('E2E Fall is based on this termbase.')", 10000), "a master says which project termbase stands in the way of deleting it");
+        await click("dialog[open] button", "Done");
+        await open(`/terminology/srv:${encodeURIComponent("E2E Fall")}`, { keep: true });
+        check(await waitFor("[...document.querySelectorAll('.pane-tools button')].some(b => b.textContent.includes('Settings'))", 15000), "the project termbase opens again");
+        await click(".pane-tools button", "Settings");
+        check(await waitFor("document.querySelector('dialog[open]')?.innerText.includes('The masters keep theirs.')", 10000), "deleting a project termbase says what it takes");
+        await click("dialog[open] .settings-danger button", "Delete termbase");
+        await sleep(150);
+        await click("dialog[open] .settings-danger .confirm button", "Delete");
+        check(await toast("Deleted E2E Fall"), "the project termbase is deleted");
+        check((await api("GET", "/api/termbases", admin)).every((t) => t.name !== "E2E Fall"), "it is gone from the server");
+      }
+
       // Eva signs in through the identity provider: the server makes her an
       // account (with no roles) on her first sign-in.
       await open("/settings", { keep: true });
@@ -483,6 +578,19 @@ export default () =>
       check(!!eva && !eva.hasPassword && eva.email === "eva@agentur.example" && !eva.admin, "her account was made, without a password or roles");
       const ids = await api("GET", `/api/users/${eva.id}/identities`, admin);
       check(ids.length === 1 && ids[0].subject === "eva-1" && ids[0].issuer === idp.issuer, "linked to her provider sign-in");
+
+      // Eva may read the master and nothing more: its entries are there
+      // to read, and nothing that changes them is offered.
+      await api("PUT", "/api/grants", admin, { userId: eva.id, kind: "termbase", resource: "E2E Recht", role: "read" });
+      await open(`/terminology/srv:${encodeURIComponent("E2E Recht")}`, { keep: true });
+      check(await waitFor("document.querySelector('.pane-entries .pane-sub')?.innerText.includes('Read')", 15000), "a reader is told what she may do");
+      check(
+        await evaluate("![...document.querySelectorAll('.pane-tools button')].some(b => /Import|Settings/.test(b.textContent)) && [...document.querySelectorAll('.pane-tools button')].some(b => b.textContent.includes('Export'))"),
+        "a reader exports, and neither imports nor changes the settings",
+      );
+      check(await evaluate("!document.querySelector('.pane-entries').innerText.includes('New entry') && ![...document.querySelectorAll('.pane-entries [role=tab]')].some(t => t.textContent.includes('Duplicates'))"), "a reader adds no entries and merges no duplicates");
+      check(await waitFor("document.querySelector('#panel-entry')?.innerText.includes('Approved')", 10000), "an entry is shown to read");
+      check(await evaluate("!document.querySelector('.pane-detail').innerText.includes('Delete entry') && !document.querySelector('#panel-entry select, #panel-entry input')"), "and offers nothing to change");
 
       // Nothing from the server is kept in the browser.
       await open("/projects", { keep: true });

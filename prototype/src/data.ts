@@ -124,6 +124,10 @@ export interface Termbase {
   remote?: boolean;
   /** A server termbase opened on its own (from Terminology), not only for a project. */
   opened?: boolean;
+  /** A server termbase: what the signed-in person may do in it. */
+  role?: string;
+  /** A master on the server: the project termbases based on it. */
+  dependents?: string[];
 }
 
 export type SetupMode = "layered" | "own" | "direct";
