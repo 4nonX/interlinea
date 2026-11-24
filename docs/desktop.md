@@ -55,10 +55,11 @@ platforms.
 
 ## Stages
 
-Done: 1, 2 and 3. Next: 4, the editor. Until it is in, segments are
-translated in the browser client or in another tool and brought back in a
-bilingual file or return package. The browser client's editor is the model
-for the desktop one:
+Done: 1 to 5. Next: 6, terminology. The editor, the project list and the
+Memories page are laid out as the same screens of the browser client, which
+is the model for every page; the project page, the new project dialog and
+Settings still have their first layout and follow. The browser client's
+editor:
 
 ![The editor in the browser client](screenshots/editor.png)
 
@@ -89,8 +90,10 @@ for the desktop one:
    locked segments, presence of others, live updates and conflicts, adding
    terms while translating, preview of the document's structure, keyboard
    shortcuts close to memoQ's and Trados's.
-5. **Memories.** List, create, import and export TMX, browse and edit
-   units, concordance, delete.
+5. **Memories.** The main and project memories on this computer and the
+   memories on each team server: new ones (for a client, filled from a TMX
+   file), TMX in and out, what uses each, search of a server memory's
+   units, who may use it, delete.
 6. **Terminology.** Termbases (master and project, layered), entries with
    their fields and history, revert, merge duplicates, import and export
    (TBX, MultiTerm, CSV, TSV, Excel), definitions, review rules, merge

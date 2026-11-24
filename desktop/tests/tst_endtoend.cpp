@@ -1,13 +1,15 @@
 // The whole app against a real team server (INTERLINEA_TEAM_SERVER, with
 // the administrator INTERLINEA_TEAM_USER / INTERLINEA_TEAM_PASSWORD) and
-// its own core: sign in, make a project on each from a document, translate
-// on the server, and get the translated document back. Skipped without a
-// team server.
+// its own core: sign in, keep a memory on the server, make a project on
+// each from a document, translate on the server, and get the translated
+// document back. Skipped without a team server.
+#include "accesspanel.h"
 #include "apiclient.h"
 #include "connectionmanager.h"
 #include "eventfeed.h"
 #include "languages.h"
 #include "mainwindow.h"
+#include "memoriespage.h"
 #include "newprojectdialog.h"
 #include "projectpage.h"
 #include "projectsmodel.h"
@@ -16,16 +18,20 @@
 #include "settingspage.h"
 #include "testcore.h"
 #include "theme.h"
+#include "webui.h"
 
 #include <QApplication>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QFile>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStackedWidget>
 #include <QStandardPaths>
+#include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTreeWidget>
@@ -50,8 +56,16 @@ static T *named(QWidget *root, const QString &name)
 static QPushButton *button(QWidget *root, const QString &text)
 {
     for (QPushButton *b : root->findChildren<QPushButton *>())
-        if (b->text().remove(QLatin1Char('&')) == text)
+        if (b->text().remove(QLatin1Char('&')) == text && !b->isHidden())
             return b;
+    return nullptr;
+}
+
+static QLabel *label(QWidget *root, const QString &text)
+{
+    for (QLabel *l : root->findChildren<QLabel *>())
+        if (l->text() == text && l->isVisibleTo(root))
+            return l;
     return nullptr;
 }
 
@@ -79,6 +93,8 @@ private slots:
         MainWindow w(&m);
         auto *projects = new ProjectsPage(&m, &w);
         w.addPage(QStringLiteral("projects"), QStringLiteral("Projects"), QIcon(), projects);
+        auto *memories = new MemoriesPage(&m, &w);
+        w.addPage(QStringLiteral("memories"), QStringLiteral("Memories"), QIcon(), memories);
         w.addPage(QStringLiteral("settings"), QStringLiteral("Settings"), QIcon(), new SettingsPage(&m, &w));
         w.show();
         m.start();
@@ -93,6 +109,93 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
         QVERIFY2(team, qPrintable(err.message));
         QTRY_VERIFY_WITH_TIMEOUT(team->feed()->isLive(), 10000);
+
+        // A memory kept on the team server: made, filled from TMX, searched,
+        // shared, written out and deleted, all from the Memories page.
+        w.showPage(QStringLiteral("memories"));
+        const QString host = team->displayName();
+        QTRY_VERIFY_WITH_TIMEOUT(label(memories, QStringLiteral("On the team server")), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(button(memories, QStringLiteral("New memory on the server")), 10000);
+        button(memories, QStringLiteral("New memory on the server"))->click();
+        QTRY_VERIFY(button(memories, QStringLiteral("Make the memory")));
+        QVERIFY(!button(memories, QStringLiteral("Make the memory"))->isEnabled());
+        named<QLineEdit>(memories, QStringLiteral("Name"))->setText(QStringLiteral("Kanzlei Weber DE-EN"));
+        button(memories, QStringLiteral("Make the memory"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(memories->message(), QStringLiteral("Made the memory Kanzlei Weber DE-EN on %1").arg(host), 10000);
+        // It is listed and opened, with who may use it for its manager.
+        QTRY_COMPARE_WITH_TIMEOUT(memories->openMemory(team->id()), QStringLiteral("Kanzlei Weber DE-EN"), 10000);
+        QTableWidget *listed = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((listed = named<QTableWidget>(memories, QStringLiteral("Memories on %1").arg(host))) && listed->rowCount() == 1, 10000);
+        QCOMPARE(listed->item(0, 3)->data(Qt::AccessibleTextRole).toString(), QStringLiteral("manage"));
+        QTRY_VERIFY_WITH_TIMEOUT(memories->findChild<AccessPanel *>(), 10000);
+        QVERIFY(button(memories, QStringLiteral("Close")));
+
+        const QString tmxFile = m_tmp.filePath(QStringLiteral("Weber.tmx"));
+        {
+            QFile t(tmxFile);
+            QVERIFY(t.open(QIODevice::WriteOnly));
+            t.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<tmx version=\"1.4\"><header creationtool=\"test\" creationtoolversion=\"1\" "
+                    "datatype=\"plaintext\" segtype=\"sentence\" adminlang=\"en\" srclang=\"de-DE\" o-tmf=\"test\"/><body>"
+                    "<tu><tuv xml:lang=\"de-DE\"><seg>Der Vermieter haftet nicht.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>The landlord is not liable.</seg></tuv></tu>"
+                    "<tu><tuv xml:lang=\"de-DE\"><seg>Die Nebenkosten sind fällig.</seg></tuv><tuv xml:lang=\"en-GB\"><seg>The service charges are due.</seg></tuv></tu>"
+                    "</body></tmx>\n");
+        }
+        memories->importFile(team->id(), QStringLiteral("Kanzlei Weber DE-EN"), tmxFile);
+        QTRY_COMPARE_WITH_TIMEOUT(memories->message(), QStringLiteral("Read 2 units from Weber.tmx; 2 stored"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT((listed = named<QTableWidget>(memories, QStringLiteral("Memories on %1").arg(host))) &&
+                                     listed->item(0, 2)->data(Qt::AccessibleTextRole).toString() == QStringLiteral("2"),
+                                 10000);
+        // The open memory was not put away by the list being read again.
+        QCOMPARE(memories->openMemory(team->id()), QStringLiteral("Kanzlei Weber DE-EN"));
+
+        // Its units are searched, in the sources and in the translations.
+        auto *query = named<QLineEdit>(memories, QStringLiteral("Search the units"));
+        QVERIFY(query);
+        QVERIFY(!button(memories, QStringLiteral("Search"))->isEnabled());
+        query->setText(QStringLiteral("Nebenkosten"));
+        button(memories, QStringLiteral("Search"))->click();
+        QTableWidget *found = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((found = named<QTableWidget>(memories, QStringLiteral("Units found"))) && found->rowCount() == 1, 10000);
+        QCOMPARE(found->item(0, 1)->data(Qt::AccessibleTextRole).toString(), QStringLiteral("The service charges are due."));
+        // When it changed, without a stray comma where the TMX names nobody.
+        const QString changed = found->item(0, 2)->data(Qt::AccessibleTextRole).toString();
+        QVERIFY2(!changed.isEmpty() && !changed.startsWith(QLatin1Char(',')), qPrintable(changed));
+        query->setText(QStringLiteral("landlord"));
+        button(memories, QStringLiteral("Search"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(label(memories, QStringLiteral("Nothing found.")), 10000);
+        for (QCheckBox *c : memories->findChildren<QCheckBox *>())
+            if (c->text() == QStringLiteral("In the translations"))
+                c->setChecked(true);
+        button(memories, QStringLiteral("Search"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT((found = named<QTableWidget>(memories, QStringLiteral("Units found"))) && found->rowCount() == 1 &&
+                                     found->item(0, 0)->data(Qt::AccessibleTextRole).toString() == QStringLiteral("Der Vermieter haftet nicht."),
+                                 10000);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            w.resize(1440, 900);
+            QTest::qWait(400);
+            w.grab().save(dir + QStringLiteral("/memories-server-desktop.png"));
+        }
+
+        const QString written = m_tmp.filePath(QStringLiteral("Weber-out.tmx"));
+        memories->exportFile(team->id(), QStringLiteral("Kanzlei Weber DE-EN"), written);
+        QTRY_COMPARE_WITH_TIMEOUT(memories->message(), QStringLiteral("Saved Weber-out.tmx"), 10000);
+        {
+            QFile t(written);
+            QVERIFY(t.open(QIODevice::ReadOnly));
+            QVERIFY(t.readAll().contains("The landlord is not liable."));
+        }
+
+        // Deleting it for everyone asks first.
+        button(memories, QStringLiteral("Delete the memory"))->click();
+        QTRY_VERIFY(label(memories, QStringLiteral("Delete Kanzlei Weber DE-EN and its 2 units on the server for everyone?")));
+        for (Web::ConfirmButton *c : memories->findChildren<Web::ConfirmButton *>())
+            if (c->asking())
+                c->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(memories->message(), QStringLiteral("Deleted Kanzlei Weber DE-EN on the server"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(label(memories, QStringLiteral("No memories on %1 for you yet.").arg(host)), 10000);
+        QVERIFY(memories->openMemory(team->id()).isEmpty());
+        QVERIFY(!memories->findChild<AccessPanel *>() || memories->findChild<AccessPanel *>()->isHidden());
+        w.showPage(QStringLiteral("projects"));
 
         const QString doc = m_tmp.filePath(QStringLiteral("Mietvertrag.txt"));
         QFile f(doc);

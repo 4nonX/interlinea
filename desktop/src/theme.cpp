@@ -2,6 +2,7 @@
 
 #include "icons.h"
 
+#include <QRegularExpression>
 #include <QApplication>
 
 #include <algorithm>
@@ -110,11 +111,11 @@ QPushButton { background: @surface; border: 1px solid @borderStrong; border-radi
 QPushButton:hover { background: @surface2; border-color: @text3; }
 QPushButton:pressed { background: @border; }
 QPushButton:focus { border: 2px solid @accent; padding: 5px 13px; }
-QPushButton:disabled { color: @text3; border-color: @border; background: @surface2; }
+QPushButton:disabled { color: dim(@text); border-color: dim(@borderStrong); background: dim(@surface); }
 QPushButton[primary="true"] { background: @accent; border: 1px solid @accent; color: @onAccent; font-weight: 600; }
 QPushButton[primary="true"]:hover { background: @accentHover; border-color: @accentHover; }
 QPushButton[primary="true"]:focus { border: 2px solid @text; }
-QPushButton[primary="true"]:disabled { background: @border; border-color: @border; color: @text3; }
+QPushButton[primary="true"]:disabled { background: dim(@accent); border-color: transparent; color: @onAccent; }
 QPushButton:flat { border: 0; background: transparent; color: @accentText; }
 QPushButton:flat:hover { text-decoration: underline; }
 QToolButton { border: 0; border-radius: 6px; padding: 3px 8px; color: @text2; background: transparent; }
@@ -170,6 +171,12 @@ QPushButton[small="true"]:focus { padding: 4px 9px; }
 QPushButton[quiet="true"] { border-color: transparent; background: transparent; color: @accentText; }
 QPushButton[quiet="true"]:hover { background: @accentWeak; border-color: transparent; }
 QPushButton[quiet="true"]:focus { border: 2px solid @accent; }
+QPushButton[danger="true"] { border-color: @danger; background: @danger; color: #ffffff; }
+QPushButton[danger="true"]:hover { background: #8f1c15; border-color: #8f1c15; }
+QPushButton[quiet="true"]:disabled { color: dim(@accentText); background: transparent; border-color: transparent; }
+QPushButton[danger="true"]:disabled { background: dim(@danger); border-color: transparent; color: #ffffff; }
+QLabel[role="fieldLabel"] { color: @text2; font-size: 13px; font-weight: 600; }
+QLabel[role="error"], QLabel[role="confirmText"] { color: @danger; font-size: 13px; font-weight: 500; }
 QPushButton[tiny="true"] { padding: 2px 8px; min-height: 16px; font-size: 12px; border-color: transparent; background: transparent; color: inherit; }
 QPushButton[tiny="true"]:hover { background: rgba(127,140,160,0.16); }
 
@@ -243,6 +250,12 @@ QTextBrowser#activeSource { background: transparent; border: 0; padding: 0; }
     std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) { return qstrlen(a.first) > qstrlen(b.first); });
     for (const auto &[k, v] : sorted)
         s.replace(QLatin1String(k), QLatin1String(v));
+    // dim(colour): the colour at the web's opacity of what is disabled.
+    static const QRegularExpression dim(QStringLiteral("dim\\((#[0-9a-fA-F]{6})\\)"));
+    for (auto m = dim.match(s); m.hasMatch(); m = dim.match(s)) {
+        const QColor c(m.captured(1));
+        s.replace(m.capturedStart(), m.capturedLength(), QStringLiteral("rgba(%1, %2, %3, 0.55)").arg(c.red()).arg(c.green()).arg(c.blue()));
+    }
     return s;
 }
 

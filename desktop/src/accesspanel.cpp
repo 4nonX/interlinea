@@ -34,6 +34,9 @@ AccessPanel::AccessPanel(Connection *connection, const QString &kind, const QStr
     auto *add = new QHBoxLayout;
     add->setSpacing(12);
     m_who = new QComboBox(this);
+    // As wide as the names in it, as the web's select.
+    m_who->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_who->setMinimumContentsLength(18);
     m_role = new QComboBox(this);
     for (const QString &r : roles())
         m_role->addItem(roleText(r), r);

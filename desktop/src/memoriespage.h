@@ -2,52 +2,107 @@
 
 #include <QHash>
 #include <QJsonArray>
+#include <QJsonObject>
+#include <QList>
 #include <QPointer>
+#include <QSet>
 #include <QTimer>
 #include <QWidget>
 
+#include "webui.h"
+
 class Connection;
 class ConnectionManager;
+class LanguageCombo;
+class QCheckBox;
+class QLabel;
+class QLineEdit;
+class QPushButton;
 class QVBoxLayout;
 
-// Translation memories, laid out as the web app's Memories page: the main
-// and project memories on this computer, and those on each team server,
-// with TMX in and out, search, new memories and who may use them.
+// Translation memories, laid out as the web app's Memories page: those on
+// each team server first, then the main and project memories on this
+// computer, with TMX in and out, search, new memories and who may use them.
 class MemoriesPage : public QWidget {
     Q_OBJECT
 public:
     explicit MemoriesPage(ConnectionManager *manager, QWidget *parent = nullptr);
+    ~MemoriesPage() override;
 
-    // Reads everything again (for tests and after a change).
+    // Reads everything again.
     void reload();
     // The memory opened on a team server, for its search and access.
-    QString openMemory(const QString &connectionId) const { return m_open.value(connectionId); }
+    QString openMemory(const QString &connectionId) const;
+    // Opens a memory of a team server; an empty name closes the open one.
     void open(const QString &connectionId, const QString &name);
+    // Reads a TMX file into a memory, and writes a memory to a TMX file:
+    // what the buttons do once a file is chosen.
+    void importFile(const QString &connectionId, const QString &memory, const QString &path);
+    void exportFile(const QString &connectionId, const QString &memory, const QString &path);
+    // The TMX file a new memory on this computer is filled from.
+    void setNewMemoryFile(const QString &path);
     void notify(const QString &text);
-    QString message() const { return m_lastMessage; }
+    QString message() const;
 
 signals:
+    // Every place's memories were read and are shown.
     void loaded();
 
+protected:
+    void resizeEvent(QResizeEvent *e) override;
+
 private:
-    void build();
-    QWidget *localSection(Connection *c, const QJsonArray &memories, const QJsonArray &projects, const QJsonArray &templates);
-    QWidget *serverSection(Connection *c, const QJsonArray &memories);
-    QWidget *memoryTable(Connection *c, const QJsonArray &memories, const QJsonArray &projects, const QJsonArray &templates, bool main);
-    QWidget *newMemoryForm(Connection *c, bool server);
-    QWidget *serverDetail(Connection *c, const QJsonObject &memory);
-    void importTmx(Connection *c, const QString &name);
-    void exportTmx(Connection *c, const QString &name);
+    // The memories of one place, and the parts of the page that show them.
+    struct Part {
+        QPointer<Connection> conn;
+        QWidget *root = nullptr;
+        QLabel *problem = nullptr;
+        // Local: the main memories and the project memories. Server: the one list.
+        QVBoxLayout *list = nullptr;
+        QWidget *ownSection = nullptr;
+        QVBoxLayout *ownList = nullptr;
+        QVBoxLayout *detail = nullptr;
+        QVBoxLayout *formHolder = nullptr;
+        QString open;
+        QString openRole;
+        QPointer<Web::ConfirmButton> openDelete;
+        QJsonArray memories;
+        QJsonArray projects;
+        QJsonArray templates;
+        bool read = false;
+        int pending = 0;
+        // Which reading the answers belong to, and whether to read again
+        // once they are in.
+        int reading = 0;
+        bool again = false;
+    };
+
+    void syncParts();
+    Part *part(const QString &connectionId) const;
+    void load(Part *p);
+    void finished(Part *p);
+    void showPart(Part *p);
+    void showLocal(Part *p);
+    void showServer(Part *p);
+    QWidget *localTable(Part *p, const QList<QJsonObject> &memories, bool main);
+    void showDetail(Part *p);
+    void localForm(Part *p, bool open);
+    void serverForm(Part *p, bool open);
+    QJsonObject memory(const Part *p, const QString &name) const;
+    // The project a memory belongs to (its own memory), if any.
+    QString ownerProject(const Part *p, const QString &memory) const;
+    QStringList usedBy(const Part *p, const QString &memory) const;
+    static QString units(qint64 n);
+    static QString date(const QString &iso);
+    static void clear(QVBoxLayout *layout);
 
     ConnectionManager *m_manager;
-    QVBoxLayout *m_body;
     QVBoxLayout *m_sections;
-    QHash<QString, QString> m_open;
-    QHash<QString, QJsonArray> m_memories;
-    QHash<QString, QJsonArray> m_projects;
-    QHash<QString, QJsonArray> m_templates;
+    QList<Part *> m_parts;
+    QSet<QString> m_listening;
     QTimer m_reload;
-    QString m_lastMessage;
-    class QLabel *m_toast;
-    QTimer m_toastTimer;
+    int m_reading = 0;
+    Web::Toast *m_toast;
+    QString m_newFile;
+    QPointer<QLabel> m_newFileLabel;
 };

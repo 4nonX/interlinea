@@ -3,8 +3,10 @@
 #include <QFrame>
 #include <QScrollArea>
 #include <QJsonArray>
+#include <QLabel>
 #include <QStringList>
 #include <QTableWidget>
+#include <QTimer>
 
 #include <functional>
 
@@ -88,6 +90,52 @@ QFrame *choice(QAbstractButton *input, const QString &description, QWidget *pare
 
 // .field: a label (with "optional" after it), the control, and help.
 QWidget *field(const QString &label, QWidget *control, QWidget *parent, bool optional = false, const QString &help = QString());
+
+// .row: widgets side by side, 8 px apart, kept to the left.
+QWidget *row(const QList<QWidget *> &widgets, QWidget *parent, int spacing = 8);
+// A control under its small grey label (.field-label), as in .role-add.
+QWidget *labelled(const QString &label, QWidget *control, QWidget *parent);
+
+// The web's ConfirmButton: a quiet button that asks before it acts. Pressed,
+// it shows the question in red with the confirming button and Cancel.
+class ConfirmButton : public QWidget {
+    Q_OBJECT
+public:
+    ConfirmButton(const QString &label, const QString &question, const QString &action, QWidget *parent, bool small = true,
+                  const QString &icon = QString());
+    void setQuestion(const QString &question);
+    // Greyed out, as a disabled button.
+    void setAvailable(bool available);
+    bool asking() const;
+    QPushButton *button() const { return m_button; }
+    QPushButton *yes() const { return m_yes; }
+
+signals:
+    void confirmed();
+
+private:
+    void ask(bool asking);
+
+    QPushButton *m_button;
+    QLabel *m_text;
+    QPushButton *m_yes;
+    QPushButton *m_cancel;
+};
+
+// .toast: a notice over the bottom of a page, gone after a while. Keep it
+// in place with place() from the page's resizeEvent.
+class Toast : public QLabel {
+    Q_OBJECT
+public:
+    explicit Toast(QWidget *page);
+    void say(const QString &text);
+    void place();
+    QString last() const { return m_last; }
+
+private:
+    QString m_last;
+    QTimer *m_timer;
+};
 
 // .dropzone: a dashed box that takes dropped files and folders.
 class DropZone : public QFrame {

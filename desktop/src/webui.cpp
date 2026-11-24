@@ -13,6 +13,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStyle>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace Web {
@@ -127,7 +128,7 @@ QPushButton *button(const QString &t, int kind, QWidget *parent, const QString &
         Theme::smallButton(b);
     if (!icon.isEmpty()) {
         b->setIcon(Icons::get(icon, (kind & Quiet) ? Theme::color("accentText") : (kind & Primary) ? QColor(Qt::white) : QColor()));
-        b->setIconSize(QSize(14, 14));
+        b->setIconSize(QSize(16, 16));
     }
     return b;
 }
@@ -399,6 +400,135 @@ QWidget *field(const QString &label, QWidget *control, QWidget *parent, bool opt
     if (!help.isEmpty())
         v->addWidget(text(help, "help", w));
     return w;
+}
+
+QWidget *row(const QList<QWidget *> &widgets, QWidget *parent, int spacing)
+{
+    auto *w = new QWidget(parent);
+    auto *h = new QHBoxLayout(w);
+    h->setContentsMargins(0, 0, 0, 0);
+    h->setSpacing(spacing);
+    for (QWidget *x : widgets)
+        h->addWidget(x, 0, Qt::AlignVCenter);
+    h->addStretch();
+    return w;
+}
+
+QWidget *labelled(const QString &label, QWidget *control, QWidget *parent)
+{
+    auto *w = new QWidget(parent);
+    auto *l = new QVBoxLayout(w);
+    l->setContentsMargins(0, 0, 0, 0);
+    l->setSpacing(S1);
+    auto *t = text(label, "fieldLabel", w);
+    t->setBuddy(control);
+    if (control->accessibleName().isEmpty())
+        control->setAccessibleName(label);
+    l->addWidget(t);
+    l->addWidget(control);
+    return w;
+}
+
+ConfirmButton::ConfirmButton(const QString &label, const QString &question, const QString &action, QWidget *parent, bool small, const QString &icon)
+    : QWidget(parent)
+{
+    auto *h = new QHBoxLayout(this);
+    h->setContentsMargins(0, 0, 0, 0);
+    h->setSpacing(S1);
+    m_button = Web::button(label, small ? Quiet | Small : Quiet, this, icon);
+    m_text = new QLabel(question, this);
+    Theme::role(m_text, "confirmText");
+    m_yes = Web::button(action, Small, this);
+    m_yes->setProperty("danger", true);
+    m_cancel = Web::button(QObject::tr("Cancel"), Quiet | Small, this);
+    h->addWidget(m_button);
+    h->addWidget(m_text);
+    h->addWidget(m_yes);
+    h->addWidget(m_cancel);
+    h->addStretch();
+    setQuestion(question);
+    ask(false);
+    connect(m_button, &QPushButton::clicked, this, [this] { ask(true); });
+    connect(m_cancel, &QPushButton::clicked, this, [this] {
+        ask(false);
+        m_button->setFocus();
+    });
+    connect(m_yes, &QPushButton::clicked, this, [this] {
+        ask(false);
+        emit confirmed();
+    });
+}
+
+void ConfirmButton::setQuestion(const QString &question)
+{
+    m_text->setText(question);
+    m_yes->setAccessibleDescription(question);
+}
+
+void ConfirmButton::setAvailable(bool available)
+{
+    if (!available)
+        ask(false);
+    m_button->setEnabled(available);
+}
+
+bool ConfirmButton::asking() const
+{
+    return !m_yes->isHidden();
+}
+
+void ConfirmButton::ask(bool asking)
+{
+    m_button->setVisible(!asking);
+    m_text->setVisible(asking);
+    m_yes->setVisible(asking);
+    m_cancel->setVisible(asking);
+    if (asking)
+        m_yes->setFocus();
+    // A table cell holding it is as wide as what it shows now.
+    for (QWidget *p = parentWidget(); p; p = p->parentWidget()) {
+        if (auto *t = qobject_cast<Table *>(p)) {
+            QMetaObject::invokeMethod(t, [t] { t->fit(); }, Qt::QueuedConnection);
+            break;
+        }
+    }
+}
+
+Toast::Toast(QWidget *page)
+    : QLabel(page)
+    , m_timer(new QTimer(this))
+{
+    setAccessibleName(QObject::tr("Notice"));
+    setStyleSheet(QStringLiteral("QLabel { background: #1f2630; color: #ffffff; border-radius: 8px; padding: 10px 16px; font-weight: 500; }"));
+    setWordWrap(true);
+    setMaximumWidth(560);
+    hide();
+    m_timer->setSingleShot(true);
+    m_timer->setInterval(4000);
+    connect(m_timer, &QTimer::timeout, this, &QWidget::hide);
+}
+
+void Toast::say(const QString &text)
+{
+    m_last = text;
+    setText(text);
+    // One line while it fits; wrapped at the widest it may be.
+    const int oneLine = fontMetrics().horizontalAdvance(text) + 36;
+    setWordWrap(oneLine > maximumWidth());
+    if (wordWrap())
+        resize(maximumWidth(), heightForWidth(maximumWidth()));
+    else
+        adjustSize();
+    place();
+    raise();
+    show();
+    m_timer->start();
+}
+
+void Toast::place()
+{
+    if (QWidget *p = parentWidget())
+        move((p->width() - width()) / 2, p->height() - height() - S5);
 }
 
 DropZone::DropZone(QWidget *parent)

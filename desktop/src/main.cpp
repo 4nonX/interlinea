@@ -2,6 +2,7 @@
 #include "corelauncher.h"
 #include "icons.h"
 #include "mainwindow.h"
+#include "memoriespage.h"
 #include "projectspage.h"
 #include "settingspage.h"
 #include "singleinstance.h"
@@ -56,6 +57,8 @@ int main(int argc, char *argv[])
     auto *projects = new ProjectsPage(&connections, &window);
     window.addPage(QStringLiteral("projects"), QObject::tr("Projects"), Icons::get(QStringLiteral("projects")), projects,
                    QKeySequence(QStringLiteral("Ctrl+1")));
+    window.addPage(QStringLiteral("memories"), QObject::tr("Memories"), Icons::get(QStringLiteral("memories")), new MemoriesPage(&connections, &window),
+                   QKeySequence(QStringLiteral("Ctrl+2")));
     window.addPage(QStringLiteral("settings"), QObject::tr("Settings"), Icons::get(QStringLiteral("settings")),
                    new SettingsPage(&connections, &window), QKeySequence(QStringLiteral("Ctrl+,")));
     QObject::connect(&instance, &SingleInstance::activated, &window, [&window, projects](const QStringList &files) {
