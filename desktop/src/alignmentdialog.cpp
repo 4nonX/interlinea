@@ -419,12 +419,37 @@ void AlignmentDialog::init()
     buttons()->addWidget(m_other);
     buttons()->addWidget(m_cancel);
     buttons()->addWidget(m_go);
-    connect(m_cancel, &QPushButton::clicked, this, &QDialog::reject);
+    connect(m_cancel, &QPushButton::clicked, this, &AlignmentDialog::reject);
     connect(m_other, &QPushButton::clicked, this, [this] {
-        m_hasResult = false;
-        setError(QString());
-        render();
+        if (m_hasResult && (canUndo() || canRedo()))
+            askToLeave(false);
+        else
+            otherDocuments();
     });
+    // The question before work on the lines is left, over the buttons.
+    m_leaveRow = new QFrame(this);
+    m_leaveRow->setObjectName(QStringLiteral("alignLeave"));
+    m_leaveRow->setProperty("note", QStringLiteral("warn"));
+    m_leaveRow->setAccessibleName(tr("Leave the alignment"));
+    auto *lh = new QHBoxLayout(m_leaveRow);
+    lh->setContentsMargins(S3, S2, S3, S2);
+    lh->setSpacing(S2);
+    m_leaveText = new QLabel(m_leaveRow);
+    m_leaveText->setWordWrap(true);
+    m_leaveText->setObjectName(QStringLiteral("leaveQuestion"));
+    auto *stayButton = Web::button(tr("Stay"), Web::Small, m_leaveRow);
+    stayButton->setObjectName(QStringLiteral("stay"));
+    m_leaveGo = Web::button(tr("Close"), Web::Small, m_leaveRow);
+    m_leaveGo->setObjectName(QStringLiteral("leave"));
+    m_leaveGo->setProperty("danger", true);
+    lh->addWidget(m_leaveText, 1);
+    lh->addWidget(stayButton);
+    lh->addWidget(m_leaveGo);
+    connect(stayButton, &QPushButton::clicked, this, &AlignmentDialog::stay);
+    connect(m_leaveGo, &QPushButton::clicked, this, &AlignmentDialog::leave);
+    if (auto *outer = qobject_cast<QVBoxLayout *>(layout()))
+        outer->insertWidget(outer->count() - 1, m_leaveRow);
+    m_leaveRow->hide();
     connect(m_go, &QPushButton::clicked, this, [this] {
         if (m_hasResult)
             add();
@@ -445,6 +470,75 @@ void AlignmentDialog::init()
         });
     }
     render();
+}
+
+void AlignmentDialog::otherDocuments()
+{
+    m_hasResult = false;
+    m_past.clear();
+    m_future.clear();
+    setError(QString());
+    render();
+}
+
+void AlignmentDialog::askToLeave(bool close)
+{
+    m_leaving = close ? 1 : 2;
+    m_leaveText->setText(leaveQuestion());
+    m_leaveGo->setText(close ? tr("Close") : tr("Other documents"));
+    m_leaveRow->show();
+    m_other->setEnabled(false);
+    m_cancel->setEnabled(false);
+    m_go->setEnabled(false);
+    fitHeight();
+}
+
+QString AlignmentDialog::leaveQuestion() const
+{
+    return m_leaving == 1   ? tr("Close without adding? What you did to the lines is lost.")
+           : m_leaving == 2 ? tr("Choose other documents? What you did to the lines is lost.")
+                            : QString();
+}
+
+void AlignmentDialog::stay()
+{
+    if (!m_leaving)
+        return;
+    m_leaving = 0;
+    m_leaveRow->hide();
+    m_other->setEnabled(true);
+    m_cancel->setEnabled(true);
+    refresh();
+    fitHeight();
+}
+
+void AlignmentDialog::leave()
+{
+    const int how = m_leaving;
+    if (!how)
+        return;
+    m_leaving = 0;
+    m_leaveRow->hide();
+    m_other->setEnabled(true);
+    m_cancel->setEnabled(true);
+    if (how == 1)
+        Web::Dialog::reject();
+    else
+        otherDocuments();
+}
+
+// Closing with work on the lines asks first; asked already, it stays.
+void AlignmentDialog::reject()
+{
+    if (m_leaving) {
+        stay();
+        return;
+    }
+    if (m_hasResult && !m_busy && (canUndo() || canRedo())) {
+        askToLeave(true);
+        return;
+    }
+    Web::Dialog::reject();
 }
 
 void AlignmentDialog::chooseMemory(const QString &name)

@@ -2868,6 +2868,18 @@ g:hover > .align-line {
   justify-content: center;
 }
 
+.dialog .align-leave {
+  align-items: center;
+  padding: var(--s2) var(--s3);
+  border-radius: 6px;
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.align-leave > span {
+  margin-right: auto;
+}
+
 /* Analysis */
 .analysis-band {
   display: flex;

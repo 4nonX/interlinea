@@ -641,6 +641,21 @@ private slots:
         QCOMPARE(al->lines().size(), 4);
         go = al->findChild<QPushButton *>(QStringLiteral("save"));
         QCOMPARE(go->text(), QStringLiteral("Add 3 units to Altbestand DE-FR"));
+        // Closing, or choosing other documents, with work on the lines asks first.
+        auto *leaveRow = al->findChild<QWidget *>(QStringLiteral("alignLeave"));
+        QVERIFY(leaveRow && leaveRow->isHidden());
+        al->findChild<QPushButton *>(QStringLiteral("otherDocuments"))->click();
+        QCOMPARE(al->leaveQuestion(), QStringLiteral("Choose other documents? What you did to the lines is lost."));
+        QVERIFY(!leaveRow->isHidden() && !go->isEnabled());
+        QCOMPARE(al->findChild<QPushButton *>(QStringLiteral("leave"))->text(), QStringLiteral("Other documents"));
+        al->findChild<QPushButton *>(QStringLiteral("stay"))->click();
+        QVERIFY(leaveRow->isHidden() && go->isEnabled() && al->board());
+        QTest::keyClick(al, Qt::Key_Escape);
+        QCOMPARE(al->leaveQuestion(), QStringLiteral("Close without adding? What you did to the lines is lost."));
+        QVERIFY(al->isVisible() && !leaveRow->isHidden());
+        // Escape once more stays as well.
+        QTest::keyClick(al, Qt::Key_Escape);
+        QVERIFY(al->isVisible() && leaveRow->isHidden() && al->lines().size() == 4);
         go->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added 3 units to Altbestand DE-FR"), 10000);
         const QJsonObject made = wait(api->get(QStringLiteral("/api/memories/Altbestand%20DE-FR"))).object();

@@ -125,6 +125,12 @@ public:
     // Goes back to the lines before the last change, and forth again.
     void undo();
     void redo();
+    // Closing, or choosing other documents, with work on the lines asks
+    // first: the question is shown, and answered with stay() or leave().
+    QString leaveQuestion() const;
+    void stay();
+    void leave();
+    void reject() override;
     bool canUndo() const { return !m_past.isEmpty(); }
     bool canRedo() const { return !m_future.isEmpty(); }
     // Pairs everything again around the units that are the translator's own.
@@ -172,6 +178,8 @@ private:
         QHash<QString, int> scores;
     };
     void init();
+    void askToLeave(bool close);
+    void otherDocuments();
     void remember();
     void restore(const Snap &snap);
     void sendUnits();
@@ -207,6 +215,11 @@ private:
     QPushButton *m_redo = nullptr;
     QPushButton *m_confirmAll = nullptr;
     QLabel *m_startProblem = nullptr;
+    // 0: not asked; 1: asked about closing; 2: about other documents.
+    int m_leaving = 0;
+    QWidget *m_leaveRow = nullptr;
+    QLabel *m_leaveText = nullptr;
+    QPushButton *m_leaveGo = nullptr;
     bool m_busy = false;
     bool m_hasResult = false;
     QJsonArray m_segments[2];

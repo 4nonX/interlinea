@@ -485,6 +485,24 @@ export default () =>
         await sleep(100);
         await click(`${panel} button`, "Search");
         check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes("troisième jour ouvrable")`, 10000), "server memory: and found on the server");
+        // From the page, documents are aligned into a memory made on the server for them.
+        await click("section[aria-labelledby=mem-server] > .row > button", "Align documents");
+        check(await waitFor("document.querySelector('dialog[open] .dialog-title')?.textContent === 'Align documents'"), "server memory: alignment opens from the page");
+        await evaluate("(() => { const s = document.querySelectorAll('dialog[open] select')[0]; s.selectedIndex = s.options.length - 1; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+        await waitFor("document.querySelectorAll('dialog[open] select').length === 3");
+        await setValue("dialog[open] .field-grid input", "E2E Altbestand");
+        await evaluate("(() => { const s = document.querySelectorAll('dialog[open] select')[2]; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'fr-FR'); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+        for (const [n, f] of [[2, "Mietvertrag_de.txt"], [3, "Mietvertrag_fr.txt"]]) {
+          const doc = await send("DOM.getDocument", { depth: -1, pierce: true });
+          const q = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: `dialog[open] label:nth-of-type(${n}) input[type=file]` });
+          await send("DOM.setFileInputFiles", { nodeId: q.nodeId, files: [`${fixtures}/align/${f}`] });
+        }
+        await sleep(300);
+        await click("dialog[open] button", "Pair the sentences");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5", 20000), "server memory: the documents are paired for a new memory");
+        await click("dialog[open] button", "Add 4 units to E2E Altbestand");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Added 4 units to E2E Altbestand on')", 10000), "server memory: the memory is made on the server and filled");
+        check(await waitFor("[...document.querySelectorAll('section[aria-labelledby=mem-server] tbody tr')].some(tr => tr.textContent.includes('E2E Altbestand') && tr.querySelector('td.num').textContent.trim() === '4')", 10000), "server memory: and listed with its units");
       }
 
       // Termbases on the server, through their whole life: an earlier

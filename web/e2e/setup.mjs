@@ -529,6 +529,16 @@ export default () =>
         check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5"), "alignment: Ctrl+Z brings it back");
         await key("y", "KeyY", 89, 2);
         check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 4"), "alignment: Ctrl+Y takes it away again");
+        // Closing, or choosing other documents, with work on the lines asks first.
+        await click("dialog[open] button", "Cancel");
+        check(await waitFor("(document.querySelector('dialog[open] .align-leave')?.innerText ?? '').includes('Close without adding? What you did to the lines is lost.')"), "alignment: closing with work on the lines asks first");
+        check(await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.includes('Add 3 units')).disabled"), "alignment: nothing is added while it asks");
+        await click("dialog[open] .align-leave button", "Stay");
+        check(await waitFor("!document.querySelector('dialog[open] .align-leave')") && (await evaluate("document.querySelectorAll('dialog[open] svg [data-line]').length")) === 4, "alignment: staying keeps the lines");
+        await click("dialog[open] button", "Other documents");
+        check(await waitFor("(document.querySelector('dialog[open] .align-leave')?.innerText ?? '').includes('Choose other documents?')"), "alignment: so does choosing other documents");
+        await click("dialog[open] .align-leave button", "Stay");
+        await sleep(100);
         await click("dialog[open] button", "Add 3 units to Altbestand DE-FR");
         check(await waitFor("document.querySelector('.toast')?.textContent.includes('Added 3 units to Altbestand DE-FR')", 10000), "alignment from the page: the units are added to the new memory");
         check(await waitFor("[...document.querySelectorAll('section[aria-labelledby=mem-main] tbody tr')].some(tr => tr.textContent.includes('Altbestand DE-FR') && tr.querySelector('td.num').textContent.trim() === '3')", 10000), "alignment from the page: the new memory is listed with its units");

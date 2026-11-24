@@ -92,6 +92,8 @@ export function AlignDocuments({
           : "";
   const [past, setPast] = useState<Snap[]>([]);
   const [future, setFuture] = useState<Snap[]>([]);
+  // Closing or choosing other documents with work on the lines asks first.
+  const [leaving, setLeaving] = useState<"close" | "other" | null>(null);
   const [source, setSource] = useState<File | null>(null);
   const [target, setTarget] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -334,8 +336,23 @@ export function AlignDocuments({
     );
   };
 
+  const worked = past.length > 0 || future.length > 0;
+  const leave = (how: "close" | "other") => {
+    if (worked && leaving !== how) {
+      setLeaving(how);
+      return;
+    }
+    setLeaving(null);
+    if (how === "close") onClose();
+    else {
+      setResult(null);
+      setPast([]);
+      setFuture([]);
+    }
+  };
+
   return (
-    <Modal title={`Align documents into ${name}`} onClose={onClose} wide>
+    <Modal title={`Align documents into ${name}`} onClose={() => leave("close")} wide>
       <div className="dialog-form align-review">
         <p role="status">
           {plural(units.length, "unit", "units")} from {fmtNum(result.source.length)} and {plural(result.target.length, "segment", "segments")}.{" "}
@@ -434,17 +451,28 @@ export function AlignDocuments({
             {problem}
           </p>
         )}
+        {leaving && (
+          <div className="row align-leave" role="alertdialog" aria-label="Leave the alignment">
+            <span>{leaving === "close" ? "Close without adding? What you did to the lines is lost." : "Choose other documents? What you did to the lines is lost."}</span>
+            <button type="button" className="btn btn-small" autoFocus onClick={() => setLeaving(null)}>
+              Stay
+            </button>
+            <button type="button" className="btn btn-danger btn-small" onClick={() => leave(leaving)}>
+              {leaving === "close" ? "Close" : "Other documents"}
+            </button>
+          </div>
+        )}
         <div className="row">
-          <button type="button" className="btn btn-quiet btn-small" onClick={() => setResult(null)}>
+          <button type="button" className="btn btn-quiet btn-small" disabled={!!leaving} onClick={() => leave("other")}>
             Other documents
           </button>
-          <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
+          <button type="button" className="btn btn-quiet btn-small" disabled={!!leaving} onClick={() => leave("close")}>
             Cancel
           </button>
           <button
             type="button"
             className="btn btn-primary btn-small"
-            disabled={!units.length || busy}
+            disabled={!units.length || busy || !!leaving}
             onClick={() => {
               setBusy(true);
               setProblem("");
