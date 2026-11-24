@@ -67,7 +67,10 @@ type Quality int
 const (
 	// NoMatch means different languages.
 	NoMatch Quality = iota
-	// PrimaryMatch means same language, different or missing region/script.
+	// PrimaryMatch means same language in the same script, with a
+	// different or missing region. Simplified and Traditional Chinese, or
+	// Serbian in Latin and in Cyrillic letters, do not match: text in one
+	// is not usable as the other.
 	PrimaryMatch
 	// ExactMatch means equal after normalization.
 	ExactMatch
@@ -84,6 +87,9 @@ func Match(a, b string) Quality {
 		return ExactMatch
 	}
 	if Primary(na) == Primary(nb) {
+		if sa, sb := Script(na), Script(nb); sa != "" && sb != "" && sa != sb {
+			return NoMatch
+		}
 		return PrimaryMatch
 	}
 	return NoMatch

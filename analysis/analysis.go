@@ -191,7 +191,8 @@ func Count(c content.Content) Counts {
 // marks and digits, with apostrophes and hyphens inside a word and the
 // separators inside a number ("1,250.50") kept. Each character of
 // scripts written without spaces (Chinese, Japanese kana, Thai, Lao,
-// Khmer, Myanmar) counts as a word, as in Trados.
+// Khmer, Myanmar) counts as a word, as in Trados; the vowel signs and
+// tone marks written on a character belong to it and are not counted.
 func Words(text string) []string {
 	var out []string
 	start := -1
@@ -204,6 +205,11 @@ func Words(text string) []string {
 	for i := 0; i < len(text); {
 		r, size := utf8.DecodeRuneInString(text[i:])
 		switch {
+		case perCharacter(r) && unicode.IsMark(r):
+			// A sign on the character before it, which was counted.
+			if n := len(out); n > 0 && start < 0 && strings.HasSuffix(text[:i], out[n-1]) {
+				out[n-1] = text[i-len(out[n-1]) : i+size]
+			}
 		case perCharacter(r):
 			flush(i)
 			out = append(out, text[i:i+size])

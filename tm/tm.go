@@ -7,6 +7,7 @@ package tm
 import (
 	"context"
 	"errors"
+	"github.com/4nonX/interlinea/internal/textnorm"
 	"sort"
 	"strings"
 	"time"
@@ -161,9 +162,11 @@ func ValidateUnit(u Unit) error {
 }
 
 // SourceKey returns the exact-match key of a source segment: the text with
-// whitespace runs collapsed, plus the tag structure.
+// whitespace runs collapsed and accents composed, plus the tag structure.
+// The same sentence from a file with decomposed accents (as macOS tools
+// write them) has the same key.
 func SourceKey(c content.Content) string {
-	return collapseSpace(c.Plain()) + "\x00" + c.Signature()
+	return textnorm.NFC(collapseSpace(c.Plain())) + "\x00" + c.Signature()
 }
 
 func collapseSpace(s string) string {
@@ -193,7 +196,7 @@ func SearchTerms(c content.Content) []string {
 		if t.Kind != fuzzy.Word && t.Kind != fuzzy.Number {
 			continue
 		}
-		k := strings.ToLower(t.Text)
+		k := textnorm.Fold(t.Text)
 		if !seen[k] {
 			seen[k] = true
 			out = append(out, k)
@@ -216,14 +219,15 @@ func SortMatches(ms []Match) {
 	})
 }
 
-// NormalizeQuery prepares a concordance query: whitespace collapsed, lower case.
+// NormalizeQuery prepares a concordance query: whitespace collapsed, accents
+// composed, lower case in every script.
 func NormalizeQuery(q string) string {
-	return strings.ToLower(collapseSpace(q))
+	return textnorm.Fold(collapseSpace(q))
 }
 
 // ContainsQuery reports whether c contains a query prepared by NormalizeQuery.
 func ContainsQuery(c content.Content, normalizedQuery string) bool {
-	return normalizedQuery != "" && strings.Contains(strings.ToLower(collapseSpace(c.Plain())), normalizedQuery)
+	return normalizedQuery != "" && strings.Contains(textnorm.Fold(collapseSpace(c.Plain())), normalizedQuery)
 }
 
 // Prepare validates and completes a unit for storage: timestamps default to

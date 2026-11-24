@@ -9,8 +9,8 @@
 package fuzzy
 
 import (
+	"github.com/4nonX/interlinea/internal/textnorm"
 	"math"
-	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -80,8 +80,12 @@ func TokenizeText(s string) []Token {
 	return appendTextTokens(nil, s)
 }
 
+// isIdeographic reports whether r belongs to a script written without
+// spaces between words: Chinese, Japanese, Thai, Lao, Khmer and Burmese.
+// Each of their characters is a token of its own, so a sentence with one
+// word changed still scores as a close match.
 func isIdeographic(r rune) bool {
-	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana)
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar)
 }
 
 func isWordRune(r rune) bool {
@@ -95,9 +99,18 @@ func appendTextTokens(out []Token, s string) []Token {
 		case unicode.IsSpace(r):
 			i += n
 		case isIdeographic(r):
-			w := s[i : i+n]
-			out = append(out, Token{Kind: Word, Text: w, fold: w})
-			i += n
+			// A character with the vowel signs and tone marks written on it.
+			j := i + n
+			for j < len(s) {
+				r2, n2 := utf8.DecodeRuneInString(s[j:])
+				if !unicode.IsMark(r2) {
+					break
+				}
+				j += n2
+			}
+			w := s[i:j]
+			out = append(out, Token{Kind: Word, Text: w, fold: textnorm.NFC(w)})
+			i = j
 		case isWordRune(r):
 			j := i + n
 			for j < len(s) {
@@ -117,7 +130,7 @@ func appendTextTokens(out []Token, s string) []Token {
 				break
 			}
 			w := s[i:j]
-			out = append(out, Token{Kind: Word, Text: w, fold: strings.ToLower(w)})
+			out = append(out, Token{Kind: Word, Text: w, fold: textnorm.Fold(w)})
 			i = j
 		case unicode.IsDigit(r):
 			j := i + n

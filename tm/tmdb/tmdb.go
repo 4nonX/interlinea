@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/4nonX/interlinea/internal/textnorm"
 	"strings"
 	"sync"
 	"time"
@@ -960,8 +961,10 @@ func encode(u tm.Unit) (encoded, error) {
 		return e, err
 	}
 	return encoded{
-		sourcePlain: noNUL(u.Source.Plain()), sourceJSON: string(src),
-		targetPlain: noNUL(u.Target.Plain()), targetJSON: string(tgt),
+		// The search columns hold composed text, so a search finds a word
+		// however the file it came from wrote its accents.
+		sourcePlain: noNUL(textnorm.NFC(u.Source.Plain())), sourceJSON: string(src),
+		targetPlain: noNUL(textnorm.NFC(u.Target.Plain())), targetJSON: string(tgt),
 		createdAt: u.CreatedAt.UTC().Format(timeLayout), changedAt: u.ChangedAt.UTC().Format(timeLayout),
 		attrs: string(a), notes: string(n),
 	}, nil
