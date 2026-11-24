@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Download, Upload } from "lucide-react";
 import { useStore } from "../store";
 import { errorText, useRemote } from "../remote";
 import { allows, ApiError, type CatalogMemory, type Role, type ServerUnit } from "../server";
 import { MemoryUnits, SavedElsewhere, type UnitsBackend } from "./MemoryUnits";
+import { AlignDocuments } from "./Alignment";
 import { download } from "../core";
 import { fmtDate, fmtNum } from "../format";
 import { LangChip } from "../components/ui";
@@ -25,6 +26,7 @@ export function ServerMemories() {
   const [list, setList] = useState<ServerMemory[] | null>(null);
   const [problem, setProblem] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const [aligning, setAligning] = useState(false);
 
   const load = useCallback(async () => {
     if (!r.api) return;
@@ -44,6 +46,7 @@ export function ServerMemories() {
   if (!r.conn) return null;
   const host = new URL(r.conn.url).host;
   const current = list?.find((m) => m.name === open) ?? null;
+  const api = r.api;
   return (
     <section className="section" aria-labelledby="mem-server">
       <h2 id="mem-server" className="section-title">
@@ -111,7 +114,36 @@ export function ServerMemories() {
         await load();
         setOpen(name);
         notify(`Made the memory ${name} on ${host}`);
-      }} />
+      }} beside={
+        <button type="button" className="btn" onClick={() => setAligning(true)}>
+          Align documents
+        </button>
+      } />
+      {api && aligning && (
+        <AlignDocuments
+          choice={{
+            memories: (list ?? [])
+              .filter((m) => allows(m.role, "edit"))
+              .map((m) => ({ name: m.name, sourceLang: m.sourceLang, targetLang: m.targetLang, add: async (units, overwrite) => void (await api.addUnits(m.name, units, overwrite)) })),
+            taken: (name) => (list ?? []).some((m) => m.name.toLowerCase() === name.toLowerCase()),
+            make: async (name, sourceLang, targetLang) => {
+              try {
+                const made = await api.createMemory({ name, sourceLang, targetLang });
+                return { name: made.name, sourceLang, targetLang, add: async (units, overwrite) => void (await api.addUnits(made.name, units, overwrite)) };
+              } catch (err) {
+                throw err instanceof ApiError && err.status === 403 ? new Error("You may not make memories on the server. Ask an administrator for the manage role on all memories.") : err;
+              }
+            },
+          }}
+          onClose={() => setAligning(false)}
+          onAdded={async (n, name) => {
+            setAligning(false);
+            await load();
+            setOpen(name);
+            notify(`Added ${n === 1 ? "1 unit" : `${fmtNum(n)} units`} to ${name} on ${host}`);
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -204,16 +236,19 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
   );
 }
 
-function NewServerMemory({ onMade }: { onMade: (name: string) => Promise<void> }) {
+function NewServerMemory({ onMade, beside }: { onMade: (name: string) => Promise<void>; beside?: ReactNode }) {
   const r = useRemote();
   const [m, setM] = useState({ name: "", sourceLang: "de-DE", targetLang: "en-GB" });
   const [problem, setProblem] = useState("");
   const [shown, setShown] = useState(false);
   if (!shown)
     return (
-      <button type="button" className="btn" onClick={() => setShown(true)}>
-        New memory on the server
-      </button>
+      <div className="row">
+        <button type="button" className="btn" onClick={() => setShown(true)}>
+          New memory on the server
+        </button>
+        {beside}
+      </div>
     );
   async function make(e: FormEvent) {
     e.preventDefault();

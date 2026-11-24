@@ -12,6 +12,7 @@
 #include "webui.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QFile>
 #include <QLabel>
 #include <QLineEdit>
@@ -569,6 +570,83 @@ private slots:
         QCOMPARE(cell(table, 0, 1), QStringLiteral("Il est exigible au début du bail et le bailleur le place séparément de son patrimoine."));
         page.search(here, QStringLiteral("Werktag"));
         QTRY_VERIFY_WITH_TIMEOUT(page.found(here).isEmpty() && page.findChild<QLabel *>(QStringLiteral("noUnits")), 10000);
+
+        // From the page, documents are aligned into a memory chosen in the
+        // dialog or made for them; what is done to the lines can be undone.
+        QVERIFY(page.findChild<QPushButton *>(QStringLiteral("alignHere")));
+        al = page.alignFromPage(here);
+        QVERIFY(al);
+        QCOMPARE(al->title(), QStringLiteral("Align documents"));
+        auto *which = al->findChild<QComboBox *>(QStringLiteral("chooseMemory"));
+        QVERIFY(which && which->count() >= 2);
+        QCOMPARE(which->itemText(which->findData(QStringLiteral("Mietrecht"))), QStringLiteral("Mietrecht (de-DE to en-GB)"));
+        QCOMPARE(which->itemText(which->count() - 1), QStringLiteral("A new memory"));
+        QVERIFY(!al->findChild<QLineEdit *>(QStringLiteral("newMemoryName")));
+        al->chooseMemory(QString());
+        auto *newName = al->findChild<QLineEdit *>(QStringLiteral("newMemoryName"));
+        QVERIFY(newName && al->findChild<QComboBox *>(QStringLiteral("newMemorySource")) && al->findChild<QComboBox *>(QStringLiteral("newMemoryTarget")));
+        al->setFile(AlignmentDialog::Source, fixtures + QStringLiteral("/align/Mietvertrag_de.txt"));
+        al->setFile(AlignmentDialog::Target, fixtures + QStringLiteral("/align/Mietvertrag_fr.txt"));
+        go = al->findChild<QPushButton *>(QStringLiteral("save"));
+        QVERIFY(!go->isEnabled());
+        newName = al->findChild<QLineEdit *>(QStringLiteral("newMemoryName"));
+        newName->setText(QStringLiteral("mietrecht"));
+        QCOMPARE(al->destinationProblem(), QStringLiteral("A memory with this name exists already."));
+        QCOMPARE(al->findChild<QLabel *>(QStringLiteral("startProblem"))->text(), al->destinationProblem());
+        QVERIFY(!go->isEnabled());
+        newName->setText(QStringLiteral("Altbestand DE-FR"));
+        QVERIFY(go->isEnabled());
+        al->setNewMemory(QStringLiteral("Altbestand DE-FR"), QStringLiteral("de-DE"), QStringLiteral("fr-FR"));
+        QCOMPARE(al->findChild<QPushButton *>(QStringLiteral("chooseTarget"))->accessibleName(), QStringLiteral("Its translation in French (France)"));
+        QCOMPARE(al->memory(), QStringLiteral("Altbestand DE-FR"));
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(300);
+            al->grab().save(dir + QStringLiteral("/memory-align-new.png"));
+            page.grab().save(dir + QStringLiteral("/memory-page.png"));
+        }
+        QSignalSpy pairedAgain(al, &AlignmentDialog::paired);
+        al->findChild<QPushButton *>(QStringLiteral("save"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(pairedAgain.size(), 1, 20000);
+        QCOMPARE(al->title(), QStringLiteral("Align documents into Altbestand DE-FR"));
+        QCOMPARE(al->lines().size(), 5);
+        // The memory is not made before its units are added.
+        QCOMPARE(wait(api->get(QStringLiteral("/api/memories/Altbestand%20DE-FR"))).status, 404);
+        // Confirm all, and back and forth.
+        auto *all = al->findChild<QPushButton *>(QStringLiteral("confirmAll"));
+        auto *undo = al->findChild<QPushButton *>(QStringLiteral("undoLines"));
+        auto *redo = al->findChild<QPushButton *>(QStringLiteral("redoLines"));
+        QVERIFY(all && undo && redo && all->isEnabled() && !undo->isEnabled() && !redo->isEnabled());
+        all->click();
+        QCOMPARE(al->mineLines().size(), 5);
+        QVERIFY(!all->isEnabled() && undo->isEnabled());
+        undo->click();
+        QVERIFY(al->mineLines().isEmpty() && !undo->isEnabled() && redo->isEnabled());
+        redo->click();
+        QCOMPARE(al->mineLines().size(), 5);
+        al->takeLine(0, 0);
+        QCOMPARE(al->lines().size(), 4);
+        QTest::keyClick(al, Qt::Key_Z, Qt::ControlModifier);
+        QCOMPARE(al->lines().size(), 5);
+        QTest::keyClick(al, Qt::Key_Y, Qt::ControlModifier);
+        QCOMPARE(al->lines().size(), 4);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(300);
+            al->grab().save(dir + QStringLiteral("/memory-align-head.png"));
+        }
+        // Pairing again is a step back as well.
+        al->findChild<QPushButton *>(QStringLiteral("pairAgain"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(pairedAgain.size(), 2, 20000);
+        QCOMPARE(al->lines().size(), 5);
+        al->undo();
+        QCOMPARE(al->lines().size(), 4);
+        go = al->findChild<QPushButton *>(QStringLiteral("save"));
+        QCOMPARE(go->text(), QStringLiteral("Add 3 units to Altbestand DE-FR"));
+        go->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added 3 units to Altbestand DE-FR"), 10000);
+        const QJsonObject made = wait(api->get(QStringLiteral("/api/memories/Altbestand%20DE-FR"))).object();
+        QCOMPARE(made.value("units").toInt(), 3);
+        QCOMPARE(made.value("targetLang").toString(), QStringLiteral("fr-FR"));
+        QTRY_VERIFY_WITH_TIMEOUT(page.findChild<QPushButton *>(QStringLiteral("open:Altbestand DE-FR")), 10000);
 
         // Closing puts the units away.
         page.findChild<QPushButton *>(QStringLiteral("open:Mietrecht"))->click();

@@ -9,6 +9,8 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QComboBox>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -23,6 +25,8 @@
 #include <QRegularExpression>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QShortcut>
+#include <QLineEdit>
 #include <QStyle>
 #include <QTimer>
 #include <QUrlQuery>
@@ -381,6 +385,31 @@ AlignmentDialog::AlignmentDialog(ApiClient *api, const QString &memory, const QS
     , m_sourceLang(sourceLang)
     , m_targetLang(targetLang)
 {
+    init();
+}
+
+AlignmentDialog::AlignmentDialog(ApiClient *api, const QJsonArray &memories, const QStringList &taken, QWidget *parent)
+    : Web::Dialog(tr("Align documents"), parent, true)
+    , m_api(api)
+    , m_sourceLang(QStringLiteral("de-DE"))
+    , m_targetLang(QStringLiteral("en-GB"))
+    , m_choice(true)
+    , m_memories(memories)
+    , m_taken(taken)
+{
+    if (memories.isEmpty()) {
+        m_new = true;
+    } else {
+        const QJsonObject first = memories.first().toObject();
+        m_memory = first.value(QLatin1String("name")).toString();
+        m_sourceLang = first.value(QLatin1String("sourceLang")).toString();
+        m_targetLang = first.value(QLatin1String("targetLang")).toString();
+    }
+    init();
+}
+
+void AlignmentDialog::init()
+{
     setObjectName(QStringLiteral("alignDocuments"));
     m_other = Web::button(tr("Other documents"), Web::Quiet | Web::Small, this);
     m_other->setObjectName(QStringLiteral("otherDocuments"));
@@ -402,7 +431,88 @@ AlignmentDialog::AlignmentDialog(ApiClient *api, const QString &memory, const QS
         else
             pair();
     });
+    // Ctrl+Z goes back; Ctrl+Y and Ctrl+Shift+Z go forth, whichever the
+    // system is used to. Each is named once, so none is ambiguous.
+    const QKeySequence back(Qt::CTRL | Qt::Key_Z);
+    for (const QKeySequence &keys : {back, QKeySequence(Qt::CTRL | Qt::Key_Y), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z)}) {
+        auto *sc = new QShortcut(keys, this);
+        const bool isBack = keys == back;
+        connect(sc, &QShortcut::activated, this, [this, isBack] {
+            if (isBack)
+                undo();
+            else
+                redo();
+        });
+    }
     render();
+}
+
+void AlignmentDialog::chooseMemory(const QString &name)
+{
+    if (!m_choice || m_hasResult)
+        return;
+    m_new = true;
+    for (const QJsonValue &v : m_memories) {
+        const QJsonObject m = v.toObject();
+        if (m.value(QLatin1String("name")).toString() != name)
+            continue;
+        m_new = false;
+        m_memory = name;
+        m_sourceLang = m.value(QLatin1String("sourceLang")).toString();
+        m_targetLang = m.value(QLatin1String("targetLang")).toString();
+    }
+    if (m_new)
+        m_memory.clear();
+    render();
+}
+
+void AlignmentDialog::setNewMemory(const QString &name, const QString &sourceLang, const QString &targetLang)
+{
+    if (!m_choice || m_hasResult)
+        return;
+    m_new = true;
+    m_memory.clear();
+    m_newName = name;
+    m_sourceLang = sourceLang;
+    m_targetLang = targetLang;
+    render();
+}
+
+QString AlignmentDialog::memory() const
+{
+    return m_new ? m_newName.trimmed() : m_memory;
+}
+
+QString AlignmentDialog::destinationProblem() const
+{
+    if (!m_new)
+        return {};
+    const QString name = m_newName.trimmed();
+    if (name.isEmpty())
+        return tr("Give the memory a name.");
+    if (!m_made) {
+        for (const QString &t : m_taken) {
+            if (t.compare(name, Qt::CaseInsensitive) == 0)
+                return tr("A memory with this name exists already.");
+        }
+    }
+    if (m_sourceLang == m_targetLang)
+        return tr("Source and target language must differ.");
+    return {};
+}
+
+// What the first step says and allows, as the new memory's name is typed.
+void AlignmentDialog::updateStart()
+{
+    if (m_hasResult)
+        return;
+    const QString problem = destinationProblem();
+    if (m_startProblem) {
+        m_startProblem->setText(problem);
+        m_startProblem->setVisible(!problem.isEmpty() && !m_newName.isEmpty());
+    }
+    m_go->setText(m_busy ? tr("Pairing…") : tr("Pair the sentences"));
+    m_go->setEnabled(!m_busy && !m_paths[Source].isEmpty() && !m_paths[Target].isEmpty() && problem.isEmpty());
 }
 
 void AlignmentDialog::setFile(Side side, const QString &path)
@@ -435,7 +545,7 @@ void AlignmentDialog::pairAgain()
 // Sends both files to be paired, around the pairs that are fixed.
 void AlignmentDialog::request(const QJsonArray &fixed)
 {
-    if (m_busy || m_paths[Source].isEmpty() || m_paths[Target].isEmpty())
+    if (m_busy || m_paths[Source].isEmpty() || m_paths[Target].isEmpty() || !destinationProblem().isEmpty())
         return;
     QJsonObject body;
     const QString langs[2] = {m_sourceLang, m_targetLang};
@@ -472,6 +582,14 @@ void AlignmentDialog::request(const QJsonArray &fixed)
             return;
         }
         const QJsonObject o = r.object();
+        // Paired again, the lines before can be gone back to; paired anew,
+        // there is nothing before.
+        if (self->m_hasResult) {
+            self->remember();
+        } else {
+            self->m_past.clear();
+            self->m_future.clear();
+        }
         self->m_segments[Source] = o.value(QLatin1String("source")).toArray();
         self->m_segments[Target] = o.value(QLatin1String("target")).toArray();
         self->m_links.clear();
@@ -540,6 +658,50 @@ QStringList AlignmentDialog::lines() const
     return out;
 }
 
+// Keeps the lines as they are, to go back to after the change that follows.
+void AlignmentDialog::remember()
+{
+    m_past.append({m_links, m_mine, m_scores});
+    m_future.clear();
+}
+
+void AlignmentDialog::restore(const Snap &snap)
+{
+    m_links = snap.links;
+    m_mine = snap.mine;
+    m_scores = snap.scores;
+    m_picked = -1;
+    m_pickedSide = -1;
+    refresh();
+}
+
+void AlignmentDialog::undo()
+{
+    if (!m_hasResult || m_busy || m_past.isEmpty())
+        return;
+    m_future.append({m_links, m_mine, m_scores});
+    restore(m_past.takeLast());
+}
+
+void AlignmentDialog::redo()
+{
+    if (!m_hasResult || m_busy || m_future.isEmpty())
+        return;
+    m_past.append({m_links, m_mine, m_scores});
+    restore(m_future.takeLast());
+}
+
+void AlignmentDialog::confirmAll()
+{
+    if (!m_hasResult || m_mine.size() == m_links.size())
+        return;
+    remember();
+    m_mine = m_links;
+    m_picked = -1;
+    m_pickedSide = -1;
+    refresh();
+}
+
 QStringList AlignmentDialog::mineLines() const
 {
     QList<QPair<int, int>> sorted = m_mine;
@@ -592,6 +754,7 @@ void AlignmentDialog::confirmPicked()
 {
     if (!m_hasResult || m_picked < 0)
         return;
+    remember();
     own(Side(m_pickedSide), m_picked);
     m_picked = -1;
     m_pickedSide = -1;
@@ -699,6 +862,7 @@ void AlignmentDialog::choose(Side side, int index)
         return;
     if (m_picked >= 0 && m_pickedSide != side) {
         const QPair<int, int> l = side == Target ? qMakePair(m_picked, index) : qMakePair(index, m_picked);
+        remember();
         if (m_links.contains(l)) {
             m_links.removeAll(l);
             m_mine.removeAll(l);
@@ -724,7 +888,10 @@ void AlignmentDialog::pull(Side from, int index, int other)
     const QPair<int, int> l = from == Source ? qMakePair(index, other) : qMakePair(other, index);
     if (l.first < 0 || l.first >= m_segments[Source].size() || l.second < 0 || l.second >= m_segments[Target].size())
         return;
-    draw(l);
+    if (!(m_links.contains(l) && m_mine.contains(l))) {
+        remember();
+        draw(l);
+    }
     m_picked = -1;
     m_pickedSide = -1;
     refresh();
@@ -732,6 +899,9 @@ void AlignmentDialog::pull(Side from, int index, int other)
 
 void AlignmentDialog::takeLine(int source, int target)
 {
+    if (!m_links.contains({source, target}))
+        return;
+    remember();
     m_links.removeAll({source, target});
     m_mine.removeAll({source, target});
     refresh();
@@ -779,21 +949,45 @@ void AlignmentDialog::next()
 
 void AlignmentDialog::add()
 {
-    const QList<Unit> us = units();
-    if (m_busy || !m_hasResult || us.isEmpty())
+    if (m_busy || !m_hasResult || units().isEmpty())
         return;
+    m_busy = true;
+    setError(QString());
+    m_go->setEnabled(false);
+    if (!m_new || m_made) {
+        sendUnits();
+        return;
+    }
+    // The new memory is made first, and once.
+    QPointer<AlignmentDialog> self(this);
+    onResult(m_api->post(QStringLiteral("/api/memories"),
+                         QJsonObject{{QStringLiteral("name"), memory()}, {QStringLiteral("sourceLang"), m_sourceLang}, {QStringLiteral("targetLang"), m_targetLang}}),
+             this, [self](const ApiResult &r) {
+                 if (!self)
+                     return;
+                 if (!r.ok()) {
+                     self->m_busy = false;
+                     self->setError(r.status == 403 ? tr("You may not make memories on the server. Ask an administrator for the manage role on all memories.") : r.error.message);
+                     self->refresh();
+                     return;
+                 }
+                 self->m_made = true;
+                 self->m_newName = r.object().value(QLatin1String("name")).toString(self->memory());
+                 self->sendUnits();
+             });
+}
+
+void AlignmentDialog::sendUnits()
+{
     QJsonArray body;
-    for (const Unit &u : us)
+    for (const Unit &u : units())
         body.append(QJsonObject{{QStringLiteral("source"), joined(Source, u.source)}, {QStringLiteral("target"), joined(Target, u.target)}});
     QUrlQuery query;
     if (m_overwrite)
         query.addQueryItem(QStringLiteral("policy"), QStringLiteral("overwrite"));
-    m_busy = true;
-    setError(QString());
-    m_go->setEnabled(false);
     const int n = int(body.size());
     QPointer<AlignmentDialog> self(this);
-    onResult(m_api->post(QStringLiteral("/api/memories/%1/units/batch").arg(ApiClient::seg(m_memory)), QJsonObject{{QStringLiteral("units"), body}}, query), this,
+    onResult(m_api->post(QStringLiteral("/api/memories/%1/units/batch").arg(ApiClient::seg(memory())), QJsonObject{{QStringLiteral("units"), body}}, query), this,
              [self, n](const ApiResult &r) {
                  if (!self)
                      return;
@@ -803,7 +997,7 @@ void AlignmentDialog::add()
                      self->refresh();
                      return;
                  }
-                 emit self->added(n);
+                 emit self->added(n, self->memory());
                  self->accept();
              });
 }
@@ -844,7 +1038,10 @@ void AlignmentDialog::refresh()
     }
     m_again->setText(m_busy ? tr("Pairing…") : tr("Pair the rest again"));
     m_again->setEnabled(!m_busy && checked > 0 && !(checked == us.size() && !anyAlone));
-    m_go->setText(tr("Add %1 to %2").arg(plural(int(us.size()), tr("unit"), tr("units")), m_memory));
+    m_go->setText(tr("Add %1 to %2").arg(plural(int(us.size()), tr("unit"), tr("units")), memory()));
+    m_undo->setEnabled(canUndo() && !m_busy);
+    m_redo->setEnabled(canRedo() && !m_busy);
+    m_confirmAll->setEnabled(m_mine.size() < m_links.size());
     m_go->setEnabled(!us.isEmpty() && !m_busy);
 }
 
@@ -857,6 +1054,11 @@ void AlignmentDialog::render()
     m_next = nullptr;
     m_confirm = nullptr;
     m_again = nullptr;
+    m_undo = nullptr;
+    m_redo = nullptr;
+    m_confirmAll = nullptr;
+    m_startProblem = nullptr;
+    setTitle(m_choice && !m_hasResult ? tr("Align documents") : tr("Align documents into %1").arg(memory()));
     m_other->setVisible(m_hasResult);
     if (!m_hasResult) {
         auto *help = Web::text(tr("Choose a document and its translation. Their sentences are paired, and you check the pairs before they go into the memory. "
@@ -864,6 +1066,46 @@ void AlignmentDialog::render()
                                "help", this);
         help->setWordWrap(true);
         body()->addWidget(help);
+        if (m_choice) {
+            auto *which = new QComboBox(this);
+            which->setObjectName(QStringLiteral("chooseMemory"));
+            for (const QJsonValue &v : m_memories) {
+                const QJsonObject m = v.toObject();
+                const QString name = m.value(QLatin1String("name")).toString();
+                which->addItem(tr("%1 (%2 to %3)").arg(name, m.value(QLatin1String("sourceLang")).toString(), m.value(QLatin1String("targetLang")).toString()), name);
+            }
+            which->addItem(tr("A new memory"), QString());
+            which->setCurrentIndex(m_new ? which->count() - 1 : qMax(0, which->findData(m_memory)));
+            body()->addWidget(Web::field(tr("Memory the units go into"), which, this));
+            connect(which, &QComboBox::activated, this, [this, which](int i) { chooseMemory(which->itemData(i).toString()); }, Qt::QueuedConnection);
+            if (m_new) {
+                auto *name = new QLineEdit(m_newName, this);
+                name->setObjectName(QStringLiteral("newMemoryName"));
+                auto *from = new LanguageCombo(this);
+                from->setObjectName(QStringLiteral("newMemorySource"));
+                from->setLanguage(m_sourceLang);
+                auto *to = new LanguageCombo(this);
+                to->setObjectName(QStringLiteral("newMemoryTarget"));
+                to->setLanguage(m_targetLang);
+                auto *grid = new QGridLayout;
+                grid->setContentsMargins(0, 0, 0, 0);
+                grid->setHorizontalSpacing(S5 - 8);
+                grid->setVerticalSpacing(S3);
+                grid->addWidget(Web::field(tr("Name of the new memory"), name, this), 0, 0);
+                grid->addWidget(Web::field(tr("Source language"), from, this), 1, 0);
+                grid->addWidget(Web::field(tr("Target language"), to, this), 1, 1);
+                grid->setColumnStretch(0, 1);
+                grid->setColumnStretch(1, 1);
+                body()->addLayout(grid);
+                connect(name, &QLineEdit::textChanged, this, [this](const QString &t) {
+                    m_newName = t;
+                    updateStart();
+                });
+                // The files are asked for in the languages chosen.
+                connect(from, &QComboBox::activated, this, [this, from] { setNewMemory(m_newName, from->language(), m_targetLang); }, Qt::QueuedConnection);
+                connect(to, &QComboBox::activated, this, [this, to] { setNewMemory(m_newName, m_sourceLang, to->language()); }, Qt::QueuedConnection);
+            }
+        }
         const QString labels[2] = {tr("Document in %1").arg(Languages::name(m_sourceLang)), tr("Its translation in %1").arg(Languages::name(m_targetLang))};
         const char *names[2] = {"chooseSource", "chooseTarget"};
         for (int s = 0; s < 2; ++s) {
@@ -888,8 +1130,11 @@ void AlignmentDialog::render()
                     setFile(side, path);
             });
         }
-        m_go->setText(m_busy ? tr("Pairing…") : tr("Pair the sentences"));
-        m_go->setEnabled(!m_busy && !m_paths[Source].isEmpty() && !m_paths[Target].isEmpty());
+        m_startProblem = Web::text(QString(), "error", this);
+        m_startProblem->setObjectName(QStringLiteral("startProblem"));
+        m_startProblem->setWordWrap(true);
+        body()->addWidget(m_startProblem);
+        updateStart();
         fitHeight();
         return;
     }
@@ -918,7 +1163,21 @@ void AlignmentDialog::render()
     hl->setSpacing(S2);
     hl->addWidget(Web::langChip(m_sourceLang, head));
     hl->addStretch();
+    m_undo = Web::button(tr("Undo"), Web::Quiet | Web::Small, head);
+    m_undo->setObjectName(QStringLiteral("undoLines"));
+    m_undo->setToolTip(QKeySequence(Qt::CTRL | Qt::Key_Z).toString(QKeySequence::NativeText));
+    m_redo = Web::button(tr("Redo"), Web::Quiet | Web::Small, head);
+    m_redo->setObjectName(QStringLiteral("redoLines"));
+    m_redo->setToolTip(QKeySequence(Qt::CTRL | Qt::Key_Y).toString(QKeySequence::NativeText));
+    m_confirmAll = Web::button(tr("Confirm all"), Web::Quiet | Web::Small, head);
+    m_confirmAll->setObjectName(QStringLiteral("confirmAll"));
+    connect(m_undo, &QPushButton::clicked, this, &AlignmentDialog::undo);
+    connect(m_redo, &QPushButton::clicked, this, &AlignmentDialog::redo);
+    connect(m_confirmAll, &QPushButton::clicked, this, &AlignmentDialog::confirmAll);
+    hl->addWidget(m_undo);
+    hl->addWidget(m_redo);
     hl->addWidget(m_confirm);
+    hl->addWidget(m_confirmAll);
     hl->addWidget(m_again);
     hl->addWidget(m_next);
     hl->addStretch();

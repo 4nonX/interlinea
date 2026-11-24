@@ -33,6 +33,9 @@ client and the desktop app, with installers and a server image.
   and what is paired goes into a memory. A line paired automatically is
   dotted; one drawn or confirmed is solid and stays when the rest is
   paired again around it.
+  Changes to the lines are undone and done again. Documents are aligned
+  from the Memories page into a memory chosen there or made for them, or
+  from an open memory into that one.
 - Translation memories with TMX in and out. The units of a memory are
   searched, added, changed with their formatting tags kept, and deleted.
 - Languages: number formats and digits of every listed script, sentence

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Plus, Trash2, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Columns2, Download, Plus, Trash2, Upload } from "lucide-react";
 import {
   LANGUAGES,
   lang,
@@ -17,6 +17,7 @@ import {
 } from "../editor/memory";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { MemoryUnits, type UnitsBackend } from "./MemoryUnits";
+import { AlignDocuments, type AlignChoice, type AlignInto } from "./Alignment";
 import { LangChip, PageHeader } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
 
@@ -72,7 +73,7 @@ export function Memories() {
               onOpen={toggle}
               onChange={() => setVersion((v) => v + 1)}
             />
-            <NewMemoryForm c={c} onCreated={() => setVersion((v) => v + 1)} />
+            <NewMemoryForm c={c} onCreated={() => setVersion((v) => v + 1)} beside={<AlignHere c={c} memories={main} onAdded={() => setVersion((v) => v + 1)} />} />
           </section>
           {own.length > 0 && (
             <section className="section" aria-labelledby="mem-own">
@@ -98,6 +99,52 @@ export function Memories() {
         </>
       )}
     </div>
+  );
+}
+
+/** Documents aligned into a memory on this computer, an existing one or one made for them. */
+function AlignHere({ c, memories, onAdded }: { c: CoreApi; memories: TranslationMemory[]; onAdded: () => void }) {
+  const { state, dispatch, notify } = useLocalStore();
+  const [open, setOpen] = useState(false);
+  const into = (m: TranslationMemory): AlignInto => ({
+    name: m.name,
+    sourceLang: m.sourceLang,
+    targetLang: m.targetLang,
+    add: async (units, overwrite) => {
+      openMemory(c, m, state.projects);
+      const createdAt = new Date().toISOString();
+      tm.add(c, m.name, units.map((u) => ({ ...u, createdBy: state.userName, createdAt })), overwrite);
+      if (!(await persistMemory(c, m.name))) notify("It is kept only until you close this page: this browser does not allow saving");
+    },
+  });
+  const choice: AlignChoice = {
+    memories: memories.map(into),
+    taken: (name) => state.memories.some((m) => m.name.toLowerCase() === name.toLowerCase()),
+    make: async (name, sourceLang, targetLang) => {
+      const memory: TranslationMemory = { name, sourceLang, targetLang, createdAt: new Date().toISOString() };
+      openNewMemory(c, memory);
+      dispatch({ type: "createMemory", memory });
+      return into(memory);
+    },
+  };
+  return (
+    <>
+      <button type="button" className="btn btn-small" onClick={() => setOpen(true)}>
+        <Columns2 size={14} aria-hidden="true" />
+        Align documents
+      </button>
+      {open && (
+        <AlignDocuments
+          choice={choice}
+          onClose={() => setOpen(false)}
+          onAdded={(n, name) => {
+            setOpen(false);
+            notify(`Added ${plural(n, "unit", "units")} to ${name}`);
+            onAdded();
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -330,9 +377,12 @@ function MemoryTable({
 function NewMemoryForm({
   c,
   onCreated,
+  beside,
 }: {
   c: CoreApi;
   onCreated: () => void;
+  /** What stands next to the button while the form is closed. */
+  beside?: ReactNode;
 }) {
   const { state, dispatch, notify } = useLocalStore();
   const [open, setOpen] = useState(false);
@@ -354,14 +404,17 @@ function NewMemoryForm({
         : "";
   if (!open)
     return (
-      <button
-        type="button"
-        className="btn btn-small"
-        onClick={() => setOpen(true)}
-      >
-        <Plus size={14} aria-hidden="true" />
-        New memory
-      </button>
+      <div className="row">
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={() => setOpen(true)}
+        >
+          <Plus size={14} aria-hidden="true" />
+          New memory
+        </button>
+        {beside}
+      </div>
     );
   return (
     <form

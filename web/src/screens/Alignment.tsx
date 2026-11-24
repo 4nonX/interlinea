@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { lang, type LangCode } from "../data";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { LANGUAGES, lang, type LangCode } from "../data";
 import { alignDocuments, loadCore, type Alignment } from "../core";
 import { coreToRuns, plain, type CoreRun } from "../editor/model";
 import { confirm, draw, fixedOf, joined, linkKey, linksOf, needsLook, scoresOf, toggle, unchecked, unitsOf, type Link, type Unit } from "../align";
@@ -26,27 +26,72 @@ interface Places {
   height: number;
 }
 
-/**
- * A document and its translation, done before, into units of a memory:
- * the core pairs their sentences, and the pairs are checked here, as lines
- * between the two texts, before they are added.
- */
-export function AlignDocuments({
-  name,
-  sourceLang,
-  targetLang,
-  add,
-  onClose,
-  onAdded,
-}: {
+type AddUnits = (units: { source: CoreRun[]; target: CoreRun[] }[], overwrite: boolean) => Promise<void>;
+
+/** A memory the aligned units go into. */
+export interface AlignInto {
   name: string;
   sourceLang: LangCode;
   targetLang: LangCode;
   /** Adds the units to the memory, all or none. */
-  add: (units: { source: CoreRun[]; target: CoreRun[] }[], overwrite: boolean) => Promise<void>;
+  add: AddUnits;
+}
+
+/** The memories of one place to choose from, and how a new one is made there. */
+export interface AlignChoice {
+  memories: AlignInto[];
+  /** Whether a memory of this name is there already. */
+  taken: (name: string) => boolean;
+  make: (name: string, sourceLang: LangCode, targetLang: LangCode) => Promise<AlignInto>;
+}
+
+/** The lines and what they were paired from, to go back to. */
+interface Snap {
+  result: Alignment;
+  links: Link[];
+}
+
+const NEW = "\u0000new";
+
+/**
+ * A document and its translation, done before, into units of a memory:
+ * the core pairs their sentences, and the pairs are checked here, as lines
+ * between the two texts, before they are added. Opened from a memory the
+ * units go into that one; opened from the page, the memory is chosen or
+ * made here.
+ */
+export function AlignDocuments({
+  into,
+  choice,
+  onClose,
+  onAdded,
+}: {
+  into?: AlignInto;
+  choice?: AlignChoice;
   onClose: () => void;
-  onAdded: (units: number) => void | Promise<void>;
+  onAdded: (units: number, memory: string) => void | Promise<void>;
 }) {
+  const [chosen, setChosen] = useState(() => choice?.memories[0]?.name ?? NEW);
+  const [newName, setNewName] = useState("");
+  const [newSource, setNewSource] = useState<LangCode>("de-DE");
+  const [newTarget, setNewTarget] = useState<LangCode>("en-GB");
+  // A memory made here is made once, even if adding to it has to be tried again.
+  const made = useRef<AlignInto | null>(null);
+  const existing = into ?? choice?.memories.find((m) => m.name === chosen);
+  const name = existing?.name ?? newName.trim();
+  const sourceLang = existing?.sourceLang ?? newSource;
+  const targetLang = existing?.targetLang ?? newTarget;
+  const destination = existing
+    ? ""
+    : !name
+      ? "Give the memory a name."
+      : choice?.taken(name) && made.current?.name !== name
+        ? "A memory with this name exists already."
+        : newSource === newTarget
+          ? "Source and target language must differ."
+          : "";
+  const [past, setPast] = useState<Snap[]>([]);
+  const [future, setFuture] = useState<Snap[]>([]);
   const [source, setSource] = useState<File | null>(null);
   const [target, setTarget] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,6 +139,9 @@ export function AlignDocuments({
         { name: target.name, bytes: new Uint8Array(await target.arrayBuffer()), lang: targetLang },
         fixed,
       );
+      // Paired again, the lines before can be gone back to; paired anew, there is nothing before.
+      setPast(fixed.length && result ? [...past, { result, links }] : []);
+      setFuture([]);
       setResult(a);
       setLinks(linksOf(a));
       setPicked(null);
@@ -104,9 +152,42 @@ export function AlignDocuments({
     }
   }
 
+  // A change of the lines, which can be undone.
+  const change = (next: Link[]) => {
+    if (!result) return;
+    setPast([...past, { result, links }]);
+    setFuture([]);
+    setLinks(next);
+  };
+  const step = (from: Snap[], setFrom: (s: Snap[]) => void, to: Snap[], setTo: (s: Snap[]) => void) => {
+    const snap = from[from.length - 1];
+    if (!snap || !result) return;
+    setFrom(from.slice(0, -1));
+    setTo([...to, { result, links }]);
+    setResult(snap.result);
+    setLinks(snap.links);
+    setPicked(null);
+  };
+  const undo = () => step(past, setPast, future, setFuture);
+  const redo = () => step(future, setFuture, past, setPast);
+  const keys = useRef({ undo, redo });
+  keys.current = { undo, redo };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) keys.current.undo();
+      else if (k === "y" || (k === "z" && e.shiftKey)) keys.current.redo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (!result)
     return (
-      <Modal title={`Align documents into ${name}`} onClose={onClose} wide>
+      <Modal title={into ? `Align documents into ${into.name}` : "Align documents"} onClose={onClose} wide>
         <form
           className="dialog-form"
           onSubmit={(e) => {
@@ -118,6 +199,48 @@ export function AlignDocuments({
             Choose a document and its translation. Their sentences are paired, and you check the pairs before they go into the memory. The two files need not be
             of the same format: DOCX, PPTX, XLSX, HTML, IDML or text.
           </p>
+          {choice && (
+            <label className="field">
+              <span className="field-label">Memory the units go into</span>
+              <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
+                {choice.memories.map((m) => (
+                  <option key={m.name} value={m.name}>
+                    {m.name} ({m.sourceLang} to {m.targetLang})
+                  </option>
+                ))}
+                <option value={NEW}>A new memory</option>
+              </select>
+            </label>
+          )}
+          {choice && !existing && (
+            <div className="field-grid">
+              <label className="field">
+                <span className="field-label">Name of the new memory</span>
+                <input value={newName} onChange={(e) => setNewName(e.target.value)} aria-invalid={!!destination && !!newName} />
+              </label>
+              <span />
+              <label className="field">
+                <span className="field-label">Source language</span>
+                <select value={newSource} onChange={(e) => setNewSource(e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field-label">Target language</span>
+                <select value={newTarget} onChange={(e) => setNewTarget(e.target.value)}>
+                  {LANGUAGES.map((l) => (
+                    <option key={l.code} value={l.code}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
           <label className="field">
             <span className="field-label">Document in {lang(sourceLang).name}</span>
             <input type="file" accept={ACCEPT} onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
@@ -126,16 +249,16 @@ export function AlignDocuments({
             <span className="field-label">Its translation in {lang(targetLang).name}</span>
             <input type="file" accept={ACCEPT} onChange={(e) => setTarget(e.target.files?.[0] ?? null)} />
           </label>
-          {problem && (
+          {(problem || (destination && newName)) && (
             <p className="error" role="alert">
-              {problem}
+              {problem || destination}
             </p>
           )}
           <div className="row">
             <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary btn-small" disabled={!source || !target || busy}>
+            <button type="submit" className="btn btn-primary btn-small" disabled={!source || !target || busy || !!destination}>
               {busy ? "Pairing…" : "Pair the sentences"}
             </button>
           </div>
@@ -156,7 +279,7 @@ export function AlignDocuments({
   // drawn, or taken away if it is there.
   function choose(p: Pick) {
     if (picked && picked.side !== p.side) {
-      setLinks(toggle(links, picked.side === "source" ? { source: picked.i, target: p.i } : { source: p.i, target: picked.i }));
+      change(toggle(links, picked.side === "source" ? { source: picked.i, target: p.i } : { source: p.i, target: picked.i }));
       setPicked(null);
     } else setPicked(picked && picked.i === p.i ? null : p);
   }
@@ -230,17 +353,26 @@ export function AlignDocuments({
         <div className="align-head">
           <LangChip code={sourceLang} />
           <span className="row">
+            <button type="button" className="btn btn-quiet btn-small" disabled={!past.length} onClick={undo} title="Ctrl+Z">
+              Undo
+            </button>
+            <button type="button" className="btn btn-quiet btn-small" disabled={!future.length} onClick={redo} title="Ctrl+Y">
+              Redo
+            </button>
             <button
               type="button"
               className="btn btn-quiet btn-small"
               disabled={!picked || !unchecked(links, picked.side, picked.i)}
               onClick={() => {
                 if (!picked) return;
-                setLinks(confirm(links, picked.side, picked.i));
+                change(confirm(links, picked.side, picked.i));
                 setPicked(null);
               }}
             >
               Confirm
+            </button>
+            <button type="button" className="btn btn-quiet btn-small" disabled={links.every((l) => l.mine)} onClick={() => change(links.map((l) => ({ ...l, mine: true })))}>
+              Confirm all
             </button>
             <button type="button" className="btn btn-quiet btn-small" disabled={busy || fixed.length === 0 || (fixed.length === units.length && alone === 0)} onClick={() => void pair(fixed)}>
               {busy ? "Pairing…" : "Pair the rest again"}
@@ -263,7 +395,7 @@ export function AlignDocuments({
               const to = { side: el.dataset.side as Side, i: Number(el.dataset.i) };
               if (to.side === from.side) return;
               const l = from.side === "source" ? { source: from.i, target: to.i } : { source: to.i, target: from.i };
-              setLinks(draw(links, l));
+              if (!links.some((x) => linkKey(x) === linkKey(l) && x.mine)) change(draw(links, l));
               setPicked(null);
             }}
           >
@@ -284,7 +416,7 @@ export function AlignDocuments({
                   return (
                     <g key={k} data-line={k}>
                       <path d={d} className={`align-line${l.mine ? " is-mine" : ""}${lookLines.has(k) ? " is-look" : ""}`} />
-                      <path d={d} className="align-hit" onClick={() => setLinks(toggle(links, l))}>
+                      <path d={d} className="align-hit" onClick={() => change(toggle(links, l))}>
                         <title>Take this line away</title>
                       </path>
                     </g>
@@ -316,11 +448,12 @@ export function AlignDocuments({
             onClick={() => {
               setBusy(true);
               setProblem("");
-              add(
-                units.map((u) => ({ source: joined(result.source, u.source), target: joined(result.target, u.target) })),
-                overwrite,
-              ).then(
-                () => onAdded(units.length),
+              const send = units.map((u) => ({ source: joined(result.source, u.source), target: joined(result.target, u.target) }));
+              (async () => {
+                const to = existing ?? made.current ?? (made.current = await choice!.make(name, sourceLang, targetLang));
+                await to.add(send, overwrite);
+              })().then(
+                () => onAdded(units.length, name),
                 (err) => {
                   setProblem(text(err));
                   setBusy(false);

@@ -220,10 +220,7 @@ export function MemoryUnits({
       )}
       {aligning && (
         <AlignDocuments
-          name={name}
-          sourceLang={sourceLang}
-          targetLang={targetLang}
-          add={backend.addMany}
+          into={{ name, sourceLang, targetLang, add: backend.addMany }}
           onClose={() => setAligning(false)}
           onAdded={async (n) => {
             setAligning(false);

@@ -495,7 +495,17 @@ void MemoriesPage::localForm(Part *p, bool open)
             if (Part *q = part(id))
                 localForm(q, true);
         });
-        p->formHolder->addWidget(b, 0, Qt::AlignLeft);
+        auto *align = Web::button(tr("Align documents"), Web::Small, p->root, QStringLiteral("columns"));
+        align->setObjectName(QStringLiteral("alignHere"));
+        connect(align, &QPushButton::clicked, this, [this, id] { alignFromPage(id); });
+        auto *row = new QWidget(p->root);
+        auto *h = new QHBoxLayout(row);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(8);
+        h->addWidget(b);
+        h->addWidget(align);
+        h->addStretch();
+        p->formHolder->addWidget(row);
         return;
     }
     QVBoxLayout *body = nullptr;
@@ -848,10 +858,39 @@ AlignmentDialog *MemoriesPage::alignDialog(const QString &connectionId)
     const QString name = m.value(QLatin1String("name")).toString();
     auto *d = new AlignmentDialog(p->conn->api(), name, m.value(QLatin1String("sourceLang")).toString(), m.value(QLatin1String("targetLang")).toString(), window());
     d->setAttribute(Qt::WA_DeleteOnClose);
-    connect(d, &AlignmentDialog::added, this, [this, connectionId, name](int units) {
+    connect(d, &AlignmentDialog::added, this, [this, connectionId](int units, const QString &name) {
         notify(units == 1 ? tr("Added 1 unit to %1").arg(name) : tr("Added %1 units to %2").arg(QLocale(QLocale::English).toString(units), name));
         if (Part *q = part(connectionId); q && q->searchAgain)
             q->searchAgain();
+        reload();
+    });
+    d->open();
+    return d;
+}
+
+AlignmentDialog *MemoriesPage::alignFromPage(const QString &connectionId)
+{
+    Part *p = part(connectionId);
+    if (!p)
+        return nullptr;
+    const bool local = p->conn->isLocal();
+    // The memories the units may go into: here the main ones, on a server
+    // those the person may edit.
+    QJsonArray into;
+    QStringList taken;
+    for (const QJsonValue &v : p->memories) {
+        const QJsonObject m = v.toObject();
+        const QString name = m.value(QLatin1String("name")).toString();
+        taken << name;
+        if (local ? ownerProject(p, name).isEmpty() : Roles::allows(m.value(QLatin1String("role")).toString(), QStringLiteral("edit")))
+            into.append(m);
+    }
+    auto *d = new AlignmentDialog(p->conn->api(), into, taken, window());
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    const QString host = local ? QString() : p->conn->displayName();
+    connect(d, &AlignmentDialog::added, this, [this, host](int units, const QString &name) {
+        const QString what = units == 1 ? tr("1 unit") : tr("%1 units").arg(QLocale(QLocale::English).toString(units));
+        notify(host.isEmpty() ? tr("Added %1 to %2").arg(what, name) : tr("Added %1 to %2 on %3").arg(what, name, host));
         reload();
     });
     d->open();
@@ -1140,7 +1179,17 @@ void MemoriesPage::serverForm(Part *p, bool open)
             if (Part *q = part(id))
                 serverForm(q, true);
         });
-        p->formHolder->addWidget(b, 0, Qt::AlignLeft);
+        auto *align = Web::button(tr("Align documents"), Web::Normal, p->root);
+        align->setObjectName(QStringLiteral("alignOnServer"));
+        connect(align, &QPushButton::clicked, this, [this, id] { alignFromPage(id); });
+        auto *row = new QWidget(p->root);
+        auto *h = new QHBoxLayout(row);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(8);
+        h->addWidget(b);
+        h->addWidget(align);
+        h->addStretch();
+        p->formHolder->addWidget(row);
         return;
     }
     auto *form = new QWidget(p->root);

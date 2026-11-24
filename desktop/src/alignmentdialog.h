@@ -101,7 +101,19 @@ class AlignmentDialog : public Web::Dialog {
 public:
     enum Side { Source, Target };
 
+    // Into one memory.
     AlignmentDialog(ApiClient *api, const QString &memory, const QString &sourceLang, const QString &targetLang, QWidget *parent);
+    // Into a memory chosen here, of those given ({name, sourceLang,
+    // targetLang}), or one made for the documents; taken are the names
+    // that are there already.
+    AlignmentDialog(ApiClient *api, const QJsonArray &memories, const QStringList &taken, QWidget *parent);
+
+    // The memory the units go into: one of those given, or none for a new one.
+    void chooseMemory(const QString &name);
+    void setNewMemory(const QString &name, const QString &sourceLang, const QString &targetLang);
+    QString memory() const;
+    // Why the new memory can't be made as it is, or nothing.
+    QString destinationProblem() const;
 
     // Chooses the file of a side, as its button does.
     void setFile(Side side, const QString &path);
@@ -109,6 +121,12 @@ public:
     void pair();
     // Makes the lines of the chosen segment's unit the translator's own.
     void confirmPicked();
+    void confirmAll();
+    // Goes back to the lines before the last change, and forth again.
+    void undo();
+    void redo();
+    bool canUndo() const { return !m_past.isEmpty(); }
+    bool canRedo() const { return !m_future.isEmpty(); }
     // Pairs everything again around the units that are the translator's own.
     void pairAgain();
     // The lines that are the translator's own, as lines() gives them.
@@ -140,13 +158,24 @@ public:
 signals:
     // The pairs are there to be checked.
     void paired();
-    void added(int units);
+    void added(int units, const QString &memory);
 
 private:
     struct Unit {
         QList<int> source;
         QList<int> target;
     };
+    // The lines and what they were paired from, to go back to.
+    struct Snap {
+        QList<QPair<int, int>> links;
+        QList<QPair<int, int>> mine;
+        QHash<QString, int> scores;
+    };
+    void init();
+    void remember();
+    void restore(const Snap &snap);
+    void sendUnits();
+    void updateStart();
     void render();
     void refresh();
     void request(const QJsonArray &fixed);
@@ -164,6 +193,20 @@ private:
     QString m_sourceLang;
     QString m_targetLang;
     QString m_paths[2];
+    // Chosen here: the memories to choose from, the names taken, the one
+    // chosen (none for a new one), the new one's name, and whether it is made.
+    bool m_choice = false;
+    QJsonArray m_memories;
+    QStringList m_taken;
+    QString m_newName;
+    bool m_new = false;
+    bool m_made = false;
+    QList<Snap> m_past;
+    QList<Snap> m_future;
+    QPushButton *m_undo = nullptr;
+    QPushButton *m_redo = nullptr;
+    QPushButton *m_confirmAll = nullptr;
+    QLabel *m_startProblem = nullptr;
     bool m_busy = false;
     bool m_hasResult = false;
     QJsonArray m_segments[2];

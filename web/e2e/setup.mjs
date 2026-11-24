@@ -490,6 +490,49 @@ export default () =>
         await click("dialog[open] button", "Cancel");
         await sleep(150);
       }
+
+      // From the page, documents are aligned into a memory chosen there or
+      // made for them; what is done to the lines can be undone.
+      {
+        const main = "section[aria-labelledby=mem-main]";
+        const pressed = (label) => evaluate(`(() => { const b = [...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}); if (b.disabled) return false; b.click(); return true; })()`);
+        await evaluate(`[...document.querySelectorAll(${JSON.stringify(main + " button")})].find(b => b.textContent.includes('Align documents')).click()`);
+        check(await waitFor("document.querySelector('dialog[open] .dialog-title')?.textContent === 'Align documents'"), "alignment from the page: the dialog opens");
+        const options = await evaluate("[...document.querySelectorAll('dialog[open] select')[0].options].map(o => o.textContent).join(' / ')");
+        check(options.includes("Weber DE-FR (de-DE to fr-FR)") && options.endsWith("A new memory") && !options.includes("(en-GB)"), "alignment from the page: the main memories and a new one are offered: " + options);
+        check((await dlg()).includes("Its translation in English"), "alignment from the page: the files are asked for in the chosen memory's languages");
+        await evaluate("(() => { const s = document.querySelectorAll('dialog[open] select')[0]; s.selectedIndex = s.options.length - 1; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+        check(await waitFor("document.querySelectorAll('dialog[open] select').length === 3"), "alignment from the page: a new memory asks for its name and languages");
+        await setValue("dialog[open] .field-grid input", "Weber DE-FR");
+        await sleep(100);
+        check((await dlg()).includes("A memory with this name exists already."), "alignment from the page: a name that is taken is refused");
+        await setValue("dialog[open] .field-grid input", "Altbestand DE-FR");
+        await evaluate("(() => { const s = document.querySelectorAll('dialog[open] select')[2]; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'fr-FR'); s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+        await sleep(100);
+        check((await dlg()).includes("Its translation in French") && !(await dlg()).includes("exists already"), "alignment from the page: the files follow the new memory's languages");
+        await setFile("dialog[open] label:nth-of-type(2) input[type=file]", `${fixtures}/align/Mietvertrag_de.txt`);
+        await setFile("dialog[open] label:nth-of-type(3) input[type=file]", `${fixtures}/align/Mietvertrag_fr.txt`);
+        await click("dialog[open] button", "Pair the sentences");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5", 20000), "alignment from the page: the documents are paired");
+        check(!(await evaluate("[...document.querySelectorAll('section[aria-labelledby=mem-main] tbody tr')].some(tr => tr.textContent.includes('Altbestand DE-FR'))")), "alignment from the page: the memory is not made before its units are added");
+        // Confirm all, and back and forth.
+        check(await pressed("Confirm all"), "alignment: all lines can be confirmed at once");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg .align-line.is-mine').length === 5"), "alignment: and are the translator's own");
+        check(!(await pressed("Confirm all")), "alignment: with nothing left to confirm the button rests");
+        check(await pressed("Undo"), "alignment: a change can be undone");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg .align-line.is-mine').length === 0"), "alignment: undone, the lines are dotted again");
+        check(!(await pressed("Undo")) && (await pressed("Redo")), "alignment: and done again");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg .align-line.is-mine').length === 5"), "alignment: done again, they are the translator's own");
+        await evaluate("document.querySelector('dialog[open] svg [data-line=\"0|0\"] .align-hit').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 4"), "alignment: a line is taken away");
+        await key("z", "KeyZ", 90, 2);
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5"), "alignment: Ctrl+Z brings it back");
+        await key("y", "KeyY", 89, 2);
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 4"), "alignment: Ctrl+Y takes it away again");
+        await click("dialog[open] button", "Add 3 units to Altbestand DE-FR");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Added 3 units to Altbestand DE-FR')", 10000), "alignment from the page: the units are added to the new memory");
+        check(await waitFor("[...document.querySelectorAll('section[aria-labelledby=mem-main] tbody tr')].some(tr => tr.textContent.includes('Altbestand DE-FR') && tr.querySelector('td.num').textContent.trim() === '3')", 10000), "alignment from the page: the new memory is listed with its units");
+      }
       check(
         errors.length === 0,
         "no console errors in setup: " + errors.join(" | "),

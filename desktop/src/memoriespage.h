@@ -47,6 +47,9 @@ public:
     Web::Dialog *addUnitDialog(const QString &connectionId);
     // A document and its translation, aligned into the open memory.
     AlignmentDialog *alignDialog(const QString &connectionId);
+    // The same from the page: into a memory of that place chosen in the
+    // dialog, or one made for the documents.
+    AlignmentDialog *alignFromPage(const QString &connectionId);
     Web::Dialog *editUnitDialog(const QString &connectionId, const QJsonObject &unit);
     // Reads a TMX file into a memory, and writes a memory to a TMX file:
     // what the buttons do once a file is chosen.
