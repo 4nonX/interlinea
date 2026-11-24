@@ -137,7 +137,9 @@ jobs:
       - name: configure
         run: cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release
       - name: build (the app, its core and the tests)
-        run: cmake --build build/desktop --config Release --parallel
+        # A fixed number of jobs: without one, make starts them all at once
+        # and the runner runs out of memory.
+        run: cmake --build build/desktop --config Release --parallel 4
       - name: tests
         run: ctest --test-dir build/desktop -C Release --output-on-failure
       - name: the whole app against a team server

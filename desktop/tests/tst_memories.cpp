@@ -138,9 +138,11 @@ private slots:
         }
 
         // A new memory for a client, filled from a TMX file.
+        QTRY_VERIFY(button(&page, QStringLiteral("New memory")));
         button(&page, QStringLiteral("New memory"))->click();
-        auto *create = button(&page, QStringLiteral("Create memory"));
-        QVERIFY(create);
+        QPushButton *create = nullptr;
+        QTRY_VERIFY((create = button(&page, QStringLiteral("Create memory"))) && named<QLineEdit>(&page, QStringLiteral("Name")) &&
+                    named<QLineEdit>(&page, QStringLiteral("Client")));
         QVERIFY(!create->isEnabled());
         QTRY_VERIFY(label(&page, QStringLiteral("German (Germany) to English (United Kingdom). Projects with these languages can use it.")));
         named<QLineEdit>(&page, QStringLiteral("Name"))->setText(QStringLiteral("Weber DE-EN"));
@@ -157,13 +159,13 @@ private slots:
         QCOMPARE(cell(main, 0, 2), QStringLiteral("2"));
         QCOMPARE(cell(main, 0, 3), QStringLiteral("No project"));
         // The form is put away again.
-        QVERIFY(!button(&page, QStringLiteral("Create memory")));
-        QVERIFY(button(&page, QStringLiteral("New memory")));
+        QTRY_VERIFY(!button(&page, QStringLiteral("Create memory")) && button(&page, QStringLiteral("New memory")));
 
         // A name that is taken, and equal languages, are said before anything is sent.
         button(&page, QStringLiteral("New memory"))->click();
-        create = button(&page, QStringLiteral("Create memory"));
-        auto *name = named<QLineEdit>(&page, QStringLiteral("Name"));
+        QLineEdit *name = nullptr;
+        QTRY_VERIFY((create = button(&page, QStringLiteral("Create memory"))) && (name = named<QLineEdit>(&page, QStringLiteral("Name"))) &&
+                    named<LanguageCombo>(&page, QStringLiteral("Target language")));
         name->setText(QStringLiteral("weber de-en"));
         QVERIFY(!create->isEnabled());
         QTRY_VERIFY(label(&page, QStringLiteral("A memory with this name exists already.")));
@@ -196,9 +198,14 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT((main = named<QTableWidget>(&page, QStringLiteral("Main memories on this computer"))) && main->rowCount() == 2, 10000);
         QCOMPARE(cell(main, 0, 0).section(QLatin1Char(','), 0, 0), QStringLiteral("Leer"));
         QCOMPARE(cell(main, 0, 2), QStringLiteral("0"));
-        // Nothing to export from an empty memory.
-        QVERIFY(!named<QPushButton>(&page, QStringLiteral("Export Leer as TMX"))->isEnabled());
-        QVERIFY(named<QPushButton>(&page, QStringLiteral("Export Weber DE-EN as TMX"))->isEnabled());
+        // Nothing to export from an empty memory. (A table just rebuilt is
+        // shown with the next turn of the event loop, hence the waiting.)
+        QPushButton *exportEmpty = nullptr, *exportFilled = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((exportEmpty = named<QPushButton>(&page, QStringLiteral("Export Leer as TMX"))) &&
+                                     (exportFilled = named<QPushButton>(&page, QStringLiteral("Export Weber DE-EN as TMX"))),
+                                 10000);
+        QVERIFY(!exportEmpty->isEnabled());
+        QVERIFY(exportFilled->isEnabled());
 
         // TMX in, and out again.
         page.importFile(here, QStringLiteral("Leer"), file);
@@ -241,27 +248,33 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT((own = named<QTableWidget>(&page, QStringLiteral("Project memories"))) && own->rowCount() == 1, 10000);
         QCOMPARE(cell(own, 0, 0).section(QLatin1Char(','), 0, 0), QStringLiteral("Mietsache (en-GB)"));
         QCOMPARE(cell(own, 0, 3), QStringLiteral("Mietsache"));
-        QVERIFY(label(&page, QStringLiteral("Project memories")));
+        QTRY_VERIFY_WITH_TIMEOUT(label(&page, QStringLiteral("Project memories")), 10000);
+        QPushButton *deleteUsed = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((main = named<QTableWidget>(&page, QStringLiteral("Main memories on this computer"))) && main->rowCount() == 2 &&
+                                     cell(main, 1, 3) == QStringLiteral("Mietsache") &&
+                                     (deleteUsed = named<QPushButton>(&page, QStringLiteral("Delete Weber DE-EN"))),
+                                 10000);
+        QVERIFY(!deleteUsed->isEnabled());
         // A project memory is the project's: it is neither filled nor deleted here.
+        QVERIFY(named<QPushButton>(&page, QStringLiteral("Export Mietsache (en-GB) as TMX")));
         QVERIFY(!named<QPushButton>(&page, QStringLiteral("Import TMX into Mietsache (en-GB)")));
         QVERIFY(!named<QPushButton>(&page, QStringLiteral("Delete Mietsache (en-GB)")));
-        main = named<QTableWidget>(&page, QStringLiteral("Main memories on this computer"));
-        QCOMPARE(main->rowCount(), 2);
-        QCOMPARE(cell(main, 1, 3), QStringLiteral("Mietsache"));
-        QVERIFY(!named<QPushButton>(&page, QStringLiteral("Delete Weber DE-EN"))->isEnabled());
 
         if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTRY_VERIFY(button(&page, QStringLiteral("New memory")));
             button(&page, QStringLiteral("New memory"))->click();
+            QTRY_VERIFY(button(&page, QStringLiteral("Cancel")));
             QTest::qWait(300);
             page.grab().save(dir + QStringLiteral("/memories-desktop.png"));
             button(&page, QStringLiteral("Cancel"))->click();
         }
 
         // Deleting asks first.
-        auto *del = named<QPushButton>(&page, QStringLiteral("Delete Leer"));
-        QVERIFY(del && del->isEnabled());
+        QPushButton *del = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((del = named<QPushButton>(&page, QStringLiteral("Delete Leer"))), 10000);
+        QVERIFY(del->isEnabled());
         del->click();
-        QVERIFY(label(&page, QStringLiteral("Delete Leer and its 2 units?")));
+        QTRY_VERIFY(label(&page, QStringLiteral("Delete Leer and its 2 units?")));
         auto *confirm = qobject_cast<Web::ConfirmButton *>(del->parentWidget());
         QVERIFY(confirm && confirm->asking());
         confirm->yes()->click();

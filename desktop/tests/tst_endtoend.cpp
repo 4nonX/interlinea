@@ -117,7 +117,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(label(memories, QStringLiteral("On the team server")), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(button(memories, QStringLiteral("New memory on the server")), 10000);
         button(memories, QStringLiteral("New memory on the server"))->click();
-        QTRY_VERIFY(button(memories, QStringLiteral("Make the memory")));
+        QTRY_VERIFY(button(memories, QStringLiteral("Make the memory")) && named<QLineEdit>(memories, QStringLiteral("Name")));
         QVERIFY(!button(memories, QStringLiteral("Make the memory"))->isEnabled());
         named<QLineEdit>(memories, QStringLiteral("Name"))->setText(QStringLiteral("Kanzlei Weber DE-EN"));
         button(memories, QStringLiteral("Make the memory"))->click();
@@ -128,7 +128,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT((listed = named<QTableWidget>(memories, QStringLiteral("Memories on %1").arg(host))) && listed->rowCount() == 1, 10000);
         QCOMPARE(listed->item(0, 3)->data(Qt::AccessibleTextRole).toString(), QStringLiteral("manage"));
         QTRY_VERIFY_WITH_TIMEOUT(memories->findChild<AccessPanel *>(), 10000);
-        QVERIFY(button(memories, QStringLiteral("Close")));
+        QTRY_VERIFY(button(memories, QStringLiteral("Close")));
 
         const QString tmxFile = m_tmp.filePath(QStringLiteral("Weber.tmx"));
         {
@@ -149,8 +149,9 @@ private slots:
         QCOMPARE(memories->openMemory(team->id()), QStringLiteral("Kanzlei Weber DE-EN"));
 
         // Its units are searched, in the sources and in the translations.
-        auto *query = named<QLineEdit>(memories, QStringLiteral("Search the units"));
-        QVERIFY(query);
+        QLineEdit *query = nullptr;
+        QTRY_VERIFY((query = named<QLineEdit>(memories, QStringLiteral("Search the units"))) && button(memories, QStringLiteral("Search")) &&
+                    button(memories, QStringLiteral("Delete the memory")));
         QVERIFY(!button(memories, QStringLiteral("Search"))->isEnabled());
         query->setText(QStringLiteral("Nebenkosten"));
         button(memories, QStringLiteral("Search"))->click();
