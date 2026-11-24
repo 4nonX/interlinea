@@ -34,8 +34,8 @@ import (
 
 // Errors returned by this package.
 var (
-	ErrNotPackage = errors.New("mqpackage: not a memoQ handoff package (no memoQ XLIFF documents in the ZIP)")
-	ErrNotArchive = errors.New("mqpackage: not a memoQ XLIFF archive (no .mqxliff in the ZIP)")
+	ErrNotPackage = errors.New("mqpackage: not a handoff package (no MQXLIFF documents in the ZIP)")
+	ErrNotArchive = errors.New("mqpackage: not a MQXLIFF archive (no .mqxliff in the ZIP)")
 	ErrNoFile     = errors.New("mqpackage: the package has no such file")
 )
 

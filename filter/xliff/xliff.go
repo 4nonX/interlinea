@@ -368,7 +368,7 @@ func (s *scan) noteReader(r *reader) {
 		s.warn(n)
 	}
 	if r.revised {
-		s.warn("Some segments contain tracked changes from Trados. Deleted text is kept as a tag and not counted; inserted text is translatable.")
+		s.warn("Some segments contain tracked changes. Deleted text is kept as a tag and not counted; inserted text is translatable.")
 	}
 }
 

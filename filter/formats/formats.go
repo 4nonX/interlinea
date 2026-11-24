@@ -84,11 +84,11 @@ func Name(format string) string {
 	case XLIFF:
 		return "bilingual file"
 	case MemoQArchive:
-		return "memoQ XLIFF archive"
+		return "MQXLIFF archive"
 	case TradosPackage:
-		return "Trados package"
+		return "project package"
 	case MemoQPackage:
-		return "memoQ handoff package"
+		return "handoff package"
 	case Text:
 		return "text file"
 	}

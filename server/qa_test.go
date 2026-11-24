@@ -130,3 +130,43 @@ func TestDictionariesAndQA(t *testing.T) {
 		t.Fatalf("someone else checks: %d", r.status)
 	}
 }
+
+func TestLooseDictionary(t *testing.T) {
+	te := newTeam(t)
+	loose := looseDictionary{Name: "Hausliste", Lang: "de-AT", Aff: []byte("SET UTF-8\n"), Dic: []byte("2\nMieter\nKaution\n")}
+	if r := te.do("POST", "/api/dictionaries", te.ben, loose); r.status != 403 {
+		t.Fatalf("a translator installs a dictionary: %d", r.status)
+	}
+	var ds []projectdb.Dictionary
+	te.call("POST", "/api/dictionaries", te.pm, loose, 200, &ds)
+	if len(ds) != 1 || ds[0].Name != "Hausliste" || ds[0].Lang != "de-AT" || ds[0].Words != 2 {
+		t.Fatalf("installed %+v", ds)
+	}
+	var sr spellResult
+	te.call("POST", "/api/dictionaries/Hausliste/check", te.ben, spellRequest{Words: []string{"Mieter", "Meiter"}}, 200, &sr)
+	if len(sr.Correct) != 2 || !sr.Correct[0] || sr.Correct[1] {
+		t.Fatalf("checked %+v", sr)
+	}
+	// Sent again with other words, it replaces the one of its name at once.
+	loose.Dic = []byte("1\nVermieter\n")
+	te.call("POST", "/api/dictionaries", te.pm, loose, 200, &ds)
+	te.call("POST", "/api/dictionaries/Hausliste/check", te.ben, spellRequest{Words: []string{"Mieter", "Vermieter"}}, 200, &sr)
+	if sr.Correct[0] || !sr.Correct[1] {
+		t.Fatalf("after replacing %+v", sr)
+	}
+	// Without a language, the files or the name must say it.
+	loose.Lang = ""
+	if r := te.do("POST", "/api/dictionaries", te.pm, loose); r.status != 422 || r.err().Problems[0].Field != "lang" {
+		t.Fatalf("no language: %d %s", r.status, r.body)
+	}
+	loose.Name = "fr_FR"
+	te.call("POST", "/api/dictionaries", te.pm, loose, 200, &ds)
+	if ds[0].Lang != "fr-FR" {
+		t.Fatalf("language from the name: %+v", ds)
+	}
+	for _, bad := range []looseDictionary{{Name: "x", Aff: []byte("SET UTF-8\n")}, {Name: "a/b", Aff: []byte("x"), Dic: []byte("x")}, {Name: "x", Lang: "not a tag", Aff: []byte("x"), Dic: []byte("x")}} {
+		if r := te.do("POST", "/api/dictionaries", te.pm, bad); r.status != 422 {
+			t.Fatalf("%+v: %d %s", bad, r.status, r.body)
+		}
+	}
+}

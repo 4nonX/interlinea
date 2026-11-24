@@ -189,3 +189,23 @@ func MigratePostgres(ctx context.Context, sdb *sql.DB, table string, lockKey int
 	}
 	return tx.Commit()
 }
+
+// EnsureTrigram makes the pg_trgm extension in the public schema, where
+// every store's schema sees it. CREATE EXTENSION IF NOT EXISTS does not
+// keep two sessions from both finding it missing and both creating it, so
+// the statement runs under a lock that servers and stores starting at the
+// same time share.
+func EnsureTrigram(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(7421900514)`); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

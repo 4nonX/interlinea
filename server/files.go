@@ -81,7 +81,7 @@ func prepareFiles(files []fileUpload, sourceLang string, targets []string) ([]fi
 // the bilingual files of its target languages that are the project's.
 func expandPackage(f fileUpload, targets []string) ([]fileUpload, error) {
 	if formatOf(f.Name) != "package" {
-		return nil, problemf("%s is not a Trados project package (.sdlppx) or a memoQ handoff package (.mqout).", f.Name)
+		return nil, problemf("%s is not a project package (.sdlppx) or a handoff package (.mqout).", f.Name)
 	}
 	type member struct{ path, lang string }
 	var members []member
@@ -91,7 +91,7 @@ func expandPackage(f fileUpload, targets []string) ([]fileUpload, error) {
 	if kind == formats.MemoQPackage {
 		pkg, err := mqpackage.Open(f.Data)
 		if err != nil {
-			return nil, problemf("%s could not be read as a memoQ handoff package: %v", f.Name, err)
+			return nil, problemf("%s could not be read as a handoff package: %v", f.Name, err)
 		}
 		sourceLang = pkg.SourceLang
 		for _, pf := range pkg.Files {
@@ -101,7 +101,7 @@ func expandPackage(f fileUpload, targets []string) ([]fileUpload, error) {
 	} else {
 		pkg, err := sdlpackage.Open(f.Data)
 		if err != nil {
-			return nil, problemf("%s could not be read as a Trados package: %v", f.Name, err)
+			return nil, problemf("%s could not be read as a project package: %v", f.Name, err)
 		}
 		sourceLang = pkg.SourceLang
 		for _, pf := range pkg.Files {

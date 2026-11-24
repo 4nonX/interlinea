@@ -275,20 +275,20 @@ func Validate(s Settings, cat Catalog) []Problem {
 			}
 		case Package:
 			if f.TargetLang != "" {
-				add(field+".targetLang", "A Trados package is not translated itself, so it has no target language.")
+				add(field+".targetLang", "A project package is not translated itself, so it has no target language.")
 			}
 			if packages > 1 {
-				add(field+".role", "A project holds the files of one Trados package, so it can be returned as one return package.")
+				add(field+".role", "A project holds the files of one project package, so it can be returned as one return package.")
 			}
 		default:
-			add(field+".role", "%s must be a file to translate, a reference file or a Trados package.", name)
+			add(field+".role", "%s must be a file to translate, a reference file or a project package.", name)
 		}
 		if f.Package != "" {
 			switch {
 			case f.Role != Translatable || f.TargetLang == "":
-				add(field+".package", "%s is from a Trados package, so it is a bilingual file to translate.", name)
+				add(field+".package", "%s is from a project package, so it is a bilingual file to translate.", name)
 			case packages == 0:
-				add(field+".package", "%s is from a Trados package, which is not in the project.", name)
+				add(field+".package", "%s is from a project package, which is not in the project.", name)
 			}
 		}
 		if f.Role == Translatable && f.TargetLang != "" {

@@ -32,7 +32,7 @@ func openPG(t testing.TB) (*DB, string) {
 		t.Fatal(err)
 	}
 	schema := "t_" + hex.EncodeToString(b)
-	if _, err := admin.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`); err != nil {
+	if err := sqlstore.EnsureTrigram(ctx, admin); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := admin.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {

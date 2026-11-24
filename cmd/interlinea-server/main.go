@@ -29,6 +29,7 @@ import (
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/auth/oidc"
 	"github.com/4nonX/interlinea/internal/pgdriver"
+	"github.com/4nonX/interlinea/internal/sqlstore"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/server"
 	"github.com/4nonX/interlinea/term/termdb"
@@ -225,7 +226,7 @@ func openStores(ctx context.Context, o options, log *slog.Logger) (server.Stores
 	// Memories and termbases search with pg_trgm. Made here in public,
 	// it is seen from every store's schema; made by the first store, it
 	// would sit in that store's schema.
-	if _, err := admin.ExecContext(ctx, `CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public`); err != nil {
+	if err := sqlstore.EnsureTrigram(ctx, admin); err != nil {
 		admin.Close()
 		return st, nil, fmt.Errorf("make the pg_trgm extension (the database user needs the right to, once): %w", err)
 	}

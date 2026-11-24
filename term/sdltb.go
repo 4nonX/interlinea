@@ -40,7 +40,7 @@ func ReadSDLTB(data []byte) (*Termbase, Report, error) {
 	}
 	concepts, err := db.Table("mtConcepts")
 	if err != nil {
-		return nil, Report{}, errors.New("sdltb: this Access database is not a MultiTerm termbase: it has no table of entries")
+		return nil, Report{}, errors.New("sdltb: this Access database is not an .sdltb termbase: it has no table of entries")
 	}
 	type row struct {
 		id   int64

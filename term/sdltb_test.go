@@ -179,7 +179,7 @@ func TestReadSDLTB(t *testing.T) {
 					t.Errorf("%s: read back %d entries", out, len(back.Entries))
 				}
 			}
-			if _, err := Write(tb, FormatSDLTB); err == nil || !strings.Contains(err.Error(), "MultiTerm XML") {
+			if _, err := Write(tb, FormatSDLTB); err == nil || !strings.Contains(err.Error(), "termbase XML") {
 				t.Errorf("writing the format: %v", err)
 			}
 		})
@@ -190,7 +190,7 @@ func TestSDLTBRefuses(t *testing.T) {
 	other := jettest.Build([]jettest.Table{{
 		Name: "Customers", Columns: []jettest.Column{{Name: "name", Type: jettest.Text}}, Rows: [][]any{{"Mara"}},
 	}}, 0)
-	if _, _, err := ReadSDLTB(other); err == nil || !strings.Contains(err.Error(), "not a MultiTerm termbase") {
+	if _, _, err := ReadSDLTB(other); err == nil || !strings.Contains(err.Error(), "not an .sdltb termbase") {
 		t.Errorf("another Access database: %v", err)
 	}
 	data := orchard(0)

@@ -452,6 +452,29 @@
         },
         "type": "object"
       },
+      "LooseDictionary": {
+        "description": "looseDictionary is a Hunspell dictionary sent as its two files.",
+        "properties": {
+          "aff": {
+            "description": "Aff and Dic are the bytes of the .aff and the .dic file.",
+            "format": "byte",
+            "type": "string"
+          },
+          "dic": {
+            "format": "byte",
+            "type": "string"
+          },
+          "lang": {
+            "description": "Lang is the language it spells. Left out, the .aff file's LANG line or the name says it.",
+            "type": "string"
+          },
+          "name": {
+            "description": "Name identifies it; the files' base name (\"de_DE_frami\").",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "MasterEntry": {
         "properties": {
           "entry": {
@@ -663,6 +686,37 @@
           "kind": {
             "description": "Kind is add, merge, overwrite or skip.",
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ProjectPreview": {
+        "description": "projectPreview is what a project would be in one target language.",
+        "properties": {
+          "confirmed": {
+            "type": "integer"
+          },
+          "filled": {
+            "description": "Filled is how many segments pre-translation would fill with the setup's preparation, and Confirmed how many of those it would confirm. Both are 0 when the setup does not pre-translate.",
+            "type": "integer"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "memories": {
+            "description": "Memories are the memories the analysis looked up in, in the setup's order. Memories made with the project are empty and not among them.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "report": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/analysis.Report"
+              }
+            ],
+            "description": "Report is the analysis of the files translated into the language."
           }
         },
         "type": "object"
@@ -3626,18 +3680,25 @@
         ]
       },
       "post": {
-        "description": "Access: those who make projects (manage on all projects) and administrators.",
+        "description": "With Content-Type application/json the body is one dictionary as its .aff and .dic files, with its name and, if the files do not say it, its language.\n\nAccess: those who make projects (manage on all projects) and administrators.",
         "operationId": "installDictionaries",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Content-Type",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
-            "application/octet-stream": {
+            "application/json": {
               "schema": {
-                "format": "binary",
-                "type": "string"
+                "$ref": "#/components/schemas/LooseDictionary"
               }
             }
           },
-          "description": "The file's bytes.",
           "required": true
         },
         "responses": {
@@ -5977,6 +6038,53 @@
           }
         },
         "summary": "Returns the settings a new project starts with, its terminology kept on this server.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/preview": {
+      "post": {
+        "description": "It takes what POST /api/projects takes, reads the files the same way, and answers for each target language with the analysis of the files against the memories the setup looks up in, and with what pre-translation would fill and confirm. A setup that could not be made is refused with its problems by field, as it is when the project is made, and so is a name a project has already.\n\nAccess: those who make projects (manage on all projects) and administrators.",
+        "operationId": "previewProject",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectPreview"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Says what a project would be before it is made, and makes nothing.",
         "tags": [
           "Projects"
         ]

@@ -110,7 +110,7 @@ func inspect(name string, data []byte) inspection {
 		if memoQ {
 			pkg, err := mqpackage.Open(data)
 			if err != nil {
-				out.Problem = "The file could not be read as a memoQ handoff package: " + err.Error()
+				out.Problem = "The file could not be read as a handoff package: " + err.Error()
 				return out
 			}
 			info.Name, info.SourceLang, info.TargetLangs, info.Other = pkg.Name, pkg.SourceLang, pkg.TargetLangs, pkg.Other
@@ -124,7 +124,7 @@ func inspect(name string, data []byte) inspection {
 		} else {
 			pkg, err := sdlpackage.Open(data)
 			if err != nil {
-				out.Problem = "The file could not be read as a Trados package: " + err.Error()
+				out.Problem = "The file could not be read as a project package: " + err.Error()
 				return out
 			}
 			info.Name, info.SourceLang, info.TargetLangs, info.Other = pkg.Name, pkg.SourceLang, pkg.TargetLangs, pkg.Other

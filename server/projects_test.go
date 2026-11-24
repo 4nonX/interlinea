@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/project"
@@ -538,5 +539,81 @@ func TestTemplatesAndCatalog(t *testing.T) {
 	te.call("GET", "/api/catalog", te.ben, nil, 200, &cat)
 	if len(cat.Memories) != 0 || len(cat.Termbases) != 0 {
 		t.Fatalf("translator's catalog %+v", cat)
+	}
+}
+
+func TestPreviewProject(t *testing.T) {
+	te := newTeam(t)
+	if r := te.do("POST", "/api/projects/preview", te.ben, leaseRequest()); r.status != 403 {
+		t.Fatalf("a translator previews a project: %d", r.status)
+	}
+	// The team's main memory has one sentence of the lease.
+	req := leaseRequest()
+	req.Settings.Memories["en-GB"][1].Penalty = 0
+	req.Settings.Prepare = project.Prepare{Pretranslate: true, MinScore: 100, ConfirmExact: true}
+	var pv []projectPreview
+	te.call("POST", "/api/projects/preview", te.pm, req, 200, &pv)
+	if len(pv) != 2 || pv[0].Lang != "en-GB" || pv[1].Lang != "fr-FR" {
+		t.Fatalf("preview %+v", pv)
+	}
+	// English looks up in the main memory only: the project's own is not made yet.
+	en := pv[0]
+	if len(en.Memories) != 1 || en.Memories[0] != "Weber DE-EN" || en.Report.Total.Segments != 4 || en.Filled != 1 || en.Confirmed != 1 {
+		t.Fatalf("English %+v", en)
+	}
+	exact := 0
+	for _, row := range en.Report.Rows {
+		if row.Band == analysis.Exact {
+			exact = row.Segments
+		}
+	}
+	if exact != 1 {
+		t.Fatalf("exact matches in %+v", en.Report.Rows)
+	}
+	// French has no memory with anything in it.
+	if fr := pv[1]; len(fr.Memories) != 0 || fr.Filled != 0 || fr.Report.Total.Segments != 4 {
+		t.Fatalf("French %+v", fr)
+	}
+	// Nothing was made.
+	if _, err := te.st.Memories.Memory(ctx, "Mietvertrag Hofmann (en-GB)"); err == nil {
+		t.Fatal("the preview made a memory")
+	}
+	var list []json.RawMessage
+	te.call("GET", "/api/projects", te.pm, nil, 200, &list)
+	if len(list) != 0 {
+		t.Fatalf("the preview made a project: %s", list)
+	}
+	// Without pre-translation nothing is counted as filled.
+	req.Settings.Prepare.Pretranslate = false
+	te.call("POST", "/api/projects/preview", te.pm, req, 200, &pv)
+	if pv[0].Filled != 0 {
+		t.Fatalf("filled without pre-translation: %+v", pv[0])
+	}
+	// A memory that does not exist is named by its language.
+	req.Settings.Memories["fr-FR"] = []project.MemorySetting{{Memory: "Missing", Lookup: true}}
+	if r := te.do("POST", "/api/projects/preview", te.pm, req); r.status != 422 || r.err().Problems[0].Field != "memories.fr-FR[0].memory" {
+		t.Fatalf("missing memory: %d %s", r.status, r.body)
+	}
+	// A setup that can't be made says why, field by field.
+	bad := leaseRequest()
+	bad.Settings.Name = " "
+	bad.Settings.Prepare.MinScore = 20
+	r := te.do("POST", "/api/projects/preview", te.pm, bad)
+	fields := map[string]bool{}
+	for _, p := range r.err().Problems {
+		fields[p.Field] = true
+	}
+	if r.status != 422 || !fields["name"] || !fields["prepare.minScore"] {
+		t.Fatalf("a bad setup: %d %s", r.status, r.body)
+	}
+	// Once the project is there, its name, memories and termbase are taken.
+	te.createLease()
+	r = te.do("POST", "/api/projects/preview", te.pm, leaseRequest())
+	said := ""
+	for _, p := range r.err().Problems {
+		said += p.Field + ": " + p.Message + "\n"
+	}
+	if r.status != 422 || !strings.Contains(said, "name: A project with this name exists already.") || !strings.Contains(said, "memories.en-GB: A memory called") {
+		t.Fatalf("a taken name: %d %s", r.status, r.body)
 	}
 }

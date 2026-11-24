@@ -25,7 +25,7 @@ import (
 
 // Errors returned by this package.
 var (
-	ErrNotPackage = errors.New("sdlpackage: not a Trados package (no .sdlproj in the ZIP)")
+	ErrNotPackage = errors.New("sdlpackage: not a project package (no .sdlproj in the ZIP)")
 	ErrNoFile     = errors.New("sdlpackage: the package has no such file")
 )
 

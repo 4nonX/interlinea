@@ -32,6 +32,7 @@ func (s *Server) projectRoutes() {
 	s.handle("GET /api/projects", s.signedIn(s.listProjects))
 	s.handle("POST /api/projects", s.signedIn(s.createProject))
 	s.handle("GET /api/projects/defaults", s.signedIn(s.projectDefaults))
+	s.handle("POST /api/projects/preview", s.signedIn(s.previewProject))
 	s.handle("GET /api/projects/{id}", s.signedIn(s.getProject))
 	s.handle("GET /api/projects/{id}/progress", s.signedIn(s.projectProgress))
 	s.handle("PUT /api/projects/{id}/settings", s.signedIn(s.updateProjectSettings))
@@ -305,6 +306,171 @@ type createProjectRequest struct {
 	// mode with location server): layered over the settings' masters, or
 	// on its own. Its name goes into the settings.
 	Termbase *term.Definition `json:"termbase,omitempty"`
+}
+
+// projectPreview is what a project would be in one target language.
+type projectPreview struct {
+	Lang string `json:"lang"`
+	// Memories are the memories the analysis looked up in, in the setup's
+	// order. Memories made with the project are empty and not among them.
+	Memories []string `json:"memories"`
+	// Report is the analysis of the files translated into the language.
+	Report analysis.Report `json:"report"`
+	// Filled is how many segments pre-translation would fill with the
+	// setup's preparation, and Confirmed how many of those it would
+	// confirm. Both are 0 when the setup does not pre-translate.
+	Filled    int `json:"filled"`
+	Confirmed int `json:"confirmed"`
+}
+
+// previewProject says what a project would be before it is made, and makes
+// nothing. It takes what POST /api/projects takes, reads the files the same
+// way, and answers for each target language with the analysis of the files
+// against the memories the setup looks up in, and with what pre-translation
+// would fill and confirm. A setup that could not be made is refused with
+// its problems by field, as it is when the project is made, and so is a
+// name a project has already.
+//
+// Access: those who make projects (manage on all projects) and administrators.
+func (s *Server) previewProject(w http.ResponseWriter, r *http.Request, me session) {
+	ctx := r.Context()
+	ok, err := s.mayCreate(ctx, me, authdb.KindProject)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if !ok {
+		forbidden(w, "Only project managers make projects.")
+		return
+	}
+	var req createProjectRequest
+	if !readJSON(w, r, &req, maxFileBody) {
+		return
+	}
+	set := req.Settings
+	uploads, err := prepareFiles(req.Files, set.SourceLang, set.TargetLangs)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	// The setup is checked as it is when the project is made: the
+	// memories and the termbase to make count as existing.
+	cat, err := s.catalog(ctx)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	var ps []project.Problem
+	// Memories made with the project have nothing in them yet.
+	fresh := map[string]bool{}
+	for i, m := range req.Memories {
+		info, err := tm.ValidateInfo(m)
+		if err != nil {
+			ps = append(ps, project.Problem{Field: fmt.Sprintf("memories[%d]", i), Message: "A new memory needs a name and its source and target languages."})
+			continue
+		}
+		if _, taken := lookupFold(cat.Memories, info.Name); taken {
+			ps = append(ps, project.Problem{Field: "memories." + info.TargetLang, Message: fmt.Sprintf("A memory called %s exists already.", info.Name)})
+			continue
+		}
+		cat.Memories[info.Name] = info
+		fresh[strings.ToLower(info.Name)] = true
+	}
+	if req.Termbase != nil && set.Terminology.Mode != project.Direct {
+		name := strings.TrimSpace(req.Termbase.Name)
+		if _, taken := lookupFold(cat.Termbases, name); taken {
+			ps = append(ps, project.Problem{Field: "name", Message: fmt.Sprintf("A termbase called %s exists already. Give the project another name.", name)})
+		} else if name != "" {
+			langs := req.Termbase.Languages
+			if len(langs) == 0 {
+				langs = append([]string{set.SourceLang}, set.TargetLangs...)
+			}
+			cat.Termbases[name] = langs
+			set.Terminology.Termbase = name
+		}
+	}
+	set.Files = nil
+	for _, f := range uploads {
+		set.Files = append(set.Files, f.newFile().File)
+	}
+	ps = append(ps, project.Validate(set, cat)...)
+	if set.Prepare.MinScore < 50 || set.Prepare.MinScore > 100 {
+		ps = append(ps, project.Problem{Field: "prepare.minScore", Message: "The lowest match to insert is between 50 and 100."})
+	}
+	existing, err := s.cfg.Projects.List(ctx)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	for _, p := range existing {
+		if strings.EqualFold(strings.TrimSpace(p.Settings.Name), strings.TrimSpace(set.Name)) && strings.TrimSpace(set.Name) != "" {
+			ps = append(ps, project.Problem{Field: "name", Message: "A project with this name exists already."})
+			break
+		}
+	}
+	if len(ps) > 0 {
+		s.fail(w, r, &projectdb.InvalidError{Problems: ps})
+		return
+	}
+	out := []projectPreview{}
+	for _, lang := range set.TargetLangs {
+		looked := set
+		looked.Memories = map[string][]project.MemorySetting{}
+		pv := projectPreview{Lang: lang, Memories: []string{}}
+		for _, m := range set.Memories[lang] {
+			if fresh[strings.ToLower(m.Memory)] {
+				continue
+			}
+			looked.Memories[lang] = append(looked.Memories[lang], m)
+			if m.Lookup {
+				pv.Memories = append(pv.Memories, m.Memory)
+			}
+		}
+		mems, err := looked.MemoriesFor(lang, project.UseLookup, s.openMemory(ctx))
+		if err != nil {
+			if errors.Is(err, tmdb.ErrNotFound) {
+				invalid(w, "memories."+lang, "A memory of the setup does not exist. Choose the memories again.")
+				return
+			}
+			s.fail(w, r, err)
+			return
+		}
+		var afiles []analysis.File
+		var pfiles []project.FileSegments
+		for _, f := range uploads {
+			if f.Role != project.Translatable || (f.TargetLang != "" && !strings.EqualFold(f.TargetLang, lang)) {
+				continue
+			}
+			af := analysis.File{Name: f.Name}
+			pf := project.FileSegments{Name: f.Name}
+			for _, sg := range f.Segments[lang] {
+				af.Segments = append(af.Segments, analysis.Segment{ID: sg.ID, Source: sg.Source, Locked: sg.Locked})
+				pf.Segments = append(pf.Segments, sg)
+			}
+			afiles = append(afiles, af)
+			pfiles = append(pfiles, pf)
+		}
+		o := analysis.Options{SourceLang: set.SourceLang, TargetLang: lang, Context: analysis.ContextRule(set.Analysis.Context)}
+		if pv.Report, err = analysis.Analyze(ctx, afiles, mems, o, s.cfg.Now()); err != nil {
+			invalid(w, "analysis", err.Error())
+			return
+		}
+		if set.Prepare.Pretranslate {
+			ts, err := project.Pretranslate(ctx, pfiles, mems, set.Prepare, set.Analysis.Context)
+			if err != nil {
+				invalid(w, "prepare.minScore", err.Error())
+				return
+			}
+			pv.Filled = len(ts)
+			for _, t := range ts {
+				if t.Status == project.StatusConfirmed {
+					pv.Confirmed++
+				}
+			}
+		}
+		out = append(out, pv)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // createProject makes a project with its own memories and termbase. If a

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 
@@ -110,9 +111,23 @@ func (s *Server) listDictionaries(w http.ResponseWriter, r *http.Request, me ses
 	writeJSON(w, http.StatusOK, nonNil(ds))
 }
 
+// looseDictionary is a Hunspell dictionary sent as its two files.
+type looseDictionary struct {
+	// Name identifies it; the files' base name ("de_DE_frami").
+	Name string `json:"name"`
+	// Lang is the language it spells. Left out, the .aff file's LANG line
+	// or the name says it.
+	Lang string `json:"lang,omitempty"`
+	// Aff and Dic are the bytes of the .aff and the .dic file.
+	Aff []byte `json:"aff"`
+	Dic []byte `json:"dic"`
+}
+
 // installDictionaries installs the Hunspell dictionaries in a LibreOffice
 // extension (.oxt) or ZIP file (the request body), replacing those of the
-// same names, and lists them.
+// same names, and lists them. With Content-Type application/json the body
+// is one dictionary as its .aff and .dic files, with its name and, if the
+// files do not say it, its language.
 //
 // Access: those who make projects (manage on all projects) and
 // administrators.
@@ -127,15 +142,41 @@ func (s *Server) installDictionaries(w http.ResponseWriter, r *http.Request, me 
 		forbidden(w, "Only project managers install dictionaries.")
 		return
 	}
-	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxFileBody))
-	if err != nil {
-		writeError(w, http.StatusRequestEntityTooLarge, "tooLarge", "The file is too large.")
-		return
-	}
-	bs, err := spell.ReadArchive(data)
-	if err != nil {
-		invalid(w, "file", "The file is not a dictionary: "+err.Error())
-		return
+	var bs []spell.Bundled
+	said := ""
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "application/json" {
+		var loose looseDictionary
+		if !readJSON(w, r, &loose, maxFileBody) {
+			return
+		}
+		name := strings.TrimSpace(loose.Name)
+		if name == "" || strings.ContainsAny(name, `/\`) || hasControlRune(name) {
+			invalid(w, "name", "Give the dictionary a name without slashes.")
+			return
+		}
+		if len(loose.Aff) == 0 || len(loose.Dic) == 0 {
+			invalid(w, "file", "A dictionary is two files: its .aff and its .dic.")
+			return
+		}
+		if loose.Lang != "" {
+			n, err := langtag.Normalize(strings.ReplaceAll(loose.Lang, "_", "-"))
+			if err != nil {
+				invalid(w, "lang", fmt.Sprintf("%s is not a language tag.", loose.Lang))
+				return
+			}
+			said = n
+		}
+		bs = []spell.Bundled{{Name: name, Locales: []string{name}, Aff: loose.Aff, Dic: loose.Dic}}
+	} else {
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxFileBody))
+		if err != nil {
+			writeError(w, http.StatusRequestEntityTooLarge, "tooLarge", "The file is too large.")
+			return
+		}
+		if bs, err = spell.ReadArchive(data); err != nil {
+			invalid(w, "file", "The file is not a dictionary: "+err.Error())
+			return
+		}
 	}
 	var out []projectdb.Dictionary
 	for _, b := range bs {
@@ -144,25 +185,38 @@ func (s *Server) installDictionaries(w http.ResponseWriter, r *http.Request, me 
 			invalid(w, "file", fmt.Sprintf("The dictionary %s can't be read: %v", b.Name, err))
 			return
 		}
-		lang := ""
-		for _, l := range append([]string{d.Lang()}, b.Locales...) {
-			if n, err := langtag.Normalize(strings.ReplaceAll(l, "_", "-")); err == nil && l != "" {
-				lang = n
-				break
+		lang := said
+		if lang == "" {
+			for _, l := range append([]string{d.Lang()}, b.Locales...) {
+				if n, err := langtag.Normalize(strings.ReplaceAll(l, "_", "-")); err == nil && l != "" {
+					lang = n
+					break
+				}
 			}
 		}
 		if lang == "" {
-			invalid(w, "file", fmt.Sprintf("The dictionary %s doesn't say which language it spells.", b.Name))
+			invalid(w, "lang", fmt.Sprintf("The dictionary %s doesn't say which language it spells.", b.Name))
 			return
 		}
-		x, err := s.cfg.Projects.SaveDictionary(ctx, projectdb.Dictionary{Name: b.Name, Lang: lang, Locales: b.Locales, Words: d.Words()}, b.Aff, b.Dic, me.by())
+		locales := b.Locales
+		if said != "" {
+			locales = []string{said}
+		}
+		x, err := s.cfg.Projects.SaveDictionary(ctx, projectdb.Dictionary{Name: b.Name, Lang: lang, Locales: locales, Words: d.Words()}, b.Aff, b.Dic, me.by())
 		if err != nil {
 			s.fail(w, r, err)
 			return
 		}
+		s.dicts.mu.Lock()
+		delete(s.dicts.loaded, strings.ToLower(b.Name))
+		s.dicts.mu.Unlock()
 		out = append(out, x)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func hasControlRune(s string) bool {
+	return strings.IndexFunc(s, unicode.IsControl) >= 0
 }
 
 // deleteDictionary removes a spelling dictionary. One a project or

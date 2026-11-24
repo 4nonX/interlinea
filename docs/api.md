@@ -404,6 +404,18 @@ Access: signed in.
 - Answer: 200 OK: [project.Settings](#projectsettings)
 - Errors: 401, 403 (see [Error](#error))
 
+### `POST /api/projects/preview`
+
+Says what a project would be before it is made, and makes nothing.
+
+It takes what POST /api/projects takes, reads the files the same way, and answers for each target language with the analysis of the files against the memories the setup looks up in, and with what pre-translation would fill and confirm. A setup that could not be made is refused with its problems by field, as it is when the project is made, and so is a name a project has already.
+
+Access: those who make projects (manage on all projects) and administrators.
+
+- Body: [CreateProjectRequest](#createprojectrequest)
+- Answer: 200 OK: list of [ProjectPreview](#projectpreview)
+- Errors: 401, 403, 422 (see [Error](#error))
+
 ### `GET /api/projects/{id}`
 
 Returns a project: its settings, files and status, and the person's access.
@@ -786,9 +798,12 @@ Access: signed in.
 
 Installs the Hunspell dictionaries in a LibreOffice extension (.oxt) or ZIP file (the request body), replacing those of the same names, and lists them.
 
+With Content-Type application/json the body is one dictionary as its .aff and .dic files, with its name and, if the files do not say it, its language.
+
 Access: those who make projects (manage on all projects) and administrators.
 
-- Body: the file's bytes
+- Parameters: `Content-Type` (header)
+- Body: [LooseDictionary](#loosedictionary)
 - Answer: 200 OK: list of [projectdb.Dictionary](#projectdbdictionary)
 - Errors: 401, 403, 422 (see [Error](#error))
 
@@ -1724,6 +1739,17 @@ inspection is what the server finds in a document before a project is made from 
 | `minScore` | integer |  |
 | `source` | [content.Content](#contentcontent) |  |
 
+### LooseDictionary
+
+looseDictionary is a Hunspell dictionary sent as its two files.
+
+| Field | Type | Description |
+|---|---|---|
+| `aff` | string (byte) | Aff and Dic are the bytes of the .aff and the .dic file. |
+| `dic` | string (byte) |  |
+| `lang` | string | Lang is the language it spells. Left out, the .aff file's LANG line or the name says it. |
+| `name` | string | Name identifies it; the files' base name ("de_DE_frami"). |
+
 ### MasterEntry
 
 | Field | Type | Description |
@@ -1830,6 +1856,18 @@ plannedEntry is a line of an import's plan.
 | `entry` | string | Entry names the file's entry by its first terms, Existing the entry it meets in the termbase. |
 | `existing` | string |  |
 | `kind` | string | Kind is add, merge, overwrite or skip. |
+
+### ProjectPreview
+
+projectPreview is what a project would be in one target language.
+
+| Field | Type | Description |
+|---|---|---|
+| `confirmed` | integer |  |
+| `filled` | integer | Filled is how many segments pre-translation would fill with the setup's preparation, and Confirmed how many of those it would confirm. Both are 0 when the setup does not pre-translate. |
+| `lang` | string |  |
+| `memories` | list of string | Memories are the memories the analysis looked up in, in the setup's order. Memories made with the project are empty and not among them. |
+| `report` | [analysis.Report](#analysisreport) | Report is the analysis of the files translated into the language. |
 
 ### ProjectView
 

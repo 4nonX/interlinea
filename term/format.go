@@ -14,12 +14,12 @@ type Format string
 const (
 	FormatTBX       Format = "tbx"       // TBX 3 (ISO 30042:2019)
 	FormatTBX2      Format = "tbx2"      // TBX 2 (ISO 30042:2008, <martif>)
-	FormatMultiTerm Format = "multiterm" // MultiTerm XML
-	FormatXDT       Format = "xdt"       // MultiTerm termbase definition (languages only)
+	FormatMultiTerm Format = "multiterm" // termbase XML
+	FormatXDT       Format = "xdt"       // termbase (.sdltb) definition (languages only)
 	FormatCSV       Format = "csv"
 	FormatTSV       Format = "tsv"
 	FormatXLSX      Format = "xlsx"
-	FormatSDLTB     Format = "sdltb" // MultiTerm termbase file, read only
+	FormatSDLTB     Format = "sdltb" // termbase (.sdltb) file, read only
 )
 
 // Detect works out the format from the content, using the file name only
@@ -50,7 +50,7 @@ func Detect(name string, data []byte) (Format, error) {
 	case strings.Contains(s, "<TermbaseDefinition"):
 		return FormatXDT, nil
 	case strings.HasPrefix(strings.TrimSpace(s), "<"):
-		return "", fmt.Errorf("%s is XML but not TBX or MultiTerm XML", name)
+		return "", fmt.Errorf("%s is XML but not TBX or termbase XML", name)
 	}
 	switch strings.ToLower(path.Ext(name)) {
 	case ".tsv", ".tab":
@@ -94,7 +94,7 @@ func Read(f Format, data []byte, m *Mapping) (*Termbase, Report, error) {
 		if err != nil {
 			return nil, Report{}, err
 		}
-		return &Termbase{Definition: d}, Report{Warnings: []string{"A termbase definition holds the structure only: languages are taken over, entries come from the MultiTerm XML file."}}, nil
+		return &Termbase{Definition: d}, Report{Warnings: []string{"A termbase definition holds the structure only: languages are taken over, entries come from the termbase XML file."}}, nil
 	case FormatCSV, FormatTSV, FormatXLSX:
 		rows, err := Rows(f, data)
 		if err != nil {
@@ -126,7 +126,7 @@ func Write(tb *Termbase, f Format) ([]byte, error) {
 		return writeXLSX(tb.Name, ToRows(tb)), nil
 	}
 	if f == FormatSDLTB {
-		return nil, errors.New("a MultiTerm termbase file (.sdltb) can be read but not written: export MultiTerm XML with its definition, which MultiTerm imports")
+		return nil, errors.New("an .sdltb termbase file can be read but not written: export termbase XML with its definition")
 	}
 	return nil, fmt.Errorf("cannot write %q", f)
 }
