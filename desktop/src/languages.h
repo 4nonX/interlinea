@@ -7,8 +7,11 @@
 
 // Language tags (BCP 47) as people read them.
 namespace Languages {
-// The languages offered first; others are typed as tags.
+// The languages offered by name, the same as in the browser client; any
+// other is typed as a tag.
 QStringList common();
+// Whether the language is written from right to left.
+bool rtl(const QString &tag);
 // "German (Germany)" for de-DE; the tag itself when unknown.
 QString name(const QString &tag);
 // "German (Germany), de-DE".

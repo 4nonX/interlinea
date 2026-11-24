@@ -189,6 +189,7 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
     m_grid->setAccessibleName(tr("Segments"));
     m_grid->setModel(m_model);
     m_delegate = new SegmentDelegate(m_grid);
+    m_delegate->rightToLeft = [this](int column) { return Languages::rtl(column == SegmentModel::Source ? m_sourceLang : m_lang); };
     m_delegate->factory = [this](QWidget *parent, const QModelIndex &index) { return makeCellWidget(parent, index); };
     m_delegate->activeHeight = [this](int column, int width) { return activeHeight(column, width); };
     m_grid->setItemDelegate(m_delegate);
@@ -1009,6 +1010,9 @@ QWidget *EditorPage::makeCellWidget(QWidget *parent, const QModelIndex &index)
         src->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         src->document()->setDocumentMargin(0);
         src->document()->setDefaultStyleSheet(SegmentContent::css());
+        QTextOption direction = src->document()->defaultTextOption();
+        direction.setTextDirection(Languages::rtl(m_sourceLang) ? Qt::RightToLeft : Qt::LeftToRight);
+        src->document()->setDefaultTextOption(direction);
         src->viewport()->setAutoFillBackground(false);
         src->setOpenLinks(false);
         src->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
@@ -1042,6 +1046,11 @@ QWidget *EditorPage::makeCellWidget(QWidget *parent, const QModelIndex &index)
     editor->setObjectName(QStringLiteral("targetEditor"));
     editor->setFont(font);
     editor->document()->setDocumentMargin(0);
+    // Typed from the right in a right-to-left language, whatever the
+    // direction of the window.
+    QTextOption direction = editor->document()->defaultTextOption();
+    direction.setTextDirection(Languages::rtl(m_lang) ? Qt::RightToLeft : Qt::LeftToRight);
+    editor->document()->setDefaultTextOption(direction);
     editor->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     editor->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     editor->setPlaceholderText(tr("Type the translation"));

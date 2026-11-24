@@ -10,6 +10,7 @@ import {
   type Block,
   type Segment,
 } from "./editor/model";
+import { LISTED_LANGUAGES } from "./languages.gen";
 
 export type LangCode = string;
 
@@ -21,27 +22,15 @@ export interface Language {
   dir?: "rtl";
 }
 
-export const LANGUAGES: Language[] = [
-  { code: "de-DE", name: "German (Germany)", native: "Deutsch" },
-  { code: "de-AT", name: "German (Austria)", native: "Deutsch" },
-  { code: "de-CH", name: "German (Switzerland)", native: "Deutsch" },
-  { code: "en-GB", name: "English (United Kingdom)", native: "English" },
-  { code: "en-US", name: "English (United States)", native: "English" },
-  { code: "fr-FR", name: "French (France)", native: "Français" },
-  { code: "es-ES", name: "Spanish (Spain)", native: "Español" },
-  { code: "it-IT", name: "Italian (Italy)", native: "Italiano" },
-  { code: "nl-NL", name: "Dutch (Netherlands)", native: "Nederlands" },
-  { code: "pl-PL", name: "Polish (Poland)", native: "Polski" },
-  { code: "ko-KR", name: "Korean (South Korea)", native: "한국어" },
-  { code: "ja-JP", name: "Japanese (Japan)", native: "日本語" },
-  { code: "zh-CN", name: "Chinese (Simplified)", native: "中文" },
-  {
-    code: "ar-SA",
-    name: "Arabic (Saudi Arabia)",
-    native: "العربية",
-    dir: "rtl",
-  },
-];
+/**
+ * The languages offered by name: the list of the core (langtag/languages.go),
+ * the same as in the desktop app. Any other language a file names still
+ * works; lang() names it.
+ */
+export const LANGUAGES: Language[] = LISTED_LANGUAGES;
+
+/** Languages written from right to left, for those outside the list. */
+const RTL_LANGUAGES = new Set(["ar", "he", "fa", "ur", "ps", "sd", "ug", "yi", "dv", "ckb"]);
 
 let displayNames: Intl.DisplayNames | null | undefined;
 
@@ -62,7 +51,8 @@ export function lang(code: LangCode): Language {
   } catch {
     // Not a valid language tag: show it as it is.
   }
-  return { code, name, native: name };
+  const rtl = RTL_LANGUAGES.has(code.split("-")[0]!.toLowerCase());
+  return rtl ? { code, name, native: name, dir: "rtl" } : { code, name, native: name };
 }
 
 export function primary(code: LangCode): string {

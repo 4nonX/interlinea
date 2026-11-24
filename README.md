@@ -27,7 +27,9 @@ Work in progress, not yet released.
 - **Team server:** accounts and roles, password and OpenID Connect
   sign-in, projects, memories, termbases with review, a live feed of
   changes, backups. API reference in [docs/api.md](docs/api.md), running
-  guide in [docs/running.md](docs/running.md).
+  guide in [docs/running.md](docs/running.md). The languages both apps
+  offer, and what is checked for each, are in
+  [docs/languages.md](docs/languages.md).
 - **Desktop app:** works without a server and connects to team servers.
   Projects are done: the list, new projects from documents, files,
   settings, analysis, pre-translation, translated files and return

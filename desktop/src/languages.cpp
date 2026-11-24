@@ -1,5 +1,7 @@
 #include "languages.h"
 
+#include "languagelist.h"
+
 #include <QLineEdit>
 #include <QLocale>
 #include <QRegularExpression>
@@ -8,13 +10,36 @@ namespace Languages {
 
 QStringList common()
 {
-    return {QStringLiteral("de-DE"), QStringLiteral("de-AT"), QStringLiteral("de-CH"), QStringLiteral("en-GB"), QStringLiteral("en-US"),
-            QStringLiteral("fr-FR"), QStringLiteral("fr-CH"), QStringLiteral("es-ES"), QStringLiteral("es-MX"), QStringLiteral("it-IT"),
-            QStringLiteral("nl-NL"), QStringLiteral("pl-PL"), QStringLiteral("pt-PT"), QStringLiteral("pt-BR"), QStringLiteral("cs-CZ"),
-            QStringLiteral("da-DK"), QStringLiteral("sv-SE"), QStringLiteral("nb-NO"), QStringLiteral("fi-FI"), QStringLiteral("el-GR"),
-            QStringLiteral("hu-HU"), QStringLiteral("ro-RO"), QStringLiteral("bg-BG"), QStringLiteral("hr-HR"), QStringLiteral("sk-SK"),
-            QStringLiteral("sl-SI"), QStringLiteral("uk-UA"), QStringLiteral("ru-RU"), QStringLiteral("tr-TR"), QStringLiteral("ar-SA"),
-            QStringLiteral("he-IL"), QStringLiteral("zh-CN"), QStringLiteral("zh-TW"), QStringLiteral("ja-JP"), QStringLiteral("ko-KR")};
+    // The list of the core (langtag/languages.go), the same as in the
+    // browser client, in its order.
+    QStringList out;
+    for (const ListedLanguage &l : listedLanguages)
+        out << QString::fromUtf8(l.tag);
+    return out;
+}
+
+static const ListedLanguage *listed(const QString &tag)
+{
+    for (const ListedLanguage &l : listedLanguages) {
+        if (tag.compare(QLatin1String(l.tag), Qt::CaseInsensitive) == 0)
+            return &l;
+    }
+    return nullptr;
+}
+
+bool rtl(const QString &tag)
+{
+    if (const ListedLanguage *l = listed(tag))
+        return l->rtl;
+    // A language outside the list: by its script, else by the language.
+    const QStringList parts = normalize(tag).split(QLatin1Char('-'));
+    if (parts.size() > 1 && parts.at(1).size() == 4)
+        return QStringList{QStringLiteral("Arab"), QStringLiteral("Hebr"), QStringLiteral("Thaa"), QStringLiteral("Syrc"), QStringLiteral("Nkoo"),
+                           QStringLiteral("Adlm")}
+            .contains(parts.at(1));
+    return QStringList{QStringLiteral("ar"), QStringLiteral("he"), QStringLiteral("fa"), QStringLiteral("ur"), QStringLiteral("ps"),
+                       QStringLiteral("sd"), QStringLiteral("ug"), QStringLiteral("yi"), QStringLiteral("dv"), QStringLiteral("ckb")}
+        .contains(parts.value(0));
 }
 
 QString normalize(const QString &typed)
@@ -35,6 +60,8 @@ QString normalize(const QString &typed)
 
 QString name(const QString &tag)
 {
+    if (const ListedLanguage *known = listed(tag))
+        return QString::fromUtf8(known->name);
     const QLocale l(QString(tag).replace(QLatin1Char('-'), QLatin1Char('_')));
     if (l.language() == QLocale::C)
         return tag;
@@ -46,8 +73,12 @@ QString name(const QString &tag)
 
 QString label(const QString &tag)
 {
+    // A listed language by its name alone, as the browser client's choice
+    // of languages shows it; any other with its tag, which tells it apart.
     const QString n = name(tag);
-    return n == tag ? tag : QStringLiteral("%1, %2").arg(n, tag);
+    if (listed(tag) || n == tag)
+        return n;
+    return QStringLiteral("%1, %2").arg(n, tag);
 }
 
 QString when(const QDateTime &t)

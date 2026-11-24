@@ -3,7 +3,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 BIN     := bin
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: all build test race vet fmt-check apidoc apidoc-check lint bench cross wasm sample clean
+.PHONY: all build test race vet fmt-check apidoc apidoc-check languages languages-check lint bench cross wasm sample clean
 
 all: lint test build
 
@@ -30,7 +30,15 @@ apidoc:
 apidoc-check:
 	go run ./cmd/interlinea-apidoc -check
 
-lint: fmt-check vet apidoc-check
+# The languages the apps offer are listed once, in langtag/languages.go;
+# languages writes the list into the browser client and the desktop app.
+languages:
+	go run ./langtag/gen
+
+languages-check:
+	go run ./langtag/gen -check
+
+lint: fmt-check vet apidoc-check languages-check
 
 bench:
 	go test -run "^$$" -bench . -benchmem ./...

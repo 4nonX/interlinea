@@ -226,8 +226,14 @@ QFont segmentFont(const QFont &base)
     return f;
 }
 
-void prepare(QTextDocument &doc, const QFont &font, const QString &html, int width)
+void prepare(QTextDocument &doc, const QFont &font, const QString &html, int width, bool rtl)
 {
+    // The language decides the side a segment starts on, not its first
+    // letter: an Arabic sentence that opens with a product name still
+    // reads from the right.
+    QTextOption option = doc.defaultTextOption();
+    option.setTextDirection(rtl ? Qt::RightToLeft : Qt::LeftToRight);
+    doc.setDefaultTextOption(option);
     doc.setDefaultFont(segmentFont(font));
     doc.setDefaultStyleSheet(SegmentContent::css());
     doc.setDocumentMargin(0);
@@ -296,7 +302,7 @@ void SegmentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &optio
         if (index.column() == SegmentModel::Target && html.isEmpty())
             html = QStringLiteral("<span class=\"missing\">%1</span>").arg(tr("Not translated"));
         QTextDocument doc;
-        prepare(doc, option.font, html, r.width());
+        prepare(doc, option.font, html, r.width(), rightToLeft && rightToLeft(index.column()));
         painter->translate(r.left() + Pad, r.top() + Pad);
         QAbstractTextDocumentLayout::PaintContext ctx;
         ctx.palette = option.palette;
@@ -369,7 +375,7 @@ QSize SegmentDelegate::sizeHint(const QStyleOptionViewItem &option, const QModel
     if (html.isEmpty())
         html = QStringLiteral("x");
     QTextDocument doc;
-    prepare(doc, option.font, html, width);
+    prepare(doc, option.font, html, width, rightToLeft && rightToLeft(index.column()));
     int h = int(doc.size().height()) + 2 * Pad;
     if (index.data(SegmentModel::ActiveRole).toBool() && activeHeight)
         h = qMax(h, activeHeight(index.column(), width));

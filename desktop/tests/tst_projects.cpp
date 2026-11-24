@@ -72,6 +72,27 @@ private slots:
         QVERIFY(Languages::samePrimary(QStringLiteral("de-AT"), QStringLiteral("de-DE")));
         QVERIFY(!Languages::samePrimary(QStringLiteral("de-DE"), QStringLiteral("en-GB")));
         QVERIFY(Languages::name(QStringLiteral("de-DE")).startsWith(QStringLiteral("German")));
+        // The listed languages are the core's, named as in the browser client.
+        QVERIFY(Languages::common().size() >= 90);
+        QCOMPARE(Languages::name(QStringLiteral("th-TH")), QStringLiteral("Thai (Thailand)"));
+        QCOMPARE(Languages::label(QStringLiteral("de-DE")), QStringLiteral("German (Germany)"));
+        QCOMPARE(Languages::name(QStringLiteral("sr-Latn-RS")), QStringLiteral("Serbian (Latin, Serbia)"));
+        // One outside the list is told apart by its tag.
+        QVERIFY(Languages::label(QStringLiteral("de-LI")).endsWith(QStringLiteral(", de-LI")));
+        QVERIFY(Languages::rtl(QStringLiteral("ar-SA")));
+        QVERIFY(Languages::rtl(QStringLiteral("he-IL")));
+        QVERIFY(Languages::rtl(QStringLiteral("ur")));
+        QVERIFY(Languages::rtl(QStringLiteral("az-Arab-IR")));
+        QVERIFY(!Languages::rtl(QStringLiteral("de-DE")));
+        QVERIFY(!Languages::rtl(QStringLiteral("ur-Latn")));
+        {
+            LanguageCombo combo;
+            combo.setLanguage(QStringLiteral("fa-IR"));
+            QCOMPARE(combo.currentText(), QStringLiteral("Persian (Iran)"));
+            QCOMPARE(combo.language(), QStringLiteral("fa-IR"));
+            combo.setEditText(QStringLiteral("de-LI"));
+            QCOMPARE(combo.language(), QStringLiteral("de-LI"));
+        }
     }
 
     void makeAndWorkOnAProject()

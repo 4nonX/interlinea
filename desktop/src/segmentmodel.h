@@ -88,6 +88,8 @@ class SegmentDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
     std::function<QWidget *(QWidget *parent, const QModelIndex &index)> factory;
+    // Whether a column's text is in a language written from right to left.
+    std::function<bool(int column)> rightToLeft;
     // The height the active row's widgets need, by column.
     std::function<int(int column, int width)> activeHeight;
     void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;

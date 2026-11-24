@@ -27,6 +27,9 @@ jobs:
       - name: API reference is up to date
         if: runner.os == 'Linux'
         run: go run ./cmd/interlinea-apidoc -check
+      - name: the apps' language lists are up to date
+        if: runner.os == 'Linux'
+        run: go run ./langtag/gen -check
       - name: test
         run: go test ./...
       - name: race
