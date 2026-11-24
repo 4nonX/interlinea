@@ -415,18 +415,31 @@ export interface MergeItem {
   mergedOurs?: CoreEntry;
   forbidden?: boolean;
   duplicates?: string[];
+  /** The reviewers whose part it is in. */
+  reviewers?: string[];
 }
 
 export interface MergeProgress {
   total: number;
   states: Record<string, number>;
   conflicts: number;
+  /** The counts by state of each reviewer's part. */
+  byReviewer?: Record<string, Record<string, number>>;
 }
 
 export interface MergeFilter {
   ids?: number[];
   states?: string[];
   conflicts?: boolean;
+  langs?: string[];
+  kinds?: string[];
+  authors?: string[];
+}
+
+/** A reviewer (a username) and the part of a merge request given to them. */
+export interface MergeAssignment {
+  reviewer: string;
+  scope: MergeFilter;
 }
 
 export interface CatalogMemory {
@@ -614,12 +627,18 @@ export function client(conn: Connection) {
     openMergeRequest: (termbase: string, master: string, title: string) =>
       send<MergeRequest>("POST", `/api/termbases/${encodeURIComponent(termbase)}/merge-requests`, { master, title }),
     mergeRequest: (id: number) => get<MergeRequest>(`/api/merge-requests/${id}`),
-    mergeItems: (id: number, states: string[], offset: number) =>
+    mergeItems: (id: number, states: string[], offset: number, limit = 50, reviewer = "") =>
       send<{ items: MergeItem[]; total: number }>("POST", `/api/merge-requests/${id}/items`, {
         filter: states.length ? { states } : {},
-        limit: 50,
+        reviewer: reviewer || undefined,
+        limit,
         offset,
       }),
+    mergeReviewers: (id: number) => get<MergeAssignment[]>(`/api/merge-requests/${id}/reviewers`),
+    assignReviewer: (id: number, a: MergeAssignment) => send<void>("PUT", `/api/merge-requests/${id}/reviewers`, a),
+    unassignReviewer: (id: number, reviewer: string) =>
+      send<void>("DELETE", `/api/merge-requests/${id}/reviewers?${q({ reviewer })}`),
+    revertMergeItem: (id: number, item: number) => send<void>("POST", `/api/merge-requests/${id}/items/${item}/revert`),
     mergeProgress: (id: number) => get<MergeProgress>(`/api/merge-requests/${id}/progress`),
     decide: (id: number, filter: MergeFilter, decision: { state: string; comment?: string; edited?: CoreEntry }) =>
       send<{ decided: number; needResolution?: number[] }>("POST", `/api/merge-requests/${id}/decide`, { filter, decision }),

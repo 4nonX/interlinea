@@ -369,14 +369,57 @@ export default () =>
       check(await waitFor("location.hash.startsWith('#/review/')", 10000), "the review opens");
       check(await waitFor("document.querySelector('main').innerText.includes('Waiting (1)')", 10000), "Ben's term waits");
       check(await waitFor("document.querySelector('main').innerText.includes('Approve all waiting')", 10000), "Anna opens the review");
-      await click("button", "Approve all waiting");
-      let inMaster = [];
       const master = p.settings.terminology.masters[0];
+      const lookUp = () => api("GET", `/api/termbases/${encodeURIComponent(master)}/lookup?text=Hausmeisterschlüssel&lang=${encodeURIComponent(p.settings.sourceLang)}`, admin);
+      const choosePart = (label, value) =>
+        evaluate(
+          `(() => { const el = [...document.querySelectorAll('form[aria-label="Give someone a part"] label')].find(l => l.textContent.startsWith(${JSON.stringify(label)})).querySelector('select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`,
+        );
+
+      // Reviewers: nobody has a part yet. Ben can't be given one while he
+      // may not approve changes to the master; once he may, he can.
+      check(await waitFor("document.querySelector('main').innerText.includes('Nobody is given a part')", 10000), "nobody has a part of the request yet");
+      await choosePart("Who", "ben");
+      await click("form[aria-label='Give someone a part'] button", "Give the part");
+      check(await waitFor("document.querySelector('.toast')?.textContent.includes('may not approve changes')", 10000), "someone who may not approve is not made a reviewer");
+      await api("PUT", "/api/grants", admin, { userId: ben.id, kind: "termbase", resource: master, role: "approve" });
+      await choosePart("Who", "ben");
+      await choosePart("Part", "kind:new");
+      await click("form[aria-label='Give someone a part'] button", "Give the part");
+      check(await waitFor("document.querySelector('.mr-reviewers')?.innerText.includes('new entries: 1 of 1 to decide')", 10000), "Ben reviews the new entries, and how far he is shows");
+      check(await waitFor("document.querySelector('.mr-item').innerText.includes('for ben to review')"), "the entry says who reviews it");
+      await click(".mr-reviewers button", "Remove");
+      check(await waitFor("document.querySelector('main').innerText.includes('Nobody is given a part')", 10000), "the part is taken away again");
+
+      // Postponed with a note for the author, the entry is decided later.
+      await setValue(".mr-note", "Bitte mit Quelle");
+      await click(".mr-item button", "Postpone");
+      check(await waitFor("document.querySelector('main').innerText.includes('Nothing is waiting.')", 10000), "the entry is postponed");
+      await click("[role=tab]", "Decided");
+      check(await waitFor("document.querySelector('.mr-item')?.innerText.includes('“Bitte mit Quelle”, anna')", 10000), "the note is with the postponed entry");
+      check(
+        await evaluate("![...document.querySelectorAll('.mr-item button')].some(b => b.textContent.includes('Postpone')) && [...document.querySelectorAll('.mr-item button')].some(b => b.textContent.includes('Approve'))"),
+        "what was postponed is approved or rejected, not put off again",
+      );
+      await click(".mr-item button", "Approve");
+      let inMaster = [];
       for (let i = 0; i < 40 && inMaster.length === 0; i++) {
         await sleep(200);
-        inMaster = await api("GET", `/api/termbases/${encodeURIComponent(master)}/lookup?text=Hausmeisterschlüssel&lang=${encodeURIComponent(p.settings.sourceLang)}`, admin);
+        inMaster = await lookUp();
       }
       check(inMaster.length === 1, `the approved term is in the master ${master}`);
+
+      // The merge is undone: the term leaves the master, and the request says so.
+      check(await waitFor("[...document.querySelectorAll('.mr-item button')].some(b => b.textContent.includes('Undo the merge'))", 10000), "a merged entry can be taken out again");
+      await click(".mr-item button", "Undo the merge");
+      await sleep(150);
+      check((await text()).includes(`Take this out of ${master} again?`), "undoing asks first");
+      await click(".mr-item .confirm button", "Undo");
+      check(await waitFor(`document.querySelector('.toast')?.textContent.includes(${JSON.stringify(`Took the merge back out of ${master}`)})`, 10000), "undoing is said");
+      check(await waitFor("document.querySelector('.mr-item')?.innerText.includes('It is submitted again once the project has changed it.')", 10000), "the entry says what becomes of it");
+      check((await lookUp()).length === 0, "the term is out of the master again");
+      await click("[role=tab]", "Waiting");
+      await sleep(300);
       await click("button", "Close the request");
       await sleep(150);
       await click(".confirm button", "Close");

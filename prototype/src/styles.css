@@ -2990,6 +2990,10 @@ kbd {
   font-weight: 500;
 }
 
+.confirm-plain .confirm-text {
+  color: var(--text);
+}
+
 .row-start,
 .dialog .row.row-start {
   justify-content: flex-start;
@@ -3841,6 +3845,29 @@ input.mono {
 }
 
 /* Merge requests on the team server */
+
+.mr-reviewers {
+  display: grid;
+  gap: var(--s2);
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+}
+
+.mr-reviewers li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+}
+
+.mr-reviewers .cell-sub {
+  flex: 1;
+}
+
+.mr-note {
+  width: 100%;
+  max-width: 520px;
+}
 
 .server-review {
   display: grid;

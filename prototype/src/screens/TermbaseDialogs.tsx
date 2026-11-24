@@ -119,6 +119,7 @@ export function ConfirmButton({
   disabled,
   small = true,
   action = "Remove",
+  plain = false,
 }: {
   label: ReactNode;
   confirm: string;
@@ -127,6 +128,8 @@ export function ConfirmButton({
   small?: boolean;
   /** The label of the confirming button. */
   action?: string;
+  /** The step takes nothing away: asked in plain colours, not in red. */
+  plain?: boolean;
 }) {
   const [asking, setAsking] = useState(false);
   const yes = useRef<HTMLButtonElement>(null);
@@ -145,12 +148,12 @@ export function ConfirmButton({
       </button>
     );
   return (
-    <span className="confirm" role="group" aria-label={confirm}>
+    <span className={plain ? "confirm confirm-plain" : "confirm"} role="group" aria-label={confirm}>
       <span className="confirm-text">{confirm}</span>
       <button
         ref={yes}
         type="button"
-        className="btn btn-danger btn-small"
+        className={plain ? "btn btn-primary btn-small" : "btn btn-danger btn-small"}
         onClick={() => {
           setAsking(false);
           onConfirm();
