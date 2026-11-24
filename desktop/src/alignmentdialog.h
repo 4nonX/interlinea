@@ -52,8 +52,11 @@ public:
     // and those of pairs that need a look.
     QList<QPair<int, int>> lines;
     QList<QPair<int, int>> lookLines;
-    // Where a line starts and ends on the board.
+    // Where a line starts and ends on the board; it is drawn as a curve
+    // that leaves and arrives level.
     QLineF place(const QPair<int, int> &line) const;
+    // The line at a place on the board, or -1.
+    int lineIndexAt(const QPointF &p) const { return lineAt(p); }
 
 signals:
     void lineChosen(int source, int target);

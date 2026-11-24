@@ -381,7 +381,27 @@ export default () =>
             (await evaluate(`document.querySelector(${JSON.stringify(seg("target", 1))}).innerText`)).includes("2 400,00 euros"),
           "alignment: the numbers pair in either notation",
         );
-        check(await evaluate("(() => { const l = document.querySelector('dialog[open] svg [data-line=\"0|0\"] .align-line'); const a = document.querySelector('dialog[open] button[data-side=source][data-i=\"0\"]').getBoundingClientRect(); const b = document.querySelector('dialog[open] button[data-side=target][data-i=\"0\"]').getBoundingClientRect(); const s = document.querySelector('dialog[open] svg').getBoundingClientRect(); return Math.abs(+l.getAttribute('x1') + s.left - a.right) < 2 && Math.abs(+l.getAttribute('x2') + s.left - b.left) < 2 && Math.abs(+l.getAttribute('y1') + s.top - (a.top + a.height / 2)) < 2 && Math.abs(+l.getAttribute('y2') + s.top - (b.top + b.height / 2)) < 2; })()"), "alignment: a line runs from the sentence to its translation");
+        check(
+          await evaluate(`(() => {
+            const l = document.querySelector('dialog[open] svg [data-line="0|0"] .align-line');
+            const n = l.getTotalLength();
+            const p = l.getPointAtLength(0), q = l.getPointAtLength(n), nearP = l.getPointAtLength(4), nearQ = l.getPointAtLength(n - 4);
+            const a = document.querySelector(${JSON.stringify(seg("source", 0))}).getBoundingClientRect();
+            const b = document.querySelector(${JSON.stringify(seg("target", 0))}).getBoundingClientRect();
+            const s = document.querySelector('dialog[open] svg').getBoundingClientRect();
+            return l.tagName === 'path' && Math.abs(p.x + s.left - a.right) < 2 && Math.abs(q.x + s.left - b.left) < 2 && Math.abs(p.y + s.top - (a.top + a.height / 2)) < 2 && Math.abs(q.y + s.top - (b.top + b.height / 2)) < 2;
+          })()`),
+          "alignment: a line runs from the sentence to its translation",
+        );
+        check(
+          await evaluate(`(() => {
+            const l = document.querySelector('dialog[open] svg [data-line="3|2"] .align-line');
+            const n = l.getTotalLength();
+            const p = l.getPointAtLength(0), q = l.getPointAtLength(n), nearP = l.getPointAtLength(5), nearQ = l.getPointAtLength(n - 5);
+            return Math.abs(p.y - q.y) > 15 && Math.abs(nearP.y - p.y) < 1 && Math.abs(nearQ.y - q.y) < 1;
+          })()`),
+          "alignment: between segments at different heights it is a curve that leaves and arrives level",
+        );
         check((await dlg()).includes("Add 4 units to Weber DE-FR"), "alignment: all four would be added");
         // A sentence chosen and then its translation takes their line away.
         await choose("source", 3);

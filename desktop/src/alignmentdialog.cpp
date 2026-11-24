@@ -16,6 +16,8 @@
 #include <QLocale>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
+#include <QPainterPathStroker>
 #include <QPointer>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -89,14 +91,15 @@ QList<int> ints(const QJsonArray &a)
     return out;
 }
 
-qreal distance(const QLineF &l, const QPointF &p)
+// The line as it is drawn: a curve that leaves the sentence and reaches
+// the translation level, so lines to one segment stay apart and each end
+// shows whose it is.
+QPainterPath curve(const QLineF &l)
 {
-    const QPointF d = l.p2() - l.p1();
-    const qreal len = d.x() * d.x() + d.y() * d.y();
-    if (len <= 0)
-        return QLineF(l.p1(), p).length();
-    const qreal t = qBound(0.0, ((p.x() - l.x1()) * d.x() + (p.y() - l.y1()) * d.y()) / len, 1.0);
-    return QLineF(l.p1() + t * d, p).length();
+    const qreal mid = (l.x1() + l.x2()) / 2;
+    QPainterPath path(l.p1());
+    path.cubicTo(QPointF(mid, l.y1()), QPointF(mid, l.y2()), l.p2());
+    return path;
 }
 
 } // namespace
@@ -196,16 +199,23 @@ QLineF AlignBoard::place(const QPair<int, int> &line) const
 
 int AlignBoard::lineAt(const QPointF &p) const
 {
+    // Of the lines near the place, the one whose curve is nearest: the
+    // narrowest band around a curve that still holds the place.
     int best = -1;
-    qreal bestD = Near;
+    qreal bestWidth = 2 * Near + 1;
     for (int i = 0; i < lines.size(); ++i) {
         const QLineF l = place(lines.at(i));
-        if (l.isNull() || p.x() < l.x1() || p.x() > l.x2())
+        if (l.isNull() || p.x() < l.x1() - Near || p.x() > l.x2() + Near)
             continue;
-        const qreal d = distance(l, p);
-        if (d <= bestD) {
-            bestD = d;
-            best = i;
+        const QPainterPath path = curve(l);
+        for (qreal w = 2; w <= 2 * Near && w < bestWidth; w += 2) {
+            QPainterPathStroker band;
+            band.setWidth(w);
+            if (band.createStroke(path).contains(p)) {
+                bestWidth = w;
+                best = i;
+                break;
+            }
         }
     }
     return best;
@@ -228,7 +238,8 @@ void AlignBoard::paintEvent(QPaintEvent *e)
         if (i == m_hover)
             pen = QPen(Theme::color("danger"), 2.5);
         p.setPen(pen);
-        p.drawLine(l);
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(curve(l));
     }
 }
 

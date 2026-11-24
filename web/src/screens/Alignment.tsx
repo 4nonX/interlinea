@@ -253,12 +253,16 @@ export function AlignDocuments({
                   const y2 = places.target[l.target];
                   if (y1 === undefined || y2 === undefined) return null;
                   const k = linkKey(l);
+                  // A curve that leaves the sentence and reaches the translation level:
+                  // lines to one segment stay apart, and each end shows whose it is.
+                  const mid = (places.x1 + places.x2) / 2;
+                  const d = `M ${places.x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${places.x2} ${y2}`;
                   return (
                     <g key={k} data-line={k}>
-                      <line x1={places.x1} y1={y1} x2={places.x2} y2={y2} className={lookLines.has(k) ? "align-line is-look" : "align-line"} />
-                      <line x1={places.x1} y1={y1} x2={places.x2} y2={y2} className="align-hit" onClick={() => setLinks(toggle(links, l))}>
+                      <path d={d} className={lookLines.has(k) ? "align-line is-look" : "align-line"} />
+                      <path d={d} className="align-hit" onClick={() => setLinks(toggle(links, l))}>
                         <title>Take this line away</title>
-                      </line>
+                      </path>
                     </g>
                   );
                 })}

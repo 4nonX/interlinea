@@ -2795,6 +2795,7 @@ table[aria-label="Units found"] .cell-action .row {
 }
 
 .align-line {
+  fill: none;
   stroke: var(--text-2);
   stroke-width: 1.5;
 }
@@ -2806,6 +2807,7 @@ table[aria-label="Units found"] .cell-action .row {
 }
 
 .align-hit {
+  fill: none;
   stroke: transparent;
   stroke-width: 14;
   pointer-events: stroke;

@@ -465,6 +465,13 @@ private slots:
         QVERIFY(qAbs(line.x1() - (s0->geometry().right() + 1)) < 2 && qAbs(line.x2() - t0->geometry().left()) < 2);
         QVERIFY(qAbs(line.y1() - s0->geometry().center().y()) < 2 && qAbs(line.y2() - t0->geometry().center().y()) < 2);
         QVERIFY(line.x2() - line.x1() > 80);
+        // Between segments at different heights the line is a curve that
+        // leaves and arrives level: a place just beside an end, at its
+        // height, is on it, and one beside it at the other end's height is not.
+        const QLineF slanted = board->place({3, 2});
+        QVERIFY(qAbs(slanted.y1() - slanted.y2()) > 15);
+        QCOMPARE(board->lineIndexAt(QPointF(slanted.x1() + 8, slanted.y1())), int(board->lines.indexOf({3, 2})));
+        QCOMPARE(board->lineIndexAt(QPointF(slanted.x1() + 8, slanted.y2())), -1);
         if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
             al->choose(AlignmentDialog::Source, 4);
             al->choose(AlignmentDialog::Target, 3);
