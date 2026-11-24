@@ -97,6 +97,13 @@ type subscriber struct {
 type feed struct {
 	s *Server
 
+	// batch is held for reading by requests that make several changes
+	// which only make sense together, and for writing while the change
+	// logs are read: the feed never passes on half of such a request.
+	// Who sees an event can depend on the other changes: the memory made
+	// with a project is seen by its maker through the grant made after it.
+	batch sync.RWMutex
+
 	mu      sync.Mutex
 	subs    map[*subscriber]bool
 	pos     cursor
@@ -127,6 +134,13 @@ func (f *feed) projects(ctx context.Context) ([]projectdb.Summary, error) {
 	}
 	f.list, f.listAt = ps, f.s.cfg.Now()
 	return ps, nil
+}
+
+// together holds the feed off until the returned function is called, so
+// that the changes made in between are passed on together.
+func (f *feed) together() func() {
+	f.batch.RLock()
+	return f.batch.RUnlock
 }
 
 func newFeed(s *Server) *feed {
@@ -234,10 +248,22 @@ func (f *feed) run() {
 		f.mu.Lock()
 		from := f.pos
 		f.mu.Unlock()
+		f.batch.Lock()
 		cs, to, err := f.s.changesSince(context.Background(), from, 1000)
+		f.batch.Unlock()
 		if err != nil {
 			f.s.cfg.Log.Error("reading the change logs failed", "err", err)
 			continue
+		}
+		for _, c := range cs {
+			if c.stream == streamProject {
+				// A new or changed project counts at once in the checks
+				// of who sees what, not when the list is next read.
+				f.listMu.Lock()
+				f.list = nil
+				f.listMu.Unlock()
+				break
+			}
 		}
 		f.mu.Lock()
 		for _, c := range cs {

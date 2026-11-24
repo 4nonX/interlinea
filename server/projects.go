@@ -390,6 +390,10 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me sessio
 		return
 	}
 
+	// The memories, termbase, project and grants reach the live feed
+	// together: otherwise its readers could be told of a memory before
+	// they may see it, and never hear of it again.
+	defer s.feed.together()()
 	var undo []func()
 	rollback := func() {
 		for i := len(undo) - 1; i >= 0; i-- {
