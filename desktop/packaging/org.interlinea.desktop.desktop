@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Interlinea
+GenericName=Translation tool
+Comment=Translate documents with translation memories and terminology
+Comment[de]=Dokumente mit Translation Memorys und Terminologie übersetzen
+Exec=Interlinea %F
+Icon=interlinea
+Terminal=false
+Categories=Office;Translation;
+StartupWMClass=Interlinea

@@ -16,9 +16,42 @@ editor in its next stage.
 
 ![The desktop app's project list](docs/screenshots/projects.png)
 
-## Status
+## Install
 
-Work in progress, not yet released.
+Every release has what is installed, on the
+[releases page](https://github.com/4nonX/interlinea/releases), with its
+checksums in `SHA256SUMS`. [CHANGELOG.md](CHANGELOG.md) says what each
+release brought.
+
+- **Desktop app.** Windows: `Interlinea-<version>-windows-x64-setup.exe`
+  installs it for you, without administrator rights; the portable folder
+  next to it needs no installing. macOS: open
+  `Interlinea-<version>-macos-universal.dmg` and drag the app to
+  Applications; it is not signed with a developer certificate, so open
+  it the first time with a right click and Open. Linux: make
+  `Interlinea-<version>-linux-x86_64.AppImage` executable and start it.
+- **Team server, with Docker.**
+
+  ```
+  docker run -d --name interlinea -p 8080:8080 -v interlinea:/data \
+    -e INTERLINEA_ADMIN_USER=admin -e INTERLINEA_ADMIN_PASSWORD='a long password' \
+    ghcr.io/4nonx/interlinea-server:latest
+  ```
+
+  Then open http://localhost:8080. For PostgreSQL, take
+  [compose.yaml](compose.yaml). While the repository is private, so is
+  the image: sign in first with `docker login ghcr.io`.
+- **Team server, without Docker.** Unpack
+  `interlinea-server-<version>-<system>-<processor>` and start
+  `interlinea-server -web web`. The command line tool `interlinea` is in
+  the same folder.
+- **Web client alone.** `interlinea-web-<version>.zip` is the client as
+  static files for any web server; it keeps its data in the browser.
+
+[docs/running.md](docs/running.md) describes setting up a server: HTTPS,
+sign-in through a provider, backups.
+
+## Status
 
 - **Core:** file filters for Word, XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF,
   Trados packages and plain text; translation memories; termbases with

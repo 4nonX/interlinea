@@ -41,6 +41,9 @@ int main(int argc, char *argv[])
     QApplication::setOrganizationDomain(QStringLiteral("interlinea.org"));
     QApplication::setApplicationName(QStringLiteral("Interlinea"));
     QApplication::setApplicationVersion(QStringLiteral(INTERLINEA_VERSION));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/interlinea.png")));
+    // The name of the desktop entry, so the windows are grouped under it.
+    QGuiApplication::setDesktopFileName(QStringLiteral("org.interlinea.desktop"));
 
     QTranslator qt, own;
     if (qt.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath)))

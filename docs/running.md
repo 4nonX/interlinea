@@ -32,14 +32,18 @@ per store (others wait up to ten seconds), PostgreSQL many.
 
 ## Starting it
 
-With Docker:
+With Docker, from the released image (`:latest`, or a version such as
+`:0.1.0`):
 
 ```
-docker build -t interlinea-server .
 docker run -d --name interlinea -p 8080:8080 -v interlinea:/data \
   -e INTERLINEA_ADMIN_USER=admin -e INTERLINEA_ADMIN_PASSWORD='a long password' \
-  interlinea-server
+  ghcr.io/4nonx/interlinea-server:latest
 ```
+
+While the repository is private, so is the image: `docker login ghcr.io`
+first, with a GitHub token that may read packages. `docker build -t
+interlinea-server .` builds the same image from the source.
 
 `compose.yaml` runs it with PostgreSQL:
 
@@ -47,9 +51,11 @@ docker run -d --name interlinea -p 8080:8080 -v interlinea:/data \
 INTERLINEA_ADMIN_PASSWORD='a long password' POSTGRES_PASSWORD='another one' docker compose up -d
 ```
 
-Without Docker, build it (`go build ./cmd/interlinea-server`), build the web
-app (`make wasm`, then `npm ci && npm run build` in `prototype/`) and start
-it with `-web prototype/dist`.
+Without Docker, unpack `interlinea-server-<version>-<system>-<processor>`
+from the release and start `interlinea-server -web web` in it. From the
+source: build it (`go build ./cmd/interlinea-server`), build the web app
+(`make wasm`, then `npm ci && npm run build` in `prototype/`) and start it
+with `-web prototype/dist`.
 
 **The first administrator.** With `INTERLINEA_ADMIN_USER` and
 `INTERLINEA_ADMIN_PASSWORD` set, the server makes that account at its first

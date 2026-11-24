@@ -1,0 +1,370 @@
+# Builds what people install and attaches it to a release.
+#
+# A tag v1.2.3 makes release 1.2.3: the server image on the GitHub
+# container registry, the server and the command line tool for Linux,
+# macOS and Windows, the web client, and the desktop app as a Windows
+# installer, a macOS disk image and a Linux AppImage. The release takes
+# its notes from the version's section of CHANGELOG.md.
+#
+# Started by hand, it builds everything for a version without tagging or
+# releasing, to try the packaging: the files are attached to the run.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, without making a release
+        default: 0.0.0-test
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GIVEN: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="${GITHUB_REF_NAME#v}"
+            # A release needs its notes.
+            awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {found=1} END {exit !found}' CHANGELOG.md \
+              || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            version="$GIVEN"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  server:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: prototype/package-lock.json
+      - name: the web client, with the core for the browser
+        run: |
+          make wasm
+          cd prototype
+          npm ci
+          npm run build
+      - name: the server and the command line tool, for every system
+        run: |
+          mkdir -p out
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os="${target%/*}"; arch="${target#*/}"
+            system="$os"; [ "$os" = darwin ] && system=macos
+            name="interlinea-server-$VERSION-$system-$arch"
+            ext=""; [ "$os" = windows ] && ext=".exe"
+            mkdir -p "stage/$name"
+            for cmd in interlinea-server interlinea; do
+              CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+                -ldflags "-s -w -X main.version=$VERSION" -o "stage/$name/$cmd$ext" "./cmd/$cmd"
+            done
+            cp -r prototype/dist "stage/$name/web"
+            cp README.md CHANGELOG.md docs/running.md "stage/$name/"
+            if [ "$os" = windows ]; then
+              (cd stage && zip -qr "../out/$name.zip" "$name")
+            else
+              tar -C stage -czf "out/$name.tar.gz" "$name"
+            fi
+          done
+          (cd prototype/dist && zip -qr "../../out/interlinea-web-$VERSION.zip" .)
+          ls -l out
+      - name: the server starts and serves the web client
+        run: |
+          tar -xzf "out/interlinea-server-$VERSION-linux-amd64.tar.gz"
+          cd "interlinea-server-$VERSION-linux-amd64"
+          INTERLINEA_ADMIN_USER=admin INTERLINEA_ADMIN_PASSWORD='a long enough password' \
+            ./interlinea-server -addr 127.0.0.1:18080 -data "$RUNNER_TEMP/data" -web web &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18080/ | grep -qi '<!doctype html'
+          curl -fsS http://127.0.0.1:18080/api/server | grep -q "\"$VERSION\""
+          ./interlinea version | grep -q "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: out/*
+          if-no-files-found: error
+
+  image:
+    needs: version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/interlinea-server" >> "$GITHUB_OUTPUT"
+      - name: the image starts and answers, before it goes anywhere
+        run: |
+          docker buildx build --load --build-arg "VERSION=$VERSION" -t interlinea-server:try .
+          docker run -d --name try -p 18080:8080 -e INTERLINEA_ADMIN_USER=admin -e INTERLINEA_ADMIN_PASSWORD='a long enough password' interlinea-server:try
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18080/api/server | grep -q "\"$VERSION\""
+          curl -fsS http://127.0.0.1:18080/ | grep -qi '<!doctype html'
+          docker rm -f try
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.version.outputs.release == 'true' }}
+          build-args: VERSION=${{ needs.version.outputs.version }}
+          tags: |
+            ${{ steps.name.outputs.image }}:${{ needs.version.outputs.version }}
+            ${{ steps.name.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.title=Interlinea team server
+            org.opencontainers.image.description=The Interlinea team server with the web client
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  desktop-linux:
+    needs: version
+    # The oldest supported Ubuntu: an AppImage runs on systems as new as
+    # the one it was built on, or newer.
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 libsecret-1-dev ninja-build libfuse2 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          cache: true
+      - name: build
+        run: |
+          cmake -S desktop -B build/desktop -G Ninja -DCMAKE_BUILD_TYPE=Release -DINTERLINEA_VERSION="$VERSION"
+          cmake --build build/desktop --parallel 4 --target interlinea interlinea_core
+      - name: AppImage
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/512x512/apps
+          cp build/desktop/Interlinea build/desktop/interlinea-core AppDir/usr/bin/
+          cp desktop/packaging/org.interlinea.desktop.desktop AppDir/usr/share/applications/
+          cp desktop/packaging/interlinea.png AppDir/usr/share/icons/hicolor/512x512/apps/
+          base=https://github.com/linuxdeploy
+          curl -fsSL -o linuxdeploy "$base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          curl -fsSL -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          export QMAKE="$(which qmake6 || which qmake)"
+          export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
+          export OUTPUT="Interlinea-$VERSION-linux-x86_64.AppImage"
+          ./linuxdeploy --appdir AppDir --plugin qt --output appimage \
+            --desktop-file AppDir/usr/share/applications/org.interlinea.desktop.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/512x512/apps/interlinea.png
+          ls -l "$OUTPUT"
+      - name: the packed app starts, with its core
+        run: |
+          app="$PWD/Interlinea-$VERSION-linux-x86_64.AppImage"
+          "$app" --appimage-extract >/dev/null
+          test -x squashfs-root/usr/bin/interlinea-core
+          # Every library the app needs is found.
+          ! (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ldd usr/bin/Interlinea | grep "not found")
+          QT_QPA_PLATFORM=offscreen INTERLINEA_DATA="$RUNNER_TEMP/data" timeout 15 "$app" & pid=$!
+          sleep 8
+          kill -0 "$pid"
+          pgrep -f interlinea-core
+          kill "$pid" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux
+          path: Interlinea-*.AppImage
+          if-no-files-found: error
+
+  desktop-windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          cache: true
+      - name: build
+        run: |
+          cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release "-DINTERLINEA_VERSION=$env:VERSION"
+          cmake --build build/desktop --config Release --parallel 4 --target interlinea interlinea_core
+      - name: the app with the Qt it needs
+        run: |
+          New-Item -ItemType Directory -Force stage/Interlinea | Out-Null
+          Copy-Item build/desktop/Release/Interlinea.exe, build/desktop/Release/interlinea-core.exe stage/Interlinea/
+          windeployqt --release --compiler-runtime --no-system-d3d-compiler --no-opengl-sw stage/Interlinea/Interlinea.exe
+          Copy-Item README.md, CHANGELOG.md stage/Interlinea/
+      - name: the staged app starts, with its core
+        shell: bash
+        run: |
+          INTERLINEA_DATA="$RUNNER_TEMP/data" stage/Interlinea/Interlinea.exe & pid=$!
+          sleep 12
+          tasklist | grep -i "Interlinea.exe"
+          tasklist | grep -i "interlinea-core.exe"
+          taskkill //F //IM Interlinea.exe || true
+          taskkill //F //IM interlinea-core.exe || true
+      - name: installer and portable folder
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress }
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DAppVersion=$env:VERSION" "/DSourceDir=$PWD\stage\Interlinea" "/DOutputDir=$PWD\out" desktop\packaging\interlinea.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path stage/Interlinea -DestinationPath "out/Interlinea-$env:VERSION-windows-x64-portable.zip"
+          Get-ChildItem out
+      - name: the installer installs, and what it installed starts
+        shell: bash
+        run: |
+          "out/Interlinea-$VERSION-windows-x64-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //CURRENTUSER //NORESTART "//DIR=$(cygpath -w "$RUNNER_TEMP/installed")" //LOG="$(cygpath -w "$RUNNER_TEMP/setup.log")"
+          test -f "$RUNNER_TEMP/installed/Interlinea.exe"
+          test -f "$RUNNER_TEMP/installed/interlinea-core.exe"
+          test -f "$RUNNER_TEMP/installed/unins000.exe"
+          INTERLINEA_DATA="$RUNNER_TEMP/data2" "$RUNNER_TEMP/installed/Interlinea.exe" & sleep 12
+          tasklist | grep -i "interlinea-core.exe"
+          taskkill //F //IM Interlinea.exe || true
+          taskkill //F //IM interlinea-core.exe || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: out/*
+          if-no-files-found: error
+
+  desktop-macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.*'
+          cache: true
+      - name: build, for Apple and Intel processors
+        run: |
+          cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release -DINTERLINEA_VERSION="$VERSION" \
+            "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          cmake --build build/desktop --parallel 4 --target interlinea interlinea_core
+          # The core for both processors, in one file.
+          app=build/desktop/Interlinea.app
+          for arch in arm64 amd64; do
+            CGO_ENABLED=0 GOOS=darwin GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "core-$arch" ./cmd/interlinea-core
+          done
+          lipo -create -output "$app/Contents/MacOS/interlinea-core" core-arm64 core-amd64
+          lipo -archs "$app/Contents/MacOS/Interlinea" | grep -q x86_64
+          lipo -archs "$app/Contents/MacOS/Interlinea" | grep -q arm64
+      - name: disk image
+        run: |
+          app=build/desktop/Interlinea.app
+          macdeployqt "$app"
+          # Signed for this computer only: there is no developer certificate.
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep "$app"
+          mkdir -p dmg out
+          cp -R "$app" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Interlinea $VERSION" -srcfolder dmg -ov -format UDZO "out/Interlinea-$VERSION-macos-universal.dmg"
+      - name: the app from the disk image starts, with its core
+        run: |
+          hdiutil attach "out/Interlinea-$VERSION-macos-universal.dmg" -mountpoint /Volumes/InterlineaTry -nobrowse
+          cp -R /Volumes/InterlineaTry/Interlinea.app "$RUNNER_TEMP/"
+          hdiutil detach /Volumes/InterlineaTry
+          INTERLINEA_DATA="$RUNNER_TEMP/data" "$RUNNER_TEMP/Interlinea.app/Contents/MacOS/Interlinea" & pid=$!
+          sleep 10
+          kill -0 "$pid"
+          pgrep -f interlinea-core
+          kill "$pid" || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    needs: [version, server, image, desktop-linux, desktop-windows, desktop-macos]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - name: checksums and notes
+        run: |
+          (cd files && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+          # The version's section of the changelog, without its heading.
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" {on=1; next}
+            on && /^## \[/ {exit}
+            on && /^\[[^]]+\]: / {next}
+            on {print}' CHANGELOG.md > notes.md
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          cat >> notes.md <<EOF
+
+          ## Installing
+
+          **Team server, with Docker:** \`docker pull ghcr.io/$owner/interlinea-server:$VERSION\`, or \`compose.yaml\` from the repository for the server on PostgreSQL. Without Docker, unpack \`interlinea-server-$VERSION-<system>\` and start \`interlinea-server -web web\`.
+
+          **Desktop app:** Windows: \`Interlinea-$VERSION-windows-x64-setup.exe\` (or the portable folder). macOS: \`Interlinea-$VERSION-macos-universal.dmg\`; the app is not signed with a developer certificate, so open it the first time with a right click and Open. Linux: make \`Interlinea-$VERSION-linux-x86_64.AppImage\` executable and start it.
+
+          **Web client alone:** \`interlinea-web-$VERSION.zip\` is the client as static files, for any web server.
+
+          \`SHA256SUMS\` has the checksums of all files. Setting up a server is described in docs/running.md.
+          EOF
+          sed -i 's/^          //' notes.md
+          cat notes.md
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; case "$VERSION" in *-*) pre="--prerelease";; esac
+          gh release create "$GITHUB_REF_NAME" files/* --title "Interlinea $VERSION" --notes-file notes.md $pre

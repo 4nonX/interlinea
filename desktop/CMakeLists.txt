@@ -98,6 +98,18 @@ set_target_properties(interlinea PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
 
+# The app's icon: in the program file on Windows, in the bundle on macOS,
+# and as the icon of its windows everywhere.
+qt_add_resources(interlinea "appicon" PREFIX "/" BASE packaging FILES packaging/interlinea.png)
+if(WIN32)
+    enable_language(RC)
+    target_sources(interlinea PRIVATE packaging/interlinea.rc)
+elseif(APPLE)
+    target_sources(interlinea PRIVATE packaging/interlinea.icns)
+    set_source_files_properties(packaging/interlinea.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    set_target_properties(interlinea PROPERTIES MACOSX_BUNDLE_ICON_FILE interlinea.icns)
+endif()
+
 # interlinea-core goes next to the app (inside the bundle on macOS), where
 # the app looks for it.
 if(INTERLINEA_BUILD_CORE)
@@ -108,7 +120,7 @@ if(INTERLINEA_BUILD_CORE)
         set(CORE_DIR "$<TARGET_FILE_DIR:interlinea>")
     endif()
     add_custom_target(interlinea_core ALL
-        COMMAND ${GO_EXECUTABLE} build -trimpath -o "${CORE_DIR}/interlinea-core${CMAKE_EXECUTABLE_SUFFIX}" ./cmd/interlinea-core
+        COMMAND ${GO_EXECUTABLE} build -trimpath -ldflags "-s -w -X main.version=${INTERLINEA_VERSION}" -o "${CORE_DIR}/interlinea-core${CMAKE_EXECUTABLE_SUFFIX}" ./cmd/interlinea-core
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
         COMMENT "Building interlinea-core"
         VERBATIM)
