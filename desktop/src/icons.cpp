@@ -59,6 +59,126 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(5, 20);
         path.cubicTo(5.5, 15, 8.5, 13.5, 12, 13.5);
         path.cubicTo(15.5, 13.5, 18.5, 15, 19, 20);
+    } else if (name == QLatin1String("arrow-left")) {
+        path.moveTo(19, 12);
+        path.lineTo(5, 12);
+        path.moveTo(11, 6);
+        path.lineTo(5, 12);
+        path.lineTo(11, 18);
+    } else if (name == QLatin1String("bar-chart")) {
+        for (const auto &[x, top] : {std::pair{6.0, 13.0}, {12.0, 5.0}, {18.0, 9.0}}) {
+            path.moveTo(x, 20);
+            path.lineTo(x, top);
+        }
+    } else if (name == QLatin1String("eye")) {
+        path.moveTo(2.5, 12);
+        path.cubicTo(5, 6.5, 8.5, 5, 12, 5);
+        path.cubicTo(15.5, 5, 19, 6.5, 21.5, 12);
+        path.cubicTo(19, 17.5, 15.5, 19, 12, 19);
+        path.cubicTo(8.5, 19, 5, 17.5, 2.5, 12);
+        path.addEllipse(QPointF(12, 12), 3, 3);
+    } else if (name == QLatin1String("download") || name == QLatin1String("upload")) {
+        const bool down = name == QLatin1String("download");
+        path.moveTo(4, 15);
+        path.lineTo(4, 19);
+        path.lineTo(20, 19);
+        path.lineTo(20, 15);
+        path.moveTo(12, 4);
+        path.lineTo(12, 15);
+        path.moveTo(7, down ? 10 : 9);
+        path.lineTo(12, down ? 15 : 4);
+        path.lineTo(17, down ? 10 : 9);
+    } else if (name == QLatin1String("git-merge")) {
+        path.addEllipse(QPointF(18, 18), 2.5, 2.5);
+        path.addEllipse(QPointF(6, 6), 2.5, 2.5);
+        path.moveTo(6, 8.5);
+        path.lineTo(6, 21);
+        path.moveTo(6, 9);
+        path.cubicTo(6, 14, 10, 18, 15.5, 18);
+    } else if (name == QLatin1String("check")) {
+        path.moveTo(5, 12.5);
+        path.lineTo(10, 17.5);
+        path.lineTo(19.5, 7);
+    } else if (name == QLatin1String("pencil-line")) {
+        path.moveTo(13, 21);
+        path.lineTo(21, 21);
+        path.moveTo(16.5, 3.5);
+        path.lineTo(20.5, 7.5);
+        path.lineTo(8, 20);
+        path.lineTo(3.5, 21);
+        path.lineTo(4.5, 16.5);
+        path.closeSubpath();
+    } else if (name == QLatin1String("circle-dashed")) {
+        for (int i = 0; i < 6; ++i) {
+            path.arcMoveTo(QRectF(3.5, 3.5, 17, 17), i * 60 + 10);
+            path.arcTo(QRectF(3.5, 3.5, 17, 17), i * 60 + 10, 32);
+        }
+    } else if (name == QLatin1String("lock")) {
+        path.addRoundedRect(QRectF(5, 11, 14, 10), 2, 2);
+        path.moveTo(8, 11);
+        path.lineTo(8, 7.5);
+        path.arcTo(QRectF(8, 3.5, 8, 8), 180, -180);
+        path.lineTo(16, 11);
+    } else if (name == QLatin1String("alert-triangle")) {
+        path.moveTo(12, 3.5);
+        path.lineTo(21.5, 20);
+        path.lineTo(2.5, 20);
+        path.closeSubpath();
+        path.moveTo(12, 9.5);
+        path.lineTo(12, 13.5);
+        path.moveTo(12, 16.8);
+        path.lineTo(12, 17);
+    } else if (name == QLatin1String("tag")) {
+        path.moveTo(3, 3);
+        path.lineTo(12, 3);
+        path.lineTo(21, 12);
+        path.lineTo(12, 21);
+        path.lineTo(3, 12);
+        path.closeSubpath();
+        path.addEllipse(QPointF(7.5, 7.5), 1.2, 1.2);
+    } else if (name == QLatin1String("plus") || name == QLatin1String("x")) {
+        if (name == QLatin1String("plus")) {
+            path.moveTo(12, 5);
+            path.lineTo(12, 19);
+            path.moveTo(5, 12);
+            path.lineTo(19, 12);
+        } else {
+            path.moveTo(6, 6);
+            path.lineTo(18, 18);
+            path.moveTo(18, 6);
+            path.lineTo(6, 18);
+        }
+    } else if (name == QLatin1String("search")) {
+        path.addEllipse(QPointF(11, 11), 6.5, 6.5);
+        path.moveTo(16, 16);
+        path.lineTo(20.5, 20.5);
+    } else if (name == QLatin1String("copy")) {
+        path.addRoundedRect(QRectF(8, 8, 13, 13), 2, 2);
+        path.moveTo(4, 16);
+        path.lineTo(4, 5);
+        path.quadTo(4, 3, 6, 3);
+        path.lineTo(16, 3);
+    } else if (name == QLatin1String("keyboard")) {
+        path.addRoundedRect(QRectF(2.5, 5.5, 19, 13), 2, 2);
+        for (double x : {6.5, 10.0, 13.5, 17.0})
+            path.addRect(QRectF(x, 9, 0.6, 0.6));
+        path.moveTo(7, 15);
+        path.lineTo(17, 15);
+    } else if (name == QLatin1String("repeat")) {
+        path.moveTo(4, 11);
+        path.lineTo(4, 9);
+        path.quadTo(4, 7, 6, 7);
+        path.lineTo(19, 7);
+        path.moveTo(16, 4);
+        path.lineTo(19, 7);
+        path.lineTo(16, 10);
+        path.moveTo(20, 13);
+        path.lineTo(20, 15);
+        path.quadTo(20, 17, 18, 17);
+        path.lineTo(5, 17);
+        path.moveTo(8, 20);
+        path.lineTo(5, 17);
+        path.lineTo(8, 14);
     } else { // settings: three sliders
         for (int i = 0; i < 3; ++i) {
             const double y = 6 + i * 6;
@@ -75,12 +195,14 @@ void draw(QPainter &p, const QString &name)
 
 class LineIcon : public QIconEngine {
 public:
-    explicit LineIcon(const QString &name) : m_name(name) {}
-    QIconEngine *clone() const override { return new LineIcon(m_name); }
+    LineIcon(const QString &name, const QColor &color) : m_name(name), m_color(color) {}
+    QIconEngine *clone() const override { return new LineIcon(m_name, m_color); }
     void paint(QPainter *p, const QRect &rect, QIcon::Mode mode, QIcon::State) override
     {
         const QPalette pal = QApplication::palette();
         QColor c = mode == QIcon::Selected ? pal.color(QPalette::Link) : pal.color(QPalette::WindowText);
+        if (m_color.isValid())
+            c = m_color;
         if (mode == QIcon::Disabled)
             c = pal.color(QPalette::Disabled, QPalette::WindowText);
         p->save();
@@ -106,13 +228,29 @@ public:
 
 private:
     QString m_name;
+    QColor m_color;
 };
 
 } // namespace
 
 namespace Icons {
-QIcon get(const QString &name)
+QIcon get(const QString &name, const QColor &color)
 {
-    return QIcon(new LineIcon(name));
+    return QIcon(new LineIcon(name, color));
+}
+
+void paint(QPainter &p, const QRectF &rect, const QString &name, const QColor &color, double width)
+{
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.translate(rect.topLeft());
+    p.scale(rect.width() / 24.0, rect.height() / 24.0);
+    QPen pen(color, width);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    p.setPen(pen);
+    p.setBrush(Qt::NoBrush);
+    draw(p, name);
+    p.restore();
 }
 }

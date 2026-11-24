@@ -45,6 +45,12 @@ add_library(interlinea_app STATIC
     src/theme.cpp
     src/icons.cpp
     src/progressdelegate.cpp
+    src/segmentcontent.cpp
+    src/segmentmodel.cpp
+    src/targeteditor.cpp
+    src/editorpage.cpp
+    src/bands.cpp
+    src/flowlayout.cpp
 )
 target_include_directories(interlinea_app PUBLIC src)
 target_compile_definitions(interlinea_app PUBLIC INTERLINEA_VERSION="${INTERLINEA_VERSION}")
@@ -99,7 +105,7 @@ if(INTERLINEA_BUILD_CORE)
 endif()
 
 enable_testing()
-foreach(name apiclient eventfeed secretstore providersignin connections ui projects endtoend)
+foreach(name apiclient eventfeed secretstore providersignin connections ui projects editor endtoend)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_app Qt6::Test)

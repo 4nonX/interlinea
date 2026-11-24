@@ -130,16 +130,27 @@ QWidget *ProjectPage::filesTab()
     m_files->setItemDelegateForColumn(2, new ProgressDelegate(m_files));
     l->addWidget(m_files, 1);
     auto *row = new QHBoxLayout;
+    m_openEditor = new QPushButton(tr("Tra&nslate"), w);
+    m_openEditor->setToolTip(tr("Opens the file in the editor, in the language chosen."));
+    Theme::primary(m_openEditor);
     m_saveTranslated = new QPushButton(tr("Save &translated file…"), w);
     m_returnPackage = new QPushButton(tr("Save &return package…"), w);
     m_addFiles = new QPushButton(tr("A&dd files…"), w);
     m_removeFile = new QPushButton(tr("Re&move file…"), w);
     m_pretranslate = new QPushButton(tr("Fill from &memories…"), w);
     m_pretranslate->setToolTip(tr("Fills empty segments with the best memory match, as the preparation settings say."));
-    for (QPushButton *b : {m_saveTranslated, m_returnPackage, m_addFiles, m_removeFile, m_pretranslate})
+    for (QPushButton *b : {m_openEditor, m_saveTranslated, m_returnPackage, m_addFiles, m_removeFile, m_pretranslate})
         row->addWidget(b);
     row->addStretch();
     l->addLayout(row);
+    connect(m_openEditor, &QPushButton::clicked, this, [this] {
+        if (!currentFile().isEmpty() && !currentLang().isEmpty())
+            emit openEditor(currentFile(), currentLang());
+    });
+    connect(m_files, &QTreeWidget::itemActivated, this, [this] {
+        if (!currentFile().isEmpty() && !currentLang().isEmpty())
+            emit openEditor(currentFile(), currentLang());
+    });
     connect(m_saveTranslated, &QPushButton::clicked, this, &ProjectPage::saveTranslated);
     connect(m_returnPackage, &QPushButton::clicked, this, &ProjectPage::saveReturnPackage);
     connect(m_addFiles, &QPushButton::clicked, this, &ProjectPage::addFiles);
@@ -147,6 +158,7 @@ QWidget *ProjectPage::filesTab()
     connect(m_pretranslate, &QPushButton::clicked, this, &ProjectPage::pretranslate);
     connect(m_files, &QTreeWidget::currentItemChanged, this, [this] {
         m_saveTranslated->setEnabled(!currentFile().isEmpty());
+        m_openEditor->setEnabled(!currentFile().isEmpty() && !currentLang().isEmpty());
         m_removeFile->setEnabled(manages() && !currentFile().isEmpty());
     });
     return w;
@@ -415,6 +427,7 @@ void ProjectPage::showProgress(const QJsonArray &progress)
             m_files->setCurrentItem(item);
     }
     m_saveTranslated->setEnabled(!currentFile().isEmpty());
+    m_openEditor->setEnabled(!currentFile().isEmpty() && !currentLang().isEmpty());
     m_removeFile->setEnabled(manages() && !currentFile().isEmpty());
 }
 

@@ -32,6 +32,8 @@ signals:
     void back();
     // The project was deleted.
     void gone();
+    // Translate a file into a language.
+    void openEditor(const QString &file, const QString &lang);
 
 private:
     QWidget *filesTab();
@@ -80,6 +82,7 @@ private:
     QTabWidget *m_tabs;
     // Files.
     QTreeWidget *m_files;
+    QPushButton *m_openEditor;
     QPushButton *m_saveTranslated;
     QPushButton *m_returnPackage;
     QPushButton *m_addFiles;

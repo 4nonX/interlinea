@@ -1,6 +1,11 @@
 #include "theme.h"
 
+#include "icons.h"
+
 #include <QApplication>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
 #include <QFont>
 #include <QFontDatabase>
 #include <QPalette>
@@ -24,12 +29,24 @@ bool g_dark = false;
 struct Tokens {
     const char *bg, *rail, *surface, *surface2, *border, *borderStrong, *text, *text2, *text3, *accent, *accentHover, *accentWeak, *accentText,
         *onAccent, *danger;
+    // The web app's status and editor colours (styles.css).
+    const char *ok, *okBg, *warn, *warnBg, *dangerBg, *server, *serverBg, *rowLine, *activeRow, *termHit, *termLine, *mark, *tagBg,
+        *count, *track;
 };
 
 const Tokens light{"#f3f5f8", "#e8ecf1", "#ffffff", "#f7f9fb", "#d8dde4", "#b9c1cc", "#1a1f26", "#4c5562", "#66707c",
-                   "#1f5bd6", "#1a4fbd", "#e8effd", "#1a4aae", "#ffffff", "#aa2219"};
+                   "#1f5bd6", "#1a4db6", "#e8effd", "#1a4aae", "#ffffff", "#aa2219",
+                   "#17703f", "#e5f3eb", "#7f5300", "#fff2d4", "#fce8e6", "#4a3aa8", "#eeebfb", "#e9ecf0", "#f4f7fd",
+                   "#eef3fd", "#8fb0ef", "#ffe3a3", "#ebe7f7", "#e1e6ed", "#e3e7ed"};
 const Tokens dark{"#14171c", "#1a1e24", "#1e232a", "#232931", "#2f3640", "#4a5463", "#e6e9ee", "#b6bec9", "#98a1ad",
-                  "#6b9bff", "#86adff", "#1f2c47", "#a9c4ff", "#0c1220", "#ff8a80"};
+                  "#6b9bff", "#86adff", "#1f2c47", "#a9c4ff", "#0c1220", "#ff8a80",
+                  "#5fd08f", "#1c3326", "#f0c060", "#3a2f17", "#3d1f1d", "#b7a9ff", "#2a2545", "#2a3038", "#1d2636",
+                  "#1f2a40", "#4e6fb0", "#6b5a1f", "#2e2a45", "#2f3640", "#2f3640"};
+
+const Tokens &tokens()
+{
+    return g_dark ? dark : light;
+}
 
 bool highContrast()
 {
@@ -143,11 +160,60 @@ QStatusBar::item { border: 0; }
 QMenu { background: @surface; border: 1px solid @border; border-radius: 8px; padding: 4px; }
 QMenu::item { padding: 6px 16px; border-radius: 6px; }
 QMenu::item:selected { background: @accentWeak; color: @accentText; }
+
+/* As the web app's .btn-small and .btn-quiet */
+QPushButton[small="true"] { padding: 5px 10px; min-height: 16px; font-size: 13px; font-weight: 500; }
+QPushButton[small="true"]:focus { padding: 4px 9px; }
+QPushButton[quiet="true"] { border-color: transparent; background: transparent; color: @accentText; }
+QPushButton[quiet="true"]:hover { background: @accentWeak; border-color: transparent; }
+QPushButton[quiet="true"]:focus { border: 2px solid @accent; }
+QPushButton[tiny="true"] { padding: 2px 8px; min-height: 16px; font-size: 12px; border-color: transparent; background: transparent; color: inherit; }
+QPushButton[tiny="true"]:hover { background: rgba(127,140,160,0.16); }
+
+/* Labels as the web's chips */
+QLabel[kbd="true"] { border: 1px solid @border; border-bottom: 2px solid @border; border-radius: 4px; background: @surface2; color: @text3; font-size: 11px; padding: 0 4px; }
+QLabel[chip="lang"] { border: 1px solid @border; border-radius: 4px; color: @text2; font-size: 11px; font-weight: 600; padding: 0 5px; }
+QLabel[role="muted"] { color: @text3; }
+QLabel[role="h1"] { font-size: 16px; font-weight: 600; }
+QLabel[role="meta"] { color: @text3; font-size: 13px; }
+QLabel[role="sectionTitle"] { color: @text2; font-size: 13px; font-weight: 600; }
+QLabel[role="count"] { background: @count; color: @text2; border-radius: 8px; font-size: 11px; padding: 0 6px; }
+QLabel[role="progress"] { color: @text3; font-size: 12px; }
+
+/* .select-small */
+QComboBox[small="true"] { padding: 1px 6px; min-height: 16px; font-size: 13px; }
+QComboBox[small="true"]:focus { padding: 0 5px; }
+
+/* The segmented control (.segmented) */
+QFrame#segmented { border: 1px solid @border; border-radius: 8px; background: @surface2; }
+QFrame#segmented QPushButton { border: 0; border-radius: 6px; background: transparent; padding: 3px 10px; min-height: 16px; font-size: 13px; font-weight: 500; color: @text2; }
+QFrame#segmented QPushButton:checked { background: @surface; color: @text; }
+QFrame#segmented QPushButton:focus { border: 2px solid @accent; padding: 1px 8px; }
+
+/* The editor */
+QFrame#editorBar { background: @surface; border: 0; border-bottom: 1px solid @border; }
+QProgressBar#track { background: @track; border: 0; border-radius: 3px; max-height: 6px; min-height: 6px; }
+QProgressBar#track::chunk { background: @ok; border-radius: 3px; }
+QTableView#segments { border: 0; border-radius: 0; background: @surface; }
+QTableView#segments:focus { border: 0; }
+QScrollArea#results, QWidget#resultsBody { background: @bg; border: 0; }
+QScrollArea#results { border-left: 1px solid @border; }
+QFrame#result { text-align: left; border: 1px solid @border; border-radius: 6px; background: @surface; padding: 8px 12px; }
+QFrame#result:hover { border-color: @borderStrong; }
+QFrame#result:focus, QFrame#result[selected="true"] { border: 2px solid @accent; padding: 7px 11px; }
+QFrame#issue { background: @warnBg; border-radius: 6px; }
+QFrame#issue QLabel { color: @warn; }
+QFrame#issue[forbidden="true"] { background: @dangerBg; }
+QFrame#issue[forbidden="true"] QLabel { color: @danger; }
+QTextEdit#targetEditor { background: @surface; border: 2px solid @accent; border-radius: 0; padding: 10px; }
+QTextBrowser#activeSource { background: transparent; border: 0; padding: 0; }
 )");
     const std::pair<const char *, const char *> vars[] = {
         {"@borderStrong", t.borderStrong}, {"@accentHover", t.accentHover}, {"@accentWeak", t.accentWeak}, {"@accentText", t.accentText},
         {"@surface2", t.surface2},         {"@onAccent", t.onAccent},       {"@surface", t.surface},       {"@border", t.border},
         {"@accent", t.accent},             {"@danger", t.danger},           {"@text2", t.text2},           {"@text3", t.text3},
+        {"@dangerBg", t.dangerBg},         {"@warnBg", t.warnBg},           {"@okBg", t.okBg},             {"@count", t.count},
+        {"@track", t.track},               {"@warn", t.warn},               {"@ok", t.ok},
         {"@text", t.text},                 {"@rail", t.rail},               {"@bg", t.bg}};
     for (const auto &[k, v] : vars)
         s.replace(QLatin1String(k), QLatin1String(v));
@@ -254,6 +320,75 @@ void title(QWidget *label)
 void secondary(QWidget *label)
 {
     label->setProperty("role", QStringLiteral("secondary"));
+}
+
+void role(QWidget *w, const char *role)
+{
+    w->setProperty("role", QLatin1String(role));
+}
+
+void smallButton(QWidget *button)
+{
+    button->setProperty("small", true);
+}
+
+void quietButton(QWidget *button)
+{
+    button->setProperty("quiet", true);
+}
+
+QColor color(const char *name)
+{
+    const Tokens &t = tokens();
+    const std::pair<const char *, const char *> all[] = {
+        {"bg", t.bg},           {"surface", t.surface},     {"surface2", t.surface2},   {"border", t.border},
+        {"borderStrong", t.borderStrong}, {"text", t.text}, {"text2", t.text2},         {"text3", t.text3},
+        {"accent", t.accent},   {"accentWeak", t.accentWeak}, {"accentText", t.accentText}, {"danger", t.danger},
+        {"dangerBg", t.dangerBg}, {"ok", t.ok},             {"okBg", t.okBg},           {"warn", t.warn},
+        {"warnBg", t.warnBg},   {"server", t.server},       {"serverBg", t.serverBg},   {"rowLine", t.rowLine},
+        {"activeRow", t.activeRow}, {"termHit", t.termHit}, {"termLine", t.termLine},   {"mark", t.mark},
+        {"tagBg", t.tagBg},     {"count", t.count}};
+    for (const auto &[k, v] : all) {
+        if (qstrcmp(k, name) == 0)
+            return QColor(QLatin1String(v));
+    }
+    return QColor(QLatin1String(t.text));
+}
+
+namespace {
+// A button sized by what it holds: icon, text and key chip.
+class KeyButton : public QPushButton {
+public:
+    using QPushButton::QPushButton;
+    QSize sizeHint() const override { return layout() ? layout()->sizeHint().expandedTo(QSize(0, 28)) : QPushButton::sizeHint(); }
+    QSize minimumSizeHint() const override { return sizeHint(); }
+};
+}
+
+QPushButton *keyButton(const QString &text, const QString &keys, const QString &icon, QWidget *parent)
+{
+    auto *b = new KeyButton(parent);
+    smallButton(b);
+    b->setAccessibleName(text);
+    b->setToolTip(keys);
+    auto *l = new QHBoxLayout(b);
+    l->setContentsMargins(9, 4, 5, 4);
+    l->setSpacing(5);
+    if (!icon.isEmpty()) {
+        auto *i = new QLabel(b);
+        i->setPixmap(Icons::get(icon).pixmap(14, 14));
+        i->setAttribute(Qt::WA_TransparentForMouseEvents);
+        l->addWidget(i);
+    }
+    auto *t = new QLabel(text, b);
+    t->setAttribute(Qt::WA_TransparentForMouseEvents);
+    t->setStyleSheet(QStringLiteral("font-size: 13px; font-weight: 500; background: transparent;"));
+    l->addWidget(t);
+    auto *k = new QLabel(keys, b);
+    k->setProperty("kbd", true);
+    k->setAttribute(Qt::WA_TransparentForMouseEvents);
+    l->addWidget(k);
+    return b;
 }
 
 } // namespace Theme

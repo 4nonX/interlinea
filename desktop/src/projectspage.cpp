@@ -1,5 +1,9 @@
 #include "projectspage.h"
 
+#include "editorpage.h"
+
+#include <QTimer>
+
 #include "connectionmanager.h"
 #include "newprojectdialog.h"
 #include "projectpage.h"
@@ -111,6 +115,7 @@ void ProjectsPage::open(const QString &connectionId, qint64 projectId)
     Connection *c = m_manager->find(connectionId);
     if (!c)
         return;
+    closeEditor();
     if (m_project) {
         m_stack->removeWidget(m_project);
         m_project->deleteLater();
@@ -119,6 +124,7 @@ void ProjectsPage::open(const QString &connectionId, qint64 projectId)
     m_stack->addWidget(m_project);
     m_stack->setCurrentWidget(m_project);
     connect(m_project, &ProjectPage::back, this, &ProjectsPage::showList);
+    connect(m_project, &ProjectPage::openEditor, this, &ProjectsPage::edit);
     connect(m_project, &ProjectPage::gone, this, [this] {
         showList();
         if (Connection *conn = m_project ? m_project->connection() : nullptr)
@@ -127,8 +133,46 @@ void ProjectsPage::open(const QString &connectionId, qint64 projectId)
     m_project->setFocus();
 }
 
+void ProjectsPage::edit(const QString &file, const QString &lang)
+{
+    if (!m_project || !m_project->connection())
+        return;
+    closeEditor();
+    m_editor = new EditorPage(m_project->connection(), m_project->projectId(), file, lang, m_stack);
+    m_stack->addWidget(m_editor);
+    m_stack->setCurrentWidget(m_editor);
+    connect(m_editor, &EditorPage::back, this, &ProjectsPage::showList);
+    connect(m_editor, &EditorPage::openProject, this, [this] {
+        closeEditor();
+        if (m_project) {
+            m_stack->setCurrentWidget(m_project);
+            m_project->setFocus();
+        }
+    });
+    connect(m_editor, &EditorPage::openFile, this, [this](const QString &f, const QString &l) {
+        QTimer::singleShot(0, this, [this, f, l] { edit(f, l); });
+    });
+    connect(m_editor, &EditorPage::openReview, this, [this](const QString &termbase) { emit navigate(QStringLiteral("terminology"), termbase); });
+    m_editor->grid()->setFocus();
+}
+
+void ProjectsPage::closeEditor()
+{
+    if (!m_editor)
+        return;
+    m_editor->saveActive();
+    m_stack->removeWidget(m_editor);
+    // Hidden at once: until it is deleted, its keys would clash with the
+    // next editor's.
+    m_editor->hide();
+    m_editor->setEnabled(false);
+    m_editor->deleteLater();
+    m_editor = nullptr;
+}
+
 void ProjectsPage::showList()
 {
+    closeEditor();
     m_stack->setCurrentIndex(0);
     m_table->setFocus();
 }

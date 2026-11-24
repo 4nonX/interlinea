@@ -1,6 +1,9 @@
 #pragma once
 
 class QApplication;
+class QColor;
+class QPushButton;
+class QString;
 class QWidget;
 
 // Interlinea's look, from the design system the web app shares
@@ -21,4 +24,16 @@ void primary(QWidget *button);
 void title(QWidget *label);
 // Marks a label as secondary text (hints, details).
 void secondary(QWidget *label);
+// Sets a widget's role for the style sheet ("h1", "meta", "muted",
+// "sectionTitle", "count", "progress").
+void role(QWidget *w, const char *role);
+// The web app's .btn-small and .btn-quiet.
+void smallButton(QWidget *button);
+void quietButton(QWidget *button);
+// A colour of the design system by its web name ("ok", "warnBg",
+// "accent", …), in the current light or dark variant.
+QColor color(const char *name);
+// A small button with an icon, its text and its keys in a chip, as the
+// web editor's tool buttons ("Copy source  Ctrl+Ins").
+QPushButton *keyButton(const QString &text, const QString &keys, const QString &icon, QWidget *parent);
 }
