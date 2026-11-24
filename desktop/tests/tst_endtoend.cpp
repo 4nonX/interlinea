@@ -332,7 +332,7 @@ private slots:
         const QString admin = qEnvironmentVariable("INTERLINEA_TEAM_USER");
         QVERIFY(byName<Web::Clickable>(&page, QStringLiteral("account:%1").arg(admin)));
         QVERIFY(label(&page, QStringLiteral("Choose an account to see and change it.")));
-        QVERIFY(label(&page, QStringLiteral("The people on %1. Roles go up from read to manage; each includes the ones before it.").arg(team->displayName())));
+        QVERIFY(label(&page, QStringLiteral("The people on %1. A role is a set of permissions: five come with the server, each including the ones before it, and you define others below.").arg(team->displayName())));
 
         // A new account: what the server refuses is said at its field.
         QWidget *form = byName<QWidget>(&page, QStringLiteral("newAccount"));
@@ -406,6 +406,95 @@ private slots:
             QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && page.grants().size() == left - 1, 10000);
         }
         QCOMPARE(page.message(), QStringLiteral("Took the role away"));
+
+        // Roles of one's own: a reviewer who suggests and approves but
+        // does not edit, defined, given, changed, renamed and deleted.
+        for (const QJsonValue &v : wait(api->get(QStringLiteral("/api/roles"))).array()) {
+            if (!v.toObject().value("builtIn").toBool())
+                wait(api->del(QStringLiteral("/api/roles/") + ApiClient::seg(v.toObject().value("name").toString())));
+        }
+        page.reload();
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && page.roles().size() == 5, 10000);
+        QTableWidget *roleTable = nullptr;
+        QTRY_VERIFY((roleTable = byName<QTableWidget>(&page, QStringLiteral("roleTable"))));
+        QCOMPARE(roleTable->rowCount(), 5);
+        // The built-in roles show what they allow and are fixed.
+        QVERIFY(byName<QCheckBox>(&page, QStringLiteral("allows:edit:suggest"))->isChecked());
+        QVERIFY(!byName<QCheckBox>(&page, QStringLiteral("allows:edit:approve"))->isChecked());
+        QVERIFY(!byName<QCheckBox>(&page, QStringLiteral("allows:edit:approve"))->isEnabled());
+        QVERIFY(label(&page, QStringLiteral("Comes with the server")));
+        QVERIFY(!byName<QPushButton>(&page, QStringLiteral("makeRole"))->isEnabled());
+        byName<QLineEdit>(&page, QStringLiteral("newRoleName"))->setText(QStringLiteral("Reviewer"));
+        QVERIFY(byName<QCheckBox>(&page, QStringLiteral("newRoleAllows:read"))->isChecked() && !byName<QCheckBox>(&page, QStringLiteral("newRoleAllows:read"))->isEnabled());
+        byName<QCheckBox>(&page, QStringLiteral("newRoleAllows:suggest"))->click();
+        byName<QCheckBox>(&page, QStringLiteral("newRoleAllows:approve"))->click();
+        byName<QPushButton>(&page, QStringLiteral("makeRole"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Made the role Reviewer"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && page.roles().size() == 6, 10000);
+        QTRY_VERIFY(byName<QCheckBox>(&page, QStringLiteral("allows:Reviewer:approve")) && byName<QCheckBox>(&page, QStringLiteral("allows:Reviewer:approve"))->isChecked());
+        QVERIFY(!byName<QCheckBox>(&page, QStringLiteral("allows:Reviewer:edit"))->isChecked());
+        QCOMPARE(byName<QLineEdit>(&page, QStringLiteral("newRoleName"))->text(), QString());
+        // A name that is taken by a built-in role is refused, and said.
+        byName<QLineEdit>(&page, QStringLiteral("newRoleName"))->setText(QStringLiteral("Edit"));
+        byName<QPushButton>(&page, QStringLiteral("makeRole"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && byName<QLabel>(&page, QStringLiteral("roleProblem")), 10000);
+        byName<QLineEdit>(&page, QStringLiteral("newRoleName"))->clear();
+        // The role is offered where roles are given.
+        pick(byName<QComboBox>(&page, QStringLiteral("roleKind")), QStringLiteral("termbase"));
+        pick(byName<QComboBox>(&page, QStringLiteral("roleRole")), QStringLiteral("Reviewer"));
+        byName<QPushButton>(&page, QStringLiteral("give"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && page.grants().size() == 1 && page.grants().first().toObject().value("role").toString() == QStringLiteral("Reviewer"), 10000);
+        QTRY_VERIFY((roles = byName<QTableWidget>(&page, QStringLiteral("roles"))));
+        QCOMPARE(roles->item(0, 1)->data(Qt::AccessibleTextRole).toString(), QStringLiteral("Reviewer"));
+        // What the reviewer may do on a termbase, as the server sees it.
+        wait(api->del(QStringLiteral("/api/termbases/Rollenprobe")));
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Rollenprobe"}, {"languages", QJsonArray{"de-DE"}}}}})).ok());
+        const ApiResult benIn = wait(api->post(QStringLiteral("/api/auth/password"), QJsonObject{{"username", "ben.review"}, {"password", "a long enough password for ben"}, {"device", "role check"}}));
+        QVERIFY2(benIn.ok(), qPrintable(benIn.error.message));
+        ApiClient asBen(api->base(), benIn.object().value("token").toString());
+        QCOMPARE(wait(asBen.get(QStringLiteral("/api/termbases/Rollenprobe"))).object().value("role").toString(), QStringLiteral("read+suggest+approve"));
+        const QJsonObject probe{{"entry", QJsonObject{{"languages", QJsonArray{QJsonObject{{"lang", "de-DE"}, {"terms", QJsonArray{QJsonObject{{"text", "Probe"}}}}}}}}}};
+        QCOMPARE(wait(asBen.post(QStringLiteral("/api/termbases/Rollenprobe/entries"), probe)).status, 403);
+        // In use, the role cannot be deleted.
+        QTRY_VERIFY(byName<Web::ConfirmButton>(&page, QStringLiteral("deleteRole:Reviewer")));
+        QTRY_VERIFY(!byName<Web::ConfirmButton>(&page, QStringLiteral("deleteRole:Reviewer"))->button()->isEnabled());
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTRY_VERIFY_WITH_TIMEOUT(!page.busy(), 10000);
+            QTest::qWait(500);
+            page.resize(1280, 1500);
+            QTest::qWait(300);
+            page.grab().save(dir + QStringLiteral("/accounts-roles.png"));
+            page.resize(1280, 1000);
+        }
+        // Editing is added to it: Ben may add the entry at once.
+        byName<QCheckBox>(&page, QStringLiteral("allows:Reviewer:edit"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Reviewer now allows: edit"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy(), 10000);
+        QCOMPARE(wait(asBen.post(QStringLiteral("/api/termbases/Rollenprobe/entries"), probe)).status, 201);
+        // Renamed, the grant follows the role.
+        QLineEdit *roleName = nullptr;
+        QTRY_VERIFY((roleName = byName<QLineEdit>(&page, QStringLiteral("roleName:Reviewer"))));
+        roleName->setText(QStringLiteral("Lektorat"));
+        emit roleName->editingFinished();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Renamed the role to Lektorat"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && page.grants().size() == 1 && page.grants().first().toObject().value("role").toString() == QStringLiteral("Lektorat"), 10000);
+        // Taken from Ben, it can be deleted.
+        QTRY_VERIFY((roles = byName<QTableWidget>(&page, QStringLiteral("roles"))));
+        for (QPushButton *b : roles->findChildren<QPushButton *>()) {
+            if (b->text() == QStringLiteral("Remove")) {
+                b->click();
+                break;
+            }
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && page.grants().isEmpty(), 10000);
+        Web::ConfirmButton *deleteRole = nullptr;
+        QTRY_VERIFY((deleteRole = byName<Web::ConfirmButton>(&page, QStringLiteral("deleteRole:Lektorat"))) && deleteRole->button()->isEnabled());
+        deleteRole->button()->click();
+        deleteRole->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted the role Lektorat"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && page.roles().size() == 5, 10000);
+        wait(api->del(QStringLiteral("/api/termbases/Rollenprobe")));
+        wait(api->del(QStringLiteral("/api/users/%1/tokens").arg(ben)));
 
         // Ben signs in; the page lists it and ends it.
         const ApiResult token = wait(api->post(QStringLiteral("/api/auth/password"), QJsonObject{{"username", "ben.review"}, {"password", "a long enough password for ben"}, {"device", "test device"}}));

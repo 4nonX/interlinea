@@ -28,7 +28,7 @@ import (
 //	memory    a tmdb.Change
 //	termbase  a termdb.Change
 //	account   an authdb.Change of the person's own account or grants (all
-//	          of them for administrators)
+//	          of them for administrators), or of a role's definition
 //	presence  {"projectId": n}: who has which segment open changed
 //	reset     the client was too far behind; read everything again
 //
@@ -437,7 +437,9 @@ func (v *visibility) sees(ctx context.Context, ev any) (bool, error) {
 		case streamTermbase:
 			return v.termbase(ctx, e.termbase)
 		case streamAccount:
-			return v.me.User.Admin || e.userID == v.me.User.ID, nil
+			// A change to a role is nobody's own: it changes what
+			// everyone with that role may do.
+			return v.me.User.Admin || e.userID == v.me.User.ID || e.userID == 0, nil
 		}
 	}
 	return false, nil

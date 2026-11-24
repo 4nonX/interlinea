@@ -86,7 +86,6 @@ func (s *Server) termbaseRoleIn(ctx context.Context, me session, name string, pr
 	if err != nil {
 		return role, err
 	}
-	rank := map[authdb.Role]int{authdb.RoleRead: 1, authdb.RoleSuggest: 2, authdb.RoleEdit: 3, authdb.RoleApprove: 4, authdb.RoleManage: 5}
 	for _, p := range ps {
 		t := p.Settings.Terminology
 		if t.Location != project.Server || !strings.EqualFold(t.Termbase, name) {
@@ -105,9 +104,7 @@ func (s *Server) termbaseRoleIn(ctx context.Context, me session, name string, pr
 		case a.read():
 			via = authdb.RoleRead
 		}
-		if rank[via] > rank[role] {
-			role = via
-		}
+		role = authdb.Union(role, via)
 	}
 	return role, nil
 }

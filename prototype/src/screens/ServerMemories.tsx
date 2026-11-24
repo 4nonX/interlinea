@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { Download, Search, Upload } from "lucide-react";
 import { useStore } from "../store";
 import { errorText, useRemote } from "../remote";
-import { ApiError, type CatalogMemory, type Role } from "../server";
+import { allows, ApiError, type CatalogMemory, type Role } from "../server";
 import { download } from "../core";
 import { coreToRuns } from "../editor/model";
 import { fmtDate, fmtNum } from "../format";
@@ -125,8 +125,8 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
   const [query, setQuery] = useState("");
   const [inTarget, setInTarget] = useState(false);
   const [hits, setHits] = useState<Awaited<ReturnType<typeof api.memoryConcordance>> | null>(null);
-  const edit = ["edit", "approve", "manage"].includes(m.role);
-  const manage = m.role === "manage";
+  const edit = allows(m.role, "edit");
+  const manage = allows(m.role, "manage");
 
   async function search(e: FormEvent) {
     e.preventDefault();

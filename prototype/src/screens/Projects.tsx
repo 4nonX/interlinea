@@ -16,6 +16,7 @@ import { fmtDate, fmtNum, plural } from "../format";
 import { LangChip, LocationBadge, PageHeader } from "../components/ui";
 import { go } from "../App";
 import { remoteId, useRemote } from "../remote";
+import { allows } from "../server";
 import type { ServerProjectSummary } from "../server";
 
 export function Projects() {
@@ -368,7 +369,7 @@ function ServerProjects() {
                             {work.every((a) => a.done) ? ", done" : ""}
                           </div>
                         </>
-                      ) : p.access.role === "manage" ? (
+                      ) : allows(p.access.role, "manage") ? (
                         "Managing"
                       ) : p.access.role ? (
                         <span className="muted">No work given to you</span>

@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/4nonX/interlinea/auth/authdb"
 )
@@ -376,6 +377,70 @@ func (s *Server) revokeGrant(w http.ResponseWriter, r *http.Request, me session)
 		return
 	}
 	if err := s.cfg.Auth.RevokeGrant(r.Context(), uid, kind, resource, me.by()); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// listRoles lists the roles: the five that come with the server (read,
+// suggest, edit, approve, manage, each a permission and the ones before
+// it) and those the administrators defined, each with its permissions and
+// how many grants use it.
+//
+// Access: signed in.
+func (s *Server) listRoles(w http.ResponseWriter, r *http.Request, me session) {
+	roles, err := s.cfg.Auth.Roles(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, roles)
+}
+
+// roleRequest defines a role.
+type roleRequest struct {
+	// Name renames the role; leave it out to keep the name in the address.
+	Name string `json:"name,omitempty"`
+	// Permissions are what the role allows, of read, suggest, edit,
+	// approve and manage; read is always among them.
+	Permissions []authdb.Role `json:"permissions"`
+}
+
+// setRole defines a role as a set of permissions, or changes or renames
+// the one of that name. A change takes effect at once for everyone who has
+// the role. The five roles that come with the server are not changed.
+//
+// Access: administrators.
+func (s *Server) setRole(w http.ResponseWriter, r *http.Request, me session) {
+	var req roleRequest
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	at := r.PathValue("name")
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = at
+	}
+	// Renaming says so by a name that differs from the address.
+	was := ""
+	if !strings.EqualFold(strings.TrimSpace(at), name) {
+		was = at
+	}
+	def, err := s.cfg.Auth.SetRole(r.Context(), was, name, req.Permissions, me.by())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, def)
+}
+
+// deleteRole removes a role the administrators defined. A role people
+// have is not removed: give them another first.
+//
+// Access: administrators.
+func (s *Server) deleteRole(w http.ResponseWriter, r *http.Request, me session) {
+	if err := s.cfg.Auth.DeleteRole(r.Context(), r.PathValue("name"), me.by()); err != nil {
 		s.fail(w, r, err)
 		return
 	}

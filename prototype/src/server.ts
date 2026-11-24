@@ -215,7 +215,35 @@ export function providerResult(hash: string): { code?: string; error?: string; l
 
 // Types of the API's answers.
 
-export type Role = "read" | "suggest" | "edit" | "approve" | "manage";
+/** The single permissions, in their order. */
+export const PERMISSIONS = ["read", "suggest", "edit", "approve", "manage"] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+/**
+ * A role: one of the five that come with the server (each a permission and
+ * the ones before it), the name of one the administrators defined, or,
+ * where the server says what someone may do, a set of permissions joined
+ * by "+" ("read+suggest+approve").
+ */
+export type Role = string;
+
+/** A role as it is defined. */
+export interface RoleDef {
+  name: string;
+  permissions: Permission[];
+  /** The five that come with the server cannot be changed. */
+  builtIn: boolean;
+  /** How many grants use it. */
+  grants: number;
+}
+
+/** Whether what the server says someone may do includes a permission. */
+export function allows(role: string | undefined, need: Permission): boolean {
+  if (!role) return false;
+  const rank = PERMISSIONS.indexOf(role as Permission);
+  if (rank >= 0) return PERMISSIONS.indexOf(need) <= rank;
+  return role.split("+").includes(need);
+}
 
 export interface Access {
   role: Role | "";
@@ -474,6 +502,10 @@ export function client(conn: Connection) {
     signOut: () => send<void>("POST", "/api/auth/signout"),
     me: () => get<{ user: ServerUser }>("/api/me"),
     people: () => get<Person[]>("/api/people"),
+    roles: () => get<RoleDef[]>("/api/roles"),
+    setRole: (at: string, permissions: Permission[], name?: string) =>
+      send<RoleDef>("PUT", `/api/roles/${encodeURIComponent(at)}`, name ? { name, permissions } : { permissions }),
+    deleteRole: (name: string) => send<void>("DELETE", `/api/roles/${encodeURIComponent(name)}`),
     catalog: () => get<{ memories: CatalogMemory[]; termbases: CatalogTermbase[] }>("/api/catalog"),
     projects: () => get<ServerProjectSummary[]>("/api/projects"),
     project: (id: number) => get<ServerProject>(p(id)),

@@ -26,6 +26,7 @@ import {
   follow,
   providerResult,
   providerSignInURL,
+  allows,
   serverInfo,
   setUpServer,
   signInWithPassword,
@@ -36,6 +37,7 @@ import {
   type FeedEvent,
   type Person,
   type Presence,
+  type RoleDef,
   type ServerInfo,
   type ServerProject,
   type ServerProjectSummary,
@@ -127,7 +129,7 @@ export function covering(
 }
 
 /** Whether a role lets someone change every segment of a project. */
-export const editsAll = (role: string) => ["edit", "approve", "manage"].includes(role);
+export const editsAll = (role: string) => allows(role, "edit");
 
 interface Remote {
   conn: Connection | null;
@@ -141,6 +143,8 @@ interface Remote {
   /** The signed-in person's work, in every project. */
   work: Assignment[];
   people: Person[];
+  /** The roles of the server: those that come with it and those defined. */
+  roles: RoleDef[];
   error: string;
   check(url: string): Promise<ServerInfo>;
   signIn(url: string, username: string, password: string): Promise<void>;
@@ -225,6 +229,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<ServerProjectSummary[] | null>(null);
   const [work, setWork] = useState<Assignment[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
+  const [roles, setRoles] = useState<RoleDef[]>([]);
   const [error, setError] = useState("");
   const [unsaved, setUnsaved] = useState(0);
   const api = useMemo(() => (conn ? client(conn) : null), [conn]);
@@ -255,6 +260,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       setProjects(null);
       setWork([]);
       setPeople([]);
+      setRoles([]);
       dispatch({ type: "remoteUnload" });
     }
   }, [dispatch]);
@@ -262,10 +268,11 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!api) return;
     try {
-      const [ps, ws, pp] = await Promise.all([api.projects(), api.myAssignments(), api.people()]);
+      const [ps, ws, pp, rs] = await Promise.all([api.projects(), api.myAssignments(), api.people(), api.roles()]);
       setProjects(ps);
       setWork(ws);
       setPeople(pp);
+      setRoles(rs);
       setError("");
     } catch (e) {
       if (e instanceof ApiError && e.code === "signIn") {
@@ -843,6 +850,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       projects,
       work,
       people,
+      roles,
       error,
       check: serverInfo,
       signIn,
@@ -854,7 +862,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       openTermbase,
       listen,
     }),
-    [conn, info, api, live, unsaved, projects, work, people, error, signIn, setup, signInWithProvider, signOut, refresh, open, openTermbase, listen],
+    [conn, info, api, live, unsaved, projects, work, people, roles, error, signIn, setup, signInWithProvider, signOut, refresh, open, openTermbase, listen],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

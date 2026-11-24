@@ -63,7 +63,7 @@ The Go packages:
 | `spell` | Hunspell spelling in Go: reads LibreOffice, Firefox and system dictionaries (.aff/.dic, .oxt extensions), affixes, compounds, all flag types and character sets, suggestions in Hunspell's order |
 | `project` | Project setups: languages, translatable and reference files, memories per target language (lookup, concordance, update, penalty), terminology (project termbase over masters, directly into a master, own), context rule, QA switches, preparation; validation that names the field of every problem; templates; pre-translation from memories as the analysis counts matches |
 | `project/projectdb` | Persistent projects in a SQLite file or PostgreSQL: settings, files with their bytes, segments per file and target language with versions that refuse stale saves, target languages added or removed later, pre-translation applied safely, templates, assignments of files, languages or segment ranges to translators and reviewers with due dates (one of each per segment), who has which segment open, change log for syncing |
-| `auth/authdb` | Accounts with Argon2id passwords, OpenID Connect identities, sign-in tokens (only their hashes stored), roles read < suggest < edit < approve < manage on projects, memories, termbases or everything; the last administrator is kept; change log; SQLite or PostgreSQL |
+| `auth/authdb` | Accounts with Argon2id passwords, OpenID Connect identities, sign-in tokens (only their hashes stored), roles as sets of permissions (read, suggest, edit, approve, manage: five built-in roles, each a permission and the ones before it, and roles administrators define) on projects, memories, termbases or everything; the last administrator is kept; change log; SQLite or PostgreSQL |
 | `auth/oidc` | OpenID Connect sign-in (Entra ID, Google, Keycloak and others): discovery, authorization code with PKCE, ID token checks (RS256, PS256, ES256 against the provider's keys, issuer, audience, expiry, nonce) |
 | `server` | The team server's HTTP API: sign-in with passwords or an identity provider, accounts and roles, projects with their files, segments, assignments and presence, memories, termbases with their review workflow, a live feed of changes |
 | `cmd/interlinea-server` | The team server: SQLite files or PostgreSQL, the web app at `/`, TLS or a reverse proxy |
@@ -169,6 +169,17 @@ project and what was made with it. Work assigned in a project lets people
 see it, save their segments (reviewers correct the translators'), add terms
 to its termbase and look up in its memories, with no grant on the memories
 themselves. What someone may not see answers 404.
+
+A role is a set of permissions. The five that come with the server each
+include the ones before them. Administrators define others on the Accounts
+page, in the browser and in the desktop app, for combinations the ladder
+does not have: a reviewer who reads, suggests and approves but does not
+edit, for one. A role of one's own is given like any other, and changing
+what it allows changes it at once for everyone who has it; one that people
+have is not deleted. Grants add up: what someone may do with a termbase is
+everything their roles on it, on all termbases and on everything allow
+together. `GET /api/roles`, `PUT /api/roles/{name}` and
+`DELETE /api/roles/{name}` are the API for it.
 
 **Writes** name the version they were made from (`If-Match` or `?version=`)
 and are refused with 409 `conflict` when someone saved in between. Errors are

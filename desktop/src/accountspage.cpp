@@ -1,6 +1,7 @@
 #include "accountspage.h"
 
 #include "accesspanel.h"
+#include "roles.h"
 #include "apiclient.h"
 #include "connection.h"
 #include "connectionmanager.h"
@@ -198,8 +199,11 @@ void AccountsPage::request(ApiReply *reply, std::function<void(const ApiResult &
     onResult(reply, this, [this, then](const ApiResult &r) {
         m_pending--;
         then(r);
-        if (m_pending == 0)
+        // The page is drawn once everything asked for is in.
+        if (m_pending == 0) {
+            render();
             emit loaded();
+        }
     });
 }
 
@@ -236,7 +240,6 @@ void AccountsPage::reload()
         }
         if (user(m_selected).isEmpty())
             m_selected = 0;
-        render();
     });
     request(c->api()->get(QStringLiteral("/api/catalog")), [this, reading](const ApiResult &r) {
         if (reading == m_reading && r.ok())
@@ -245,6 +248,10 @@ void AccountsPage::reload()
     request(c->api()->get(QStringLiteral("/api/projects")), [this, reading](const ApiResult &r) {
         if (reading == m_reading && r.ok())
             m_projects = r.array();
+    });
+    request(c->api()->get(QStringLiteral("/api/roles")), [this, reading](const ApiResult &r) {
+        if (reading == m_reading && r.ok())
+            m_roles = r.array();
     });
     if (m_selected)
         loadDetail();
@@ -292,6 +299,7 @@ void AccountsPage::loadDetail()
 void AccountsPage::attempt(ApiReply *reply, const QString &done)
 {
     m_problem.clear();
+    m_roleProblem.clear();
     request(reply, [this, done](const ApiResult &r) {
         if (!r.ok()) {
             if (r.error.code == QLatin1String("lastAdmin")) {
@@ -331,6 +339,9 @@ QString AccountsPage::resourceName(const QJsonObject &g) const
 
 void AccountsPage::render()
 {
+    // Drawn again in one go, without the page showing empty in between.
+    setUpdatesEnabled(false);
+    QTimer::singleShot(0, this, [this] { setUpdatesEnabled(true); });
     clear(m_body);
     QWidget *host = m_body->parentWidget();
     m_body->addWidget(Web::header(tr("Accounts"), QString(), {}, host));
@@ -379,7 +390,7 @@ void AccountsPage::render()
         m_body->addWidget(p);
         return;
     }
-    auto *help = Web::text(tr("The people on %1. Roles go up from read to manage; each includes the ones before it.").arg(c->displayName()), "help", host);
+    auto *help = Web::text(tr("The people on %1. A role is a set of permissions: five come with the server, each including the ones before it, and you define others below.").arg(c->displayName()), "help", host);
     help->setWordWrap(true);
     m_body->addWidget(help);
     if (!m_listProblem.isEmpty()) {
@@ -416,6 +427,197 @@ void AccountsPage::render()
         columns->addWidget(empty, 1, Qt::AlignTop);
     }
     m_body->addLayout(columns);
+
+    QVBoxLayout *rv = nullptr;
+    QFrame *rolesPanel = Web::panel(tr("Roles"), host, &rv);
+    rolesPanel->setProperty("part", QStringLiteral("roles"));
+    rv->setSpacing(S3);
+    showRoleDefinitions(rv, rolesPanel);
+    m_body->addWidget(rolesPanel);
+}
+
+void AccountsPage::attemptRole(ApiReply *reply, const QString &done)
+{
+    m_roleProblem.clear();
+    request(reply, [this, done](const ApiResult &r) {
+        if (!r.ok()) {
+            QStringList all;
+            for (const Problem &p : r.error.problems)
+                all << p.message;
+            m_roleProblem = all.isEmpty() ? r.error.message : all.join(QLatin1Char(' '));
+            return;
+        }
+        notify(done);
+        reload();
+    });
+}
+
+void AccountsPage::showRoleDefinitions(QVBoxLayout *into, QWidget *host)
+{
+    Connection *c = conn();
+    if (!c)
+        return;
+    ApiClient *api = c->api();
+    auto *help = Web::text(tr("What each role allows. The first five come with the server. Define your own for other combinations, such as a reviewer who suggests and approves but "
+                              "does not edit. A change applies at once to everyone who has the role."),
+                           "help", host);
+    help->setWordWrap(true);
+    into->addWidget(help);
+    if (!m_roleProblem.isEmpty()) {
+        auto *e = Web::text(m_roleProblem, "error", host);
+        e->setObjectName(QStringLiteral("roleProblem"));
+        e->setWordWrap(true);
+        into->addWidget(e);
+    }
+    const QStringList perms = Roles::permissions();
+    QStringList headers{tr("Role")};
+    for (const QString &p : perms)
+        headers << Roles::text(p);
+    headers << tr("Given") << QString();
+    auto *table = new Web::Table(headers, host);
+    table->setObjectName(QStringLiteral("roleTable"));
+    table->setNumeric({6});
+    table->setStretch(0);
+    table->horizontalHeaderItem(7)->setData(Qt::AccessibleTextRole, tr("Delete"));
+    const auto route = [](const QString &name) { return QStringLiteral("/api/roles/") + ApiClient::seg(name); };
+    for (const QJsonValue &v : m_roles) {
+        const QJsonObject def = v.toObject();
+        const QString name = str(def, "name");
+        const bool builtIn = def.value(QLatin1String("builtIn")).toBool();
+        const int given = def.value(QLatin1String("grants")).toInt();
+        QStringList has;
+        for (const QJsonValue &p : def.value(QLatin1String("permissions")).toArray())
+            has << p.toString();
+        QList<QWidget *> cells;
+        if (builtIn) {
+            cells << Web::cell(Roles::text(name), tr("Comes with the server"), table);
+        } else {
+            auto *edit = new QLineEdit(name, table);
+            edit->setObjectName(QStringLiteral("roleName:%1").arg(name));
+            edit->setAccessibleName(tr("Name of the role %1").arg(name));
+            edit->setMinimumWidth(180);
+            edit->setMaximumWidth(256);
+            connect(edit, &QLineEdit::editingFinished, this, [this, api, route, edit, name, has] {
+                const QString v = edit->text().trimmed();
+                if (v.isEmpty() || v == name) {
+                    edit->setText(name);
+                    return;
+                }
+                attemptRole(api->put(route(name), QJsonObject{{QLatin1String("name"), v}, {QLatin1String("permissions"), QJsonArray::fromStringList(has)}}), tr("Renamed the role to %1").arg(v));
+            });
+            cells << edit;
+        }
+        for (const QString &p : perms) {
+            auto *box = new QCheckBox(table);
+            box->setObjectName(QStringLiteral("allows:%1:%2").arg(name, p));
+            box->setAccessibleName(QStringLiteral("%1: %2").arg(Roles::text(name), Roles::text(p)));
+            box->setChecked(has.contains(p));
+            box->setEnabled(!builtIn && p != QLatin1String("read"));
+            connect(box, &QCheckBox::clicked, this, [this, api, route, name, has, p, perms](bool on) {
+                QStringList now;
+                for (const QString &x : perms) {
+                    if (x == p ? on : has.contains(x))
+                        now << x;
+                }
+                attemptRole(api->put(route(name), QJsonObject{{QLatin1String("permissions"), QJsonArray::fromStringList(now)}}),
+                            on ? tr("%1 now allows: %2").arg(name, Roles::text(p).toLower()) : tr("%1 no longer allows: %2").arg(name, Roles::text(p).toLower()));
+            });
+            cells << box;
+        }
+        cells << Web::cellText(QString::number(given), table, true);
+        if (builtIn) {
+            cells << Web::cellText(QString(), table);
+        } else {
+            auto *del = new Web::ConfirmButton(tr("Delete"), tr("Delete the role %1?").arg(name), tr("Delete"), table);
+            del->setObjectName(QStringLiteral("deleteRole:%1").arg(name));
+            del->button()->setAccessibleName(tr("Delete the role %1").arg(name));
+            // A role people have stays until they have another.
+            del->setAvailable(given == 0);
+            connect(del, &Web::ConfirmButton::confirmed, this, [this, api, route, name] { attemptRole(api->del(route(name)), tr("Deleted the role %1").arg(name)); });
+            cells << del;
+        }
+        const int row = table->addRow(cells);
+        table->item(row, 0)->setData(Qt::AccessibleTextRole, Roles::text(name));
+        for (int i = 0; i < perms.size(); i++)
+            table->item(row, i + 1)->setData(Qt::AccessibleTextRole, has.contains(perms[i]) ? tr("yes") : tr("no"));
+        table->item(row, 6)->setData(Qt::AccessibleTextRole, QString::number(given));
+    }
+    table->fit();
+    into->addWidget(table);
+
+    // .role-add: a new role.
+    auto *form = new QWidget(host);
+    form->setObjectName(QStringLiteral("newRole"));
+    form->setAccessibleName(tr("New role"));
+    auto *fl = new QHBoxLayout(form);
+    fl->setContentsMargins(0, 0, 0, 0);
+    fl->setSpacing(S4);
+    auto *name = new QLineEdit(m_newRoleName, form);
+    name->setObjectName(QStringLiteral("newRoleName"));
+    name->setPlaceholderText(tr("For example Reviewer"));
+    name->setMinimumWidth(220);
+    fl->addWidget(Web::labelled(tr("New role"), name, form));
+    auto *allowsBox = new QWidget(form);
+    auto *al = new QHBoxLayout(allowsBox);
+    al->setContentsMargins(0, 4, 0, 4);
+    al->setSpacing(S4);
+    QList<QCheckBox *> boxes;
+    for (const QString &p : perms) {
+        auto *box = new QCheckBox(Roles::text(p), allowsBox);
+        box->setObjectName(QStringLiteral("newRoleAllows:%1").arg(p));
+        box->setChecked(p == QLatin1String("read") || m_newRolePermissions.contains(p));
+        box->setEnabled(p != QLatin1String("read"));
+        box->setProperty("permission", p);
+        boxes << box;
+        al->addWidget(box);
+    }
+    fl->addWidget(Web::labelled(tr("It allows"), allowsBox, form));
+    auto *make = Web::button(tr("Make the role"), Web::Normal, form);
+    make->setObjectName(QStringLiteral("makeRole"));
+    make->setEnabled(!m_newRoleName.trimmed().isEmpty());
+    fl->addWidget(make, 0, Qt::AlignBottom);
+    fl->addStretch();
+    const auto keep = [this, name, boxes, make] {
+        // What was wrong with the last try is over once it is changed.
+        if (name->text() != m_newRoleName && !m_roleProblem.isEmpty()) {
+            m_roleProblem.clear();
+            if (auto *old = findChild<QLabel *>(QStringLiteral("roleProblem")))
+                old->hide();
+        }
+        m_newRoleName = name->text();
+        m_newRolePermissions.clear();
+        for (QCheckBox *b : boxes) {
+            if (b->isChecked())
+                m_newRolePermissions << b->property("permission").toString();
+        }
+        make->setEnabled(!name->text().trimmed().isEmpty());
+    };
+    connect(name, &QLineEdit::textChanged, this, keep);
+    for (QCheckBox *b : boxes)
+        connect(b, &QCheckBox::toggled, this, keep);
+    const auto submit = [this, api, route, keep] {
+        keep();
+        const QString n = m_newRoleName.trimmed();
+        if (n.isEmpty())
+            return;
+        m_roleProblem.clear();
+        request(api->put(route(n), QJsonObject{{QLatin1String("permissions"), QJsonArray::fromStringList(m_newRolePermissions)}}), [this, n](const ApiResult &r) {
+            if (!r.ok()) {
+                QStringList all;
+                for (const Problem &p : r.error.problems)
+                    all << p.message;
+                m_roleProblem = all.isEmpty() ? r.error.message : all.join(QLatin1Char(' '));
+                return;
+            }
+            notify(tr("Made the role %1").arg(n));
+            m_newRoleName.clear();
+            m_newRolePermissions = {QStringLiteral("read")};
+            reload();
+        });
+    };
+    connect(make, &QPushButton::clicked, this, submit);
+    connect(name, &QLineEdit::returnPressed, this, submit);
+    into->addWidget(form);
 }
 
 void AccountsPage::showList(QVBoxLayout *into, QWidget *host)
@@ -763,9 +965,7 @@ void AccountsPage::showRoles(QVBoxLayout *into, QWidget *host, const QJsonObject
             auto *role = new QComboBox(table);
             role->setProperty("small", true);
             role->setAccessibleName(tr("Role on %1").arg(on));
-            for (const QString &r : AccessPanel::roles())
-                role->addItem(AccessPanel::roleText(r), r);
-            role->setCurrentIndex(qMax(0, role->findData(str(g, "role"))));
+            Roles::fill(role, m_roles, str(g, "role"));
             role->setMinimumHeight(26);
             connect(role, &QComboBox::activated, this, [this, api, g, role] {
                 if (role->currentData().toString() == str(g, "role"))
@@ -785,7 +985,7 @@ void AccountsPage::showRoles(QVBoxLayout *into, QWidget *host, const QJsonObject
             });
             const int row = table->addRow({Web::cell(on, kindText(str(g, "kind")), table), role, remove});
             table->item(row, 0)->setData(Qt::AccessibleTextRole, on);
-            table->item(row, 1)->setData(Qt::AccessibleTextRole, AccessPanel::roleText(str(g, "role")));
+            table->item(row, 1)->setData(Qt::AccessibleTextRole, Roles::text(str(g, "role")));
         }
         table->fit();
         into->addWidget(table);
@@ -808,9 +1008,7 @@ void AccountsPage::showRoles(QVBoxLayout *into, QWidget *host, const QJsonObject
     which->setObjectName(QStringLiteral("roleResource"));
     auto *role = new QComboBox(form);
     role->setObjectName(QStringLiteral("roleRole"));
-    for (const QString &r : AccessPanel::roles())
-        role->addItem(AccessPanel::roleText(r), r);
-    role->setCurrentIndex(qMax(0, role->findData(QStringLiteral("edit"))));
+    Roles::fill(role, m_roles, QStringLiteral("edit"));
     auto *give = Web::button(tr("Give the role"), Web::Normal, form);
     give->setObjectName(QStringLiteral("give"));
     QWidget *whichBox = Web::labelled(tr("Which"), which, form);

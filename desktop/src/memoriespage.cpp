@@ -1,5 +1,7 @@
 #include "memoriespage.h"
 
+#include "roles.h"
+
 #include "accesspanel.h"
 #include "apiclient.h"
 #include "connection.h"
@@ -732,8 +734,8 @@ void MemoriesPage::showDetail(Part *p)
     const QString source = m.value(QLatin1String("sourceLang")).toString();
     const QString target = m.value(QLatin1String("targetLang")).toString();
     p->openRole = role;
-    const bool edit = role == QLatin1String("edit") || role == QLatin1String("approve") || role == QLatin1String("manage");
-    const bool manage = role == QLatin1String("manage");
+    const bool edit = Roles::allows(role, QStringLiteral("edit"));
+    const bool manage = Roles::allows(role, QStringLiteral("manage"));
 
     QVBoxLayout *body = nullptr;
     QFrame *panel = Web::panel(name, p->root, &body);

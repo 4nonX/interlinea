@@ -1488,6 +1488,40 @@ Access: signed in; each event is sent only to those who may see it.
 
 ## Other
 
+### `GET /api/roles`
+
+Lists the roles: the five that come with the server (read, suggest, edit, approve, manage, each a permission and the ones before it) and those the administrators defined, each with its permissions and how many grants use it.
+
+Access: signed in.
+
+- Answer: 200 OK: list of [authdb.RoleDef](#authdbroledef)
+- Errors: 401, 403 (see [Error](#error))
+
+### `PUT /api/roles/{name}`
+
+Defines a role as a set of permissions, or changes or renames the one of that name.
+
+A change takes effect at once for everyone who has the role. The five roles that come with the server are not changed.
+
+Access: administrators.
+
+- Parameters: `name` (path)
+- Body: [RoleRequest](#rolerequest)
+- Answer: 200 OK: [authdb.RoleDef](#authdbroledef)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `DELETE /api/roles/{name}`
+
+Removes a role the administrators defined.
+
+A role people have is not removed: give them another first.
+
+Access: administrators.
+
+- Parameters: `name` (path)
+- Answer: 204 No Content
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `POST /api/termfiles/inspect`
 
 Reads a termbase file (the request body, named by ?filename=) and says what it holds: its format, entries, terms, languages and fields, and for spreadsheets the first rows with what each column is taken for.
@@ -1803,6 +1837,15 @@ plannedEntry is a line of an import's plan.
 | `lang` | string | Lang is the target language the entries' translations are for. |
 | `text` | string |  |
 
+### RoleRequest
+
+roleRequest defines a role.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Name renames the role; leave it out to keep the name in the address. |
+| `permissions` | list of [authdb.Role](#authdbrole) | Permissions are what the role allows, of read, suggest, edit, approve and manage; read is always among them. |
+
 ### ServerInfo
 
 | Field | Type | Description |
@@ -2068,6 +2111,17 @@ One of `all`, `memory`, `project`, `termbase`.
 Role is what someone may do with a resource.
 
 One of `approve`, `edit`, `manage`, `read`, `suggest`.
+
+### authdb.RoleDef
+
+RoleDef is a role as it is defined: its name and what it allows.
+
+| Field | Type | Description |
+|---|---|---|
+| `builtIn` | boolean | BuiltIn roles come with the server and cannot be changed. |
+| `grants` | integer | Grants counts the grants that use the role. |
+| `name` | string |  |
+| `permissions` | list of [authdb.Role](#authdbrole) |  |
 
 ### authdb.Token
 

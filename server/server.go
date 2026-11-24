@@ -203,6 +203,9 @@ func (s *Server) routes() {
 	// Grants: administrators, and managers of the resource.
 	s.handle("GET /api/grants", s.signedIn(s.grantsOn))
 	s.handle("PUT /api/grants", s.signedIn(s.setGrant))
+	s.handle("GET /api/roles", s.signedIn(s.listRoles))
+	s.handle("PUT /api/roles/{name}", s.admin(s.setRole))
+	s.handle("DELETE /api/roles/{name}", s.admin(s.deleteRole))
 	s.handle("DELETE /api/grants", s.signedIn(s.revokeGrant))
 
 	s.projectRoutes()
@@ -376,6 +379,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		writeError(w, http.StatusConflict, "conflict", "Someone else saved a change in the meantime. Load it again and redo yours.")
 	case errors.Is(err, projectdb.ErrLocked):
 		writeError(w, http.StatusConflict, "locked", "The segment is locked.")
+	case errors.Is(err, authdb.ErrRoleInUse):
+		writeError(w, http.StatusConflict, "inUse", "People have this role. Give them another role first.")
 	case errors.Is(err, authdb.ErrLastAdmin):
 		writeError(w, http.StatusConflict, "lastAdmin", "The server needs at least one active administrator.")
 	case errors.Is(err, termdb.ErrNoTerms):

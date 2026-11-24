@@ -73,6 +73,51 @@ export default () =>
       check(gs.length === 1 && gs[0].kind === "memory" && gs[0].resource === "*" && gs[0].role === "read", "the role is on the server");
       await click(".account-detail table button", "Remove");
       check(await waitFor("document.querySelector('.account-detail').innerText.includes('No roles')"), "the role is taken away");
+      // Roles of one's own: a reviewer who suggests and approves but does
+      // not edit, given, changed, renamed and deleted.
+      check(
+        await waitFor("document.querySelectorAll('.role-table tbody tr').length === 5 && document.querySelector('.role-table').innerText.includes('Comes with the server')"),
+        "the five roles that come with the server are listed",
+      );
+      check(
+        await evaluate("[...document.querySelectorAll('.role-table tbody tr')][2].querySelectorAll('input[type=checkbox]:checked').length === 3 && [...document.querySelectorAll('.role-table tbody input[type=checkbox]')].every(i => i.disabled)"),
+        "they show what they allow and cannot be changed",
+      );
+      await setValue("form[aria-label='New role'] input:not([type=checkbox])", "Reviewer");
+      await evaluate("[...document.querySelectorAll('form[aria-label=\"New role\"] label.check')].filter(l => /Suggest|Approve/.test(l.textContent)).forEach(l => l.querySelector('input').click())");
+      await sleep(100);
+      await click("form[aria-label='New role'] button", "Make the role");
+      check(await waitFor("document.querySelectorAll('.role-table tbody tr').length === 6"), "the new role is listed");
+      let roles = await api("GET", "/api/roles", admin);
+      check(roles.length === 6 && roles[5].name === "Reviewer" && roles[5].permissions.join("+") === "read+suggest+approve", "the role is on the server");
+      // It is offered where roles are given.
+      await pickIn("Give a role", 0, "termbase");
+      await sleep(100);
+      check(await evaluate("[...document.querySelectorAll('form[aria-label=\"Give a role\"] select')[2].options].some(o => o.value === 'Reviewer')"), "the role can be given");
+      await pickIn("Give a role", 2, "Reviewer");
+      await sleep(100);
+      await click("form[aria-label='Give a role'] button", "Give the role");
+      check(await waitFor("document.querySelector('.account-detail').innerText.includes('All termbases')"), "the reviewer's role is listed");
+      gs = await api("GET", `/api/users/${ben.id}/grants`, admin);
+      check(gs.length === 1 && gs[0].role === "Reviewer", "the grant names the role");
+      check(
+        await waitFor("[...document.querySelectorAll('.role-table tbody tr')][5].innerText.includes('1') && [...document.querySelectorAll('.role-table tbody tr')][5].querySelector('.btn')?.disabled"),
+        "a role someone has cannot be deleted",
+      );
+      // Edit is added to it: the change is on the server.
+      await evaluate("[...document.querySelectorAll('.role-table tbody tr')][5].querySelectorAll('input[type=checkbox]')[2].click()");
+      check(await waitFor("document.querySelector('.toast')?.textContent.includes('Reviewer now allows: edit')"), "changing the role is said");
+      roles = await api("GET", "/api/roles", admin);
+      check(roles[5].permissions.join("+") === "read+suggest+edit+approve", "the role's permissions changed on the server");
+      await click(".account-detail table button", "Remove");
+      check(await waitFor("document.querySelector('.account-detail').innerText.includes('No roles')"), "the reviewer's role is taken away");
+      check(await waitFor("![...document.querySelectorAll('.role-table tbody tr')][5].querySelector('.btn')?.disabled"), "now it can be deleted");
+      await click(".role-table tbody tr:nth-child(6) button", "Delete");
+      await sleep(150);
+      await click(".role-table .confirm button", "Delete");
+      check(await waitFor("document.querySelectorAll('.role-table tbody tr').length === 5"), "the role is deleted");
+      check((await api("GET", "/api/roles", admin)).length === 5, "and gone from the server");
+
       await evaluate("[...document.querySelectorAll('.account-switches label')].find(l => l.textContent.includes('Disabled')).querySelector('input').click()");
       check(await waitFor("document.querySelector('.account-list').innerText.includes('disabled')"), "disabling shows in the list");
       check((await api("GET", `/api/users/${ben.id}`, admin)).disabled, "the account is disabled on the server");

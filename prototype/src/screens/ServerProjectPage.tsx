@@ -3,7 +3,7 @@ import { Download, PenLine, Trash2, UserPlus } from "lucide-react";
 import { lang } from "../data";
 import { useStore } from "../store";
 import { errorText, serverNumber, useRemote } from "../remote";
-import { ApiError, type Assignment, type Presence, type ServerProject, type Task } from "../server";
+import { allows, ApiError, type Assignment, type Presence, type ServerProject, type Task } from "../server";
 import { download } from "../core";
 import { fmtDate, plural } from "../format";
 import { LangChip, PageHeader } from "../components/ui";
@@ -66,7 +66,7 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
       </p>
     );
   const s = project.settings;
-  const manager = project.access.role === "manage";
+  const manager = allows(project.access.role, "manage");
   const host = new URL(r.conn.url).host;
 
   return (

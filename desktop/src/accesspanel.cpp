@@ -1,5 +1,7 @@
 #include "accesspanel.h"
 
+#include "roles.h"
+
 #include "apiclient.h"
 #include "connection.h"
 #include "webui.h"
@@ -38,9 +40,7 @@ AccessPanel::AccessPanel(Connection *connection, const QString &kind, const QStr
     m_who->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_who->setMinimumContentsLength(18);
     m_role = new QComboBox(this);
-    for (const QString &r : roles())
-        m_role->addItem(roleText(r), r);
-    m_role->setCurrentIndex(roles().indexOf(kind == QLatin1String("project") ? QStringLiteral("edit") : QStringLiteral("read")));
+    Roles::fill(m_role, {}, kind == QLatin1String("project") ? QStringLiteral("edit") : QStringLiteral("read"));
     auto labelled = [this](const QString &label, QWidget *control) {
         auto *w = new QWidget(this);
         auto *l = new QVBoxLayout(w);
@@ -78,17 +78,7 @@ QStringList AccessPanel::roles()
 
 QString AccessPanel::roleText(const QString &role)
 {
-    if (role == QLatin1String("read"))
-        return tr("Read");
-    if (role == QLatin1String("suggest"))
-        return tr("Suggest changes");
-    if (role == QLatin1String("edit"))
-        return tr("Edit");
-    if (role == QLatin1String("approve"))
-        return tr("Approve changes");
-    if (role == QLatin1String("manage"))
-        return tr("Manage");
-    return role;
+    return Roles::text(role);
 }
 
 void AccessPanel::attempt(ApiReply *reply)
@@ -108,6 +98,15 @@ void AccessPanel::reload()
 {
     if (!m_conn)
         return;
+    // The roles the place has, also those its administrators defined.
+    onResult(m_conn->api()->get(QStringLiteral("/api/roles")), this, [this](const ApiResult &r) {
+        if (!r.ok() || r.array() == m_roles)
+            return;
+        m_roles = r.array();
+        Roles::fill(m_role, m_roles, m_role->currentData().toString());
+        if (!m_grants.isEmpty())
+            show(m_grants);
+    });
     onResult(m_conn->api()->get(QStringLiteral("/api/people")), this, [this](const ApiResult &p) {
         if (p.ok())
             m_people = p.array();
@@ -148,9 +147,7 @@ void AccessPanel::show(const QJsonArray &grants)
             auto *role = new QComboBox(table);
             role->setProperty("small", true);
             role->setAccessibleName(tr("Role of %1").arg(who));
-            for (const QString &r : roles())
-                role->addItem(roleText(r), r);
-            role->setCurrentIndex(roles().indexOf(g.value(QLatin1String("role")).toString()));
+            Roles::fill(role, m_roles, g.value(QLatin1String("role")).toString());
             connect(role, &QComboBox::activated, this, [this, role, user] {
                 attempt(m_conn->api()->put(QStringLiteral("/api/grants"),
                                            QJsonObject{{QStringLiteral("userId"), user}, {QStringLiteral("kind"), m_kind},

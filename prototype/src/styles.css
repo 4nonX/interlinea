@@ -3910,3 +3910,27 @@ input.mono {
 .panel progress {
   width: 100%;
 }
+
+/* The roles and what each allows (Accounts). */
+.role-table td,
+.role-table th {
+  vertical-align: middle;
+}
+
+.role-table th[scope="row"] input {
+  max-width: 16rem;
+}
+
+.role-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.role-perms legend {
+  float: left;
+  width: 100%;
+}

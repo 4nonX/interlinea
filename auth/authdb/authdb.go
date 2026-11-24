@@ -86,11 +86,33 @@ const (
 
 var roleRank = map[Role]int{RoleRead: 1, RoleSuggest: 2, RoleEdit: 3, RoleApprove: 4, RoleManage: 5}
 
-// Includes reports whether r allows what need allows.
-func (r Role) Includes(need Role) bool { return roleRank[r] >= roleRank[need] && roleRank[need] > 0 }
+// Includes reports whether r allows what need allows: all of need's
+// permissions are among r's.
+func (r Role) Includes(need Role) bool {
+	want := need.permissions()
+	if len(want) == 0 {
+		return false
+	}
+	have := map[Role]bool{}
+	for _, p := range r.permissions() {
+		have[p] = true
+	}
+	// A role that comes with the server is asked for by its own
+	// permission: "edit" asks for editing, not for suggesting as well.
+	if roleRank[need] > 0 {
+		return have[need]
+	}
+	for _, p := range want {
+		if !have[p] {
+			return false
+		}
+	}
+	return true
+}
 
-// Valid reports whether r is a known role.
-func (r Role) Valid() bool { return roleRank[r] > 0 }
+// Valid reports whether r is a role that comes with the server or a set
+// of permissions.
+func (r Role) Valid() bool { return r.permissions() != nil }
 
 // Kind is the kind of resource a grant is on.
 type Kind string
@@ -259,8 +281,8 @@ const schemaV2 = `
 	);`
 
 var (
-	migrations   = []string{fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT"), schemaV2}
-	pgMigrations = []string{fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"), schemaV2}
+	migrations   = []string{fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT"), schemaV2, schemaV3}
+	pgMigrations = []string{fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"), schemaV2, schemaV3}
 )
 
 // Kinds of change in the change log.
@@ -1076,8 +1098,8 @@ func checkGrant(g Grant) (Grant, error) {
 	switch {
 	case !g.Kind.valid():
 		return g, &InvalidError{"kind", "A grant is on a project, memory, termbase or everything."}
-	case !g.Role.Valid():
-		return g, &InvalidError{"role", "The role must be read, suggest, edit, approve or manage."}
+	case strings.TrimSpace(string(g.Role)) == "":
+		return g, &InvalidError{"role", "Say which role."}
 	case g.Resource == "" || strings.ContainsRune(g.Resource, 0):
 		return g, &InvalidError{"resource", "Name the resource, or * for all of the kind."}
 	case g.Kind == KindAll && g.Resource != AnyResource:
@@ -1096,6 +1118,21 @@ func (d *DB) SetGrant(ctx context.Context, g Grant, by string) error {
 	return d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
 		if _, _, err := loadUser(ctx, tx, "id = ?", g.UserID); err != nil {
 			return err
+		}
+		// The role is one that comes with the server or one defined; it
+		// is stored under its name as written there.
+		if roleRank[Role(strings.ToLower(string(g.Role)))] > 0 {
+			g.Role = Role(strings.ToLower(string(g.Role)))
+		} else {
+			defs, err := defined(ctx, tx)
+			if err != nil {
+				return err
+			}
+			def, ok := defs[strings.ToLower(strings.TrimSpace(string(g.Role)))]
+			if !ok {
+				return &InvalidError{"role", fmt.Sprintf("There is no role %q.", g.Role)}
+			}
+			g.Role = Role(def.Name)
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM grants WHERE user_id = ? AND kind = ? AND resource = ?`, g.UserID, string(g.Kind), g.Resource); err != nil {
 			return err
@@ -1174,6 +1211,13 @@ func (d *DB) RenameResource(ctx context.Context, kind Kind, from, to, by string)
 		if err != nil {
 			return err
 		}
+		defs, err := defined(ctx, tx)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		// Someone with a role under both names keeps the one that allows
+		// more.
 		best := map[int64]Role{}
 		moved := map[int64]bool{}
 		for rows.Next() {
@@ -1183,7 +1227,7 @@ func (d *DB) RenameResource(ctx context.Context, kind Kind, from, to, by string)
 				rows.Close()
 				return err
 			}
-			if roleRank[Role(role)] > roleRank[best[id]] {
+			if len(resolve(role, defs)) > len(resolve(string(best[id]), defs)) {
 				best[id] = Role(role)
 			}
 			if res == from {
@@ -1250,9 +1294,10 @@ func (d *DB) GrantsOn(ctx context.Context, kind Kind, resource string) ([]Grant,
 	return scanGrants(rows)
 }
 
-// RoleOn is the highest role a user has on a resource: from grants on it,
-// on all of its kind and on everything; RoleManage for administrators;
-// "" for none.
+// RoleOn is what a user may do with a resource, as a role: everything
+// their grants on it, on all of its kind and on everything allow together;
+// RoleManage for administrators; "" for nothing. With roles of one's own
+// the result may be a set that is no built-in role ("read+approve").
 func (d *DB) RoleOn(ctx context.Context, u User, kind Kind, resource string) (Role, error) {
 	if u.Disabled {
 		return "", nil
@@ -1265,18 +1310,35 @@ func (d *DB) RoleOn(ctx context.Context, u User, kind Kind, resource string) (Ro
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
-	var best Role
+	var names []string
 	for rows.Next() {
 		var r string
 		if err := rows.Scan(&r); err != nil {
+			rows.Close()
 			return "", err
 		}
-		if roleRank[Role(r)] > roleRank[best] {
-			best = Role(r)
-		}
+		names = append(names, r)
 	}
-	return best, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil || len(names) == 0 {
+		return "", err
+	}
+	// Every grant adds what its role allows.
+	var defs map[string]RoleDef
+	var all []Role
+	for _, n := range names {
+		if ps := Role(n).permissions(); ps != nil {
+			all = append(all, ps...)
+			continue
+		}
+		if defs == nil {
+			if defs, err = defined(ctx, d.sql); err != nil {
+				return "", err
+			}
+		}
+		all = append(all, resolve(n, defs)...)
+	}
+	return roleOf(all), nil
 }
 
 // Can reports whether a user may do what need allows on a resource.

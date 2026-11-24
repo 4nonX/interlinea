@@ -1,5 +1,7 @@
 #include "projectspage.h"
 
+#include "roles.h"
+
 #include "editorpage.h"
 
 #include <QTimer>
@@ -267,9 +269,9 @@ void ProjectsPage::updateState()
                 actions << settingsButton;
                 table->addRow({title, langs, term, words, done, due, Web::cellActions(actions, table)});
             } else {
-                auto *work = Web::cellText(access.value(QLatin1String("role")).toString() == QLatin1String("manage") ? tr("Managing")
+                auto *work = Web::cellText(Roles::allows(access.value(QLatin1String("role")).toString(), QStringLiteral("manage")) ? tr("Managing")
                                                                                                                   : tr("No work given to you"),
-                                           table, false, access.value(QLatin1String("role")).toString() != QLatin1String("manage"));
+                                           table, false, !Roles::allows(access.value(QLatin1String("role")).toString(), QStringLiteral("manage")));
                 QPointer<QLabel> wk(qobject_cast<QLabel *>(work));
                 onResult(c->api()->get(QStringLiteral("/api/me/assignments")), this, [wk, id, table](const ApiResult &ar) {
                     if (!wk || !ar.ok())

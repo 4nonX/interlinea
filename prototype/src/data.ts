@@ -278,7 +278,7 @@ export interface RemoteProject {
   id: number;
   /** The settings' version, for changing them. */
   version: number;
-  role: "" | "read" | "suggest" | "edit" | "approve" | "manage";
+  role: string;
   assigned: boolean;
   /** The server's name for each file, by the prototype's file ID. */
   files: Record<string, string>;

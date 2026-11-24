@@ -1,5 +1,7 @@
 #include "projectpage.h"
 
+#include "roles.h"
+
 #include "apiclient.h"
 #include "connection.h"
 #include "eventfeed.h"
@@ -304,7 +306,7 @@ void ProjectPage::say(const QString &message)
 bool ProjectPage::manages() const
 {
     const QString role = m_access.value(QLatin1String("role")).toString();
-    return role == QLatin1String("manage") || (m_conn && m_conn->isAdmin());
+    return Roles::allows(role, QStringLiteral("manage")) || (m_conn && m_conn->isAdmin());
 }
 
 void ProjectPage::reload()

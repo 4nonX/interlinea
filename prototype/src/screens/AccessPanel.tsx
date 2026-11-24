@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { errorText, useRemote } from "../remote";
 import type { GrantView, Kind, Role } from "../server";
-import { ROLES, ROLE_TEXT } from "./Accounts";
+import { roleText } from "./Accounts";
 
 /**
  * Who may use a project, memory or termbase on the team server, for its
@@ -87,9 +87,9 @@ export function AccessPanel({ kind, resource, title }: { kind: Exclude<Kind, "al
                     aria-label={`Role of ${g.name || g.username}`}
                     onChange={(e) => void attempt(() => r.api!.setGrant({ userId: g.userId, kind, resource, role: e.target.value as Role }))}
                   >
-                    {ROLES.map((x) => (
-                      <option key={x} value={x}>
-                        {ROLE_TEXT[x]}
+                    {r.roles.map((x) => (
+                      <option key={x.name} value={x.name}>
+                        {roleText(x.name)}
                       </option>
                     ))}
                   </select>
@@ -121,9 +121,9 @@ export function AccessPanel({ kind, resource, title }: { kind: Exclude<Kind, "al
         <label>
           <span className="field-label">Role</span>
           <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLES.map((x) => (
-              <option key={x} value={x}>
-                {ROLE_TEXT[x]}
+            {r.roles.map((x) => (
+              <option key={x.name} value={x.name}>
+                {roleText(x.name)}
               </option>
             ))}
           </select>

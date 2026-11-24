@@ -256,9 +256,13 @@ int Table::addRow(const QList<QWidget *> &cells)
             continue;
         w->setParent(this);
         // A button or a choice is never narrower than what it says.
-        if (qobject_cast<QAbstractButton *>(w) || w->inherits("QComboBox")) {
-            w->ensurePolished();
-            w->setMinimumWidth(w->sizeHint().width() + 4);
+        QList<QWidget *> controls = w->findChildren<QWidget *>();
+        controls.prepend(w);
+        for (QWidget *c : controls) {
+            if (qobject_cast<QAbstractButton *>(c) || c->inherits("QComboBox")) {
+                c->ensurePolished();
+                c->setMinimumWidth(c->sizeHint().width() + 4);
+            }
         }
         auto *wrap = new QWidget(this);
         auto *l = new QHBoxLayout(wrap);

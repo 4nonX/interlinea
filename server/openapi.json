@@ -733,6 +733,23 @@
         },
         "type": "object"
       },
+      "RoleRequest": {
+        "description": "roleRequest defines a role.",
+        "properties": {
+          "name": {
+            "description": "Name renames the role; leave it out to keep the name in the address.",
+            "type": "string"
+          },
+          "permissions": {
+            "description": "Permissions are what the role allows, of read, suggest, edit, approve and manage; read is always among them.",
+            "items": {
+              "$ref": "#/components/schemas/authdb.Role"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "ServerInfo": {
         "properties": {
           "name": {
@@ -1368,6 +1385,29 @@
           "suggest"
         ],
         "type": "string"
+      },
+      "authdb.RoleDef": {
+        "description": "RoleDef is a role as it is defined: its name and what it allows.",
+        "properties": {
+          "builtIn": {
+            "description": "BuiltIn roles come with the server and cannot be changed.",
+            "type": "boolean"
+          },
+          "grants": {
+            "description": "Grants counts the grants that use the role.",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/authdb.Role"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
       },
       "authdb.Token": {
         "description": "Token is a sign-in of a user on a device. Its secret is shown once, when it is issued; the store keeps only a hash.",
@@ -7849,6 +7889,137 @@
         "summary": "Lists the quality checks, which of them run by default, and what each finds.",
         "tags": [
           "Files, checks and spelling"
+        ]
+      }
+    },
+    "/api/roles": {
+      "get": {
+        "description": "Access: signed in.",
+        "operationId": "listRoles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/authdb.RoleDef"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Lists the roles: the five that come with the server (read, suggest, edit, approve, manage, each a permission and the ones before it) and those the administrators defined, each with its permissions and how many grants use it.",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
+    "/api/roles/{name}": {
+      "delete": {
+        "description": "A role people have is not removed: give them another first.\n\nAccess: administrators.",
+        "operationId": "deleteRole",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Removes a role the administrators defined.",
+        "tags": [
+          "Other"
+        ]
+      },
+      "put": {
+        "description": "A change takes effect at once for everyone who has the role. The five roles that come with the server are not changed.\n\nAccess: administrators.",
+        "operationId": "setRole",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/authdb.RoleDef"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Defines a role as a set of permissions, or changes or renames the one of that name.",
+        "tags": [
+          "Other"
         ]
       }
     },

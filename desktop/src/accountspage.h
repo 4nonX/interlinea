@@ -37,6 +37,8 @@ public:
     QJsonArray grants() const { return m_grants; }
     QJsonArray signIns() const { return m_signIns; }
     QJsonArray identities() const { return m_identities; }
+    // The roles of the server: those that come with it and those defined.
+    QJsonArray roles() const { return m_roles; }
     QString problem() const { return m_problem; }
     bool busy() const { return m_pending > 0; }
     void notify(const QString &text);
@@ -60,6 +62,9 @@ private:
     void showDetail(QVBoxLayout *into, QWidget *host);
     void showIdentities(QVBoxLayout *into, QWidget *host, const QJsonObject &user);
     void showRoles(QVBoxLayout *into, QWidget *host, const QJsonObject &user);
+    void showRoleDefinitions(QVBoxLayout *into, QWidget *host);
+    // Sends a change of the roles themselves, says done, and reads again.
+    void attemptRole(ApiReply *reply, const QString &done);
     void loadDetail();
     QJsonObject user(qint64 id) const;
     // Sends a change of the chosen account, says done, and reads again.
@@ -75,6 +80,10 @@ private:
     bool m_read = false;
     QJsonArray m_projects;
     QJsonObject m_catalog;
+    QJsonArray m_roles;
+    QString m_roleProblem;
+    QString m_newRoleName;
+    QStringList m_newRolePermissions{QStringLiteral("read")};
     qint64 m_selected = 0;
     QJsonArray m_grants;
     QJsonArray m_signIns;

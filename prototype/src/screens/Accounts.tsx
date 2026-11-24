@@ -8,8 +8,11 @@ import {
   type CatalogTermbase,
   type Grant,
   type Identity,
+  PERMISSIONS,
   type Kind,
+  type Permission,
   type Role,
+  type RoleDef,
   type ServerProjectSummary,
   type ServerUser,
   type SignIn,
@@ -18,16 +21,19 @@ import { fmtDate, plural } from "../format";
 import { PageHeader } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
 
-export const ROLES: Role[] = ["read", "suggest", "edit", "approve", "manage"];
-
-/** What each role lets someone do, for the role pickers. */
-export const ROLE_TEXT: Record<Role, string> = {
+/** What each permission lets someone do, for the role pickers and the roles' table. */
+export const ROLE_TEXT: Record<Permission, string> = {
   read: "Read",
   suggest: "Suggest changes",
   edit: "Edit",
   approve: "Approve changes",
   manage: "Manage",
 };
+
+/** A role as people read it: the built-in ones in words, the others by their name. */
+export function roleText(name: string): string {
+  return (ROLE_TEXT as Record<string, string>)[name] ?? name;
+}
 
 const KIND_TEXT: Record<Kind, string> = {
   project: "Project",
@@ -93,7 +99,8 @@ export function Accounts() {
     <div className="page">
       <PageHeader title="Accounts" />
       <p className="help">
-        The people on {new URL(r.conn.url).host}. Roles go up from read to manage; each includes the ones before it.
+        The people on {new URL(r.conn.url).host}. A role is a set of permissions: five come with the server, each including the ones before it, and you
+        define others below.
       </p>
       {problem && (
         <p className="error" role="alert">
@@ -149,6 +156,7 @@ export function Accounts() {
           </section>
         )}
       </div>
+      <RoleDefinitions />
     </div>
   );
 }
@@ -531,9 +539,9 @@ function Roles({
                     aria-label={`Role on ${resourceName(g)}`}
                     onChange={(e) => void attempt(() => r.api!.setGrant({ ...g, role: e.target.value as Role }), "Changed the role")}
                   >
-                    {ROLES.map((x) => (
-                      <option key={x} value={x}>
-                        {ROLE_TEXT[x]}
+                    {r.roles.map((x) => (
+                      <option key={x.name} value={x.name}>
+                        {roleText(x.name)}
                       </option>
                     ))}
                   </select>
@@ -587,9 +595,9 @@ function Roles({
         <label>
           <span className="field-label">Role</span>
           <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLES.map((x) => (
-              <option key={x} value={x}>
-                {ROLE_TEXT[x]}
+            {r.roles.map((x) => (
+              <option key={x.name} value={x.name}>
+                {roleText(x.name)}
               </option>
             ))}
           </select>
@@ -602,5 +610,172 @@ function Roles({
         Manage on all projects makes someone a project manager: they make projects and give out work. Manage on all memories or termbases lets them make those.
       </p>
     </>
+  );
+}
+
+/**
+ * The roles themselves: what each allows. The five that come with the
+ * server are fixed; administrators define others as sets of permissions,
+ * change them, rename them and delete those nobody has.
+ */
+function RoleDefinitions() {
+  const { notify } = useStore();
+  const r = useRemote();
+  const api = r.api!;
+  const [name, setName] = useState("");
+  const [perms, setPerms] = useState<Permission[]>(["read"]);
+  const [problem, setProblem] = useState("");
+
+  const attempt = async (what: () => Promise<unknown>, done: string) => {
+    setProblem("");
+    try {
+      await what();
+      notify(done);
+      await r.refresh();
+    } catch (e) {
+      setProblem(e instanceof ApiError && e.problems.length ? e.problems.map((p) => p.message).join(" ") : errorText(e));
+    }
+  };
+  const toggled = (have: Permission[], p: Permission, on: boolean) => PERMISSIONS.filter((x) => (x === p ? on : have.includes(x)));
+
+  return (
+    <section className="panel" aria-labelledby="role-defs">
+      <h2 id="role-defs" className="panel-title">
+        Roles
+      </h2>
+      <p className="help">
+        What each role allows. The first five come with the server. Define your own for other combinations, such as a reviewer who suggests and approves
+        but does not edit. A change applies at once to everyone who has the role.
+      </p>
+      {problem && (
+        <p className="error" role="alert">
+          {problem}
+        </p>
+      )}
+      <div className="table-wrap">
+        <table className="table role-table">
+          <thead>
+            <tr>
+              <th scope="col">Role</th>
+              {PERMISSIONS.map((p) => (
+                <th key={p} scope="col">
+                  {ROLE_TEXT[p]}
+                </th>
+              ))}
+              <th scope="col" className="num">
+                Given
+              </th>
+              <th scope="col">
+                <span className="sr-only">Delete</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.roles.map((def) => (
+              <RoleRow key={def.name} def={def} attempt={attempt} toggled={toggled} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <form
+        className="role-add"
+        aria-label="New role"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void attempt(async () => {
+            await api.setRole(name.trim(), perms);
+            setName("");
+            setPerms(["read"]);
+          }, `Made the role ${name.trim()}`);
+        }}
+      >
+        <label>
+          <span className="field-label">New role</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="For example Reviewer" />
+        </label>
+        <fieldset className="role-perms">
+          <legend className="field-label">It allows</legend>
+          {PERMISSIONS.map((p) => (
+            <label key={p} className="check">
+              <input type="checkbox" checked={perms.includes(p)} disabled={p === "read"} onChange={(e) => setPerms(toggled(perms, p, e.target.checked))} /> {ROLE_TEXT[p]}
+            </label>
+          ))}
+        </fieldset>
+        <button type="submit" className="btn" disabled={!name.trim()}>
+          Make the role
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function RoleRow({
+  def,
+  attempt,
+  toggled,
+}: {
+  def: RoleDef;
+  attempt: (what: () => Promise<unknown>, done: string) => Promise<void>;
+  toggled: (have: Permission[], p: Permission, on: boolean) => Permission[];
+}) {
+  const r = useRemote();
+  const api = r.api!;
+  const [name, setName] = useState(def.name);
+  useEffect(() => setName(def.name), [def.name]);
+  const rename = () => {
+    const v = name.trim();
+    if (!v || v === def.name) {
+      setName(def.name);
+      return;
+    }
+    void attempt(() => api.setRole(def.name, def.permissions, v), `Renamed the role to ${v}`).then(() => setName((n) => (n === v ? n : def.name)));
+  };
+  return (
+    <tr>
+      <th scope="row">
+        {def.builtIn ? (
+          <>
+            <span className="cell-title">{roleText(def.name)}</span>
+            <div className="cell-sub">Comes with the server</div>
+          </>
+        ) : (
+          <input
+            value={name}
+            aria-label={`Name of the role ${def.name}`}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={rename}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), rename())}
+          />
+        )}
+      </th>
+      {PERMISSIONS.map((p) => (
+        <td key={p}>
+          <input
+            type="checkbox"
+            aria-label={`${roleText(def.name)}: ${ROLE_TEXT[p]}`}
+            checked={def.permissions.includes(p)}
+            disabled={def.builtIn || p === "read"}
+            onChange={(e) =>
+              void attempt(
+                () => api.setRole(def.name, toggled(def.permissions, p, e.target.checked)),
+                `${def.name} ${e.target.checked ? "now allows" : "no longer allows"}: ${ROLE_TEXT[p].toLowerCase()}`,
+              )
+            }
+          />
+        </td>
+      ))}
+      <td className="num">{def.grants}</td>
+      <td className="cell-action">
+        {!def.builtIn && (
+          <ConfirmButton
+            label="Delete"
+            disabled={def.grants > 0}
+            confirm={`Delete the role ${def.name}?`}
+            action="Delete"
+            onConfirm={() => void attempt(() => api.deleteRole(def.name), `Deleted the role ${def.name}`)}
+          />
+        )}
+      </td>
+    </tr>
   );
 }

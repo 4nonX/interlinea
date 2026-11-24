@@ -35,4 +35,5 @@ private:
     QComboBox *m_role;
     QJsonArray m_grants;
     QJsonArray m_people;
+    QJsonArray m_roles;
 };
