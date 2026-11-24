@@ -6,6 +6,7 @@
 #include "connectionmanager.h"
 #include "eventfeed.h"
 #include "languages.h"
+#include "reviewpage.h"
 #include "termbasedialogs.h"
 #include "termdata.h"
 #include "terminologypage.h"
@@ -29,6 +30,7 @@
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrlQuery>
 
 static ApiResult wait(ApiReply *reply)
 {
@@ -737,6 +739,147 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("orchard"), 10000);
         QTRY_VERIFY(!byName<Web::Clickable>(&page, QStringLiteral("tb:%1:Weber Mietrecht").arg(here)));
         QVERIFY(saved.size() > 0);
+    }
+
+    void reviewAndMerge()
+    {
+        // A project termbase over a master: its changes are submitted,
+        // decided one by one or together, and end up in the master.
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        const QString here = m.local()->id();
+        const auto entry = [](const QString &de, const QString &en) {
+            return QJsonObject{{"languages", QJsonArray{QJsonObject{{"lang", "de-DE"}, {"terms", QJsonArray{QJsonObject{{"text", de}, {"status", "approved"}}}}},
+                                                        QJsonObject{{"lang", "en-GB"}, {"terms", QJsonArray{QJsonObject{{"text", en}, {"status", "approved"}}}}}}}};
+        };
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Recht"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}})).ok());
+        const ApiResult kaution = wait(api->post(QStringLiteral("/api/termbases/Recht/entries"), QJsonObject{{"entry", entry(QStringLiteral("Kaution"), QStringLiteral("deposit"))}}));
+        const ApiResult miete = wait(api->post(QStringLiteral("/api/termbases/Recht/entries"), QJsonObject{{"entry", entry(QStringLiteral("Miete"), QStringLiteral("rent"))}}));
+        QVERIFY(kaution.ok() && miete.ok());
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Fall Hofmann"}}}, {"upstreams", QJsonArray{"Recht"}}})).ok());
+        // In the project: a new entry, a changed one, and one the master
+        // changes in the same place afterwards.
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases/Fall%20Hofmann/entries"), QJsonObject{{"entry", entry(QStringLiteral("Staffelmiete"), QStringLiteral("stepped rent"))}})).ok());
+        const auto change = [&](const QString &id, const QString &en, const QString &status) {
+            const ApiResult copy = wait(api->post(QStringLiteral("/api/termbases/Fall%20Hofmann/overrides"), QJsonObject{{"master", "Recht"}, {"entry", id}}));
+            if (!copy.ok())
+                return false;
+            QJsonObject e = TermData::forSaving(copy.object());
+            e = TermData::withTerms(e, QStringLiteral("en-GB"), QJsonArray{QJsonObject{{"text", en}, {"status", status}}});
+            return wait(api->put(QStringLiteral("/api/termbases/Fall%20Hofmann/entries/") + copy.object().value("id").toString(), QJsonObject{{"entry", e}}, copy.object().value("version").toInt())).ok();
+        };
+        QVERIFY(change(kaution.object().value("id").toString(), QStringLiteral("security deposit"), QStringLiteral("approved")));
+        // The project forbids "rent"; the master, meanwhile, only proposes it.
+        QVERIFY(change(miete.object().value("id").toString(), QStringLiteral("rent"), QStringLiteral("forbidden")));
+        QJsonObject theirs = TermData::forSaving(miete.object());
+        theirs = TermData::withTerms(theirs, QStringLiteral("en-GB"), QJsonArray{QJsonObject{{"text", "rent"}, {"status", "proposed"}}});
+        QVERIFY(wait(api->put(QStringLiteral("/api/termbases/Recht/entries/") + miete.object().value("id").toString(), QJsonObject{{"entry", theirs}}, 1)).ok());
+
+        TerminologySection section(&m);
+        section.resize(1360, 900);
+        section.show();
+        TerminologyPage *page = section.termbases();
+        ReviewPage *review = section.review();
+        QTRY_COMPARE_WITH_TIMEOUT(page->termbase(), QStringLiteral("Recht"), 15000);
+        // The project termbase is in its own group and says what it is based on.
+        Web::Clickable *project = nullptr;
+        QTRY_VERIFY((project = byName<Web::Clickable>(page, QStringLiteral("tb:%1:Fall Hofmann").arg(here))));
+        QTest::mouseClick(project, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(page->entries().size(), 3, 10000);
+        QTRY_VERIFY(byName<QLabel>(page, QStringLiteral("branchNote")));
+        QCOMPARE(byName<QLabel>(page, QStringLiteral("branchNote"))->text(), QStringLiteral("Based on Recht. Shows only this project's new and changed entries."));
+        QCOMPARE(page->languages(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+        // A changed entry names its master; a new one is in none yet.
+        for (const QJsonObject &e : page->entries()) {
+            page->selectEntry(e.value("id").toString());
+            if (TermData::head(e, QStringLiteral("de-DE")) == QStringLiteral("Staffelmiete"))
+                QVERIFY(label(page, QStringLiteral("Not in a master yet")));
+            else
+                QVERIFY(label(page, QStringLiteral("Based on Recht")));
+        }
+
+        // Submitting opens the request.
+        QPushButton *submit = byName<QPushButton>(page, QStringLiteral("submitReview"));
+        QVERIFY(submit);
+        QCOMPARE(submit->text(), QStringLiteral("Review and merge"));
+        QCOMPARE(byName<QLineEdit>(page, QStringLiteral("reviewTitle"))->placeholderText(), QStringLiteral("Fall Hofmann into Recht"));
+        QSignalSpy shown(review, &ReviewPage::loaded);
+        submit->click();
+        QTRY_VERIFY_WITH_TIMEOUT(section.reviewing() && !shown.isEmpty() && review->items().size() == 3, 15000);
+        QCOMPARE(page->message(), QStringLiteral("Submitted Fall Hofmann to Recht for review"));
+        QCOMPARE(review->mergeRequest().value("title").toString(), QStringLiteral("Fall Hofmann into Recht"));
+        QVERIFY(byName<QLabel>(review, QStringLiteral("about"))->text().startsWith(QStringLiteral("Fall Hofmann into Recht. Submitted by ")));
+        QCOMPARE(byName<QLabel>(review, QStringLiteral("summary"))->text(), QStringLiteral("3 entries: 3 waiting; 1 conflict with the master."));
+        QCOMPARE(byName<Web::Tabs>(review, QStringLiteral("views"))->tab(0)->text(), QStringLiteral("Waiting (3)"));
+        QVERIFY(label(review, QStringLiteral("<b>New entry</b>")) && label(review, QStringLiteral("<b>Changed entry</b>")));
+        QVERIFY(label(review, QStringLiteral("<b>The master changed the same places</b>")));
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(300);
+            section.grab().save(dir + QStringLiteral("/review.png"));
+        }
+
+        // All without conflicts at once: the conflict stays for a decision.
+        byName<QPushButton>(review, QStringLiteral("approveAll"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(review->message().startsWith(QStringLiteral("Approved all waiting entries without conflicts: 2 entries")), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(review->items().size() == 1 && review->progress().value("states").toObject().value("waiting").toInt() == 1, 10000);
+        QPushButton *merged = nullptr;
+        QTRY_VERIFY((merged = byName<QPushButton>(review, QStringLiteral("approve"))));
+        QCOMPARE(merged->text(), QStringLiteral("Approve the merged entry"));
+        QVERIFY(byName<QPushButton>(review, QStringLiteral("postpone")) && byName<QPushButton>(review, QStringLiteral("reject")));
+        // Postponed first, which the Decided list shows.
+        byName<QPushButton>(review, QStringLiteral("postpone"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Postponed: 1 entry"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(review->items().isEmpty() && byName<QLabel>(review, QStringLiteral("none")), 10000);
+        QCOMPARE(byName<QLabel>(review, QStringLiteral("none"))->text(), QStringLiteral("Nothing is waiting."));
+        byName<Web::Tabs>(review, QStringLiteral("views"))->tab(1)->click();
+        QTRY_VERIFY_WITH_TIMEOUT(review->view() == 1 && review->items().size() == 3, 10000);
+        QVERIFY(label(review, QStringLiteral("Postponed")) && label(review, QStringLiteral("Approved")));
+        QVERIFY(!byName<QPushButton>(review, QStringLiteral("approve")));
+
+        // The master has what was approved, and not the postponed change.
+        const ApiResult master = wait(api->get(QStringLiteral("/api/termbases/Recht/entries"), [] {
+            QUrlQuery q;
+            q.addQueryItem(QStringLiteral("limit"), QStringLiteral("100"));
+            return q;
+        }()));
+        QStringList english;
+        for (const QJsonValue &v : master.object().value("entries").toArray()) {
+            for (const QJsonValue &t : TermData::terms(v.toObject(), QStringLiteral("en-GB")))
+                english << t.toObject().value("text").toString() + QLatin1Char('/') + t.toObject().value("status").toString();
+        }
+        QVERIFY2(english.contains(QStringLiteral("stepped rent/approved")) && english.contains(QStringLiteral("security deposit/approved")) && english.contains(QStringLiteral("rent/proposed")),
+                 qPrintable(english.join(QStringLiteral(", "))));
+
+        // Closing asks, and says what is still open.
+        auto *close = byName<Web::ConfirmButton>(review, QStringLiteral("close"));
+        QVERIFY(close);
+        close->button()->click();
+        QVERIFY(label(review, QStringLiteral("Close the request?")));
+        close->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Closed the request"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(review->mergeRequest().value("state").toString() == QStringLiteral("closed"), 10000);
+        QTRY_VERIFY(!byName<QPushButton>(review, QStringLiteral("approveAll")));
+        QVERIFY(byName<QLabel>(review, QStringLiteral("about"))->text().contains(QStringLiteral("Closed on ")));
+
+        // Back at the termbase, the request is listed and opens again.
+        byName<QPushButton>(review, QStringLiteral("back"))->click();
+        QVERIFY(!section.reviewing());
+        QTRY_COMPARE_WITH_TIMEOUT(page->termbase(), QStringLiteral("Fall Hofmann"), 10000);
+        const int id = review->request();
+        QPushButton *listed = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((listed = byName<QPushButton>(page, QStringLiteral("mergeRequest:%1").arg(id))), 10000);
+        QCOMPARE(listed->text(), QStringLiteral("Fall Hofmann into Recht"));
+        QTRY_VERIFY_WITH_TIMEOUT(labelWith(page, QStringLiteral("Fall Hofmann into Recht, closed ")), 10000);
+        listed = byName<QPushButton>(page, QStringLiteral("mergeRequest:%1").arg(id));
+        listed->click();
+        QTRY_VERIFY_WITH_TIMEOUT(section.reviewing() && review->mergeRequest().value("state").toString() == QStringLiteral("closed"), 10000);
+
+        // A request that is not there says so.
+        section.openReview(here, 99999);
+        QTRY_VERIFY_WITH_TIMEOUT(byName<QLabel>(review, QStringLiteral("state")) && byName<QLabel>(review, QStringLiteral("state"))->property("role").toString() == QStringLiteral("error"), 10000);
     }
 
     void savingMeetsAnotherChange()

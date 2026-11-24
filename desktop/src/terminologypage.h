@@ -78,8 +78,6 @@ signals:
     void historyShown();
     // A merge request of a team server is to be shown.
     void openReview(const QString &connectionId, int mergeRequest);
-    // The changes of a project termbase are to be reviewed and merged.
-    void openMerge(const QString &connectionId, const QString &termbase);
 
 protected:
     void resizeEvent(QResizeEvent *e) override;
@@ -177,4 +175,28 @@ private:
     QString m_newMasterName;
     QStringList m_newMasterLangs;
     int m_newMasterPlace = 0;
+};
+
+class ReviewPage;
+class QStackedWidget;
+
+// Terminology as the window shows it: the termbases, and over them the
+// merge request opened from one, as the web app's review page takes the
+// place of its terminology page.
+class TerminologySection : public QWidget {
+    Q_OBJECT
+public:
+    explicit TerminologySection(ConnectionManager *manager, QWidget *parent = nullptr);
+    TerminologyPage *termbases() const { return m_termbases; }
+    ReviewPage *review() const { return m_review; }
+    bool reviewing() const;
+    // Opens a termbase of a place.
+    void open(const QString &connectionId, const QString &termbase);
+    void openReview(const QString &connectionId, int mergeRequest);
+
+private:
+    ConnectionManager *m_manager;
+    QStackedWidget *m_stack;
+    TerminologyPage *m_termbases;
+    ReviewPage *m_review;
 };

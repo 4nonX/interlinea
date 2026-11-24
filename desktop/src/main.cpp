@@ -60,7 +60,13 @@ int main(int argc, char *argv[])
                    QKeySequence(QStringLiteral("Ctrl+1")));
     window.addPage(QStringLiteral("memories"), QObject::tr("Memories"), Icons::get(QStringLiteral("memories")), new MemoriesPage(&connections, &window),
                    QKeySequence(QStringLiteral("Ctrl+2")));
-    auto *terminology = new TerminologyPage(&connections, &window);
+    auto *terminology = new TerminologySection(&connections, &window);
+    // "Review and merge" on a project leads to its termbase.
+    QObject::connect(projects, &ProjectsPage::navigate, &window, [&window, terminology](const QString &page, const QString &connectionId, const QString &item) {
+        if (page == QLatin1String("terminology"))
+            terminology->open(connectionId, item);
+        window.showPage(page);
+    });
     window.addPage(QStringLiteral("terminology"), QObject::tr("Terminology"), Icons::get(QStringLiteral("terminology")), terminology,
                    QKeySequence(QStringLiteral("Ctrl+3")));
     window.addPage(QStringLiteral("settings"), QObject::tr("Settings"), Icons::get(QStringLiteral("settings")),

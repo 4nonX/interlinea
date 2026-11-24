@@ -26,8 +26,9 @@ public:
     void showList();
 
 signals:
-    // Go to another page of the window ("terminology", …), at an item.
-    void navigate(const QString &page, const QString &item);
+    // Go to another page of the window ("terminology", …), at an item of
+    // a place.
+    void navigate(const QString &page, const QString &connectionId, const QString &item);
 
 private:
     void updateState();

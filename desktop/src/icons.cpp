@@ -240,6 +240,11 @@ void draw(QPainter &p, const QString &name)
         path.lineTo(3.5, 21);
         path.lineTo(4.5, 16.5);
         path.closeSubpath();
+    } else if (name == QLatin1String("clock")) {
+        path.addEllipse(QPointF(12, 12), 9, 9);
+        path.moveTo(12, 7);
+        path.lineTo(12, 12);
+        path.lineTo(15.5, 14);
     } else if (name == QLatin1String("refresh")) {
         path.arcMoveTo(QRectF(4, 4, 16, 16), 30);
         path.arcTo(QRectF(4, 4, 16, 16), 30, 300);

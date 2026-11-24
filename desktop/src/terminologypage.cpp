@@ -7,6 +7,7 @@
 #include "flowlayout.h"
 #include "icons.h"
 #include "languages.h"
+#include "reviewpage.h"
 #include "termbasedialogs.h"
 #include "termdata.h"
 #include "theme.h"
@@ -1008,7 +1009,7 @@ void TerminologyPage::loadEntries(int offset, int reading)
                 done();
             });
         }
-        if (isTeam()) {
+        {
             ++*left;
             onResult(c->api()->get(path(QStringLiteral("/merge-requests"))), this, [this, reading, done](const ApiResult &mr) {
                 if (reading == m_reading)
@@ -1125,9 +1126,7 @@ void TerminologyPage::showReviewNote()
     QStringList masters;
     for (const QJsonValue &u : m_detail.value(QLatin1String("upstreams")).toArray())
         masters << u.toString();
-    if (!isTeam()) {
-        if (!isProject() || masters.isEmpty())
-            return;
+    if (!isTeam() && isProject() && !masters.isEmpty()) {
         // .branch-note
         auto *note = new QWidget(host);
         auto *h = new QHBoxLayout(note);
@@ -1136,19 +1135,11 @@ void TerminologyPage::showReviewNote()
         auto *icon = new QLabel(note);
         icon->setPixmap(Icons::get(QStringLiteral("git-branch"), Theme::color("text2")).pixmap(14, 14));
         h->addWidget(icon, 0, Qt::AlignTop);
-        auto *v = new QVBoxLayout;
-        v->setSpacing(2);
         auto *text = Web::text(tr("%1 %2. Shows only this project's new and changed entries.").arg(Words::get("basedOn"), masters.join(QStringLiteral(", "))), "small2", note);
         text->setWordWrap(true);
         text->setObjectName(QStringLiteral("branchNote"));
-        v->addWidget(text);
-        auto *review = link(Words::get("reviewMerge"), note);
-        review->setObjectName(QStringLiteral("reviewLink"));
-        v->addWidget(review, 0, Qt::AlignLeft);
-        connect(review, &QPushButton::clicked, this, [this] { emit openMerge(m_conn, m_name); });
-        h->addLayout(v, 1);
+        h->addWidget(text, 1);
         m_noteHolder->addWidget(note);
-        return;
     }
     // .server-review: the merge requests, and a new one for a project
     // termbase.
@@ -1192,8 +1183,8 @@ void TerminologyPage::showReviewNote()
     fv->addWidget(Web::labelled(tr("Title of the request"), title, form));
     if (into)
         connect(into, &QComboBox::currentTextChanged, title, [this, title](const QString &m) { title->setPlaceholderText(tr("%1 into %2").arg(m_name, m)); });
-    auto *submit = Web::button(masters.size() > 1 ? tr("Submit to the master for review") : tr("Submit to %1 for review").arg(masters.first()), Web::Small, form,
-                               QStringLiteral("git-pull-request"));
+    auto *submit = Web::button(!isTeam() ? Words::get("reviewMerge") : masters.size() > 1 ? tr("Submit to the master for review") : tr("Submit to %1 for review").arg(masters.first()),
+                               Web::Small, form, QStringLiteral("git-pull-request"));
     submit->setObjectName(QStringLiteral("submitReview"));
     fv->addWidget(submit, 0, Qt::AlignLeft);
     const QString first = masters.first();
@@ -2394,4 +2385,43 @@ TermbaseSettingsDialog *TerminologyPage::settingsDialog()
     });
     d->open();
     return d;
+}
+
+TerminologySection::TerminologySection(ConnectionManager *manager, QWidget *parent)
+    : QWidget(parent)
+    , m_manager(manager)
+{
+    auto *v = new QVBoxLayout(this);
+    v->setContentsMargins(0, 0, 0, 0);
+    m_stack = new QStackedWidget(this);
+    v->addWidget(m_stack);
+    m_termbases = new TerminologyPage(manager, m_stack);
+    m_review = new ReviewPage(m_stack);
+    m_stack->addWidget(m_termbases);
+    m_stack->addWidget(m_review);
+    connect(m_termbases, &TerminologyPage::openReview, this, &TerminologySection::openReview);
+    connect(m_review, &ReviewPage::back, this, &TerminologySection::open);
+}
+
+bool TerminologySection::reviewing() const
+{
+    return m_stack->currentWidget() == m_review;
+}
+
+void TerminologySection::open(const QString &connectionId, const QString &termbase)
+{
+    m_stack->setCurrentWidget(m_termbases);
+    if (!connectionId.isEmpty() && !termbase.isEmpty())
+        m_termbases->open(connectionId, termbase);
+    else
+        m_termbases->reload();
+}
+
+void TerminologySection::openReview(const QString &connectionId, int mergeRequest)
+{
+    Connection *c = m_manager->find(connectionId);
+    if (!c)
+        return;
+    m_review->open(c, mergeRequest);
+    m_stack->setCurrentWidget(m_review);
 }

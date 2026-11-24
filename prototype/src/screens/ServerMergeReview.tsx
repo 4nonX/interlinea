@@ -118,7 +118,11 @@ export function ServerMergeReview({ id }: { id: number }) {
   const waiting = progress.states.waiting ?? 0;
   return (
     <div className="page">
-      <PageHeader title={mr.title} />
+      <PageHeader title={mr.title}>
+        <a className="btn btn-quiet" href={`#/terminology/srv:${encodeURIComponent(mr.project)}`}>
+          Back to the termbase
+        </a>
+      </PageHeader>
       <p className="help">
         {mr.project} into {mr.target}. Submitted by {mr.createdBy} on {fmtDate(mr.createdAt)}
         {mr.deadline ? `, to be decided by ${fmtDate(mr.deadline)}` : ""}.{" "}

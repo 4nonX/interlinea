@@ -260,7 +260,8 @@ void ProjectsPage::updateState()
                         rp->setVisible(own > 0);
                         table->fit();
                     });
-                    connect(review, &QPushButton::clicked, this, [this, tb] { emit navigate(QStringLiteral("terminology"), tb); });
+                    const QString connId = c->id();
+                    connect(review, &QPushButton::clicked, this, [this, connId, tb] { emit navigate(QStringLiteral("terminology"), connId, tb); });
                     actions << review;
                 }
                 actions << settingsButton;
@@ -362,7 +363,9 @@ void ProjectsPage::edit(const QString &file, const QString &lang)
     connect(m_editor, &EditorPage::openFile, this, [this](const QString &f, const QString &l) {
         QTimer::singleShot(0, this, [this, f, l] { edit(f, l); });
     });
-    connect(m_editor, &EditorPage::openReview, this, [this](const QString &termbase) { emit navigate(QStringLiteral("terminology"), termbase); });
+    connect(m_editor, &EditorPage::openReview, this, [this](const QString &termbase) {
+        emit navigate(QStringLiteral("terminology"), m_project && m_project->connection() ? m_project->connection()->id() : QString(), termbase);
+    });
     m_editor->grid()->setFocus();
 }
 
