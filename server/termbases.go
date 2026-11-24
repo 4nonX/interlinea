@@ -897,7 +897,8 @@ func (s *Server) exportTermbase(w http.ResponseWriter, r *http.Request, me sessi
 }
 
 // importTermbase reads a termbase file (the request body: TBX, MultiTerm
-// XML, CSV, TSV or Excel) into the termbase. ?match=term|id|none and
+// XML, a MultiTerm termbase file (.sdltb), CSV, TSV or Excel) into the
+// termbase. ?match=term|id|none and
 // ?onMatch=merge|overwrite|skip|add say what happens to entries that are
 // there already; ?dryRun=1 reports without changing anything.
 //

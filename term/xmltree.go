@@ -11,9 +11,43 @@ import (
 // xnode is a generic XML element; files are read one entry at a time.
 type xnode struct {
 	XMLName xml.Name
-	Attrs   []xml.Attr `xml:",any,attr"`
-	Nodes   []xnode    `xml:",any"`
-	Text    string     `xml:",chardata"`
+	Attrs   []xml.Attr
+	Nodes   []xnode
+	// Text is the element's own character data, without that of the
+	// elements inside it.
+	Text string
+	// full is all the text in the element in the order of the document,
+	// so that "(<xref>Smith</xref> 2013)" reads "(Smith 2013)".
+	full string
+}
+
+// UnmarshalXML reads an element keeping the order of its text and the
+// elements inside it, which the struct tags of encoding/xml do not.
+func (n *xnode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	n.XMLName = start.Name
+	n.Attrs = append([]xml.Attr(nil), start.Attr...)
+	var own, full strings.Builder
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return err
+		}
+		switch t := tok.(type) {
+		case xml.CharData:
+			own.Write(t)
+			full.Write(t)
+		case xml.StartElement:
+			var c xnode
+			if err := c.UnmarshalXML(d, t); err != nil {
+				return err
+			}
+			n.Nodes = append(n.Nodes, c)
+			full.WriteString(c.full)
+		case xml.EndElement:
+			n.Text, n.full = own.String(), full.String()
+			return nil
+		}
+	}
 }
 
 func (n *xnode) attr(local string) string {
@@ -36,15 +70,7 @@ func (n *xnode) lang() string {
 }
 
 func (n *xnode) text() string {
-	if len(n.Nodes) == 0 {
-		return strings.TrimSpace(n.Text)
-	}
-	var b strings.Builder
-	b.WriteString(n.Text)
-	for i := range n.Nodes {
-		b.WriteString(n.Nodes[i].text())
-	}
-	return strings.TrimSpace(b.String())
+	return strings.TrimSpace(n.full)
 }
 
 func (n *xnode) child(local string) *xnode {

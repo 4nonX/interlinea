@@ -1179,7 +1179,7 @@ Access: manage on the termbase.
 
 ### `POST /api/termbases/{name}/import`
 
-Reads a termbase file (the request body: TBX, MultiTerm XML, CSV, TSV or Excel) into the termbase.
+Reads a termbase file (the request body: TBX, MultiTerm XML, a MultiTerm termbase file (.sdltb), CSV, TSV or Excel) into the termbase.
 
 ?match=term|id|none and ?onMatch=merge|overwrite|skip|add say what happens to entries that are there already; ?dryRun=1 reports without changing anything.
 

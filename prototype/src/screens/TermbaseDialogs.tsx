@@ -995,8 +995,9 @@ export function ImportDialog({
                 : "Loading the core…"}
             </span>
             <span className="help">
-              TBX (2 or 3), MultiTerm XML, Excel, CSV or tab-separated text. A
-              MultiTerm definition (.xdt) brings only the languages.
+              TBX (2 or 3), a MultiTerm termbase (.sdltb) or its XML export,
+              Excel, CSV or tab-separated text. A MultiTerm definition (.xdt)
+              brings only the languages.
             </span>
           </button>
           <input

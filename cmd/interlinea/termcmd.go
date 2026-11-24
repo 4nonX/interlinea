@@ -26,7 +26,7 @@ func runTerm(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "Usage: interlinea term <info|convert|mapping|duplicates|recognize> [options] file")
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "  info        show languages, fields and counts of a termbase file")
-		fmt.Fprintln(stderr, "  convert     convert between TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel")
+		fmt.Fprintln(stderr, "  convert     convert between TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; reads MultiTerm termbase files (.sdltb)")
 		fmt.Fprintln(stderr, "  mapping     print the guessed column mapping of a spreadsheet as JSON")
 		fmt.Fprintln(stderr, "  duplicates  list entries that share a term")
 		fmt.Fprintln(stderr, "  recognize   find the terms of a termbase in a sentence and check its translation")
@@ -44,7 +44,7 @@ func runTerm(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	return fn(args[1:], stdout, stderr)
 }
 
-var termFormats = []term.Format{term.FormatTBX, term.FormatTBX2, term.FormatMultiTerm, term.FormatXDT, term.FormatCSV, term.FormatTSV, term.FormatXLSX}
+var termFormats = []term.Format{term.FormatTBX, term.FormatTBX2, term.FormatMultiTerm, term.FormatSDLTB, term.FormatXDT, term.FormatCSV, term.FormatTSV, term.FormatXLSX}
 
 func formatList() string {
 	var s []string
@@ -76,6 +76,8 @@ func formatForOutput(name string) (term.Format, error) {
 		return term.FormatTSV, nil
 	case ".xlsx":
 		return term.FormatXLSX, nil
+	case ".sdltb":
+		return term.FormatSDLTB, nil
 	}
 	return "", usageErr("cannot tell the format from %q; use -to", name)
 }
@@ -193,6 +195,9 @@ func runTermConvert(args []string, stdout, stderr io.Writer) error {
 	}
 	if out == term.FormatXDT {
 		return usageErr("termbase definitions (xdt) can be read but not written")
+	}
+	if out == term.FormatSDLTB {
+		return usageErr("MultiTerm termbase files (sdltb) can be read but not written; write MultiTerm XML, which MultiTerm imports")
 	}
 	tb, rep, _, err := readTermFile(fs.Arg(0), *from, *mapping)
 	if err != nil {

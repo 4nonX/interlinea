@@ -9049,7 +9049,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Reads a termbase file (the request body: TBX, MultiTerm XML, CSV, TSV or Excel) into the termbase.",
+        "summary": "Reads a termbase file (the request body: TBX, MultiTerm XML, a MultiTerm termbase file (.sdltb), CSV, TSV or Excel) into the termbase.",
         "tags": [
           "Termbases"
         ]

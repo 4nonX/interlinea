@@ -2,6 +2,7 @@ package term
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -18,6 +19,7 @@ const (
 	FormatCSV       Format = "csv"
 	FormatTSV       Format = "tsv"
 	FormatXLSX      Format = "xlsx"
+	FormatSDLTB     Format = "sdltb" // MultiTerm termbase file, read only
 )
 
 // Detect works out the format from the content, using the file name only
@@ -28,6 +30,9 @@ func Detect(name string, data []byte) (Format, error) {
 			return FormatXLSX, nil
 		}
 		return "", fmt.Errorf("%s is a ZIP file but not an Excel workbook", name)
+	}
+	if IsSDLTB(data) {
+		return FormatSDLTB, nil
 	}
 	text := ToUTF8(data)
 	head := text
@@ -82,6 +87,8 @@ func Read(f Format, data []byte, m *Mapping) (*Termbase, Report, error) {
 		return ReadTBX(data)
 	case FormatMultiTerm:
 		return ReadMultiTerm(data)
+	case FormatSDLTB:
+		return ReadSDLTB(data)
 	case FormatXDT:
 		d, err := ReadXDT(data)
 		if err != nil {
@@ -118,6 +125,9 @@ func Write(tb *Termbase, f Format) ([]byte, error) {
 	case FormatXLSX:
 		return writeXLSX(tb.Name, ToRows(tb)), nil
 	}
+	if f == FormatSDLTB {
+		return nil, errors.New("a MultiTerm termbase file (.sdltb) can be read but not written: export MultiTerm XML with its definition, which MultiTerm imports")
+	}
 	return nil, fmt.Errorf("cannot write %q", f)
 }
 
@@ -130,6 +140,8 @@ func (f Format) Extension() string {
 		return ".xml"
 	case FormatXDT:
 		return ".xdt"
+	case FormatSDLTB:
+		return ".sdltb"
 	}
 	return "." + string(f)
 }

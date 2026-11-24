@@ -1,6 +1,6 @@
 // Termbase exchange through the core: TBX, MultiTerm XML, CSV, TSV and
 // Excel are read and written by the Go term package (compiled to
-// WebAssembly). This module converts between the prototype's entries,
+// WebAssembly), which also reads MultiTerm's own termbase files (.sdltb). This module converts between the prototype's entries,
 // whose fields are keyed by field ID, and the core's entries, whose fields
 // are keyed by field name, as in the exchange formats.
 
@@ -17,7 +17,7 @@ import {
 } from "./data";
 
 export type TermFormat =
-  "tbx" | "tbx2" | "multiterm" | "xdt" | "csv" | "tsv" | "xlsx";
+  "tbx" | "tbx2" | "multiterm" | "sdltb" | "xdt" | "csv" | "tsv" | "xlsx";
 export type CoreLevel = "entry" | "language" | "term";
 
 export interface CoreValue {
@@ -193,6 +193,7 @@ export const FORMAT_LABEL: Record<TermFormat, string> = {
   tbx: "TBX 3",
   tbx2: "TBX 2",
   multiterm: "MultiTerm XML",
+  sdltb: "MultiTerm termbase",
   xdt: "MultiTerm termbase definition",
   csv: "CSV",
   tsv: "Tab-separated text",
@@ -200,7 +201,7 @@ export const FORMAT_LABEL: Record<TermFormat, string> = {
 };
 
 export const IMPORT_ACCEPT =
-  ".tbx,.tbxm,.xml,.mtf,.xdt,.csv,.tsv,.tab,.txt,.xlsx";
+  ".tbx,.tbxm,.xml,.mtf,.sdltb,.xdt,.csv,.tsv,.tab,.txt,.xlsx";
 
 const LEVEL_TO_CORE: Record<InfoType["level"], CoreLevel> = {
   concept: "entry",

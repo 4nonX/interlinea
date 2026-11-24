@@ -53,7 +53,7 @@ var termbaseCommands = []command{
 	{"list", "list termbases", runTBList},
 	{"rename", "rename a termbase", runTBRename},
 	{"delete", "delete a termbase and all its entries", runTBDelete},
-	{"import", "import a TBX, MultiTerm XML, CSV, TSV or Excel file", runTBImport},
+	{"import", "import a TBX, MultiTerm (XML or .sdltb), CSV, TSV or Excel file", runTBImport},
 	{"export", "export a termbase as TBX, MultiTerm XML, CSV, TSV or Excel", runTBExport},
 	{"lookup", "find the entries that have a term", runTBLookup},
 	{"search", "search terms and field values", runTBSearch},
@@ -366,6 +366,9 @@ func runTBExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	if f == term.FormatXDT {
 		return usageErr("termbase definitions (xdt) can be read but not written")
+	}
+	if f == term.FormatSDLTB {
+		return usageErr("MultiTerm termbase files (sdltb) can be read but not written; write MultiTerm XML, which MultiTerm imports")
 	}
 	ctx := context.Background()
 	db, tb, err := openTermbase(ctx, *dbPath, *name)

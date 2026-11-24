@@ -273,6 +273,38 @@ export default () =>
         "navigated to the new termbase",
       );
 
+      // A MultiTerm termbase file is read as it is, without an export.
+      await click(".tb-actions button", "Import termbase");
+      await sleep(400);
+      await setFile("dialog input[type=file]", `${fixtures}/orchard.sdltb`);
+      await sleep(700);
+      d = await dlg();
+      check(
+        d.includes("MultiTerm termbase: 5 entries, 15 terms") &&
+          !d.includes("Columns"),
+        "a MultiTerm termbase file is read",
+      );
+      await click("dialog button", "Continue");
+      await sleep(400);
+      d = await dlg();
+      check(/New entries\s*5/.test(d), "its five entries are new");
+      await click("dialog button", "Import");
+      await sleep(700);
+      t = await body();
+      check(
+        t.includes("Orchard") &&
+          (await evaluate(
+            "document.querySelectorAll('.entry-list li').length",
+          )) === 5,
+        "the termbase takes its name and entries from the file",
+      );
+      check(
+        t.includes("りんご") && t.includes("تفاحة") && t.includes("μήλο"),
+        "terms in other scripts come through",
+      );
+      await evaluate("history.back()");
+      await sleep(500);
+
       // Settings: rename, add a language, remove a field.
       await click(".pane-tools button", "Settings");
       await sleep(300);

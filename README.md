@@ -57,7 +57,7 @@ The Go packages:
 | `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
 | `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
 | `filter/sdlpackage` | Trados project packages (.sdlppx): languages and bilingual files; return packages (.sdlrpx) with the translated files |
-| `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel; import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
+| `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel, and reads MultiTerm termbase files (.sdltb); import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
 | `analysis` | Word counts and analysis against memories as in Trados and memoQ: locked, context matches (101%, segment before or before and after), repetitions within and across files, 100%, fuzzy bands, new; segments, words, characters, tags and placeables per file and in total; weighted word counts for quotes; reports in HTML, CSV and JSON |
 | `qa` | Quality checks as in Trados, memoQ and Xbench: empty and untranslated segments, tags (missing, extra, nesting), numbers read with each language's separators, end punctuation, spacing (double, leading and trailing, before punctuation, French no-break spaces), brackets, repeated words, capitalization, length limits and ratio, consistency across segments, terminology, spelling, rules of your own (regular expressions); reports in HTML, CSV and JSON |
 | `spell` | Hunspell spelling in Go: reads LibreOffice, Firefox and system dictionaries (.aff/.dic, .oxt extensions), affixes, compounds, all flag types and character sets, suggestions in Hunspell's order |
@@ -380,6 +380,9 @@ that match by primary language only (`de-AT` for `de-DE`).
   headers such as `German`, `de-DE`, `Status (en)` or `en Term Note`, and
   synonyms share a cell (`;`, or `|` when a file uses that). A MultiTerm
   definition (.xdt) is read for its languages only and is not written.
+  A MultiTerm termbase file (.sdltb) is read directly, with its entries,
+  fields, history and name, so a termbase needs no export from MultiTerm
+  first; it is not written, MultiTerm takes the XML export instead.
   Imports into an existing termbase match on a shared term (in one or any
   language), the entry ID, or nothing, then merge (only adds), overwrite,
   skip or add.
