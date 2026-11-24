@@ -2607,7 +2607,26 @@ button.entry-row {
 
 .history .confirm,
 .history > li > .btn {
+  justify-self: start;
   margin-top: var(--s1);
+}
+
+/* The tools of a termbase go on a second line when they do not fit. */
+.pane-tools {
+  flex-wrap: wrap;
+}
+
+/* A list as tall as it is, with more under it. */
+.entry-list-fit {
+  flex: none;
+}
+
+/* A panel inside a dialog is a section of it, not a card. */
+.panel-embedded {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .deleted-list {

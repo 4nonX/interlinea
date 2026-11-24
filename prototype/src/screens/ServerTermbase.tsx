@@ -312,7 +312,7 @@ export function ServerMasterList({
           : "The master's entries this project uses as they are."}
       </p>
       {masters.length === 0 && <p className="muted pane-pad">The masters have no entries the project does not have itself.</p>}
-      <ul className="entry-list" aria-label={`Entries of the masters of ${tb.name}`}>
+      <ul className="entry-list entry-list-fit" aria-label={`Entries of the masters of ${tb.name}`}>
         {masters.map((e) => {
           const parts = tb.languages
             .map((l) => e.languages.find((x) => x.lang === l)?.terms.map((t) => t.text).join(", ") ?? "")
@@ -865,7 +865,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
       )}
 
       <section className="settings-section" aria-label="Who may use it">
-        <AccessPanel key={current} kind="termbase" resource={current} title="Who may use it" />
+        <AccessPanel key={current} kind="termbase" resource={current} title="Who may use it" embedded />
       </section>
 
       <section className="settings-section settings-danger" aria-labelledby="stb-delete">

@@ -7,7 +7,18 @@ import { roleText } from "./Accounts";
  * Who may use a project, memory or termbase on the team server, for its
  * managers and the administrators: roles given, changed and taken away.
  */
-export function AccessPanel({ kind, resource, title }: { kind: Exclude<Kind, "all">; resource: string; title: string }) {
+export function AccessPanel({
+  kind,
+  resource,
+  title,
+  embedded = false,
+}: {
+  kind: Exclude<Kind, "all">;
+  resource: string;
+  title: string;
+  /** A section of a dialog: no card around it, and its title as the dialog's other sections have theirs. */
+  embedded?: boolean;
+}) {
   const r = useRemote();
   const [grants, setGrants] = useState<GrantView[] | null>(null);
   const [userId, setUserId] = useState("");
@@ -46,10 +57,16 @@ export function AccessPanel({ kind, resource, title }: { kind: Exclude<Kind, "al
 
   const id = `access-${kind}`;
   return (
-    <section className="panel" aria-labelledby={id}>
-      <h2 id={id} className="panel-title">
-        {title}
-      </h2>
+    <section className={embedded ? "panel panel-embedded" : "panel"} aria-labelledby={id}>
+      {embedded ? (
+        <h3 id={id} className="settings-title">
+          {title}
+        </h3>
+      ) : (
+        <h2 id={id} className="panel-title">
+          {title}
+        </h2>
+      )}
       {problem && (
         <p className="error" role="alert">
           {problem}
