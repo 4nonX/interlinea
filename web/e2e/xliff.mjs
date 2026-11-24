@@ -30,14 +30,14 @@ export default () =>
         `${fixtures}/Mietvertrag.docx.sdlxliff`,
       );
       check(
-        await waitFor("document.body.innerText.includes('Trados SDLXLIFF')"),
+        await waitFor("document.body.innerText.includes('SDLXLIFF')"),
         "file read as Trados SDLXLIFF",
       );
       let t = await text();
       check(
         t.includes("2 of 5 segments confirmed, 1 locked"),
         "summary of the file's segments: " +
-          (t.match(/Trados SDLXLIFF[^\n]*/)?.[0] ?? ""),
+          (t.match(/SDLXLIFF[^\n]*/)?.[0] ?? ""),
       );
       check(
         t.includes("German (Germany)") &&
@@ -184,7 +184,7 @@ export default () =>
       );
       check(
         await waitFor(
-          "document.body.innerText.includes('From the Trados package')",
+          "document.body.innerText.includes('From the project package')",
         ),
         "package read",
       );
@@ -214,7 +214,7 @@ export default () =>
       t = await text();
       check(
         t.includes("2 files to translate") &&
-          t.includes("from the Trados package Mietvertrag Hofmann.sdlppx"),
+          t.includes("from the project package Mietvertrag Hofmann.sdlppx"),
         "review counts the package's files",
       );
       await click("button", "Create project");

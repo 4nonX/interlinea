@@ -137,7 +137,7 @@ export function Settings() {
               <span className="choice-title">
                 The segment before also matches
               </span>
-              <span className="choice-desc">As in Trados Studio.</span>
+              <span className="choice-desc">The usual rule.</span>
             </span>
           </label>
           <label className="choice">
@@ -154,7 +154,7 @@ export function Settings() {
                 The segments before and after also match
               </span>
               <span className="choice-desc">
-                Stricter, as memoQ counts 101% matches.
+                Stricter: such a match is often shown as 101%.
               </span>
             </span>
           </label>

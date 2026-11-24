@@ -4,6 +4,7 @@ import { DEFAULT_PREPARE, lang, type Termbase, type TranslationMemory } from "..
 import { useStore } from "../store";
 import { core, loadCore, tm, type CoreApi } from "../core";
 import { errorText, qaOf, remoteId, useRemote } from "../remote";
+import { ProjectAnalysis } from "./ProjectAnalysis";
 import { ApiError, type CoreSettings, type ServerProject } from "../server";
 import { coreSettings, type Draft, type Problem } from "../project";
 import { readFiles } from "../detect";
@@ -220,6 +221,16 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
           setQa={(qa) => setDraft((d) => ({ ...d, qa }))}
           context={draft.context}
           setContext={(context) => setDraft((d) => ({ ...d, context }))}
+        />
+        <ProjectAnalysis
+          name={project.settings.name}
+          run={async () =>
+            (await r.api!.analysis(project.id)).map((rep) => ({
+              lang: rep.targetLang,
+              memories: (project.settings.memories[rep.targetLang] ?? []).filter((m) => m.lookup).map((m) => m.memory),
+              report: rep,
+            }))
+          }
         />
       </section>
 

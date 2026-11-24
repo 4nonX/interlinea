@@ -947,7 +947,7 @@ export function ChecksSection({
           <span className="choice-body">
             <span className="choice-title">The segment before matches</span>
             <span className="choice-desc">
-              As Trados counts context matches.
+              The usual rule for a context match.
             </span>
           </span>
         </label>
@@ -962,7 +962,7 @@ export function ChecksSection({
             <span className="choice-title">
               The segments before and after match
             </span>
-            <span className="choice-desc">As memoQ counts them.</span>
+            <span className="choice-desc">Stricter: both neighbours must match.</span>
           </span>
         </label>
       </fieldset>
@@ -985,7 +985,7 @@ export function ChecksSection({
                     <span className="check-desc">
                       {k.description}
                       {k.kind === "length" &&
-                        " Limits come from the file (XLIFF maxwidth); Word files have none."}
+                        " Limits come from the file (XLIFF maxwidth); documents have none."}
                       {k.kind === "spelling" && " With the dictionaries below."}
                       {k.kind === "rule" && " The rules below."}
                     </span>

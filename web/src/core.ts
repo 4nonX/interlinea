@@ -269,11 +269,11 @@ export function documentFormat(name: string): DocumentFormat | null {
 
 /** What a document format is called. */
 export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
-  docx: "Word document",
-  pptx: "PowerPoint presentation",
-  xlsx: "Excel workbook",
+  docx: "DOCX document",
+  pptx: "PPTX presentation",
+  xlsx: "XLSX workbook",
   html: "Web page",
-  idml: "InDesign document (IDML)",
+  idml: "IDML document",
 };
 
 /** The type a translated document is offered for download as. */
@@ -367,8 +367,8 @@ export interface Bilingual extends Extracted {
 export const XLIFF_FORMAT_NAME: Record<string, string> = {
   "xliff-1.2": "XLIFF 1.2",
   "xliff-2": "XLIFF 2",
-  sdlxliff: "Trados SDLXLIFF",
-  mqxliff: "memoQ MQXLIFF",
+  sdlxliff: "SDLXLIFF",
+  mqxliff: "MQXLIFF",
 };
 
 // A segment's state in the file becomes the editor's: confirmed for
@@ -473,7 +473,7 @@ export function returnPackageName(name: string): string {
 
 /** What a package is called, by its name. */
 export function packageKind(name: string): string {
-  return /\.mqout$/i.test(name) ? "memoQ handoff package" : "Trados package";
+  return /\.mqout$/i.test(name) ? "handoff package" : "project package";
 }
 export const SDL_RETURN_TYPE = "application/octet-stream";
 

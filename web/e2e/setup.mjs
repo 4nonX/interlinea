@@ -24,6 +24,7 @@ export default () =>
       waitFor,
       errors,
       startFrom,
+      downloads,
     }) => {
       const setFiles = async (sel, files) => {
         const doc = await send("DOM.getDocument", { depth: -1, pierce: true });
@@ -536,6 +537,26 @@ export default () =>
           "[...document.querySelectorAll('.word-list .tag')].map(t => t.textContent).join()",
         )) === "payz",
         "the project's words are in its settings",
+      );
+
+      // The settings page analyses the project's files and saves the count.
+      await click("button", "Analyse the files");
+      check(
+        await waitFor("!!document.querySelector('table[aria-label^=\"Match analysis\"], table caption')", 10000),
+        "the settings page analyses the files",
+      );
+      const analysed = await evaluate("document.querySelector('#project-analysis').closest('section').innerText");
+      check(
+        analysed.includes("Analyse again") && analysed.includes("counted in this order") && /Total\s+\d+/.test(analysed),
+        "the analysis says what it was counted against, with a total: " + analysed.replace(/\s+/g, " ").slice(0, 160),
+      );
+      await click("button", "Save as CSV");
+      await sleep(800);
+      const csvName = (await import("node:fs")).readdirSync(downloads).find((f) => f.endsWith("analysis.csv"));
+      const csv = csvName ? (await import("node:fs")).readFileSync(`${downloads}/${csvName}`, "utf8") : "";
+      check(
+        csv.includes('"Language","File","Match","Segments","Words","Characters"') && /"en-GB","[^"]+","[^"]+",\d+,\d+,\d+/.test(csv),
+        "the analysis is saved as CSV: " + (csvName ?? "no file"),
       );
       check(
         errors.length === 0,

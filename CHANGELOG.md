@@ -59,9 +59,11 @@ client and the desktop app, with installers and a server image.
 
 ### Working together
 
-- The team server: accounts, sign-in with a password or through an
-  OpenID Connect provider (Entra ID, Google, Keycloak), projects,
-  memories and termbases for a team, on SQLite or PostgreSQL.
+- The team server, first of all for a team's terminology: its termbases
+  in one place, with review of what projects add and change. Projects
+  and memories are shared there as well. Accounts sign in with a
+  password or through an OpenID Connect provider (Entra ID, Google,
+  Keycloak); the server keeps its data in SQLite or PostgreSQL.
 - Roles as sets of the permissions read, suggest, edit, approve and
   manage: five come with the server, and administrators define others.
   Roles are given on single projects, memories and termbases or on all
@@ -83,6 +85,16 @@ client and the desktop app, with installers and a server image.
   client, with its own core for work on this computer and connections to
   team servers. Sign-ins are kept in the system's keychain.
 - The command line tool for projects, memories, termbases and analysis.
+- The desktop app's New project, project and Settings pages have the
+  layout and wording of the browser client: a project is set up in five
+  steps with the match analysis before it is made, and its settings are
+  panels down one page, saved together.
+- The project page of both apps analyses the files and saves the count
+  as CSV. Settings in the desktop app also hold the editor's choices,
+  the wording of the terminology, project templates and spelling
+  dictionaries.
+- The interface names file formats by their extensions and compares
+  itself to no other program.
 
 ### Installing
 

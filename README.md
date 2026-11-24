@@ -58,17 +58,17 @@ sign-in through a provider, backups.
   Trados packages, memoQ handoff packages and plain text; translation memories; termbases with
   TBX, MultiTerm, CSV and Excel exchange; QA, spelling, analysis and
   pre-translation. Done and tested.
-- **Team server:** accounts and roles, password and OpenID Connect
-  sign-in, projects, memories, termbases with review, a live feed of
-  changes, backups. API reference in [docs/api.md](docs/api.md), running
+- **Team server:** first of all a team's terminology in one place:
+  termbases with review of what projects add and change. Also projects
+  and memories, accounts and roles, password and OpenID Connect
+  sign-in, a live feed of changes, backups. API reference in [docs/api.md](docs/api.md), running
   guide in [docs/running.md](docs/running.md). The languages both apps
   offer, and what is checked for each, are in
   [docs/languages.md](docs/languages.md).
 - **Desktop app:** works without a server and connects to team servers.
-  Projects are done: the list, new projects from documents, files,
-  settings, analysis, pre-translation, translated files and return
-  packages. The editor, memory and termbase management, account
-  administration and installers come next ([docs/desktop.md](docs/desktop.md)).
+  It has the pages of the browser client in the same layout: projects
+  and new projects from documents, the editor, memories, terminology
+  with review, accounts and settings ([docs/desktop.md](docs/desktop.md)).
 - **Browser client:** in `web/`, with the editor and
   terminology management, running against the team server or on its own
   with the core compiled to WebAssembly.
@@ -167,8 +167,10 @@ data folder.
 
 ## Team server
 
-`interlinea-server` keeps projects, memories, termbases and accounts for a
-team. It runs on SQLite files (`-data`, the default) or PostgreSQL
+`interlinea-server` is first of all where a team shares its terminology:
+master termbases everyone translates with, and the review that new and
+changed entries pass before they reach them. It keeps projects, memories
+and accounts for the team as well. It runs on SQLite files (`-data`, the default) or PostgreSQL
 (`-postgres`, each store in its own schema), and serves the web app from
 `-web`. Every option is also an environment variable (`-addr` is
 `INTERLINEA_ADDR`); `interlinea-server -h` lists them.

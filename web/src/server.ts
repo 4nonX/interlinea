@@ -4,6 +4,7 @@
 
 import type { CoreEntry } from "./termio";
 import type { CoreRun } from "./editor/model";
+import type { CoreReport } from "./project";
 
 /** An account, as the server shows it. */
 export interface ServerUser {
@@ -756,6 +757,8 @@ export function client(conn: Connection) {
     addFile: (id: number, f: FileUpload, version: number) => send<ServerProject>("POST", `${p(id)}/files`, f, version),
     removeFile: (id: number, name: string, version: number) =>
       send<ServerProject>("DELETE", `${p(id)}/files?${q({ name })}`, undefined, version),
+    /** The match analysis of the project's files, one report for each target language. */
+    analysis: (id: number) => send<(CoreReport & { targetLang: string })[]>("POST", `${p(id)}/analysis`, {}),
     pretranslate: (id: number, prepare?: CoreSettings["prepare"], lang?: string) =>
       send<{ lang: string; filled: number }[]>("POST", `${p(id)}/pretranslate`, { lang: lang ?? "", prepare }),
     importTermbase: async (name: string, tbx: Uint8Array) =>

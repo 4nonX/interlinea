@@ -29,6 +29,8 @@ import {
 } from "../detect";
 import {
   core,
+  DOCUMENT_FORMAT_NAME,
+  documentFormat,
   loadCore,
   packageKind,
   XLIFF_FORMAT_NAME,
@@ -1210,7 +1212,7 @@ export function NewProject() {
               Checks and context matches
               <span className="muted">
                 {c &&
-                  ` ${checksOn(c, draft.qa).on} of ${checksOn(c, draft.qa).of} checks on, context matches ${draft.context === "both" ? "as memoQ counts them" : "as Trados counts them"}`}
+                  ` ${checksOn(c, draft.qa).on} of ${checksOn(c, draft.qa).of} checks on, context matches by ${draft.context === "both" ? "the segments before and after" : "the segment before"}`}
               </span>
             </summary>
             <ChecksSection
@@ -1249,7 +1251,7 @@ export function NewProject() {
             </h3>
             {prepareError ? (
               <p className="error" role="alert">
-                A Word file could not be read: {prepareError}
+                A document could not be read: {prepareError}
               </p>
             ) : !review || !projectFiles ? (
               <p className="muted" role="status">
@@ -1280,7 +1282,7 @@ export function NewProject() {
                   <>
                     <p className="help">
                       {review[shownLang]!.memories.length
-                        ? `Against ${review[shownLang]!.memories.join(" and ")}, counted as in Trados: context matches first, then repetitions within a file and across files, then the best match.`
+                        ? `Against ${review[shownLang]!.memories.join(" and ")}, counted in this order: context matches first, then repetitions within a file and across files, then the best match.`
                         : "No memory for this language, so only repetitions count."}
                     </p>
                     <AnalysisTable
@@ -1551,7 +1553,7 @@ export function FilesField({
         <p className="dropzone-text">
           {reading
             ? "Reading the files…"
-            : "Drop files or folders here. Word, PowerPoint, Excel, InDesign (IDML) and web page files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf), Trados packages (.sdlppx) and memoQ handoff packages (.mqout) keep their translations and states."}
+            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."}
         </p>
         <div className="row">
           <button
@@ -1626,7 +1628,7 @@ function describe(doc: PendingDoc): string {
   }
   switch (kindOf(doc)) {
     case "docx":
-      return "Word document, formatting kept by the Word filter";
+      return `${DOCUMENT_FORMAT_NAME[documentFormat(doc.file) ?? "docx"]}, formatting kept`;
     case "text":
       return "Read as plain text";
     default:

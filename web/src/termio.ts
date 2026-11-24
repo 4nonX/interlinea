@@ -151,7 +151,7 @@ export const FORMATS: {
     label: "TBX 3",
     ext: ".tbx",
     type: "application/x-tbx+xml",
-    note: "The ISO standard (30042:2019). Phrase, memoQ and current Trados read it.",
+    note: "The ISO standard (30042:2019), read by current terminology tools.",
   },
   {
     id: "tbx2",
@@ -162,14 +162,14 @@ export const FORMATS: {
   },
   {
     id: "multiterm",
-    label: "MultiTerm XML",
+    label: "Termbase XML",
     ext: ".xml",
     type: "application/xml",
-    note: "For importing into Trados MultiTerm.",
+    note: "The XML exchange format of .sdltb termbases.",
   },
   {
     id: "xlsx",
-    label: "Excel workbook",
+    label: "XLSX workbook",
     ext: ".xlsx",
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     note: "One row per entry, one column per language and field. Synonyms share a cell, separated by “; ”.",
@@ -179,7 +179,7 @@ export const FORMATS: {
     label: "CSV",
     ext: ".csv",
     type: "text/csv",
-    note: "Comma-separated, UTF-8. Opens in Excel and imports into memoQ.",
+    note: "Comma-separated, UTF-8. Opens in spreadsheet programs.",
   },
   {
     id: "tsv",
@@ -193,12 +193,12 @@ export const FORMATS: {
 export const FORMAT_LABEL: Record<TermFormat, string> = {
   tbx: "TBX 3",
   tbx2: "TBX 2",
-  multiterm: "MultiTerm XML",
-  sdltb: "MultiTerm termbase",
-  xdt: "MultiTerm termbase definition",
+  multiterm: "Termbase XML",
+  sdltb: ".sdltb termbase",
+  xdt: ".xdt termbase definition",
   csv: "CSV",
   tsv: "Tab-separated text",
-  xlsx: "Excel workbook",
+  xlsx: "XLSX workbook",
 };
 
 export const IMPORT_ACCEPT =

@@ -139,13 +139,13 @@ export default () =>
       await click("button", "Continue to files and languages");
       await sleep(300);
       await setFiles([`${docs}/Hofmann.mqout`]);
-      check(await waitFor("document.body.innerText.includes('From the memoQ handoff package Hofmann.mqout')", 15000), "the package's document is listed, out of its archive");
+      check(await waitFor("document.body.innerText.includes('From the handoff package Hofmann.mqout')", 15000), "the package's document is listed, out of its archive");
       t = await text();
-      check(t.includes("Mietvertrag.docx.mqxliff") && t.includes("1 of 3 segments confirmed"), "with its name and how far it is: " + (t.match(/From the memoQ[^\n]*/)?.[0] ?? ""));
+      check(t.includes("Mietvertrag.docx.mqxliff") && t.includes("1 of 3 segments confirmed"), "with its name and how far it is: " + (t.match(/From the handoff[^\n]*/)?.[0] ?? ""));
       await setValue("#pname", "Hofmann memoQ");
       await sleep(200);
       await through();
-      check((await text()).includes("from the memoQ handoff package Hofmann.mqout"), "the review names the package");
+      check((await text()).includes("from the handoff package Hofmann.mqout"), "the review names the package");
       await click("button", "Create project");
       check(await waitFor("document.querySelectorAll('.seg').length === 3"), "the document opens with its three segments");
       await evaluate("document.querySelector('.seg.is-active .target-editor')?.focus()");
@@ -169,7 +169,7 @@ export default () =>
       await click("button", "Continue to files and languages");
       await sleep(300);
       await setFiles([`${docs}/Mietvertrag.mqxlz`]);
-      check(await waitFor("document.body.innerText.includes('memoQ MQXLIFF')", 15000), "an archive is read as memoQ XLIFF");
+      check(await waitFor("document.body.innerText.includes('MQXLIFF')", 15000), "an archive is read as memoQ XLIFF");
       await setValue("#pname", "Archiv");
       await sleep(200);
       await through();

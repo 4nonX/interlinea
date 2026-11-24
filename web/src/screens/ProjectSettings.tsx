@@ -29,6 +29,7 @@ import {
 } from "../editor/memory";
 import {
   draftOf,
+  analyzeFiles,
   memoryRefs,
   pretranslateFiles,
   problemsAt,
@@ -46,6 +47,7 @@ import {
   knownLang,
   type DraftDoc,
 } from "../setup";
+import { ProjectAnalysis } from "./ProjectAnalysis";
 import {
   ChecksSection,
   MemoriesSection,
@@ -606,6 +608,21 @@ function SettingsForm({ project }: { project: Project }) {
           context={draft.context}
           setContext={(context) => setDraft((d) => ({ ...d, context }))}
         />
+        {c && (
+          <ProjectAnalysis
+            name={project.name}
+            run={async () =>
+              project.targetLangs.map((t) => {
+                const refs = openRefs(c, memoryRefs(project, t, "lookup", state.memories), state.memories, state.projects);
+                return {
+                  lang: t,
+                  memories: refs.map((m) => m.name),
+                  report: analyzeFiles(c, project.files, project.sourceLang, t, refs, project.context),
+                };
+              })
+            }
+          />
+        )}
       </section>
 
       <section className="panel" aria-labelledby="ps-prep">

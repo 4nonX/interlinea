@@ -209,10 +209,11 @@ export async function start({ teamServer = false } = {}) {
       );
     return r.result.value;
   };
-  // What is clicked may still be on its way after a page load or a step:
-  // it is waited for, as a person waits for the button to appear.
+  // What is clicked may still be on its way after a page load or a step,
+  // or greyed out while a file is read: it is waited for, as a person
+  // waits for the button.
   const click = async (sel, txt) => {
-    const script = `(() => { const els = [...document.querySelectorAll(${JSON.stringify(sel)})]; const el = ${txt ? `els.find(e => e.textContent.includes(${JSON.stringify(txt)}))` : "els[0]"}; if (!el) return false; el.click(); return true; })()`;
+    const script = `(() => { const els = [...document.querySelectorAll(${JSON.stringify(sel)})]; const el = ${txt ? `els.find(e => e.textContent.includes(${JSON.stringify(txt)}))` : "els[0]"}; if (!el || el.disabled) return false; el.click(); return true; })()`;
     for (let t = 0; t < 10000; t += 100) {
       if (await evaluate(script)) return true;
       await sleep(100);

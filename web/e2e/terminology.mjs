@@ -218,7 +218,7 @@ export default () =>
       await sleep(800);
       await click(".pane-tools button", "Export");
       await sleep(300);
-      await click("dialog label.choice", "Excel workbook");
+      await click("dialog label.choice", "XLSX workbook");
       await sleep(100);
       await click("dialog button.btn-primary", "Export");
       await sleep(800);
@@ -281,7 +281,7 @@ export default () =>
       await sleep(700);
       d = await dlg();
       check(
-        d.includes("MultiTerm termbase: 5 entries, 15 terms") &&
+        d.includes(".sdltb termbase: 5 entries, 15 terms") &&
           !d.includes("Columns"),
         "a MultiTerm termbase file is read",
       );

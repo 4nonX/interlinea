@@ -1164,7 +1164,7 @@ export function Editor({
             )}{" "}
             in {lang(target).name} against{" "}
             {analysisMemories.map((m) => m.name).join(" and ") || "no memory"},
-            counted as in Trados: context matches first, then repetitions within
+            counted in this order: context matches first, then repetitions within
             a file and across files, then the best match. Below 50% counts as
             new. The project memory is left out: it holds this project's own
             translations.
@@ -1303,7 +1303,7 @@ export function Editor({
               aria-label="Preview of the translated document"
             >
               <p className="preview-note">
-                Layout from the Word file. Untranslated text appears in the
+                Layout from the document. Untranslated text appears in the
                 source language. The saved file is exact.
               </p>
               <Preview
@@ -1656,8 +1656,7 @@ export function Editor({
                     <dd>Search the memory for the selection</dd>
                   </dl>
                   <p className="help">
-                    These follow Trados, memoQ and Phrase where they agree.
-                    Editable in the full product.
+                    These are the shortcuts usual in translation tools.
                   </p>
                 </details>
               </>

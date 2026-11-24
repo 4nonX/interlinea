@@ -633,7 +633,7 @@ export default () =>
       t = await text();
       check(
         t.includes("Detected German") &&
-          t.includes("formatting kept by the Word filter"),
+          t.includes("DOCX document, formatting kept"),
         "chosen .docx read by the core: " +
           (t.match(/Detected[^\n]*/)?.[0] ?? t.slice(0, 120)),
       );

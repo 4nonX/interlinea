@@ -143,9 +143,10 @@ export function TeamServer() {
       ) : (
         <>
           <p className="help">
-            Projects on a team server are shared: work is given to translators
-            and reviewers there, and everyone sees each other's translations as
-            they are saved.
+            A team server keeps a team's termbases in one place: everyone
+            translates with the same terms, and new and changed entries reach
+            the masters through review. Projects and memories can be shared
+            there as well, with work given to translators and reviewers.
           </p>
           <form className="server-connect" onSubmit={check}>
             <label className="field">

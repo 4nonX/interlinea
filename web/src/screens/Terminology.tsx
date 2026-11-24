@@ -366,7 +366,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                       <p>
                         {layeredProject && masterCount > 0
                           ? "The project has no entries of its own yet: it uses the master's, which are under Master. Add an entry above, or change one of the master's for this project."
-                          : "Add an entry above, import a TBX, MultiTerm or Excel file, or add terms while you translate."}
+                          : "Add an entry above, import a TBX, .sdltb or XLSX file, or add terms while you translate."}
                       </p>
                       <button
                         type="button"
