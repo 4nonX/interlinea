@@ -15,7 +15,9 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDirIterator>
+#include <QCoreApplication>
 #include <QFileDialog>
+#include <QHash>
 #include <QFileInfo>
 #include <QGridLayout>
 #include <QHash>
@@ -88,6 +90,35 @@ QWidget *panelActions(const QList<QPushButton *> &buttons, QWidget *parent)
         h->addWidget(b);
     v->addLayout(h);
     return w;
+}
+
+// What a document format is called and what it keeps of the file besides
+// its text, as the web client says it; empty for any other format.
+QString documentFormatText(const QString &format)
+{
+    static const QHash<QString, std::pair<const char *, const char *>> names{
+        {QStringLiteral("docx"), {QT_TRANSLATE_NOOP("NewProjectPage", "DOCX document"), QT_TRANSLATE_NOOP("NewProjectPage", "formatting kept")}},
+        {QStringLiteral("pptx"), {QT_TRANSLATE_NOOP("NewProjectPage", "PPTX presentation"), QT_TRANSLATE_NOOP("NewProjectPage", "formatting kept")}},
+        {QStringLiteral("xlsx"), {QT_TRANSLATE_NOOP("NewProjectPage", "XLSX workbook"), QT_TRANSLATE_NOOP("NewProjectPage", "formatting kept")}},
+        {QStringLiteral("html"), {QT_TRANSLATE_NOOP("NewProjectPage", "Web page"), QT_TRANSLATE_NOOP("NewProjectPage", "markup kept")}},
+        {QStringLiteral("idml"), {QT_TRANSLATE_NOOP("NewProjectPage", "IDML document"), QT_TRANSLATE_NOOP("NewProjectPage", "layout kept")}},
+        {QStringLiteral("odt"), {QT_TRANSLATE_NOOP("NewProjectPage", "ODT document"), QT_TRANSLATE_NOOP("NewProjectPage", "formatting kept")}},
+        {QStringLiteral("ods"), {QT_TRANSLATE_NOOP("NewProjectPage", "ODS spreadsheet"), QT_TRANSLATE_NOOP("NewProjectPage", "formatting kept")}},
+        {QStringLiteral("odp"), {QT_TRANSLATE_NOOP("NewProjectPage", "ODP presentation"), QT_TRANSLATE_NOOP("NewProjectPage", "formatting kept")}},
+        {QStringLiteral("xml"), {QT_TRANSLATE_NOOP("NewProjectPage", "XML file"), QT_TRANSLATE_NOOP("NewProjectPage", "markup kept")}},
+        {QStringLiteral("md"), {QT_TRANSLATE_NOOP("NewProjectPage", "Markdown file"), QT_TRANSLATE_NOOP("NewProjectPage", "markup kept")}},
+        {QStringLiteral("properties"), {QT_TRANSLATE_NOOP("NewProjectPage", "Properties file"), QT_TRANSLATE_NOOP("NewProjectPage", "keys and placeholders kept")}},
+        {QStringLiteral("json"), {QT_TRANSLATE_NOOP("NewProjectPage", "JSON file"), QT_TRANSLATE_NOOP("NewProjectPage", "keys and placeholders kept")}},
+        {QStringLiteral("yaml"), {QT_TRANSLATE_NOOP("NewProjectPage", "YAML file"), QT_TRANSLATE_NOOP("NewProjectPage", "keys and placeholders kept")}},
+        {QStringLiteral("po"), {QT_TRANSLATE_NOOP("NewProjectPage", "PO file"), QT_TRANSLATE_NOOP("NewProjectPage", "keys and placeholders kept")}},
+        {QStringLiteral("resx"), {QT_TRANSLATE_NOOP("NewProjectPage", "RESX file"), QT_TRANSLATE_NOOP("NewProjectPage", "keys and placeholders kept")}},
+        {QStringLiteral("srt"), {QT_TRANSLATE_NOOP("NewProjectPage", "SRT subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times kept")}},
+        {QStringLiteral("vtt"), {QT_TRANSLATE_NOOP("NewProjectPage", "WebVTT subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times kept")}},
+    };
+    const auto it = names.constFind(format);
+    if (it == names.constEnd())
+        return {};
+    return QStringLiteral("%1, %2").arg(QCoreApplication::translate("NewProjectPage", it->first), QCoreApplication::translate("NewProjectPage", it->second));
 }
 
 // "Mietvertrag_Hofmann.docx" names the project "Mietvertrag Hofmann".
@@ -768,16 +799,8 @@ void NewProjectPage::fillFiles()
                                                 Languages::name(Languages::normalize(b.value(QLatin1String("targetLang")).toString())));
                 sub += tr(", %1 of %2 translated").arg(QLocale().toString(b.value(QLatin1String("translated")).toInt()),
                                                        plural(in.value(QLatin1String("segments")).toInt(), tr("1 segment"), tr("%1 segments")));
-            } else if (format == QLatin1String("docx")) {
-                sub = tr("DOCX document, formatting kept");
-            } else if (format == QLatin1String("pptx")) {
-                sub = tr("PPTX presentation, formatting kept");
-            } else if (format == QLatin1String("xlsx")) {
-                sub = tr("XLSX workbook, formatting kept");
-            } else if (format == QLatin1String("html")) {
-                sub = tr("Web page, markup kept");
-            } else if (format == QLatin1String("idml")) {
-                sub = tr("IDML document, layout kept");
+            } else if (const QString doc = documentFormatText(format); !doc.isEmpty()) {
+                sub = doc;
             } else if (format == QLatin1String("txt")) {
                 sub = tr("Read as plain text");
             } else {

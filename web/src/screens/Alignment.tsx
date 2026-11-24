@@ -7,7 +7,7 @@ import { fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { Modal } from "./TermbaseDialogs";
 
-const ACCEPT = ".docx,.docm,.pptx,.pptm,.ppsx,.xlsx,.xlsm,.html,.htm,.xhtml,.idml,.txt,.md,text/plain";
+const ACCEPT = ".docx,.docm,.pptx,.pptm,.ppsx,.xlsx,.xlsm,.html,.htm,.xhtml,.idml,.odt,.ods,.odp,.xml,.md,.markdown,.properties,.json,.yaml,.yml,.po,.resx,.srt,.vtt,.txt,text/plain";
 
 const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -199,7 +199,7 @@ export function AlignDocuments({
         >
           <p className="help">
             Choose a document and its translation. Their sentences are paired, and you check the pairs before they go into the memory. The two files need not be
-            of the same format: DOCX, PPTX, XLSX, HTML, IDML or text.
+            of the same format: DOCX, PPTX, XLSX, ODT, HTML, IDML, XML, Markdown, subtitles, software strings or text.
           </p>
           {choice && (
             <label className="field">

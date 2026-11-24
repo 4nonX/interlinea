@@ -185,6 +185,33 @@ export default () =>
       check(await save("Save XLIFF", "Mietvertrag.mqxlz"), "the archive is saved under its name");
       z = unzip(readFileSync(`${downloads}/Mietvertrag.mqxlz`));
       check(z["document.mqxliff"].toString().includes("Back into the archive") && !!z["skeleton.xml"], "the document in it has the translation, and what memoQ needs is still there");
+      // The strings of software, Markdown and subtitles: read by their
+      // filters, with keys, markup and times kept.
+      await open("/new", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFiles([`${docs}/app.properties`, `${docs}/LIESMICH.md`, `${docs}/film.srt`]);
+      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 3", 15000), "a properties file, a Markdown file and subtitles are listed");
+      t = await text();
+      check(t.includes("Properties file, keys and placeholders kept") && t.includes("Markdown file, markup kept") && t.includes("SRT subtitles, times kept"), "each is named with what it keeps");
+      check(await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable')"), "all three are files to translate");
+      await setValue("#pname", "Software und Untertitel");
+      await sleep(200);
+      await through();
+      await click("button", "Create project");
+      check(await waitFor("!!document.querySelector('#ed-file')"), "the editor offers them");
+      check(await translate("app.properties", "Auf Wiedersehen", "Goodbye"), "a string of the properties file is a segment");
+      check((await evaluate("document.querySelectorAll('.seg').length")) === 2 && (await evaluate("!!document.querySelector('.seg .tag-chip')")), "its two strings, the placeholder as a tag");
+      check(await save("Save translated document", "app_en-GB.properties"), "the properties file is saved");
+      check(readFileSync(`${downloads}/app_en-GB.properties`, "utf8") === "# Start page\ngreeting=Guten Tag, {0}!\nbye=Goodbye\n", "with the translation, and everything else as it was");
+      check(await translate("LIESMICH.md", "Der Vermieter haftet nicht.", "The landlord is not liable."), "a sentence of the Markdown file is a segment");
+      check(!(await text()).includes("nicht übersetzen"), "its code block is not read");
+      check(await save("Save translated document", "LIESMICH_en-GB.md"), "the Markdown file is saved");
+      check(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8") === "# Mietvertrag\n\nDer **Mieter** zahlt die Miete. The landlord is not liable.\n\n```\nnicht übersetzen\n```\n", "with the translation in its place");
+      check(await translate("film.srt", "Auf Wiedersehen.", "Goodbye."), "a subtitle is a segment");
+      check(await save("Save translated document", "film_en-GB.srt"), "the subtitles are saved");
+      check(readFileSync(`${downloads}/film_en-GB.srt`, "utf8").endsWith("2\n00:00:04,000 --> 00:00:05,000\nGoodbye.\n"), "with their numbers and times");
       check(errors.length === 0, "no console errors: " + errors.join(" | "));
     },
   );

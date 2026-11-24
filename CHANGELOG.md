@@ -12,10 +12,14 @@ client and the desktop app, with installers and a server image.
 
 ### Translating
 
-- Projects from Word, PowerPoint and Excel documents, web pages,
-  InDesign documents (IDML), plain text, XLIFF, Trados SDLXLIFF and memoQ
-  MQXLIFF files, and from Trados project packages and memoQ handoff
-  packages, with the translated files and return packages written back.
+- Projects from Word, PowerPoint and Excel documents, OpenDocument text,
+  spreadsheets and presentations, web pages, InDesign documents (IDML),
+  XML, Markdown, software strings (Java properties, JSON, YAML, gettext
+  PO, .NET RESX), subtitles (SRT, WebVTT), plain text, XLIFF, Trados
+  SDLXLIFF and memoQ MQXLIFF files, and from Trados project packages and
+  memoQ handoff packages, with the translated files and return packages
+  written back. In software strings a placeholder is a tag and the
+  string's key is shown with it.
 - An editor with translation memory matches, concordance search, found
   terms, formatting tags, spelling, quality checks, own rules and length
   limits. The best memory match goes into an empty segment, and a

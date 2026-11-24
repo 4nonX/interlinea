@@ -1156,7 +1156,7 @@ void AlignmentDialog::render()
     m_other->setVisible(m_hasResult);
     if (!m_hasResult) {
         auto *help = Web::text(tr("Choose a document and its translation. Their sentences are paired, and you check the pairs before they go into the memory. "
-                                  "The two files need not be of the same format: DOCX, PPTX, XLSX, HTML, IDML or text."),
+                                  "The two files need not be of the same format: DOCX, PPTX, XLSX, ODT, HTML, IDML, XML, Markdown, subtitles, software strings or text."),
                                "help", this);
         help->setWordWrap(true);
         body()->addWidget(help);
@@ -1219,7 +1219,7 @@ void AlignmentDialog::render()
             const QString title = labels[s];
             connect(choose, &QPushButton::clicked, this, [this, side, title] {
                 const QString path = QFileDialog::getOpenFileName(this, title, QString(),
-                                                                  tr("Documents (*.docx *.docm *.pptx *.pptm *.ppsx *.xlsx *.xlsm *.html *.htm *.xhtml *.idml *.txt *.md);;All files (*)"));
+                                                                  tr("Documents (*.docx *.docm *.pptx *.pptm *.ppsx *.xlsx *.xlsm *.html *.htm *.xhtml *.idml *.odt *.ods *.odp *.xml *.md *.markdown *.properties *.json *.yaml *.yml *.po *.resx *.srt *.vtt *.txt);;All files (*)"));
                 if (!path.isEmpty())
                     setFile(side, path);
             });

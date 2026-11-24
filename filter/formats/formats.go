@@ -11,8 +11,11 @@ import (
 	"github.com/4nonX/interlinea/filter/docx"
 	"github.com/4nonX/interlinea/filter/html"
 	"github.com/4nonX/interlinea/filter/idml"
+	"github.com/4nonX/interlinea/filter/markdown"
 	"github.com/4nonX/interlinea/filter/pptx"
+	"github.com/4nonX/interlinea/filter/textfmt"
 	"github.com/4nonX/interlinea/filter/xlsx"
+	"github.com/4nonX/interlinea/filter/xmlfmt"
 )
 
 // The formats, by the names stored with a project's files.
@@ -22,6 +25,20 @@ const (
 	Excel      = "xlsx"
 	HTML       = "html"
 	InDesign   = "idml"
+	// The formats of package textfmt, xmlfmt and markdown: the strings of
+	// software, subtitles, XML, OpenDocument and Markdown.
+	Properties = textfmt.Properties
+	JSON       = textfmt.JSON
+	YAML       = textfmt.YAML
+	PO         = textfmt.PO
+	RESX       = textfmt.RESX
+	SubRip     = textfmt.SRT
+	WebVTT     = textfmt.VTT
+	XML        = xmlfmt.XML
+	OpenText   = xmlfmt.Text
+	OpenSheet  = xmlfmt.Spreadsheet
+	OpenSlides = xmlfmt.Presentation
+	Markdown   = markdown.Format
 	// XLIFF is a bilingual file: XLIFF 1.2 and 2.0, Trados SDLXLIFF, memoQ
 	// MQXLIFF. MemoQArchive is a memoQ XLIFF in its archive (.mqxlz).
 	XLIFF        = "xliff"
@@ -38,8 +55,20 @@ var byExtension = map[string]string{
 	".pptx": PowerPoint, ".pptm": PowerPoint, ".ppsx": PowerPoint,
 	".xlsx": Excel, ".xlsm": Excel,
 	".html": HTML, ".htm": HTML, ".xhtml": HTML,
-	".idml": InDesign,
-	".xlf":  XLIFF, ".xliff": XLIFF, ".sdlxliff": XLIFF, ".mqxliff": XLIFF,
+	".idml":       InDesign,
+	".properties": Properties,
+	".json":       JSON,
+	".yaml":       YAML, ".yml": YAML,
+	".po": PO, ".pot": PO,
+	".resx": RESX,
+	".srt":  SubRip,
+	".vtt":  WebVTT,
+	".xml":  XML,
+	".odt":  OpenText,
+	".ods":  OpenSheet,
+	".odp":  OpenSlides,
+	".md":   Markdown, ".markdown": Markdown,
+	".xlf": XLIFF, ".xliff": XLIFF, ".sdlxliff": XLIFF, ".mqxliff": XLIFF,
 	".mqxlz":  MemoQArchive,
 	".sdlppx": TradosPackage,
 	".mqout":  MemoQPackage,
@@ -54,13 +83,14 @@ func Of(name string) string {
 }
 
 // Document reports whether the format is a document in one language that
-// a filter cuts into units: Word, PowerPoint, Excel, a web page, InDesign.
+// a filter cuts into units: Word, PowerPoint, Excel, a web page, InDesign,
+// OpenDocument, XML, Markdown, and the strings of software and subtitles.
 func Document(format string) bool {
 	switch format {
-	case Word, PowerPoint, Excel, HTML, InDesign:
+	case Word, PowerPoint, Excel, HTML, InDesign, Markdown:
 		return true
 	}
-	return false
+	return textfmt.Is(format) || xmlfmt.Is(format)
 }
 
 // Package reports whether the format is a package of bilingual files.
@@ -81,6 +111,28 @@ func Name(format string) string {
 		return "web page"
 	case InDesign:
 		return "InDesign document (IDML)"
+	case Properties:
+		return "properties file"
+	case JSON:
+		return "JSON file"
+	case YAML:
+		return "YAML file"
+	case PO:
+		return "PO file"
+	case RESX:
+		return "RESX file"
+	case SubRip, WebVTT:
+		return "subtitle file"
+	case XML:
+		return "XML file"
+	case OpenText:
+		return "OpenDocument text"
+	case OpenSheet:
+		return "OpenDocument spreadsheet"
+	case OpenSlides:
+		return "OpenDocument presentation"
+	case Markdown:
+		return "Markdown file"
 	case XLIFF:
 		return "bilingual file"
 	case MemoQArchive:
@@ -109,6 +161,14 @@ func Extract(format string, data []byte, lang string) (*filter.Extraction, error
 		return html.Extract(data, lang)
 	case InDesign:
 		return idml.Extract(data, lang)
+	case Markdown:
+		return markdown.Extract(data, lang)
+	}
+	switch {
+	case textfmt.Is(format):
+		return textfmt.Extract(format, data, lang)
+	case xmlfmt.Is(format):
+		return xmlfmt.Extract(format, data, lang)
 	}
 	return nil, fmt.Errorf("formats: %q is not a document format", format)
 }
@@ -127,6 +187,14 @@ func Merge(format string, data []byte, lang, targetLang string, tr filter.Transl
 		return html.Merge(data, lang, targetLang, tr)
 	case InDesign:
 		return idml.Merge(data, lang, targetLang, tr)
+	case Markdown:
+		return markdown.Merge(data, lang, targetLang, tr)
+	}
+	switch {
+	case textfmt.Is(format):
+		return textfmt.Merge(format, data, lang, targetLang, tr)
+	case xmlfmt.Is(format):
+		return xmlfmt.Merge(format, data, lang, targetLang, tr)
 	}
 	return nil, fmt.Errorf("formats: %q is not a document format", format)
 }

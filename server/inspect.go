@@ -18,8 +18,7 @@ import (
 
 // textExtensions are the plain text formats translated as text.
 var textExtensions = map[string]bool{
-	".txt": true, ".md": true, ".csv": true, ".tsv": true, ".srt": true, ".po": true,
-	".xml": true, ".json": true,
+	".txt": true, ".csv": true, ".tsv": true,
 }
 
 // detectionLimit is how much text the language guess reads.
@@ -181,18 +180,6 @@ func inspect(name string, data []byte) inspection {
 		}
 		out.Bilingual, out.Translatable, out.Warnings = b, true, append(out.Warnings, ex.Warnings...)
 		out.Detection = detect(text.String())
-	case formats.Word, formats.PowerPoint, formats.Excel, formats.HTML, formats.InDesign:
-		// Sentence rules barely matter here; the file is read again with
-		// the project's source language.
-		ex, err := formats.Extract(out.Format, data, "en")
-		if err != nil {
-			out.Problem = "The file could not be read: " + err.Error()
-			return out
-		}
-		var text strings.Builder
-		out.Words, out.Segments = count(ex.Units, &text)
-		out.Translatable, out.Warnings = true, append(out.Warnings, ex.Warnings...)
-		out.Detection = detect(text.String())
 	case "txt":
 		text, _, err := decodeText(data)
 		if err != nil {
@@ -208,6 +195,20 @@ func inspect(name string, data []byte) inspection {
 			out.Problem = "The file has no text to translate."
 		}
 		out.Detection = detect(text)
+	default:
+		if formats.Document(out.Format) {
+			// Sentence rules barely matter here; the file is read again with
+			// the project's source language.
+			ex, err := formats.Extract(out.Format, data, "en")
+			if err != nil {
+				out.Problem = "The file could not be read: " + err.Error()
+				return out
+			}
+			var text strings.Builder
+			out.Words, out.Segments = count(ex.Units, &text)
+			out.Translatable, out.Warnings = true, append(out.Warnings, ex.Warnings...)
+			out.Detection = detect(text.String())
+		}
 	}
 	return out
 }

@@ -53,9 +53,12 @@ sign-in through a provider, backups.
 
 ## Status
 
-- **Core:** file filters for Word, PowerPoint, Excel, web pages (HTML),
-  InDesign (IDML), XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF (also as .mqxlz),
-  Trados packages, memoQ handoff packages and plain text; translation memories; termbases with
+- **Core:** file filters for Word, PowerPoint, Excel, OpenDocument (ODT,
+  ODS, ODP), web pages (HTML), InDesign (IDML), XML, Markdown, software
+  strings (properties, JSON, YAML, PO, RESX), subtitles (SRT, WebVTT),
+  XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF (also as .mqxlz), Trados packages,
+  memoQ handoff packages and plain text; alignment of documents done
+  before; translation memories; termbases with
   TBX, MultiTerm, CSV and Excel exchange; QA, spelling, analysis and
   pre-translation. Done and tested.
 - **Team server:** first of all a team's terminology in one place:
@@ -93,6 +96,9 @@ The Go packages:
 | `filter/pptx` | PowerPoint filter: slides in the order of the show with their tables, charts and SmartArt, then each slide's speaker notes (shares the reading of DrawingML with the Word filter) |
 | `filter/xlsx` | Excel filter: cells sheet by sheet, a shared text once; comments, text boxes and chart titles; numbers, dates and formulas left alone |
 | `filter/html` | Web page filter: runs of text between block elements with inline elements as tags; the title, description and the attributes people read; scripts, styles and translate="no" left alone; any encoding |
+| `filter/textfmt` | Software strings and subtitles: Java properties, JSON, YAML, gettext PO, .NET RESX, SubRip and WebVTT. One string is one unit; placeholders (%s, {0}, {{name}}, ${name}) and markup are tags; keys, comments, times and everything outside the strings stay byte for byte; escapes and encoding written as the file had them |
+| `filter/xmlfmt` | Any XML (an element that holds text is a paragraph, the elements in it are tags, translate="no" is left alone) and OpenDocument text, spreadsheets and presentations (paragraphs and headings with footnotes and text boxes read as paragraphs of their own; cells of numbers and formulas left alone) |
+| `filter/markdown` | Markdown: headings, paragraphs, list items, quotes and table cells, with emphasis, links, images, code in a line and HTML as tags; code blocks, front matter and link definitions left alone |
 | `filter/idml` | InDesign IDML filter: stories in page order, paragraphs with character formats and links as tags, tables and footnotes after the paragraph that holds them |
 | `filter/para` | What the document filters share: a paragraph's content cut into sentence units, and translations put back with their tags matched and nested |
 | `filter/formats` | The formats by file name, and one way to extract and merge any document |

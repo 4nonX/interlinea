@@ -253,3 +253,38 @@ func TestDefaultsAndProgress(t *testing.T) {
 		t.Fatalf("progress %+v", prog)
 	}
 }
+
+func TestDeliverSoftwareStrings(t *testing.T) {
+	te := newTeam(t)
+	req := leaseRequest()
+	req.Files = []fileUpload{
+		{Name: "app.properties", Role: project.Translatable, Data: []byte("# Start page\ngreeting=Guten Tag, {0}!\nbye=Auf Wiedersehen\n")},
+		{Name: "README.md", Role: project.Translatable, Data: []byte("# Mietvertrag\n\nDer **Mieter** zahlt. Der Vermieter haftet nicht.\n")},
+	}
+	var p projectView
+	te.call("POST", "/api/projects", te.pm, req, 201, &p)
+	base := fmt.Sprintf("/api/projects/%d", p.ID)
+	var props []projectdb.StoredSegment
+	te.call("GET", base+"/segments?file=app.properties&lang=en-GB", te.pm, nil, 200, &props)
+	if len(props) != 2 || props[0].Source.Plain() != "Guten Tag, !" || !hasTag(props[0].Source) || len(props[0].Notes) != 2 || props[0].Notes[0] != "greeting" || props[0].Notes[1] != "Start page" {
+		t.Fatalf("properties segments %+v", props)
+	}
+	var md []projectdb.StoredSegment
+	te.call("GET", base+"/segments?file=README.md&lang=en-GB", te.pm, nil, 200, &md)
+	if len(md) != 3 || md[1].Source.Plain() != "Der Mieter zahlt." {
+		t.Fatalf("Markdown segments %+v", md)
+	}
+	// The placeholder is a tag: the translation moves it and it is written as it was.
+	tag := props[0].Source.Tags()[0]
+	hello := content.Text("Hello ").AppendTag(content.Tag{Kind: tag.Kind, ID: tag.ID}).Append(", good day!")
+	te.call("PUT", segPath(p.ID, "app.properties", "en-GB", props[0].ID, 1), te.pm, project.Edit{Target: hello, Status: project.StatusConfirmed}, 200, nil)
+	te.call("PUT", segPath(p.ID, "README.md", "en-GB", md[0].ID, 1), te.pm, project.Edit{Target: content.Text("Lease"), Status: project.StatusConfirmed}, 200, nil)
+	r := te.download(base+"/files/translated?name=app.properties&lang=en-GB", te.pm)
+	if string(r.body) != "# Start page\ngreeting=Hello {0}, good day!\nbye=Auf Wiedersehen\n" {
+		t.Fatalf("translated properties %q", r.body)
+	}
+	r = te.download(base+"/files/translated?name=README.md&lang=en-GB", te.pm)
+	if string(r.body) != "# Lease\n\nDer **Mieter** zahlt. Der Vermieter haftet nicht.\n" {
+		t.Fatalf("translated Markdown %q", r.body)
+	}
+}

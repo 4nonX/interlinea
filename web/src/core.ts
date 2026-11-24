@@ -283,7 +283,24 @@ export interface Extracted {
 }
 
 /** The document formats the core's filters read, by file name. */
-export type DocumentFormat = "docx" | "pptx" | "xlsx" | "html" | "idml";
+export type DocumentFormat =
+  | "docx"
+  | "pptx"
+  | "xlsx"
+  | "html"
+  | "idml"
+  | "odt"
+  | "ods"
+  | "odp"
+  | "xml"
+  | "md"
+  | "properties"
+  | "json"
+  | "yaml"
+  | "po"
+  | "resx"
+  | "srt"
+  | "vtt";
 
 const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.(docx|docm)$/i, "docx"],
@@ -291,6 +308,18 @@ const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.(xlsx|xlsm)$/i, "xlsx"],
   [/\.(html?|xhtml)$/i, "html"],
   [/\.idml$/i, "idml"],
+  [/\.odt$/i, "odt"],
+  [/\.ods$/i, "ods"],
+  [/\.odp$/i, "odp"],
+  [/\.xml$/i, "xml"],
+  [/\.(md|markdown)$/i, "md"],
+  [/\.properties$/i, "properties"],
+  [/\.json$/i, "json"],
+  [/\.ya?ml$/i, "yaml"],
+  [/\.pot?$/i, "po"],
+  [/\.resx$/i, "resx"],
+  [/\.srt$/i, "srt"],
+  [/\.vtt$/i, "vtt"],
 ];
 
 /** The format of a document one of the core's filters reads; null for any other file. */
@@ -305,6 +334,39 @@ export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
   xlsx: "XLSX workbook",
   html: "Web page",
   idml: "IDML document",
+  odt: "ODT document",
+  ods: "ODS spreadsheet",
+  odp: "ODP presentation",
+  xml: "XML file",
+  md: "Markdown file",
+  properties: "Properties file",
+  json: "JSON file",
+  yaml: "YAML file",
+  po: "PO file",
+  resx: "RESX file",
+  srt: "SRT subtitles",
+  vtt: "WebVTT subtitles",
+};
+
+/** What a document format keeps of the file besides its text. */
+export const DOCUMENT_FORMAT_KEEPS: Record<DocumentFormat, string> = {
+  docx: "formatting kept",
+  pptx: "formatting kept",
+  xlsx: "formatting kept",
+  html: "markup kept",
+  idml: "layout kept",
+  odt: "formatting kept",
+  ods: "formatting kept",
+  odp: "formatting kept",
+  xml: "markup kept",
+  md: "markup kept",
+  properties: "keys and placeholders kept",
+  json: "keys and placeholders kept",
+  yaml: "keys and placeholders kept",
+  po: "keys and placeholders kept",
+  resx: "keys and placeholders kept",
+  srt: "times kept",
+  vtt: "times kept",
 };
 
 /** The type a translated document is offered for download as. */
@@ -314,6 +376,18 @@ export const DOCUMENT_TYPE: Record<DocumentFormat, string> = {
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   html: "text/html",
   idml: "application/vnd.adobe.indesign-idml-package",
+  odt: "application/vnd.oasis.opendocument.text",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  odp: "application/vnd.oasis.opendocument.presentation",
+  xml: "application/xml",
+  md: "text/markdown",
+  properties: "text/plain",
+  json: "application/json",
+  yaml: "application/yaml",
+  po: "text/x-gettext-translation",
+  resx: "application/xml",
+  srt: "application/x-subrip",
+  vtt: "text/vtt",
 };
 
 /**

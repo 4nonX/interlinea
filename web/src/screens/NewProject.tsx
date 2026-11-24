@@ -29,6 +29,7 @@ import {
 } from "../detect";
 import {
   core,
+  DOCUMENT_FORMAT_KEEPS,
   DOCUMENT_FORMAT_NAME,
   documentFormat,
   loadCore,
@@ -1628,7 +1629,7 @@ function describe(doc: PendingDoc): string {
   }
   switch (kindOf(doc)) {
     case "docx":
-      return `${DOCUMENT_FORMAT_NAME[documentFormat(doc.file) ?? "docx"]}, formatting kept`;
+      return `${DOCUMENT_FORMAT_NAME[documentFormat(doc.file) ?? "docx"]}, ${DOCUMENT_FORMAT_KEEPS[documentFormat(doc.file) ?? "docx"]}`;
     case "text":
       return "Read as plain text";
     default:
