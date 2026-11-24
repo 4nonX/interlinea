@@ -16,8 +16,8 @@ go.work.sum
 
 # Prototype
 node_modules/
-/prototype/dist/
-/prototype/public/core/
+/web/dist/
+/web/public/core/
 
 # Desktop app
 /build/

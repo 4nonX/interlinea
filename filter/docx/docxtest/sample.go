@@ -1,6 +1,6 @@
 package docxtest
 
-// Hofmann builds the sample residential lease used by the prototype and the
+// Hofmann builds the sample residential lease used by the browser client's sample project and the
 // tests: a title, numbered sections, a rent table, inline bold and italics,
 // two footnotes (one in the middle of a sentence), an external link, a
 // signature table with repeated cells, a header and a footer with page

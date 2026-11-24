@@ -18,16 +18,16 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}"
  && mkdir -p /out/data
 
 FROM node:22-bookworm-slim AS web
-WORKDIR /src/prototype
-COPY prototype/package.json prototype/package-lock.json ./
+WORKDIR /src/web
+COPY web/package.json web/package-lock.json ./
 RUN npm ci
-COPY prototype/ ./
+COPY web/ ./
 COPY --from=core /out/core/ public/core/
 RUN npm run build
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=core /out/interlinea-server /usr/local/bin/interlinea-server
-COPY --from=web /src/prototype/dist /web
+COPY --from=web /src/web/dist /web
 COPY --from=core --chown=nonroot:nonroot /out/data /data
 ENV INTERLINEA_ADDR=:8080 \
     INTERLINEA_DATA=/data \

@@ -1,7 +1,7 @@
 //go:build js && wasm
 
 // Command interlinea-wasm exposes the core's file filters to the browser
-// prototype. It registers a global object interlineaCore with:
+// client. It registers a global object interlineaCore with:
 //
 //	extract(bytes: Uint8Array, lang: string, options?: string) -> {ok: true, value: string (JSON extraction)} | {ok: false, error}
 //	merge(bytes: Uint8Array, lang: string, target: string, translations: string (JSON), options?: string) -> {ok: true, value: Uint8Array} | {ok: false, error}

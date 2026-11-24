@@ -252,7 +252,7 @@ func tmExportTMX(args []js.Value) (any, error) {
 		return nil, err
 	}
 	var buf bytes.Buffer
-	if err := tm.ExportTMX(context.Background(), m, &buf, "interlinea-prototype"); err != nil {
+	if err := tm.ExportTMX(context.Background(), m, &buf, "Interlinea"); err != nil {
 		return nil, err
 	}
 	arr := js.Global().Get("Uint8Array").New(buf.Len())

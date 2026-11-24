@@ -1,8 +1,8 @@
 .git
 bin
 **/node_modules
-prototype/dist
-prototype/public/core
+web/dist
+web/public/core
 data
 *.db
 *.test

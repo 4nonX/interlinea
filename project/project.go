@@ -3,7 +3,7 @@
 // terminology, quality checks and preparation, and the templates new
 // projects start from. Validate checks a setup completely and names the
 // field of every problem, so the desktop apps, the server and the browser
-// prototype all accept and refuse the same setups. Pretranslate fills a
+// client all accept and refuse the same setups. Pretranslate fills a
 // project's segments from its memories the way the analysis counts them.
 package project
 

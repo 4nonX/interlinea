@@ -87,11 +87,11 @@ jobs:
         if: always()
         run: docker logs il || true
 
-  prototype:
+  web:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: prototype
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -107,7 +107,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: prototype/package-lock.json
+          cache-dependency-path: web/package-lock.json
       - run: npm ci
       - name: typecheck and build
         run: npm run build

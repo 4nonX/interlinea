@@ -1,8 +1,8 @@
-// Command mksample writes the sample documents: the lease the prototype
+// Command mksample writes the sample documents: the lease the browser client's sample project
 // opens and, with -features, the document that exercises text boxes,
 // content controls, tracked changes, comments, charts and SmartArt.
 //
-//	go run ./filter/docx/docxtest/mksample prototype/samples/Mietvertrag_Hofmann_2026.docx
+//	go run ./filter/docx/docxtest/mksample web/samples/Mietvertrag_Hofmann_2026.docx
 //	go run ./filter/docx/docxtest/mksample -features features.docx
 package main
 

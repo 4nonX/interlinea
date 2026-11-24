@@ -68,7 +68,7 @@ sign-in through a provider, backups.
   settings, analysis, pre-translation, translated files and return
   packages. The editor, memory and termbase management, account
   administration and installers come next ([docs/desktop.md](docs/desktop.md)).
-- **Browser client:** the prototype in `prototype/`, with the editor and
+- **Browser client:** in `web/`, with the editor and
   terminology management, running against the team server or on its own
   with the core compiled to WebAssembly.
 
@@ -104,7 +104,7 @@ The Go packages:
 | `langdetect` | Guesses a document's language: scripts by their share of the letters, Latin-script languages by function words; says when the text is too short or mixed to tell |
 | `cmd/interlinea-apidoc` | Writes the API reference (`server/openapi.json`, `docs/api.md`) from the server's source |
 | `cmd/interlinea` | Command-line interface to all of the above |
-| `cmd/interlinea-wasm` | The filters, memories, termbase formats, QA, analysis, project validation and pre-translation compiled to WebAssembly for the browser prototype |
+| `cmd/interlinea-wasm` | The filters, memories, termbase formats, QA, analysis, project validation and pre-translation compiled to WebAssembly for the browser client |
 
 The SQLite driver is pure Go (SQLite compiled to WebAssembly), so builds need
 no C compiler on any platform.
@@ -131,7 +131,7 @@ make all      # gofmt check, vet, tests, build
 make race     # tests with the race detector
 make bench    # benchmarks
 make cross    # binaries for Linux, macOS and Windows (amd64, arm64)
-make wasm     # the core for the browser prototype (prototype/public/core)
+make wasm     # the core for the browser client (web/public/core)
 make sample   # regenerate the sample Word document and its extraction
 ```
 
@@ -479,25 +479,32 @@ that match by primary language only (`de-AT` for `de-DE`).
   number copied unchanged into the wrong format is reported. Numbers written
   as words are not compared.
 
-## Prototype
+## Browser client
 
-`prototype/` is a clickable React prototype (sample data) of project setup,
-translation memories, the translation editor, terminology management and the
-git-like merge review.
+`web/` is the browser client: project setup, translation memories, the
+translation editor, terminology management and the git-like merge review.
+It works on its own, with the core compiled to WebAssembly and everything
+kept in the browser, and against a team server once you sign in to one in
+Settings.
 
 ```
 make wasm            # once, and after changes to the Go filters
-cd prototype
+cd web
 npm install
 npm run dev
 ```
 
-The prototype saves your work in the browser (IndexedDB) as you go:
+It starts empty. Your work is saved in the browser (IndexedDB) as you go:
 projects with their files, translations, termbases, memories, templates and
-settings are there again on the next visit. Work saved by the first version
-of the prototype is moved into the current shape when it loads.
-Settings shows whether saving works in this browser and can start again
-from the sample data; `?reset` in the address does the same on load.
+settings are there again on the next visit. Settings shows whether saving
+works in this browser and can delete everything kept there; `?reset` in the
+address does the same on load.
+
+To look around before bringing your own files, add `?sample` to the
+address: it adds a sample project (a tenancy agreement of an invented law
+firm, a real Word file in `web/samples`) with its master termbase, a
+project termbase that has changes to review and merge, and a translation
+memory. What you already have stays.
 
 Browser tests drive the production build in headless Chrome (found through
 `$CHROME` or on the PATH) and run in CI:
@@ -539,7 +546,7 @@ takes the files and languages, the memories, the terminology and a review,
 each checked by the core's project validation:
 
 - several files and whole folders, kept with their paths; each file is
-  translated or a reference file (what the prototype can't read becomes one);
+  translated or a reference file (what Interlinea can't read becomes one);
   a Trados package (.sdlppx) becomes one project with all its files;
 - one source and several target languages; a bilingual file is translated
   only into the language it was made for;
@@ -565,15 +572,13 @@ or .aff and .dic files) for the core's spell checker. In the editor a spelling
 warning offers the dictionary's suggestions and adding the word to the
 project's words, and a segment with a length limit from its file (XLIFF
 maxwidth) counts its characters. Memories lists all memories with their units and users, creates,
-imports into, exports and deletes them. Sample documents and a deep link per
-sample (`#/new/sample/0` to `4`) show language detection, including the
-fallback for files without readable text.
+imports into, exports and deletes them, and opens each to search, add, change
+and delete its units.
 Word documents (.docx) you choose go through the core's Word filter, running
 in the browser as WebAssembly: the units keep their formatting as tags, and
 "Save translated document" writes the .docx with the original layout.
 
-Creating a project opens it in the editor (`#/editor/p-hofmann` for the
-sample lease, a real Word file in `prototype/samples`). It follows the
+Creating a project opens it in the editor. It follows the
 conventions Trados Studio, memoQ and Phrase share: the best match goes into
 an empty segment when it opens, Ctrl+Enter confirms and fills repetitions,
 Ctrl+1 to 9 insert numbered results, terms are recognized by the core

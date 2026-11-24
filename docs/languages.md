@@ -3,7 +3,7 @@
 Interlinea works with any language that has a BCP 47 tag (`de-DE`, `ko-KR`,
 `sr-Latn-RS`). The languages below are the ones both apps offer by name. The
 list lives in one place, `langtag/languages.go`; `go run ./langtag/gen`
-writes it into the browser client (`prototype/src/languages.gen.ts`) and the
+writes it into the browser client (`web/src/languages.gen.ts`) and the
 desktop app (`desktop/src/languagelist.h`), and CI fails when either copy is
 out of date. A language outside the list is still accepted: files that name
 it open as usual, and the desktop app takes a typed tag.

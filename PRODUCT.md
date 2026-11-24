@@ -6,15 +6,16 @@
 
 web
 
-The browser client and the clickable prototype are web. The full-power
-desktop client is planned as a native Qt 6 application on Windows, macOS and
-Linux; design decisions made in the web prototype must translate to it.
+The browser client is web and is the reference for the interface. The
+desktop client is a native Qt 6 application on Windows, macOS and Linux;
+what the web client shows and does, the desktop client shows and does the
+same way.
 
 ## Stack
 
-React 19 + TypeScript + Vite for the prototype (`prototype/`), reusable for
-the later browser client. Go core and server (this repository). Desktop
-client: Qt 6, later.
+React 19 + TypeScript + Vite for the browser client (`web/`). Go core and
+server (this repository). Desktop client: Qt 6 Widgets and C++20
+(`desktop/`).
 
 ## Users
 

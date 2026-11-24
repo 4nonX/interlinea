@@ -51,17 +51,17 @@ cross:
 			-o $(BIN)/interlinea-$$os-$$arch$$ext ./cmd/interlinea || exit 1; \
 	done
 
-# The core's file filters for the browser prototype.
-WASM_DIR := prototype/public/core
+# The core's file filters for the browser client.
+WASM_DIR := web/public/core
 wasm:
 	mkdir -p $(WASM_DIR)
 	GOOS=js GOARCH=wasm go build -trimpath -ldflags "-s -w" -o $(WASM_DIR)/interlinea.wasm ./cmd/interlinea-wasm
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" $(WASM_DIR)/
 
-# The sample lease the prototype opens.
+# The sample lease of the browser client's sample project.
 sample:
-	go run ./filter/docx/docxtest/mksample prototype/samples/Mietvertrag_Hofmann_2026.docx
-	go run ./cmd/interlinea extract -lang de-DE -json prototype/samples/Mietvertrag_Hofmann_2026.docx > prototype/src/editor/hofmann.json
+	go run ./filter/docx/docxtest/mksample web/samples/Mietvertrag_Hofmann_2026.docx
+	go run ./cmd/interlinea extract -lang de-DE -json web/samples/Mietvertrag_Hofmann_2026.docx > web/src/editor/hofmann.json
 
 clean:
 	rm -rf $(BIN) $(WASM_DIR)

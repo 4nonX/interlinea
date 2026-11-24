@@ -82,7 +82,7 @@ func main() {
 	check := flag.Bool("check", false, "fail if the files are out of date instead of writing them")
 	flag.Parse()
 	files := map[string][]byte{
-		"prototype/src/languages.gen.ts": typescript(),
+		"web/src/languages.gen.ts": typescript(),
 		"desktop/src/languagelist.h":     cpp(),
 	}
 	stale := false

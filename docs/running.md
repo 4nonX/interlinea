@@ -54,8 +54,8 @@ INTERLINEA_ADMIN_PASSWORD='a long password' POSTGRES_PASSWORD='another one' dock
 Without Docker, unpack `interlinea-server-<version>-<system>-<processor>`
 from the release and start `interlinea-server -web web` in it. From the
 source: build it (`go build ./cmd/interlinea-server`), build the web app
-(`make wasm`, then `npm ci && npm run build` in `prototype/`) and start it
-with `-web prototype/dist`.
+(`make wasm`, then `npm ci && npm run build` in `web/`) and start it
+with `-web web/dist`.
 
 **The first administrator.** With `INTERLINEA_ADMIN_USER` and
 `INTERLINEA_ADMIN_PASSWORD` set, the server makes that account at its first

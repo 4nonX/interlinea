@@ -7,16 +7,8 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
-### Upgrades
-
-- The data of each release is kept and opened by every later version in
-  a test, and the steps of each store's schema can no longer be changed
-  once recorded.
-
-## [0.1.0] - 2026-11-24
-
-The first release: the core, the team server, the web client and the
-desktop app, with installers and a server image.
+What the first release will hold: the core, the team server, the web
+client and the desktop app, with installers and a server image.
 
 ### Translating
 
@@ -75,7 +67,8 @@ desktop app, with installers and a server image.
 ### The apps
 
 - The web client, served by the team server or used by itself in the
-  browser with its data kept there.
+  browser with its data kept there. It starts empty; a sample project is
+  added by `?sample` in the address.
 - The desktop app for Windows, macOS and Linux, laid out as the web
   client, with its own core for work on this computer and connections to
   team servers. Sign-ins are kept in the system's keychain.
@@ -88,5 +81,10 @@ desktop app, with installers and a server image.
 - The desktop app as a Windows installer, a macOS disk image and a Linux
   AppImage.
 
-[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/4nonX/interlinea/releases/tag/v0.1.0
+### Upgrades
+
+- The data of each release is kept and opened by every later version in
+  a test, and the steps of each store's schema can no longer be changed
+  once recorded.
+
+[Unreleased]: https://github.com/4nonX/interlinea/commits/main

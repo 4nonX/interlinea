@@ -1,6 +1,7 @@
 # Design
 
-Visual system of the Interlinea prototype (`prototype/src/styles.css`).
+Visual system of Interlinea (`web/src/styles.css`, mirrored by the desktop
+client's theme).
 Category standard, at the craft level of memoQ 11 and Phrase TMS: a working
 tool first, distinctive only through precision.
 
@@ -30,8 +31,8 @@ current location, semantic colours only where they carry meaning.
 ## Type
 
 Platform UI font (Segoe UI Variable on Windows, San Francisco on macOS,
-system sans on Linux, Noto for CJK), so the web prototype matches the later
-Qt desktop client. Fixed rem scale: 12, 13, 14 (body), 16, 18, 22 px.
+system sans on Linux, Noto for CJK), so the web client and the Qt
+desktop client match. Fixed rem scale: 12, 13, 14 (body), 16, 18, 22 px.
 Weights 400, 550, 600, 650. Tabular numerals in counts and tables.
 
 ## Shape and depth
