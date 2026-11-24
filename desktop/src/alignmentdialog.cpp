@@ -24,6 +24,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStyle>
+#include <QTimer>
 #include <QUrlQuery>
 #include <QVBoxLayout>
 
@@ -35,6 +36,10 @@ constexpr int S2 = 8, S3 = 12, S5 = 24;
 const int LookBelow = 50;
 const int Gutter = 96;
 const qreal Near = 7;
+// The point beside a segment where its lines begin: its radius, and how
+// far its middle is from the segment's edge.
+const qreal PortRadius = 5;
+const qreal PortOut = 6;
 
 void empty(QLayout *l)
 {
@@ -178,6 +183,21 @@ void AlignSegment::keyPressEvent(QKeyEvent *e)
     QFrame::keyPressEvent(e);
 }
 
+// The point beside the segment, which the board draws, lights up with it.
+void AlignSegment::enterEvent(QEnterEvent *e)
+{
+    QFrame::enterEvent(e);
+    if (parentWidget())
+        parentWidget()->update();
+}
+
+void AlignSegment::leaveEvent(QEvent *e)
+{
+    QFrame::leaveEvent(e);
+    if (parentWidget())
+        parentWidget()->update();
+}
+
 AlignBoard::AlignBoard(QWidget *parent)
     : QWidget(parent)
 {
@@ -195,6 +215,37 @@ QLineF AlignBoard::place(const QPair<int, int> &line) const
     const QRect ra = a->geometry();
     const QRect rb = b->geometry();
     return QLineF(ra.right() + 1, ra.center().y(), rb.left(), rb.center().y());
+}
+
+QPointF AlignBoard::port(int side, int index) const
+{
+    const AlignSegment *seg = segments[side].value(index);
+    if (!seg)
+        return {};
+    const QRect r = seg->geometry();
+    return side == 0 ? QPointF(r.right() + 1 + PortOut, r.center().y()) : QPointF(r.left() - PortOut, r.center().y());
+}
+
+AlignSegment *AlignBoard::portAt(const QPointF &p) const
+{
+    for (int s = 0; s < 2; ++s) {
+        for (AlignSegment *seg : segments[s]) {
+            // A point is small: a little around it counts as well.
+            if (QLineF(port(s, seg->index()), p).length() <= PortRadius + 3)
+                return seg;
+        }
+    }
+    return nullptr;
+}
+
+AlignSegment *AlignBoard::segmentAt(const QPoint &p) const
+{
+    if (AlignSegment *seg = portAt(p))
+        return seg;
+    QWidget *w = childAt(p);
+    while (w && !qobject_cast<AlignSegment *>(w))
+        w = w->parentWidget();
+    return qobject_cast<AlignSegment *>(w);
 }
 
 int AlignBoard::lineAt(const QPointF &p) const
@@ -241,11 +292,35 @@ void AlignBoard::paintEvent(QPaintEvent *e)
         p.setBrush(Qt::NoBrush);
         p.drawPath(curve(l));
     }
+    // The points, over the ends of the lines.
+    for (int side = 0; side < 2; ++side) {
+        for (const AlignSegment *seg : segments[side]) {
+            const QPointF c = port(side, seg->index());
+            if (!e->rect().adjusted(-8, -8, 8, 8).contains(c.toPoint()))
+                continue;
+            const bool lit = seg->picked() || seg == m_hoverPort || seg->underMouse();
+            const QColor ink = lit ? Theme::color("accent") : seg->alone() ? Theme::color("warn") : Theme::color("text2");
+            p.setPen(QPen(ink, 2));
+            p.setBrush(seg->alone() && !lit ? Theme::color("surface") : ink);
+            p.drawEllipse(c, PortRadius - 1, PortRadius - 1);
+        }
+    }
 }
 
 void AlignBoard::mousePressEvent(QMouseEvent *e)
 {
-    const int i = e->button() == Qt::LeftButton ? lineAt(e->position()) : -1;
+    if (e->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(e);
+        return;
+    }
+    // A point comes before the line that ends in it.
+    if (AlignSegment *seg = portAt(e->position())) {
+        m_pressed = seg;
+        seg->setFocus(Qt::MouseFocusReason);
+        e->accept();
+        return;
+    }
+    const int i = lineAt(e->position());
     if (i < 0) {
         QWidget::mousePressEvent(e);
         return;
@@ -256,13 +331,31 @@ void AlignBoard::mousePressEvent(QMouseEvent *e)
     emit lineChosen(l.first, l.second);
 }
 
+void AlignBoard::mouseReleaseEvent(QMouseEvent *e)
+{
+    AlignSegment *from = m_pressed;
+    m_pressed = nullptr;
+    if (e->button() != Qt::LeftButton || !from) {
+        QWidget::mouseReleaseEvent(e);
+        return;
+    }
+    e->accept();
+    AlignSegment *to = segmentAt(e->position().toPoint());
+    if (to == from)
+        emit portChosen(from->side(), from->index());
+    else if (to && to->side() != from->side())
+        emit portPulled(from->side(), from->index(), to->side(), to->index());
+}
+
 void AlignBoard::mouseMoveEvent(QMouseEvent *e)
 {
-    const int i = lineAt(e->position());
-    if (i != m_hover) {
+    AlignSegment *seg = portAt(e->position());
+    const int i = seg ? -1 : lineAt(e->position());
+    if (i != m_hover || seg != m_hoverPort) {
         m_hover = i;
-        setCursor(i >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
-        setToolTip(i >= 0 ? tr("Take this line away") : QString());
+        m_hoverPort = seg;
+        setCursor(seg ? Qt::CrossCursor : i >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+        setToolTip(seg ? tr("Pull from here to the segment that belongs to it") : i >= 0 ? tr("Take this line away") : QString());
         update();
     }
     QWidget::mouseMoveEvent(e);
@@ -270,8 +363,9 @@ void AlignBoard::mouseMoveEvent(QMouseEvent *e)
 
 void AlignBoard::leaveEvent(QEvent *e)
 {
-    if (m_hover >= 0) {
+    if (m_hover >= 0 || m_hoverPort) {
         m_hover = -1;
+        m_hoverPort = nullptr;
         update();
     }
     QWidget::leaveEvent(e);
@@ -684,8 +778,9 @@ void AlignmentDialog::render()
     m_status->setObjectName(QStringLiteral("alignStatus"));
     m_status->setWordWrap(true);
     body()->addWidget(m_status);
-    auto *help = Web::text(tr("A line joins a sentence and its translation. To draw one, choose a sentence and then its translation, or pull from one to the other; "
-                              "the same takes a line away, as does choosing the line. Sentences joined by lines become one unit."),
+    auto *help = Web::text(tr("A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means "
+                              "nothing is joined there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same "
+                              "takes a line away, as does choosing the line. Sentences joined by lines become one unit."),
                            "help", this);
     help->setWordWrap(true);
     body()->addWidget(help);
@@ -725,10 +820,7 @@ void AlignmentDialog::render()
             connect(seg, &AlignSegment::pulledTo, this, [this, side, i](const QPoint &global) {
                 if (!m_board)
                     return;
-                QWidget *w = m_board->childAt(m_board->mapFromGlobal(global));
-                while (w && !qobject_cast<AlignSegment *>(w))
-                    w = w->parentWidget();
-                if (auto *to = qobject_cast<AlignSegment *>(w); to && to->side() != int(side))
+                if (AlignSegment *to = m_board->segmentAt(m_board->mapFromGlobal(global)); to && to->side() != int(side))
                     pull(side, i, to->index());
             });
         }
@@ -738,6 +830,8 @@ void AlignmentDialog::render()
             grid->addSpacing(Gutter);
     }
     connect(m_board, &AlignBoard::lineChosen, this, &AlignmentDialog::takeLine);
+    connect(m_board, &AlignBoard::portChosen, this, [this](int side, int index) { choose(Side(side), index); });
+    connect(m_board, &AlignBoard::portPulled, this, [this](int side, int index, int, int other) { pull(Side(side), index, other); });
     m_scroll->setWidget(m_board);
     m_scroll->setMinimumHeight(240);
     m_scroll->setMaximumHeight(520);
@@ -749,18 +843,32 @@ void AlignmentDialog::render()
     connect(both, &QCheckBox::toggled, this, [this](bool on) { m_overwrite = on; });
     body()->addWidget(both);
     refresh();
-    // The board is as high as its texts, up to the height it scrolls from.
-    m_board->ensurePolished();
-    const int inner = qMax(width(), 920) - 2 * S5 - 2 - style()->pixelMetric(QStyle::PM_ScrollBarExtent);
-    const int want = m_board->layout()->hasHeightForWidth() ? m_board->layout()->totalHeightForWidth(inner) : m_board->sizeHint().height();
-    m_scroll->setFixedHeight(qBound(120, want + 4, 520));
     fitHeight();
 }
 
 // The dialog keeps its width and is as high as what it holds.
 void AlignmentDialog::fitHeight()
 {
-    layout()->activate();
-    const int w = qMax(width(), 920);
-    resize(w, layout()->hasHeightForWidth() ? layout()->totalHeightForWidth(w) : layout()->totalSizeHint().height());
+    const auto fit = [this] {
+        // What it holds is styled before it is measured.
+        for (QWidget *w : findChildren<QWidget *>())
+            w->ensurePolished();
+        const int width = qMax(this->width(), 920);
+        if (m_board && m_scroll) {
+            const int inner = width - 2 * S5 - 2 - style()->pixelMetric(QStyle::PM_ScrollBarExtent);
+            m_board->layout()->invalidate();
+            const int want = m_board->layout()->hasHeightForWidth() ? m_board->layout()->totalHeightForWidth(inner) : m_board->sizeHint().height();
+            m_scroll->setFixedHeight(qBound(120, want + 2, 520));
+        }
+        layout()->invalidate();
+        layout()->activate();
+        resize(width, layout()->hasHeightForWidth() ? layout()->totalHeightForWidth(width) : layout()->totalSizeHint().height());
+    };
+    fit();
+    // Shown, the parts may be larger than they said before: once more then.
+    QPointer<AlignmentDialog> self(this);
+    QTimer::singleShot(0, this, [self, fit] {
+        if (self)
+            fit();
+    });
 }

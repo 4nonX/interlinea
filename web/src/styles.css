@@ -2781,6 +2781,44 @@ table[aria-label="Units found"] .cell-action .row {
   background: var(--warn-bg);
 }
 
+/* Where a segment's lines begin: a point in the gap beside it, a ring
+   while nothing is joined there. */
+.align-seg {
+  position: relative;
+}
+
+.align-port {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--text-2);
+  border-radius: 50%;
+  background: var(--text-2);
+  transform: translateY(-50%);
+  cursor: crosshair;
+}
+
+[data-side="source"] > .align-port {
+  right: -11px;
+}
+
+[data-side="target"] > .align-port {
+  left: -11px;
+}
+
+.align-seg.is-alone > .align-port {
+  border-color: var(--warn);
+  background: var(--surface);
+}
+
+.align-seg.is-picked > .align-port,
+.align-seg:hover > .align-port {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
 .align-n {
   min-width: 1.75em;
   color: var(--text-3);

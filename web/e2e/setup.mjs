@@ -402,6 +402,18 @@ export default () =>
           })()`),
           "alignment: between segments at different heights it is a curve that leaves and arrives level",
         );
+        check(
+          await evaluate(`(() => {
+            const ok = (side, i) => {
+              const b = document.querySelector('dialog[open] button[data-side=' + side + '][data-i="' + i + '"]');
+              const r = b.getBoundingClientRect(), p = b.querySelector('.align-port').getBoundingClientRect();
+              const beside = side === 'source' ? p.left >= r.right && p.left - r.right < 4 : p.right <= r.left && r.left - p.right < 4;
+              return beside && Math.abs(p.top + p.height / 2 - (r.top + r.height / 2)) < 2 && p.width >= 8;
+            };
+            return document.querySelectorAll('dialog[open] .align-port').length === 9 && ok('source', 0) && ok('target', 3);
+          })()`),
+          "alignment: every segment has a point in the gap beside it, where its lines begin",
+        );
         check((await dlg()).includes("Add 4 units to Weber DE-FR"), "alignment: all four would be added");
         // A sentence chosen and then its translation takes their line away.
         await choose("source", 3);
@@ -410,6 +422,10 @@ export default () =>
         check((await lines()) === "0|0 1|1 2|2 4|3", "alignment: choosing both ends takes the line away");
         check((await status()).includes("4 units") && (await status()).includes("1 segment has no pair and is left out."), "alignment: the sentence without a line is left out: " + (await status()));
         check(await evaluate(`document.querySelector(${JSON.stringify(seg("source", 3))}).classList.contains('is-alone')`), "alignment: and is marked");
+        check(
+          await evaluate(`(() => { const css = (i) => getComputedStyle(document.querySelector('dialog[open] button[data-side=source][data-i="' + i + '"] .align-port')); return css(3).backgroundColor !== css(2).backgroundColor && css(3).borderColor !== css(2).borderColor; })()`),
+          "alignment: its point is a ring while nothing is joined there",
+        );
         // The same draws it again.
         await choose("target", 2);
         await choose("source", 3);

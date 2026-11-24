@@ -482,6 +482,22 @@ private slots:
             al->choose(AlignmentDialog::Source, 4);
             al->choose(AlignmentDialog::Target, 3);
         }
+        // Every segment has a point in the gap beside it, where its lines begin.
+        QVERIFY(qAbs(board->port(0, 0).x() - (s0->geometry().right() + 7)) < 2 && qAbs(board->port(0, 0).y() - line.y1()) < 2);
+        QVERIFY(qAbs(board->port(1, 0).x() - (t0->geometry().left() - 6)) < 2 && qAbs(board->port(1, 0).y() - line.y2()) < 2);
+        QCOMPARE(board->segmentAt(board->port(1, 3).toPoint()), board->segments[1].at(3));
+        // Pulled from one point to the other, a line is taken up by both; the
+        // point pressed alone chooses its segment.
+        al->takeLine(4, 3);
+        QVERIFY(board->segments[0].at(4)->alone() && board->segments[1].at(3)->alone());
+        QTest::mousePress(board, Qt::LeftButton, {}, board->port(0, 4).toPoint());
+        QTest::mouseRelease(board, Qt::LeftButton, {}, board->port(1, 3).toPoint());
+        QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 3|2 4|3"));
+        QVERIFY(!board->segments[0].at(4)->alone());
+        QTest::mouseClick(board, Qt::LeftButton, {}, board->port(1, 1).toPoint());
+        QVERIFY(board->segments[1].at(1)->picked());
+        QTest::mouseClick(board, Qt::LeftButton, {}, board->port(1, 1).toPoint());
+        QVERIFY(!board->segments[1].at(1)->picked());
         // A sentence chosen and then its translation takes their line away.
         QTest::mouseClick(board->segments[0].at(3), Qt::LeftButton);
         QVERIFY(board->segments[0].at(3)->property("picked").toBool());

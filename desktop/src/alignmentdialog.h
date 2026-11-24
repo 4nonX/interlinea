@@ -24,6 +24,8 @@ public:
     int side() const { return m_side; }
     int index() const { return m_index; }
     void setState(bool picked, bool alone);
+    bool picked() const { return property("picked").toBool(); }
+    bool alone() const { return property("alone").toBool(); }
 
 signals:
     void chosen();
@@ -34,6 +36,8 @@ protected:
     void mousePressEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void keyPressEvent(QKeyEvent *e) override;
+    void enterEvent(QEnterEvent *e) override;
+    void leaveEvent(QEvent *e) override;
 
 private:
     int m_side;
@@ -58,18 +62,31 @@ public:
     // The line at a place on the board, or -1.
     int lineIndexAt(const QPointF &p) const { return lineAt(p); }
 
+    // Where a segment's lines begin: a point in the gap beside it, drawn
+    // as a ring while nothing is joined there.
+    QPointF port(int side, int index) const;
+    // The segment whose point or box is at a place, or null.
+    AlignSegment *segmentAt(const QPoint &p) const;
+
 signals:
     void lineChosen(int source, int target);
+    // A point was pressed and let go on itself, or over another segment.
+    void portChosen(int side, int index);
+    void portPulled(int side, int index, int otherSide, int otherIndex);
 
 protected:
     void paintEvent(QPaintEvent *e) override;
     void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
     void leaveEvent(QEvent *e) override;
 
 private:
     int lineAt(const QPointF &p) const;
+    AlignSegment *portAt(const QPointF &p) const;
     int m_hover = -1;
+    AlignSegment *m_hoverPort = nullptr;
+    AlignSegment *m_pressed = nullptr;
 };
 
 // A document and its translation, done before, into units of a memory:

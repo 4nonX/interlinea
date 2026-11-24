@@ -200,6 +200,7 @@ export function AlignDocuments({
                 {i + 1}
               </span>
               <span>{plain(coreToRuns(runs))}</span>
+              <span className="align-port" aria-hidden="true" />
             </button>
           );
         })}
@@ -217,8 +218,9 @@ export function AlignDocuments({
           {alone === 0 && look.length === 0 && "All of them fit."}
         </p>
         <p className="help">
-          A line joins a sentence and its translation. To draw one, choose a sentence and then its translation, or pull from one to the other; the same takes a
-          line away, as does choosing the line. Sentences joined by lines become one unit.
+          A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means nothing is joined
+          there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same takes a line away, as does choosing
+          the line. Sentences joined by lines become one unit.
         </p>
         <div className="align-head">
           <LangChip code={sourceLang} />
