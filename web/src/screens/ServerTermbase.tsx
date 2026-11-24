@@ -29,13 +29,13 @@ export const may = (tb: Termbase, p: Permission) => !tb.remote || allows(tb.role
 /** The ID an entry of a server termbase has on the server. */
 const serverId = (tb: Termbase, e: Entry) => e.id.slice(tb.id.length + 1);
 
-const headOf = (e: CoreEntry, first?: string): string => {
+export const headOf = (e: CoreEntry, first?: string): string => {
   const ls = [...e.languages].sort((a, b) => Number(b.lang === first) - Number(a.lang === first));
   for (const l of ls) if (l.terms[0]) return l.terms[0].text;
   return "";
 };
 
-const termsLine = (e: CoreEntry) =>
+export const termsLine = (e: CoreEntry) =>
   e.languages
     .filter((l) => l.terms.length)
     .map((l) => `${l.lang}: ${l.terms.map((t) => t.text).join(", ")}`)

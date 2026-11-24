@@ -284,10 +284,10 @@ export function Editor({
   const termIndex = useMemo(() => {
     if (!c || !project) return null;
     const name = `editor:${project.id}`;
-    buildIndex(c, name, termbases, state.entries);
+    buildIndex(c, name, termbases, state.entries, state.removals);
     // A new object each rebuild, so hits and checks recompute.
     return { name };
-  }, [c, project, termbases, state.entries]);
+  }, [c, project, termbases, state.entries, state.removals]);
   const hits = useMemo((): TermHit[] => {
     if (!active || !c || !termIndex) return [];
     const out: TermHit[] = [];

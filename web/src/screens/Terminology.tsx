@@ -48,6 +48,7 @@ import {
   useCore,
 } from "./TermbaseDialogs";
 import { fromCoreEntry, term, toCoreEntry } from "../termio";
+import { LocalDeleted, LocalHistory, LocalMasterDetail, LocalMasterList, useLocalMasters } from "./LocalTermbase";
 import { errorText, useRemote } from "../remote";
 import { ReloadButton, ServerReviewNote, ServerTermbaseGroup } from "./ServerTerminology";
 import {
@@ -155,9 +156,15 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
   const [masterSel, setMasterSel] = useState("");
   const masterEntry = layered.masters.find((e) => masterKey(e) === masterSel) ?? layered.masters[0];
   const serverProject = !!tb.remote && tb.kind === "project";
+  // The same for a project termbase kept in this browser, over masters kept here.
+  const local = useLocalMasters(tb);
+  const localProject = !tb.remote && tb.kind === "project" && (tb.basedOn ?? []).length > 0;
+  const localMaster = local.masters.find((m) => m.entry.id === masterSel) ?? local.masters[0];
+  const layeredProject = serverProject || localProject;
+  const masterCount = serverProject ? layered.masters.length : local.masters.length;
   useEffect(() => {
-    if ((view === "master" && !serverProject) || (view === "deleted" && !tb.remote) || (view === "duplicates" && !edit)) setView("entries");
-  }, [view, serverProject, tb.remote, edit]);
+    if ((view === "master" && !layeredProject) || (view === "duplicates" && !edit)) setView("entries");
+  }, [view, layeredProject, edit]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
@@ -279,27 +286,27 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                 Duplicates
               </button>
             )}
-            {tb.remote && (
-              <button type="button" role="tab" aria-selected={view === "deleted"} onClick={() => setView("deleted")}>
-                Deleted
-              </button>
-            )}
-            {serverProject && (
+            <button type="button" role="tab" aria-selected={view === "deleted"} onClick={() => setView("deleted")}>
+              Deleted
+            </button>
+            {layeredProject && (
               <button
                 type="button"
                 role="tab"
                 aria-selected={view === "master"}
-                aria-label={`The master's entries (${layered.masters.length})`}
+                aria-label={`The master's entries (${masterCount})`}
                 onClick={() => setView("master")}
               >
-                Master ({layered.masters.length})
+                Master ({masterCount})
               </button>
             )}
           </div>
           {view === "duplicates" ? (
             <Duplicates tb={tb} entries={entries} />
           ) : view === "deleted" ? (
-            <ServerDeleted tb={tb} />
+            tb.remote ? <ServerDeleted tb={tb} /> : <LocalDeleted tb={tb} />
+          ) : view === "master" && localProject ? (
+            <LocalMasterList tb={tb} masters={local.masters} removals={local.removals} selected={localMaster?.entry.id ?? ""} onSelect={setMasterSel} />
           ) : view === "master" ? (
             <ServerMasterList
               tb={tb}
@@ -348,7 +355,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                     <>
                       <p className="empty-title">No entries yet</p>
                       <p>
-                        {serverProject && layered.masters.length > 0
+                        {layeredProject && masterCount > 0
                           ? "The project has no entries of its own. The master's are under Master."
                           : "Those who may edit this termbase add its entries."}
                       </p>
@@ -357,7 +364,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                     <>
                       <p className="empty-title">No entries yet</p>
                       <p>
-                        {serverProject && layered.masters.length > 0
+                        {layeredProject && masterCount > 0
                           ? "The project has no entries of its own yet: it uses the master's, which are under Master. Add an entry above, or change one of the master's for this project."
                           : "Add an entry above, import a TBX, MultiTerm or Excel file, or add terms while you translate."}
                       </p>
@@ -402,7 +409,17 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
           )}
         </section>
 
-        {view === "master" && masterEntry ? (
+        {view === "master" && localProject && localMaster ? (
+          <LocalMasterDetail
+            key={localMaster.entry.id}
+            tb={tb}
+            item={localMaster}
+            onTaken={(id) => {
+              setView("entries");
+              go({ page: "terminology", termbaseId: tb.id, entryId: id });
+            }}
+          />
+        ) : view === "master" && masterEntry ? (
           <ServerMasterDetail key={masterKey(masterEntry)} tb={tb} entry={masterEntry} reload={layered.reload} onTaken={() => setView("entries")} />
         ) : selected && view !== "master" ? (
           <EntryDetail key={selected.id} entry={selected} tb={tb} />
@@ -949,7 +966,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
                 Delete entry
               </>
             }
-            confirm={tb.remote ? "Delete this entry? It can be brought back from Deleted, without its history." : "Delete this entry and its history?"}
+            confirm={tb.remote ? "Delete this entry? It can be brought back from Deleted, without its history." : "Delete this entry? It can be brought back from Deleted."}
             action="Delete"
             onConfirm={() => {
               dispatch({ type: "deleteEntries", entryIds: [entry.id] });
@@ -1180,17 +1197,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
           aria-labelledby="tab-history"
           className="detail-body"
         >
-          <ol className="history">
-            {[...entry.history].reverse().map((c) => (
-              <li key={c.id}>
-                <div className="history-summary">{c.summary}</div>
-                <div className="history-meta">
-                  {c.by}, {fmtTime(c.at)}
-                  {c.project && <> in {c.project}</>}
-                </div>
-              </li>
-            ))}
-          </ol>
+          <LocalHistory tb={tb} entry={entry} />
         </div>
       )}
     </section>

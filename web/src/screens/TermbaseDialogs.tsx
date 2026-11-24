@@ -16,6 +16,7 @@ import {
   type LangCode,
   type Termbase,
   type TermStatus,
+  type ReviewRules,
 } from "../data";
 import { useLocalStore, type ImportInput } from "../store";
 import { plural } from "../format";
@@ -292,6 +293,153 @@ export function ExportDialog({
 
 /* Settings */
 
+/** What merges into a master kept in this browser without review: the rules a master on the team server has. */
+function ReviewRulesSection({ tb }: { tb: Termbase }) {
+  const { state, dispatch, notify } = useLocalStore();
+  const [who, setWho] = useState("");
+  const [forLang, setForLang] = useState("");
+  const [problem, setProblem] = useState("");
+  const rules = tb.rules ?? {};
+  const minor = rules.minorFields ?? [];
+  const trusted = rules.trusted ?? [];
+  const put = (next: ReviewRules, done: string) => {
+    const set = !!next.keepIdentical || !!next.minorFields?.length || !!next.trusted?.length;
+    dispatch({ type: "updateTermbase", termbaseId: tb.id, patch: { rules: set ? next : undefined } });
+    setProblem("");
+    notify(done);
+  };
+  // Whoever wrote in the projects based on this master, and oneself.
+  const branches = new Set(state.termbases.filter((t) => !t.remote && t.kind === "project" && (t.basedOn ?? []).includes(tb.id)).map((t) => t.id));
+  const authors = [
+    ...new Set([
+      state.userName,
+      ...state.entries.filter((e) => branches.has(e.termbaseId)).flatMap((e) => e.history.map((c) => c.by)),
+      ...trusted.map((t) => t.author),
+    ]),
+  ]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b));
+  return (
+    <section className="settings-section" aria-labelledby="tbs-review">
+      <h3 id="tbs-review" className="settings-title">
+        Review
+      </h3>
+      <p className="help">Projects merge their new and changed entries into this master, and the merge is reviewed first. These rules say what needs no review.</p>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={!rules.keepIdentical}
+          onChange={(e) =>
+            put(
+              { ...rules, keepIdentical: e.target.checked ? undefined : true },
+              e.target.checked ? "Entries the master already has are merged without review" : "Entries the master already has wait for review, too",
+            )
+          }
+        />
+        Entries the master already has as they are need no review
+      </label>
+      <span className="field-label">Fields that need no approval</span>
+      {tb.infoTypes.length === 0 ? (
+        <p className="help">The termbase has no fields yet. A change to notes or sources only could be merged at once.</p>
+      ) : (
+        <>
+          <div className="row-start" role="group" aria-label="Fields that need no approval">
+            {tb.infoTypes.map((f) => (
+              <label key={f.id} className="check">
+                <input
+                  type="checkbox"
+                  checked={minor.includes(f.id)}
+                  onChange={(e) => {
+                    const next = e.target.checked ? [...minor, f.id] : minor.filter((m) => m !== f.id);
+                    put(
+                      { ...rules, minorFields: next.length ? next : undefined },
+                      e.target.checked ? `Changes to ${f.name} only are merged without review` : `Changes to ${f.name} wait for review`,
+                    );
+                  }}
+                />
+                {f.name}
+              </label>
+            ))}
+          </div>
+          <p className="help">An entry changed in these fields only needs no review.</p>
+        </>
+      )}
+      <span className="field-label">Trusted authors</span>
+      {trusted.length === 0 ? (
+        <p className="help">Nobody yet: every entry waits for review.</p>
+      ) : (
+        <ul className="mr-reviewers">
+          {trusted.map((t, i) => (
+            <li key={t.author}>
+              <span className="cell-title">{t.author}</span>
+              <span className="cell-sub">{t.lang ? `entries with terms in ${lang(t.lang).name}` : "all entries"}</span>
+              <button
+                type="button"
+                className="btn btn-quiet btn-small"
+                aria-label={`No longer trust ${t.author}`}
+                onClick={() => {
+                  const next = trusted.filter((_, j) => j !== i);
+                  put({ ...rules, trusted: next.length ? next : undefined }, `The entries of ${t.author} wait for review again`);
+                }}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="role-add"
+        aria-label="Trust an author"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!who) {
+            setProblem("Say whose entries to trust.");
+            return;
+          }
+          // One rule an author: a new one replaces the old.
+          const next = [...trusted.filter((t) => t.author.toLowerCase() !== who.toLowerCase()), forLang ? { author: who, lang: forLang } : { author: who }];
+          setWho("");
+          setForLang("");
+          put({ ...rules, trusted: next }, `The entries of ${who} need no review`);
+        }}
+      >
+        <label>
+          <span className="field-label">Author</span>
+          <select value={who} onChange={(e) => setWho(e.target.value)}>
+            <option value="">Choose a person…</option>
+            {authors.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="field-label">For</span>
+          <select value={forLang} onChange={(e) => setForLang(e.target.value)}>
+            <option value="">All entries</option>
+            {tb.languages.map((l) => (
+              <option key={l} value={l}>
+                Terms in {lang(l).name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="submit" className="btn btn-small">
+          Trust
+        </button>
+      </form>
+      {problem && (
+        <p className="error" role="alert">
+          {problem}
+        </p>
+      )}
+      <p className="help">Their new and changed entries need no review. An entry that conflicts with the master always does.</p>
+    </section>
+  );
+}
+
 export function SettingsDialog({
   tb,
   onClose,
@@ -486,6 +634,8 @@ export function SettingsDialog({
           </table>
         )}
       </section>
+
+      {tb.kind === "master" && <ReviewRulesSection tb={tb} />}
 
       {tb.kind === "master" && (
         <section

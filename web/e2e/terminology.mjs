@@ -20,6 +20,7 @@ export default () =>
       errors,
       fixtures,
       downloads,
+      waitFor,
     }) => {
       // Term recognition and checks in the editor run in the core.
       await open("/editor/p-hofmann", { wait: 0 });
@@ -349,5 +350,277 @@ export default () =>
         !(await evaluate("!!document.querySelector('dialog[open]')")),
         "Escape closes the dialog",
       );
+
+      // A termbase kept in this browser has what one on the server has:
+      // versions to restore, deleted entries to bring back, the master's
+      // entries under a project termbase, and review rules.
+      const toast = (part) =>
+        waitFor(
+          `[...document.querySelectorAll('.toast')].some(t => t.textContent.includes(${JSON.stringify(part)}))`,
+          5000,
+        );
+      const tab = (label) =>
+        evaluate(
+          `[...document.querySelectorAll('[role=tab]')].find(t => t.textContent.trim().startsWith(${JSON.stringify(label)})).click()`,
+        );
+      const rows = () =>
+        evaluate(
+          "[...document.querySelectorAll('.pane-entries .entry-row')].map(r => r.querySelector('.entry-term').textContent).join('|')",
+        );
+      await open("/terminology/tb-weber", { wait: 0 });
+      await waitFor("!!document.querySelector('.entry-row')");
+      await click(".entry-row", "Mietsache");
+      await sleep(300);
+      const badge = () =>
+        evaluate(
+          "[...document.querySelectorAll('.pane-detail .term')].find(t => t.querySelector('.term-text').textContent === 'rented property').querySelector('.badge, [class*=status-]').textContent.trim()",
+        );
+      check((await badge()) === "Proposed", "the term starts as proposed: " + (await badge()));
+      await evaluate(
+        "(() => { const s = [...document.querySelectorAll('.pane-detail .term')].find(t => t.querySelector('.term-text').textContent === 'rented property').querySelector('select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, 'approved'); s.dispatchEvent(new Event('change', { bubbles: true })); })()",
+      );
+      await sleep(300);
+      check((await badge()) === "Approved", "the status is changed: " + (await badge()));
+      await tab("History");
+      await sleep(300);
+      let hist = await evaluate(
+        "[...document.querySelectorAll('.history li')].map(li => (li.querySelector('.history-held')?.textContent ?? '-') + ' / ' + (li.querySelector('button') ? 'restore' : 'none')).join(' | ')",
+      );
+      check(
+        hist.split(" | ")[0].includes("rented property") &&
+          hist.split(" | ")[0].endsWith("none") &&
+          hist.split(" | ")[1].includes("rented property") &&
+          hist.split(" | ")[1].endsWith("restore"),
+        "the history shows what each version held and restores an earlier one: " + hist,
+      );
+      await click(".history button", "Restore this version");
+      await sleep(200);
+      check(
+        (await text()).includes("What it is now stays in the history"),
+        "restoring asks first",
+      );
+      await click(".history .confirm button", "Restore");
+      check(await toast("Restored the version of"), "restoring is said");
+      check(
+        (await evaluate("document.querySelector('.history li .history-summary').textContent")).startsWith("Restored the version of"),
+        "the restore is a version of its own",
+      );
+      await tab("Entry");
+      await sleep(300);
+      check((await badge()) === "Proposed", "the earlier version is back: " + (await badge()));
+
+      // Deleted entries are kept and come back with their history.
+      await click(".pane-detail button", "Delete entry");
+      await sleep(200);
+      check(
+        (await text()).includes("It can be brought back from Deleted."),
+        "deleting says the entry can come back",
+      );
+      await click(".pane-detail .confirm button", "Delete");
+      await sleep(400);
+      check(!(await rows()).split("|").includes("Mietsache"), "the entry is gone from the list");
+      await tab("Deleted");
+      await sleep(300);
+      t = await evaluate("document.querySelector('.deleted-list')?.innerText ?? ''");
+      check(
+        t.includes("Mietsache") && t.includes("leased property") && t.includes("Deleted "),
+        "the deleted entry is listed with its terms: " + t.replace(/\n/g, " "),
+      );
+      // It is still there after the page is loaded again.
+      await open("/terminology/tb-weber", { wait: 0, keep: true });
+      await waitFor("!!document.querySelector('.entry-row')");
+      await tab("Deleted");
+      await sleep(300);
+      check(
+        (await evaluate("document.querySelector('.deleted-list')?.innerText ?? ''")).includes("Mietsache"),
+        "deleted entries are kept across loads",
+      );
+      await click(".deleted-entry button", "Bring back");
+      check(await toast("Brought back “Mietsache”"), "bringing back is said");
+      check(
+        (await text()).includes("Nothing deleted"),
+        "nothing is left under Deleted",
+      );
+      await tab("Entries");
+      await sleep(300);
+      check((await rows()).split("|").includes("Mietsache"), "the entry is back in the list");
+      await click(".entry-row", "Mietsache");
+      await sleep(200);
+      await tab("History");
+      await sleep(200);
+      hist = await evaluate("[...document.querySelectorAll('.history .history-summary')].map(x => x.textContent).join(' | ')");
+      check(
+        hist.startsWith("Brought back") && hist.includes("Created entry"),
+        "it comes back with its history: " + hist,
+      );
+
+      // Review rules of a master kept in this browser.
+      await click(".pane-tools button", "Settings");
+      await sleep(300);
+      d = await dlg();
+      check(
+        d.includes("Review") &&
+          d.includes("Entries the master already has as they are need no review") &&
+          d.includes("Fields that need no approval") &&
+          d.includes("Trusted authors") &&
+          d.includes("Nobody yet: every entry waits for review."),
+        "a master in the browser has review rules",
+      );
+      await evaluate(
+        "[...document.querySelectorAll('dialog [aria-label=\"Fields that need no approval\"] label')].find(l => l.textContent.trim() === 'Definition').querySelector('input').click()",
+      );
+      check(await toast("Changes to Definition only are merged without review"), "a field that needs no approval is set");
+      await click("dialog form[aria-label='Trust an author'] button", "Trust");
+      await sleep(200);
+      check((await dlg()).includes("Say whose entries to trust."), "trusting nobody is refused");
+      await evaluate(
+        "(() => { const s = document.querySelector('dialog form[aria-label=\"Trust an author\"] select'); const o = [...s.options].find(o => o.textContent === 'Anna Lindner'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(s, o.value); s.dispatchEvent(new Event('change', { bubbles: true })); })()",
+      );
+      await click("dialog form[aria-label='Trust an author'] button", "Trust");
+      check(await toast("The entries of Anna Lindner need no review"), "an author is trusted");
+      check(
+        (await evaluate("document.querySelector('dialog .mr-reviewers')?.innerText ?? ''")).replace(/\s+/g, " ").includes("Anna Lindner all entries"),
+        "the trusted author is listed",
+      );
+      await click("dialog button", "Done");
+      await sleep(300);
+
+      // The merge review lists apart what the rules cover; a conflict always waits.
+      await open("/merge/p-hofmann", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.merge-bar button')");
+      t = await evaluate("document.querySelector('.changes-covered')?.innerText ?? ''");
+      check(
+        /Need no review \(5\)/.test(t) &&
+          t.includes("By Anna Lindner, whose entries need no review.") &&
+          t.includes("The rules of Kanzlei Weber cover these."),
+        "what the rules cover is listed apart: " + t.slice(0, 120).replace(/\n/g, " "),
+      );
+      check(
+        await evaluate(
+          "!document.querySelector('.changes-covered .change-conflict') && document.querySelectorAll('main > .changes .change-conflict, .changes:not(.changes-covered .changes) .change-conflict').length === 1",
+        ),
+        "the conflict still waits for review",
+      );
+
+      // The trust is taken back: everything waits again.
+      await open("/terminology/tb-weber", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.entry-row')");
+      await click(".pane-tools button", "Settings");
+      await sleep(300);
+      await click("dialog .mr-reviewers button", "Remove");
+      check(await toast("The entries of Anna Lindner wait for review again"), "the trust is taken back");
+      await click("dialog button", "Done");
+      await sleep(200);
+
+      // Under a project termbase: the master's entries it uses as they are.
+      await open("/terminology/tb-p-weber-lease", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.entry-row')");
+      const masterTab = () =>
+        evaluate("[...document.querySelectorAll('[role=tab]')].find(t => t.textContent.trim().startsWith('Master'))?.textContent.trim() ?? ''");
+      const count = Number(/\((\d+)\)/.exec(await masterTab())?.[1] ?? -1);
+      check(count > 1, "a project termbase in the browser has the Master view: " + (await masterTab()));
+      await tab("Master");
+      await sleep(300);
+      let ms = await rows();
+      check(
+        ms.split("|").length === count &&
+          ms.split("|").includes("Mietsache") &&
+          !ms.split("|").includes("Kaution") &&
+          !ms.split("|").includes("Räumungsklage"),
+        "it lists the master's entries the project has no version of: " + ms,
+      );
+      check(
+        (await text()).includes("The master's entries this project uses as they are. Change one for this project only, or leave it out."),
+        "the view says what it is",
+      );
+      await click(".entry-row", "Mietsache");
+      await sleep(200);
+      t = await evaluate("document.querySelector('.pane-detail').innerText");
+      check(
+        t.includes("In Kanzlei Weber") && t.includes("This is the master's entry.") && t.includes("leased property"),
+        "a master's entry is read there",
+      );
+      await click(".pane-detail button", "Leave out of this project");
+      await sleep(200);
+      await click(".pane-detail .confirm button", "Leave out");
+      check(await toast("Left the entry out of the project"), "leaving out is said");
+      ms = await rows();
+      check(!ms.split("|").includes("Mietsache") && (await masterTab()) === `Master (${count - 1})`, "the entry left out is no longer among them: " + (await masterTab()));
+      t = await evaluate("document.querySelector('.left-out')?.innerText ?? ''");
+      check(
+        t.includes("Left out of this project") && t.includes("Mietsache") && t.includes("In Kanzlei Weber, left out"),
+        "and is listed as left out: " + t.replace(/\n/g, " "),
+      );
+
+      // The merge offers to delete it in the master.
+      await open("/merge/p-hofmann", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.merge-bar button')");
+      t = await evaluate("document.querySelector('.change-removed')?.innerText ?? ''");
+      check(
+        t.includes("Mietsache") &&
+          t.includes("Left out of the project") &&
+          t.includes("Accepting deletes the entry in Kanzlei Weber") &&
+          t.includes("Delete in Kanzlei Weber"),
+        "the merge review shows the entry left out: " + t.replace(/\n/g, " "),
+      );
+      check(
+        (await evaluate("document.querySelector('.segmented').innerText")).includes("Left out (1)"),
+        "and counts it",
+      );
+
+      // Brought back, it is used again; taken into the project, it is changed there.
+      await open("/terminology/tb-p-weber-lease", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.entry-row')");
+      await tab("Master");
+      await sleep(300);
+      await click(".left-out button", "Bring back");
+      check(await toast("Brought the entry back into the project"), "bringing back into the project is said");
+      check(
+        (await rows()).split("|").includes("Mietsache") && !(await evaluate("!!document.querySelector('.left-out')")),
+        "the entry is used again",
+      );
+      await click(".entry-row", "Mietsache");
+      await sleep(200);
+      await click(".pane-detail button", "Change in this project");
+      check(await toast("Took the entry into the project"), "taking into the project is said");
+      await sleep(300);
+      check(
+        (await evaluate("document.querySelector('[role=tab][aria-selected=true]').textContent.trim()")) === "Entries" &&
+          (await evaluate("document.querySelector('#detail-title')?.textContent")) === "Mietsache" &&
+          (await evaluate("!!document.querySelector('.pane-detail select')")) &&
+          (await rows()).split("|").includes("Mietsache"),
+        "the project's version opens to be changed",
+      );
+      check((await masterTab()) === `Master (${count - 1})`, "the master's own is no longer listed: " + (await masterTab()));
+
+      // An entry left out and merged is deleted in the master, and kept under Deleted there.
+      await tab("Master");
+      await sleep(300);
+      const victim = (await rows()).split("|")[0];
+      await click(".entry-row", victim);
+      await sleep(200);
+      await click(".pane-detail button", "Leave out of this project");
+      await sleep(200);
+      await click(".pane-detail .confirm button", "Leave out");
+      await sleep(300);
+      await open("/merge/p-hofmann", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.merge-bar button')");
+      await click(".decision label", "Keep both");
+      await sleep(200);
+      await click(".merge-bar button");
+      await sleep(500);
+      await open("/terminology/tb-weber", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.entry-row')");
+      check(!(await rows()).split("|").includes(victim), `the merge deleted “${victim}” in the master`);
+      await tab("Deleted");
+      await sleep(300);
+      t = await evaluate("document.querySelector('.deleted-list')?.innerText ?? ''");
+      check(t.includes(victim) && t.includes("Deleted by a merge"), "it is kept under Deleted there: " + t.replace(/\n/g, " "));
+      await open("/terminology/tb-p-weber-lease", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.entry-row')");
+      await tab("Master");
+      await sleep(300);
+      check(!(await evaluate("!!document.querySelector('.left-out')")), "nothing is left out any more");
+      check(errors.length === 0, "no console errors: " + errors.join("; "));
     },
   );

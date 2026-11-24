@@ -99,8 +99,9 @@ function MergeIntoMaster({
         masterEntries,
         state.baseSnapshots,
         branchedAt,
+        state.removals.filter((x) => x.termbaseId === ptbId),
       ),
-    [projectEntries, master, masterEntries, state.baseSnapshots, branchedAt],
+    [projectEntries, master, masterEntries, state.baseSnapshots, branchedAt, state.removals, ptbId],
   );
   const incoming = useMemo(
     () => incomingFromMaster(masterEntries, branchedAt),
@@ -110,7 +111,7 @@ function MergeIntoMaster({
   const [filter, setFilter] = useState<ChangeKind | "all">("all");
   const [done, setDone] = useState<number | null>(null);
 
-  const counts = { conflict: 0, changed: 0, new: 0 } as Record<
+  const counts = { conflict: 0, changed: 0, new: 0, removed: 0 } as Record<
     ChangeKind,
     number
   >;
@@ -124,6 +125,9 @@ function MergeIntoMaster({
     (c) => decided(c) && decided(c) !== "skip",
   ).length;
   const shown = changes.filter((c) => filter === "all" || c.kind === filter);
+  // What the master's rules cover is listed apart: it needs no review.
+  const toReview = shown.filter((c) => !c.rule);
+  const covered = shown.filter((c) => c.rule);
 
   const incomingCount = incoming.created.length + incoming.changed.length;
 
@@ -186,6 +190,12 @@ function MergeIntoMaster({
             <dt>New</dt>
             <dd>{counts.new}</dd>
           </div>
+          {counts.removed > 0 && (
+            <div>
+              <dt>Left out</dt>
+              <dd>{counts.removed}</dd>
+            </div>
+          )}
         </dl>
       </section>
 
@@ -234,7 +244,7 @@ function MergeIntoMaster({
       ) : (
         <>
           <div className="segmented" role="radiogroup" aria-label="Show">
-            {(["all", "conflict", "changed", "new"] as const).map((k) => (
+            {(["all", "conflict", "changed", "new", ...(counts.removed ? (["removed"] as const) : [])] as const).map((k) => (
               <label key={k} className="segment">
                 <input
                   type="radio"
@@ -249,33 +259,62 @@ function MergeIntoMaster({
                       ? `${w("conflict")}s`
                       : k === "changed"
                         ? w("changedEntry")
-                        : "New"}{" "}
+                        : k === "removed"
+                          ? "Left out"
+                          : "New"}{" "}
                   ({k === "all" ? changes.length : counts[k]})
                 </span>
               </label>
             ))}
           </div>
 
-          <ul className="changes">
-            {shown.map((c) => (
-              <li key={c.project.id}>
-                <ChangeItem
-                  change={c}
-                  master={master}
-                  decision={decided(c)}
-                  onDecide={(d) =>
-                    setDecisions((x) => ({ ...x, [c.project.id]: d }))
-                  }
-                />
-              </li>
-            ))}
-          </ul>
+          {toReview.length > 0 && (
+            <ul className="changes">
+              {toReview.map((c) => (
+                <li key={c.project.id}>
+                  <ChangeItem
+                    change={c}
+                    master={master}
+                    decision={decided(c)}
+                    onDecide={(d) =>
+                      setDecisions((x) => ({ ...x, [c.project.id]: d }))
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+          {covered.length > 0 && (
+            <section className="changes-covered" aria-labelledby="covered-title">
+              <h2 id="covered-title" className="tb-group-title">
+                Need no review ({covered.length})
+              </h2>
+              <p className="help">
+                The rules of {master.name} cover these. They are merged with
+                the rest unless you take them out.
+              </p>
+              <ul className="changes">
+                {covered.map((c) => (
+                  <li key={c.project.id}>
+                    <ChangeItem
+                      change={c}
+                      master={master}
+                      decision={decided(c)}
+                      onDecide={(d) =>
+                        setDecisions((x) => ({ ...x, [c.project.id]: d }))
+                      }
+                    />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           <div className="merge-bar">
             <p className="merge-bar-text" aria-live="polite">
               {unresolved > 0
                 ? `Resolve ${plural(unresolved, "conflict", "conflicts")} to merge.`
-                : `${plural(included, w("change"), w("changes"))} will be merged. Left-out entries stay in the project.`}
+                : `${plural(included, w("change"), w("changes"))} will be merged. What you do not accept stays in the project.`}
             </p>
             <button
               type="button"
@@ -364,15 +403,28 @@ function ChangeItem({
   const w = useWords();
   const src = master.languages[0]!;
   const head = change.project.terms[src]?.[0]?.text ?? "(no term)";
+  const field = (k: string) =>
+    master.infoTypes.find((i) => i.id === k)?.name ?? k;
   const kindLabel =
     change.kind === "conflict"
       ? w("conflict")
       : change.kind === "changed"
         ? w("changedEntry")
-        : w("newEntry");
-  const origin = change.project.history.find((c) => c.segment);
-  const field = (k: string) =>
-    master.infoTypes.find((i) => i.id === k)?.name ?? k;
+        : change.kind === "removed"
+          ? "Left out of the project"
+          : w("newEntry");
+  const fieldNames = change.fields.map((f) => field(f.field)).join(", ");
+  const ruleNote =
+    change.rule === "identical"
+      ? `${master.name} has this entry as it is: the two are linked, nothing is added.`
+      : change.rule === "minor-fields"
+        ? `Changed in ${fieldNames} only, which needs no approval.`
+        : change.rule === "trusted"
+          ? `By ${change.author}, whose entries need no review.`
+          : change.identicalTo
+            ? `${master.name} has this entry as it is: accepting links the two, nothing is added.`
+            : "";
+  const origin = change.kind === "removed" ? undefined : change.project.history.find((c) => c.segment);
   const name = `d-${change.project.id}`;
 
   return (
@@ -391,6 +443,35 @@ function ChangeItem({
           </span>
         )}
       </header>
+
+      {ruleNote && <p className="change-rule">{ruleNote}</p>}
+
+      {change.kind === "removed" && (
+        <>
+          <dl className="diff">
+            {master.languages.map((code) => (
+              <div key={code} className="diff-row">
+                <dt>
+                  <LangChip code={code} />
+                </dt>
+                <dd>
+                  <del>
+                    <TermsLine entry={change.project} code={code} />
+                  </del>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="change-context">
+            Left out {change.leftOutAt ? fmtTime(change.leftOutAt) : ""}
+            {change.author ? ` by ${change.author}` : ""}. Accepting deletes the
+            entry in {master.name}; it can be brought back from Deleted there.
+            {change.masterHistory[0]
+              ? ` ${master.name} changed it since, last ${change.masterHistory[change.masterHistory.length - 1]!.by} on ${fmtDate(change.masterHistory[change.masterHistory.length - 1]!.at)}.`
+              : ""}
+          </p>
+        </>
+      )}
 
       {change.kind === "new" && (
         <dl className="diff">
@@ -509,7 +590,7 @@ function ChangeItem({
               checked={decision !== "skip"}
               onChange={(e) => onDecide(e.target.checked ? "accept" : "skip")}
             />
-            <span>{w("accept")} in the merge</span>
+            <span>{change.kind === "removed" ? `Delete in ${master.name}` : `${w("accept")} in the merge`}</span>
           </label>
         )}
       </div>

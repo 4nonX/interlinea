@@ -22,12 +22,16 @@ import {
   renameSavedMemory,
 } from "./editor/memory";
 import { migrateV1 } from "./migrate";
+import { fmtTime } from "./format";
 import { forgetDictionaries } from "./editor/spelling";
 import {
   DEFAULT_INFO_TYPES,
   projectProgress,
   type Commit,
+  type DeletedEntry,
   type Entry,
+  type EntrySnapshot,
+  type Removal,
   type InfoType,
   type LangCode,
   type Project,
@@ -85,6 +89,10 @@ export interface State {
   dictionaries: SpellDictionary[];
   baseSnapshots: Record<string, Entry>;
   branchedAt: Record<string, string>;
+  /** Entries deleted from termbases kept in this browser, newest first. */
+  deleted: DeletedEntry[];
+  /** Master entries the project termbases kept in this browser leave out. */
+  removals: Removal[];
   gitWords: boolean;
   /** Editor: put the best memory match into an empty segment when it opens (Trados does this by default). */
   autoInsert: boolean;
@@ -136,6 +144,11 @@ export interface NewTermInput {
 type Action =
   | { type: "hydrate"; state: SavedState }
   | { type: "setUserName"; name: string }
+  | { type: "restoreVersion"; entryId: string; commitId: string; now: string }
+  | { type: "restoreDeleted"; entryId: string; now: string }
+  | { type: "takeFromMaster"; termbaseId: string; masterEntryId: string; id: string; now: string }
+  | { type: "leaveOut"; termbaseId: string; masterId: string; entryId: string; now: string }
+  | { type: "bringBack"; termbaseId: string; masterId: string; entryId: string }
   | { type: "resetAll" }
   | { type: "createProject"; change: ProjectChange; now: string }
   | { type: "updateProject"; change: ProjectChange }
@@ -199,7 +212,7 @@ type Action =
   | {
       type: "updateTermbase";
       termbaseId: string;
-      patch: Partial<Pick<Termbase, "name" | "languages" | "infoTypes">>;
+      patch: Partial<Pick<Termbase, "name" | "languages" | "infoTypes" | "rules">>;
     }
   | {
       type: "removeLanguage";
@@ -256,6 +269,8 @@ const initial: State = {
   dictionaries: [],
   baseSnapshots: {},
   branchedAt: {},
+  deleted: [],
+  removals: [],
   gitWords: false,
   autoInsert: true,
   autoPropagate: true,
@@ -330,7 +345,97 @@ function withoutRemote(state: State, projectId?: string): State {
   };
 }
 
+/** The content of an entry, as a version of it is kept. */
+function snapshotOf(e: Entry): EntrySnapshot {
+  return { concept: e.concept, terms: e.terms, langFields: e.langFields };
+}
+
+// Actions that take entries away without deleting them: what a server
+// sent leaves the page, or the browser's work is replaced as a whole.
+const NOT_A_DELETION = new Set<Action["type"]>([
+  "hydrate",
+  "resetAll",
+  "remoteLoad",
+  "remoteUnload",
+  "remoteTermbase",
+  "remoteEntry",
+]);
+
+/**
+ * What every change to the termbases kept in this browser leaves behind,
+ * whichever action made it: the entry's content with the change that
+ * produced it, so a version can be read and restored, and an entry that
+ * is gone while its termbase is still there, so it can be brought back.
+ */
+function keepTrack(prev: State, next: State, action: Action): State {
+  if (next.entries === prev.entries && next.termbases === prev.termbases)
+    return next;
+  const local = new Set(
+    next.termbases.filter((t) => !t.remote).map((t) => t.id),
+  );
+  const before = new Map(prev.entries.map((e) => [e.id, e]));
+  let changed = false;
+  const entries = next.entries.map((e) => {
+    const was = before.get(e.id);
+    if (!local.has(e.termbaseId) || was === e) return e;
+    const history = [...e.history];
+    let stamped = false;
+    // What the entry held until now, where its last change did not keep it
+    // (entries from before versions were kept, the sample's, imported ones).
+    const at = was ? was.history.length - 1 : -1;
+    if (was && at >= 0 && history[at] && history[at].id === was.history[at]!.id && !history[at].snapshot && history.length > was.history.length) {
+      history[at] = { ...history[at], snapshot: snapshotOf(was) };
+      stamped = true;
+    }
+    const last = history[history.length - 1];
+    if (last && !last.snapshot) {
+      history[history.length - 1] = { ...last, snapshot: snapshotOf(e) };
+      stamped = true;
+    }
+    if (!stamped) return e;
+    changed = true;
+    return { ...e, history };
+  });
+  let deleted = next.deleted;
+  let removals = next.removals;
+  if (!NOT_A_DELETION.has(action.type)) {
+    const now = new Set(next.entries.map((e) => e.id));
+    const gone = prev.entries.filter(
+      (e) => local.has(e.termbaseId) && !now.has(e.id),
+    );
+    if (gone.length) {
+      const at = new Date().toISOString();
+      const summary =
+        action.type === "mergeEntries"
+          ? "Merged into another entry"
+          : action.type === "merge"
+            ? "Deleted by a merge"
+            : "Deleted";
+      deleted = [
+        ...gone.map((entry) => ({ entry, at, by: prev.userName, summary })),
+        ...deleted,
+      ];
+    }
+  }
+  // A termbase that is gone takes what was kept for it along.
+  if (next.termbases !== prev.termbases) {
+    if (deleted.some((d) => !local.has(d.entry.termbaseId)))
+      deleted = deleted.filter((d) => local.has(d.entry.termbaseId));
+    if (removals.some((x) => !local.has(x.termbaseId) || !local.has(x.masterId)))
+      removals = removals.filter(
+        (x) => local.has(x.termbaseId) && local.has(x.masterId),
+      );
+  }
+  return changed || deleted !== next.deleted || removals !== next.removals
+    ? { ...next, entries: changed ? entries : next.entries, deleted, removals }
+    : next;
+}
+
 function reducer(state: State, action: Action): State {
+  return keepTrack(state, reduce(state, action), action);
+}
+
+function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "remoteLoad": {
       const { project, memories, termbases, entries } = action;
@@ -526,10 +631,17 @@ function reducer(state: State, action: Action): State {
         const m = res.masterEntries.find((e) => e.id === pe.base?.entryId);
         if (m) baseSnapshots[pe.id] = m;
       }
+      // The master's entries the merge deleted are no longer left out anywhere.
+      const removed = new Set(res.removed);
       return {
         ...state,
         entries: [...rest, ...res.masterEntries, ...res.projectEntries],
         baseSnapshots,
+        removals: removed.size
+          ? state.removals.filter(
+              (x) => !(x.masterId === action.masterId && removed.has(x.entryId)),
+            )
+          : state.removals,
       };
     }
     case "updateFromMaster": {
@@ -782,6 +894,15 @@ function reducer(state: State, action: Action): State {
                 infoTypes: t.infoTypes.filter(
                   (i) => i.id !== action.infoTypeId,
                 ),
+                // A field that is gone is in no review rule either.
+                rules: t.rules?.minorFields?.includes(action.infoTypeId)
+                  ? {
+                      ...t.rules,
+                      minorFields: t.rules.minorFields.filter(
+                        (f) => f !== action.infoTypeId,
+                      ),
+                    }
+                  : t.rules,
               }
             : t,
         ),
@@ -905,6 +1026,86 @@ function reducer(state: State, action: Action): State {
       return { ...initial, ...action.state, toast: null };
     case "resetAll":
       return { ...initial, toast: null };
+    case "restoreVersion": {
+      return {
+        ...state,
+        entries: state.entries.map((e) => {
+          if (e.id !== action.entryId) return e;
+          const v = e.history.find((c) => c.id === action.commitId);
+          if (!v?.snapshot) return e;
+          return {
+            ...e,
+            ...v.snapshot,
+            version: e.version + 1,
+            history: [
+              ...e.history,
+              commit(state.userName, action.now, `Restored the version of ${fmtTime(v.at)}`),
+            ],
+          };
+        }),
+      };
+    }
+    case "restoreDeleted": {
+      const d = state.deleted.find((x) => x.entry.id === action.entryId);
+      if (!d || !state.termbases.some((t) => t.id === d.entry.termbaseId))
+        return state;
+      const entry: Entry = {
+        ...d.entry,
+        version: d.entry.version + 1,
+        history: [
+          ...d.entry.history,
+          commit(state.userName, action.now, "Brought back"),
+        ],
+      };
+      return {
+        ...state,
+        entries: [...state.entries, entry],
+        deleted: state.deleted.filter((x) => x.entry.id !== action.entryId),
+      };
+    }
+    case "takeFromMaster": {
+      // The master's entry, copied into the project to be changed there.
+      const m = state.entries.find((e) => e.id === action.masterEntryId);
+      const tb = state.termbases.find((t) => t.id === action.termbaseId);
+      if (!m || !tb) return state;
+      const copy: Entry = {
+        ...m,
+        id: action.id,
+        termbaseId: tb.id,
+        version: 1,
+        base: { termbaseId: m.termbaseId, entryId: m.id, version: m.version },
+        history: [
+          commit(state.userName, action.now, "Taken from the master to change"),
+        ],
+      };
+      return {
+        ...state,
+        entries: [...state.entries, copy],
+        baseSnapshots: { ...state.baseSnapshots, [copy.id]: m },
+      };
+    }
+    case "leaveOut": {
+      if (
+        state.removals.some(
+          (x) => x.termbaseId === action.termbaseId && x.masterId === action.masterId && x.entryId === action.entryId,
+        )
+      )
+        return state;
+      return {
+        ...state,
+        removals: [
+          ...state.removals,
+          { termbaseId: action.termbaseId, masterId: action.masterId, entryId: action.entryId, at: action.now, by: state.userName },
+        ],
+      };
+    }
+    case "bringBack":
+      return {
+        ...state,
+        removals: state.removals.filter(
+          (x) => !(x.termbaseId === action.termbaseId && x.masterId === action.masterId && x.entryId === action.entryId),
+        ),
+      };
     case "setUserName":
       return { ...state, userName: action.name.trim() || DEFAULT_USER_NAME };
     case "toast":
@@ -964,6 +1165,8 @@ function withDefaults(s: SavedState): SavedState {
   return {
     ...s,
     userName: s.userName || DEFAULT_USER_NAME,
+    deleted: s.deleted ?? [],
+    removals: s.removals ?? [],
     dictionaries: s.dictionaries ?? [],
     // What the browser keeps is on this computer: termbases saved with a
     // server that never existed are shown as what they are.

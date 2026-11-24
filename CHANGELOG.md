@@ -52,7 +52,10 @@ client and the desktop app, with installers and a server image.
   merge. A master's rules say what merges without review: entries it has
   already, fields that need no approval, and trusted authors.
 - An earlier version of an entry is restored from its history, and a
-  deleted entry is brought back.
+  deleted entry is brought back. Termbases the web client keeps in the
+  browser have the same as those on the team server: versions, deleted
+  entries, the masters' entries under a project termbase, and the
+  master's review rules in the merge review.
 
 ### Working together
 

@@ -79,6 +79,46 @@ export interface Commit {
   project?: string;
   /** Source segment the change came from, when added while translating. */
   segment?: string;
+  /**
+   * What the entry held after this change, so an earlier version can be
+   * read and restored. Changes made before versions were kept have none.
+   */
+  snapshot?: EntrySnapshot;
+}
+
+/** The content of an entry at one version. */
+export interface EntrySnapshot {
+  concept: Record<string, string>;
+  terms: Record<LangCode, Term[]>;
+  langFields?: Record<LangCode, Record<string, string>>;
+}
+
+/** An entry deleted from a termbase kept in this browser, to bring back. */
+export interface DeletedEntry {
+  entry: Entry;
+  at: string;
+  by: string;
+  summary: string;
+}
+
+/** A master entry a project termbase kept in this browser leaves out. */
+export interface Removal {
+  /** The project termbase. */
+  termbaseId: string;
+  masterId: string;
+  entryId: string;
+  at: string;
+  by: string;
+}
+
+/** What merges into a master without review (the core's termdb.ReviewRules). */
+export interface ReviewRules {
+  /** Entries the master already has as they are wait for review, too. */
+  keepIdentical?: boolean;
+  /** Fields (by ID) whose changes need no approval. */
+  minorFields?: string[];
+  /** Authors whose entries are approved without review, all or those with terms in a language. */
+  trusted?: { author: string; lang?: LangCode }[];
 }
 
 export interface Entry {
@@ -110,6 +150,8 @@ export interface Termbase {
   basedOn?: string[];
   projectId?: string;
   infoTypes: InfoType[];
+  /** A master kept in this browser: what merges into it without review. */
+  rules?: ReviewRules;
   /** A server termbase listed without its entries: how many it has. */
   entryCount?: number;
   /** A termbase of a team-server project, loaded from the server: never saved in the browser. */

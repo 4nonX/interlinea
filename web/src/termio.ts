@@ -11,6 +11,7 @@ import {
   type Entry,
   type InfoType,
   type LangCode,
+  type Removal,
   type Term,
   type Termbase,
   type TermStatus,
@@ -558,12 +559,18 @@ export function buildIndex(
   name: string,
   termbases: Termbase[],
   entries: Entry[],
+  removals: Removal[] = [],
 ): number {
-  const shadowed = new Set(
-    entries
+  // A master's entry is not recognised where the project has its own
+  // version of it, or leaves it out.
+  const shadowed = new Set([
+    ...entries
       .filter((e) => e.base && termbases.some((t) => t.id === e.termbaseId))
       .map((e) => `${e.base!.termbaseId}/${e.base!.entryId}`),
-  );
+    ...removals
+      .filter((x) => termbases.some((t) => t.id === x.termbaseId))
+      .map((x) => `${x.masterId}/${x.entryId}`),
+  ]);
   const sources = termbases.map((tb) => ({
     source: tb.id,
     entries: entries

@@ -4134,3 +4134,30 @@ input.mono {
   float: left;
   width: 100%;
 }
+
+/* Merge review: why a change needs no review, and the group of those. */
+.change-rule {
+  color: var(--text-2);
+  font-size: 0.8125rem;
+  max-width: 80ch;
+}
+
+.changes-covered {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+
+.change-removed del {
+  text-decoration-thickness: 1px;
+}
+
+.tag-removed {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.changes-covered > .tb-group-title {
+  padding-inline: 0;
+}

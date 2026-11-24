@@ -1,0 +1,257 @@
+// What a termbase kept in this browser offers besides its entries, as a
+// termbase on the team server does: the versions of an entry to restore,
+// the deleted entries to bring back, and under a project termbase the
+// master's entries, to change for the project or leave out.
+
+import { Pencil } from "lucide-react";
+import type { Entry, Removal, Termbase } from "../data";
+import { useLocalStore } from "../store";
+import { toCoreEntry } from "../termio";
+import { fmtTime } from "../format";
+import { LangChip } from "../components/ui";
+import { ConfirmButton } from "./TermbaseDialogs";
+import { headOf, ReadEntry, termsLine } from "./ServerTermbase";
+
+let seq = 0;
+const newId = (p: string) => `${p}-${Date.now().toString(36)}-l${(seq++).toString(36)}`;
+
+/** The versions of an entry, newest first; an earlier one is restored. */
+export function LocalHistory({ tb, entry }: { tb: Termbase; entry: Entry }) {
+  const { dispatch, notify } = useLocalStore();
+  const newest = entry.history[entry.history.length - 1]?.id;
+  return (
+    <ol className="history">
+      {[...entry.history].reverse().map((c) => (
+        <li key={c.id}>
+          <div className="history-summary">{c.summary || "Changed"}</div>
+          <div className="history-meta">
+            {c.by ? `${c.by}, ` : ""}
+            {fmtTime(c.at)}
+            {c.project && <> in {c.project}</>}
+          </div>
+          {c.snapshot && <div className="history-held">{termsLine(toCoreEntry({ ...entry, ...c.snapshot }, tb))}</div>}
+          {c.snapshot && c.id !== newest && (
+            <ConfirmButton
+              plain
+              label="Restore this version"
+              confirm="Set the entry back to this version? What it is now stays in the history."
+              action="Restore"
+              onConfirm={() => {
+                dispatch({ type: "restoreVersion", entryId: entry.id, commitId: c.id, now: new Date().toISOString() });
+                notify(`Restored the version of ${fmtTime(c.at)}`);
+              }}
+            />
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** The deleted entries of a termbase kept in this browser, to bring back. */
+export function LocalDeleted({ tb }: { tb: Termbase }) {
+  const { state, dispatch, notify } = useLocalStore();
+  const gone = state.deleted.filter((d) => d.entry.termbaseId === tb.id);
+  if (gone.length === 0)
+    return (
+      <div className="empty">
+        <p className="empty-title">Nothing deleted</p>
+        <p>Entries you delete are kept here and can be brought back.</p>
+      </div>
+    );
+  return (
+    <ul className="deleted-list" aria-label={`Deleted entries of ${tb.name}`}>
+      {gone.map((d) => {
+        const core = toCoreEntry(d.entry, tb);
+        return (
+          <li key={d.entry.id} className="deleted-entry">
+            <dl className="mr-terms">
+              {core.languages
+                .filter((l) => l.terms.length)
+                .map((l) => (
+                  <div key={l.lang}>
+                    <dt>
+                      <LangChip code={l.lang} />
+                    </dt>
+                    <dd>{l.terms.map((t) => t.text).join(", ")}</dd>
+                  </div>
+                ))}
+            </dl>
+            <p className="history-meta">
+              Deleted {fmtTime(d.at)}
+              {d.by ? ` by ${d.by}` : ""}
+              {d.summary && d.summary !== "Deleted" ? `. ${d.summary}` : ""}
+            </p>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => {
+                const head = headOf(core, tb.languages[0]);
+                dispatch({ type: "restoreDeleted", entryId: d.entry.id, now: new Date().toISOString() });
+                notify(head ? `Brought back “${head}”` : "Brought the entry back");
+              }}
+            >
+              Bring back
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** A master's entry a project termbase uses as it is, with the master it is in. */
+export interface LocalMasterEntry {
+  entry: Entry;
+  master: Termbase;
+}
+
+/**
+ * The entries of the masters a project termbase in this browser is based
+ * on and uses as they are: those it has no version of its own of and does
+ * not leave out. With them, the entries it leaves out.
+ */
+export function useLocalMasters(tb: Termbase): { masters: LocalMasterEntry[]; removals: (Removal & { head: string; master: string })[] } {
+  const { state } = useLocalStore();
+  if (tb.remote || tb.kind !== "project") return { masters: [], removals: [] };
+  const based = (tb.basedOn ?? []).map((id) => state.termbases.find((t) => t.id === id && !t.remote)).filter((t): t is Termbase => !!t);
+  const key = (masterId: string, entryId: string) => `${masterId}\n${entryId}`;
+  const own = new Set(state.entries.filter((e) => e.termbaseId === tb.id && e.base).map((e) => key(e.base!.termbaseId, e.base!.entryId)));
+  const left = state.removals.filter((x) => x.termbaseId === tb.id);
+  const out = new Set(left.map((x) => key(x.masterId, x.entryId)));
+  const masters: LocalMasterEntry[] = [];
+  for (const master of based)
+    for (const entry of state.entries)
+      if (entry.termbaseId === master.id && !own.has(key(master.id, entry.id)) && !out.has(key(master.id, entry.id))) masters.push({ entry, master });
+  const removals = left.flatMap((x) => {
+    const master = based.find((t) => t.id === x.masterId);
+    const entry = master && state.entries.find((e) => e.id === x.entryId && e.termbaseId === master.id);
+    // An entry the master no longer has is left out of nothing.
+    if (!master || !entry) return [];
+    return [{ ...x, master: master.name, head: headOf(toCoreEntry(entry, master), tb.languages[0]) || "No term" }];
+  });
+  return { masters, removals };
+}
+
+/** The list of the masters' entries under a project termbase in this browser. */
+export function LocalMasterList({
+  tb,
+  masters,
+  removals,
+  selected,
+  onSelect,
+}: {
+  tb: Termbase;
+  masters: LocalMasterEntry[];
+  removals: (Removal & { head: string; master: string })[];
+  selected: string;
+  onSelect: (entryId: string) => void;
+}) {
+  const { dispatch, notify } = useLocalStore();
+  return (
+    <>
+      <p className="help pane-bar">The master's entries this project uses as they are. Change one for this project only, or leave it out.</p>
+      {masters.length === 0 && <p className="muted pane-pad">The masters have no entries the project does not have itself.</p>}
+      <ul className="entry-list entry-list-fit" aria-label={`Entries of the masters of ${tb.name}`}>
+        {masters.map(({ entry, master }) => {
+          const parts = tb.languages.map((l) => (entry.terms[l] ?? []).map((t) => t.text).join(", ")).filter(Boolean);
+          return (
+            <li key={entry.id}>
+              <button type="button" className="entry-row" aria-current={entry.id === selected ? "true" : undefined} onClick={() => onSelect(entry.id)}>
+                <span className="entry-head">
+                  <span className="entry-term">{parts[0] ?? "No term"}</span>
+                </span>
+                {parts.length > 1 && <span className="entry-other">{parts.slice(1).join(" · ")}</span>}
+                <span className="tb-count">In {master.name}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {removals.length > 0 && (
+        <section className="left-out" aria-labelledby="left-out-title">
+          <h3 id="left-out-title" className="tb-group-title">
+            Left out of this project
+          </h3>
+          <p className="history-meta">Merging deletes these in the master, if you accept it there.</p>
+          <ul>
+            {removals.map((x) => (
+              <li key={`${x.masterId}\n${x.entryId}`}>
+                <span className="entry-term">{x.head}</span>
+                <span className="history-meta">
+                  In {x.master}, left out {fmtTime(x.at)}
+                  {x.by ? ` by ${x.by}` : ""}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  onClick={() => {
+                    dispatch({ type: "bringBack", termbaseId: tb.id, masterId: x.masterId, entryId: x.entryId });
+                    notify("Brought the entry back into the project");
+                  }}
+                >
+                  Bring back
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
+  );
+}
+
+/** A master's entry under a project termbase in this browser: read, taken into the project, or left out. */
+export function LocalMasterDetail({ tb, item, onTaken }: { tb: Termbase; item: LocalMasterEntry; onTaken: (entryId: string) => void }) {
+  const { dispatch, notify } = useLocalStore();
+  const { entry, master } = item;
+  const core = toCoreEntry(entry, master);
+  const head = headOf(core, tb.languages[0]);
+  const changed = entry.history[entry.history.length - 1]?.at;
+  return (
+    <section className="pane pane-detail" aria-labelledby="master-entry-title">
+      <div className="pane-head">
+        <div className="pane-head-row">
+          <h2 id="master-entry-title" className="pane-title">
+            {head || "Entry"}
+          </h2>
+        </div>
+        <div className="pane-sub">
+          <span>
+            In {master.name}
+            {changed ? `, last changed ${fmtTime(changed)}` : ""}
+          </span>
+        </div>
+      </div>
+      <div className="detail-body">
+        <p className="notice-plain">
+          This is the master's entry. To change it, take it into the project: your version is used here and goes into the master when you merge.
+        </p>
+        <div className="row-start">
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => {
+              const id = newId("e");
+              dispatch({ type: "takeFromMaster", termbaseId: tb.id, masterEntryId: entry.id, id, now: new Date().toISOString() });
+              notify("Took the entry into the project");
+              onTaken(id);
+            }}
+          >
+            <Pencil size={14} aria-hidden="true" /> Change in this project
+          </button>
+          <ConfirmButton
+            label="Leave out of this project"
+            confirm="Leave this entry out of the project? Merging deletes it in the master, if you accept it there."
+            action="Leave out"
+            onConfirm={() => {
+              dispatch({ type: "leaveOut", termbaseId: tb.id, masterId: master.id, entryId: entry.id, now: new Date().toISOString() });
+              notify("Left the entry out of the project");
+            }}
+          />
+        </div>
+        <ReadEntry entry={core} />
+      </div>
+    </section>
+  );
+}
