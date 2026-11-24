@@ -343,6 +343,21 @@ private slots:
         button(ed, "All")->click();
         QCOMPARE(ed->shownCount(), 4);
 
+        // Text the segments shown must hold, in the source or the translation,
+        // whatever its case. The active segment always shows.
+        auto *find = ed->findChild<QLineEdit *>(QStringLiteral("findInSegments"));
+        auto *foundLabel = ed->findChild<QLabel *>(QStringLiteral("foundSegments"));
+        QVERIFY(find && foundLabel && foundLabel->isHidden());
+        find->setText(QStringLiteral("the CONTRACT starts"));
+        QCOMPARE(foundLabel->text(), QStringLiteral("1 segment"));
+        QVERIFY(!foundLabel->isHidden() && ed->shownCount() >= 1 && ed->shownCount() <= 2);
+        find->setText(QStringLiteral("no such words anywhere"));
+        QCOMPARE(foundLabel->text(), QStringLiteral("Nothing found"));
+        QCOMPARE(ed->shownCount(), 1);
+        find->clear();
+        QVERIFY(foundLabel->isHidden());
+        QCOMPARE(ed->shownCount(), 4);
+
         // Someone else saves the segment being worked on: both are shown,
         // and theirs can be taken.
         ed->goToSegment("s1");

@@ -18,6 +18,7 @@ class Connection;
 class QButtonGroup;
 class QComboBox;
 class QFrame;
+class QLabel;
 class QLineEdit;
 class QProgressBar;
 class QPushButton;
@@ -129,6 +130,8 @@ private:
 
     SegmentModel *m_model;
     SegmentFilter m_filter;
+    QLineEdit *m_find = nullptr;
+    QLabel *m_found = nullptr;
     QString m_activeId;
     QJsonArray m_loadedTarget;
     QJsonObject m_origin;

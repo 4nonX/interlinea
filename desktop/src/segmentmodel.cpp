@@ -2,6 +2,7 @@
 
 #include "bands.h"
 #include "icons.h"
+#include "segmentcontent.h"
 #include "theme.h"
 
 #include <QAbstractTextDocumentLayout>
@@ -249,10 +250,36 @@ void SegmentModel::changed(int row)
     emit dataChanged(index(row, 0), index(row, Columns - 1));
 }
 
+namespace {
+// Text as a search compares it: without case, and with letters in one form.
+QString foldForSearch(const QString &t)
+{
+    return t.normalized(QString::NormalizationForm_KC).toCaseFolded();
+}
+} // namespace
+
+void SegmentFilter::setText(const QString &text)
+{
+    m_text = foldForSearch(text.trimmed());
+}
+
+bool SegmentFilter::holds(const SegmentModel *model, int row) const
+{
+    if (m_text.isEmpty())
+        return true;
+    const QJsonObject s = model->segment(row);
+    return foldForSearch(SegmentContent::plainText(s.value(QLatin1String("source")).toArray())).contains(m_text)
+        || foldForSearch(SegmentContent::plainText(s.value(QLatin1String("target")).toArray())).contains(m_text);
+}
+
 bool SegmentFilter::accepts(const SegmentModel *model, int row) const
 {
     const QModelIndex i = model->index(row, 0);
-    if (m_show == Show::All || i.data(SegmentModel::ActiveRole).toBool())
+    if (i.data(SegmentModel::ActiveRole).toBool())
+        return true;
+    if (!holds(model, row))
+        return false;
+    if (m_show == Show::All)
         return true;
     if (m_show == Show::ToDo)
         return i.data(SegmentModel::StatusRole).toString() != QLatin1String("confirmed");

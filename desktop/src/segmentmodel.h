@@ -84,10 +84,16 @@ public:
     enum class Show { All, ToDo, Warnings };
     void setShow(Show show) { m_show = show; }
     Show show() const { return m_show; }
+    // Text the segments shown must hold, in the source or the translation.
+    void setText(const QString &text);
+    bool searching() const { return !m_text.isEmpty(); }
+    // Whether the segment holds the text sought.
+    bool holds(const SegmentModel *model, int row) const;
     bool accepts(const SegmentModel *model, int row) const;
 
 private:
     Show m_show = Show::All;
+    QString m_text;
 };
 
 // Draws a segment row as the web editor's (.seg): the number, source and

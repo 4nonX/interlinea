@@ -110,6 +110,9 @@ const STATUS_TEXT: Record<Segment["status"], string> = {
 };
 
 type Filter = "all" | "todo" | "warnings";
+
+/** Text as a search compares it: without case, and with letters in one form. */
+export const foldForSearch = (t: string) => t.normalize("NFKC").toLocaleLowerCase();
 type Result = { kind: "tm"; m: ScoredMatch } | { kind: "term"; h: TermHit };
 
 export function Editor({
@@ -151,6 +154,8 @@ export function Editor({
       "",
   );
   const [filter, setFilter] = useState<Filter>("all");
+  // Text the segments shown must hold, in the source or the translation.
+  const [find, setFind] = useState("");
   const [capture, setCapture] = useState<{
     source: string;
     target: string;
@@ -531,16 +536,14 @@ export function Editor({
   const projectMemory = projectMemoryOf(project, target, state.memories);
   const analysisMemories = memories.filter((m) => !m.project);
 
-  const visible =
-    filter === "all"
-      ? segments
-      : segments.filter(
-          (s) =>
-            s.id === activeId ||
-            (filter === "todo"
-              ? s.status !== "confirmed"
-              : (s.warnings?.length ?? 0) > 0),
-        );
+  const sought = foldForSearch(find.trim());
+  const visible = segments.filter(
+    (s) =>
+      s.id === activeId ||
+      ((filter === "all" || (filter === "todo" ? s.status !== "confirmed" : (s.warnings?.length ?? 0) > 0)) &&
+        (!sought || foldForSearch(plain(s.source)).includes(sought) || foldForSearch(plain(s.target)).includes(sought))),
+  );
+  const found = sought ? segments.filter((s) => foldForSearch(plain(s.source)).includes(sought) || foldForSearch(plain(s.target)).includes(sought)).length : 0;
   const withWarnings = segments.filter((s) => s.warnings?.length).length;
   const totalWords = segments.reduce((n, s) => n + wordCount(s.source), 0);
   const doneWords = segments
@@ -946,6 +949,15 @@ export function Editor({
             <span>Warnings{withWarnings > 0 && ` (${withWarnings})`}</span>
           </label>
         </div>
+        <label className="editor-find">
+          <span className="sr-only">Find in the segments</span>
+          <input type="search" placeholder="Find in the segments" value={find} onChange={(e) => setFind(e.target.value)} />
+          {sought && (
+            <span className="cell-sub" role="status">
+              {found === 0 ? "Nothing found" : plural(found, "segment", "segments")}
+            </span>
+          )}
+        </label>
         <div className="editor-actions">
           {pendingChanges > 0 && (
             <a className="btn btn-small" href={`#/merge/${project.id}`}>

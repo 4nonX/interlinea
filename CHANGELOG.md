@@ -24,6 +24,9 @@ client and the desktop app, with installers and a server image.
   form, a spelling with other marks, a number in other digits and
   punctuation in another form each cost what they are worth, and a short
   segment finds its match in another form.
+- The segments shown in the editor are narrowed to those that hold a
+  text, in the source or the translation, besides to those still to do
+  or with warnings.
 - The best match of every segment is shown beside it in the editor before
   anything is inserted: context, exact and fuzzy matches and repetitions.
 - Analysis of a project against its memories, by match band.

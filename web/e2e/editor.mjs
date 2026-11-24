@@ -275,6 +275,23 @@ export default () =>
         (await text()).includes("Warnings (1)"),
         "warnings filter counts segments",
       );
+      // Text the segments shown must hold, in the source or the translation,
+      // whatever its case. The active segment always shows.
+      {
+        const all = await evaluate("document.querySelectorAll('.seg').length");
+        await setValue(".editor-find input", "BASIC rent");
+        await sleep(200);
+        const some = await evaluate("document.querySelectorAll('.seg').length");
+        const said = await evaluate("document.querySelector('.editor-find [role=status]')?.textContent ?? ''");
+        check(some >= 1 && some < all && /^\d+ segments?$/.test(said), `the segments are filtered by their text: ${some} of ${all}, ${said}`);
+        check(await evaluate("[...document.querySelectorAll('.seg')].every(s => s.classList.contains('is-active') || s.innerText.toLowerCase().includes('basic rent'))"), "only segments with the text are shown, and the active one");
+        await setValue(".editor-find input", "no such words anywhere");
+        await sleep(200);
+        check((await evaluate("document.querySelectorAll('.seg').length")) === 1 && (await evaluate("document.querySelector('.editor-find [role=status]').textContent")) === "Nothing found", "text no segment holds leaves the active one");
+        await setValue(".editor-find input", "");
+        await sleep(200);
+        check((await evaluate("document.querySelectorAll('.seg').length")) === all, "without text all segments are back");
+      }
       check(
         (
           await evaluate("document.querySelector('.target-editor').innerText")

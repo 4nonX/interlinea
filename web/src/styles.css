@@ -1895,6 +1895,22 @@ kbd {
   flex: none;
 }
 
+.editor-find {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+}
+
+.editor-find input {
+  width: 200px;
+  min-height: 28px;
+  font-size: 0.8125rem;
+}
+
+.editor-find .cell-sub {
+  white-space: nowrap;
+}
+
 .editor-progress {
   display: grid;
   gap: 3px;

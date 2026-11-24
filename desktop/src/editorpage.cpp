@@ -496,6 +496,25 @@ QWidget *EditorPage::buildBar()
     });
     row->addWidget(seg);
 
+    // .editor-find: text the segments shown must hold.
+    m_find = new QLineEdit(bar);
+    m_find->setObjectName(QStringLiteral("findInSegments"));
+    m_find->setPlaceholderText(tr("Find in the segments"));
+    m_find->setAccessibleName(tr("Find in the segments"));
+    m_find->setClearButtonEnabled(true);
+    m_find->setFixedWidth(200);
+    m_find->setProperty("small", true);
+    m_found = new QLabel(bar);
+    Theme::role(m_found, "cellSub");
+    m_found->setObjectName(QStringLiteral("foundSegments"));
+    m_found->hide();
+    connect(m_find, &QLineEdit::textChanged, this, [this](const QString &t) {
+        m_filter.setText(t);
+        applyFilter();
+    });
+    row->addWidget(m_find);
+    row->addWidget(m_found);
+
     // .editor-actions.
     auto *actions = new QHBoxLayout;
     actions->setSpacing(S2);
@@ -1030,6 +1049,11 @@ void EditorPage::applyFilter()
             ++withWarnings;
     }
     m_warningsFilter->setText(withWarnings ? tr("Warnings (%1)").arg(withWarnings) : tr("Warnings"));
+    int found = 0;
+    for (int row = 0; m_filter.searching() && row < m_model->rowCount(); ++row)
+        found += m_filter.holds(m_model, row) ? 1 : 0;
+    m_found->setVisible(m_filter.searching());
+    m_found->setText(found == 0 ? tr("Nothing found") : found == 1 ? tr("1 segment") : tr("%1 segments").arg(QLocale(QLocale::English).toString(found)));
 }
 
 void EditorPage::goToSegment(const QString &id)
