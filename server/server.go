@@ -210,6 +210,7 @@ func (s *Server) routes() {
 
 	s.projectRoutes()
 	s.memoryRoutes()
+	s.alignRoutes()
 	s.qaRoutes()
 	s.termbaseRoutes()
 	s.handle("GET /api/events", s.signedIn(s.events))

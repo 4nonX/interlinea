@@ -1,5 +1,7 @@
 #include "memoriespage.h"
 
+#include "alignmentdialog.h"
+
 #include "roles.h"
 
 #include "accesspanel.h"
@@ -836,6 +838,26 @@ Web::Dialog *MemoriesPage::addUnitDialog(const QString &connectionId)
     return d;
 }
 
+// A document and its translation, done before, into units of the memory.
+AlignmentDialog *MemoriesPage::alignDialog(const QString &connectionId)
+{
+    Part *p = part(connectionId);
+    if (!p || p->open.isEmpty())
+        return nullptr;
+    const QJsonObject m = memory(p, p->open);
+    const QString name = m.value(QLatin1String("name")).toString();
+    auto *d = new AlignmentDialog(p->conn->api(), name, m.value(QLatin1String("sourceLang")).toString(), m.value(QLatin1String("targetLang")).toString(), window());
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    connect(d, &AlignmentDialog::added, this, [this, connectionId, name](int units) {
+        notify(units == 1 ? tr("Added 1 unit to %1").arg(name) : tr("Added %1 units to %2").arg(QLocale(QLocale::English).toString(units), name));
+        if (Part *q = part(connectionId); q && q->searchAgain)
+            q->searchAgain();
+        reload();
+    });
+    d->open();
+    return d;
+}
+
 // A unit found, to change its translation; the formatting tags stay.
 Web::Dialog *MemoriesPage::editUnitDialog(const QString &connectionId, const QJsonObject &unit)
 {
@@ -961,6 +983,10 @@ void MemoriesPage::showDetail(Part *p)
         add->setObjectName(QStringLiteral("addUnitButton"));
         fl->addWidget(add, 0, Qt::AlignBottom);
         connect(add, &QPushButton::clicked, this, [this, id] { addUnitDialog(id); });
+        auto *align = Web::button(tr("Align documents"), Web::Normal, panel, QStringLiteral("columns"));
+        align->setObjectName(QStringLiteral("alignButton"));
+        fl->addWidget(align, 0, Qt::AlignBottom);
+        connect(align, &QPushButton::clicked, this, [this, id] { alignDialog(id); });
     }
     body->addWidget(form);
     auto *results = new QWidget(panel);

@@ -1,11 +1,12 @@
 import { useRef, useState, type FormEvent } from "react";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Columns2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { lang, type LangCode } from "../data";
 import { coreToRuns, plain, runsToCore, type CoreRun, type Run } from "../editor/model";
 import { chipText, TargetEditor, tagDescription } from "../editor/TargetEditor";
-import { fmtDate } from "../format";
+import { fmtDate, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton, Modal } from "./TermbaseDialogs";
+import { AlignDocuments } from "./Alignment";
 
 /** A unit as a search finds it. */
 export interface FoundUnit {
@@ -26,6 +27,8 @@ export interface UnitsBackend {
   search(query: string, inTarget: boolean): Promise<FoundUnit[]>;
   /** With overwrite, the unit replaces the other translations of its sentence. */
   add(source: string, target: string, overwrite: boolean): Promise<void>;
+  /** Adds units with their formatting, all or none. */
+  addMany(units: { source: CoreRun[]; target: CoreRun[] }[], overwrite: boolean): Promise<void>;
   /** Throws SavedElsewhere when someone else changed the unit in the meantime. */
   change(unit: FoundUnit, target: CoreRun[]): Promise<void>;
   remove(unit: FoundUnit): Promise<void>;
@@ -80,6 +83,7 @@ export function MemoryUnits({
   const [inTarget, setInTarget] = useState(false);
   const [hits, setHits] = useState<FoundUnit[] | null>(null);
   const [adding, setAdding] = useState(false);
+  const [aligning, setAligning] = useState(false);
   const [changing, setChanging] = useState<FoundUnit | null>(null);
   // What was searched last, to search again after a unit changed.
   const last = useRef<{ query: string; inTarget: boolean } | null>(null);
@@ -119,6 +123,11 @@ export function MemoryUnits({
         {edit && (
           <button type="button" className="btn unit-add" onClick={() => setAdding(true)}>
             <Plus size={15} aria-hidden="true" /> Add a unit
+          </button>
+        )}
+        {edit && (
+          <button type="button" className="btn" onClick={() => setAligning(true)}>
+            <Columns2 size={15} aria-hidden="true" /> Align documents
           </button>
         )}
       </form>
@@ -204,6 +213,21 @@ export function MemoryUnits({
           onAdded={async () => {
             setAdding(false);
             notify(`Added the unit to ${name}`);
+            await again();
+            await onChanged();
+          }}
+        />
+      )}
+      {aligning && (
+        <AlignDocuments
+          name={name}
+          sourceLang={sourceLang}
+          targetLang={targetLang}
+          add={backend.addMany}
+          onClose={() => setAligning(false)}
+          onAdded={async (n) => {
+            setAligning(false);
+            notify(`Added ${plural(n, "unit", "units")} to ${name}`);
             await again();
             await onChanged();
           }}

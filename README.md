@@ -85,6 +85,7 @@ The Go packages:
 | `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export, penalties for less trusted memories |
 | `tm/tmdb` | Persistent backend: any number of memories in a SQLite file (desktop) or PostgreSQL (server); term index for fuzzy candidates, trigram index for concordance, unit versions that refuse stale edits, change log for syncing |
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
+| `align` | Alignment of a document with its translation into pairs for a memory: sentence lengths after Gale and Church, numbers as anchors in any notation, paragraphs kept where both documents have the same ones; pairs of one to one, two to one, one to two, two to two, and segments left out |
 | `term/termdb` | Persistent termbases: any number in one SQLite file, every version of every entry, edits on stale copies refused, term index for lookups, FTS5 trigram search, imports in one transaction |
 | `internal/sqlitedb` | Opens the SQLite stores with shared settings (WAL, busy timeout) and migrates their schema |
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |

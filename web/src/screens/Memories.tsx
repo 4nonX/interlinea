@@ -121,6 +121,11 @@ function LocalMemory({ c, memory: m, onChanged }: { c: CoreApi; memory: Translat
         tm.add(c, m.name, [{ source: [{ text: source }], target: [{ text: target }], createdBy: state.userName, createdAt: new Date().toISOString() }], overwrite);
         await saved();
       },
+      addMany: async (units, overwrite) => {
+        const createdAt = new Date().toISOString();
+        tm.add(c, m.name, units.map((u) => ({ ...u, createdBy: state.userName, createdAt })), overwrite);
+        await saved();
+      },
       change: async (u, target) => {
         tm.setTarget(c, m.name, u.id, target, state.userName);
         await saved();

@@ -51,6 +51,14 @@ type Res<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export interface CoreApi {
   extract(bytes: Uint8Array, lang: string, options?: string): Res<string>;
+  align(
+    sourceName: string,
+    source: Uint8Array,
+    sourceLang: string,
+    targetName: string,
+    target: Uint8Array,
+    targetLang: string,
+  ): Res<string>;
   merge(
     bytes: Uint8Array,
     lang: string,
@@ -134,6 +142,24 @@ export interface MemUnit {
   changedAt?: string;
   attributes?: Record<string, string>;
   score?: number;
+}
+
+/** Two documents with their segments paired, as the core aligns them. */
+export interface Alignment {
+  source: CoreRun[][];
+  target: CoreRun[][];
+  pairs: { sourceSegments: number[]; targetSegments: number[]; score: number }[];
+}
+
+/** Pairs the segments of a document with those of its translation. */
+export function alignDocuments(
+  c: CoreApi,
+  source: { name: string; bytes: Uint8Array; lang: string },
+  target: { name: string; bytes: Uint8Array; lang: string },
+): Alignment {
+  return JSON.parse(
+    unwrap(c.align(source.name, source.bytes, source.lang, target.name, target.bytes, target.lang)),
+  ) as Alignment;
 }
 
 export const tm = {

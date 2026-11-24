@@ -54,6 +54,7 @@ add_library(interlinea_app STATIC
     src/webui.cpp
     src/accesspanel.cpp
     src/accountspage.cpp
+    src/alignmentdialog.cpp
     src/memoriespage.cpp
     src/options.cpp
     src/roles.cpp

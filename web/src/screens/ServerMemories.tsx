@@ -129,6 +129,9 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
       add: async (source, target, overwrite) => {
         await api.addUnit(m.name, [{ text: source }], [{ text: target }], overwrite);
       },
+      addMany: async (units, overwrite) => {
+        await api.addUnits(m.name, units, overwrite);
+      },
       change: async (u, target) => {
         try {
           await api.updateUnit(m.name, u as ServerUnit, target);

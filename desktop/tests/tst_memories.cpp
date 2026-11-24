@@ -1,6 +1,7 @@
 // The Memories page against the app's own core: new memories with and
 // without a TMX file, TMX in and out, what uses a memory, the project
 // memories, and deleting.
+#include "alignmentdialog.h"
 #include "apiclient.h"
 #include "connectionmanager.h"
 #include "languages.h"
@@ -418,6 +419,103 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted the unit"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(page.found(here).isEmpty() && page.findChild<QLabel *>(QStringLiteral("noUnits")), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(wait(api->get(QStringLiteral("/api/memories/Mietrecht"))).object().value("units").toInt(), 3, 10000);
+
+        // A document and its translation, done before, are aligned into the
+        // memory: the sentences are paired with lines between the two texts,
+        // lines are taken away and drawn, and what is paired is added.
+        QVERIFY(page.findChild<QPushButton *>(QStringLiteral("alignButton")));
+        AlignmentDialog *al = page.alignDialog(here);
+        QVERIFY(al);
+        QCOMPARE(al->title(), QStringLiteral("Align documents into Mietrecht"));
+        QCOMPARE(al->findChild<QPushButton *>(QStringLiteral("chooseSource"))->accessibleName(), QStringLiteral("Document in German (Germany)"));
+        QCOMPARE(al->findChild<QPushButton *>(QStringLiteral("chooseTarget"))->accessibleName(), QStringLiteral("Its translation in English (United Kingdom)"));
+        auto *go = al->findChild<QPushButton *>(QStringLiteral("save"));
+        QCOMPARE(go->text(), QStringLiteral("Pair the sentences"));
+        QVERIFY(!go->isEnabled() && al->findChild<QPushButton *>(QStringLiteral("otherDocuments"))->isHidden());
+        const QString fixtures = QStringLiteral(INTERLINEA_FIXTURES);
+        // A file that is no text says so.
+        al->setFile(AlignmentDialog::Source, fixtures + QStringLiteral("/Styleguide.pdf"));
+        QVERIFY(!go->isEnabled());
+        al->setFile(AlignmentDialog::Target, fixtures + QStringLiteral("/align/Mietvertrag_fr.txt"));
+        QCOMPARE(al->findChild<QLabel *>(QStringLiteral("chooseTargetName"))->text(), QStringLiteral("Mietvertrag_fr.txt"));
+        QVERIFY(go->isEnabled());
+        go->click();
+        QTRY_VERIFY_WITH_TIMEOUT(al->error().startsWith(QStringLiteral("Styleguide.pdf could not be read")), 10000);
+        al->setFile(AlignmentDialog::Source, fixtures + QStringLiteral("/align/Mietvertrag_de.txt"));
+        QSignalSpy pairedSpy(al, &AlignmentDialog::paired);
+        al->findChild<QPushButton *>(QStringLiteral("save"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(pairedSpy.size(), 1, 20000);
+        QCOMPARE(al->segmentCount(AlignmentDialog::Source), 5);
+        QCOMPARE(al->segmentCount(AlignmentDialog::Target), 4);
+        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. All of them fit."));
+        QCOMPARE(al->findChild<QLabel *>(QStringLiteral("alignStatus"))->text(), al->status());
+        // Two sentences translated as one both lead to it.
+        QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 3|2 4|3"));
+        QCOMPARE(al->text(AlignmentDialog::Source, 1), QStringLiteral("Die Kaution beträgt 2.400,00 Euro."));
+        go = al->findChild<QPushButton *>(QStringLiteral("save"));
+        QCOMPARE(go->text(), QStringLiteral("Add 4 units to Mietrecht"));
+        QVERIFY(!al->findChild<QPushButton *>(QStringLiteral("otherDocuments"))->isHidden());
+        // A line runs from the sentence to its translation.
+        AlignBoard *board = al->board();
+        QVERIFY(board);
+        QTRY_VERIFY(board->segments[0].at(0)->width() > 100);
+        auto *s0 = board->segments[0].at(0);
+        auto *t0 = board->segments[1].at(0);
+        const QLineF line = board->place({0, 0});
+        QVERIFY(qAbs(line.x1() - (s0->geometry().right() + 1)) < 2 && qAbs(line.x2() - t0->geometry().left()) < 2);
+        QVERIFY(qAbs(line.y1() - s0->geometry().center().y()) < 2 && qAbs(line.y2() - t0->geometry().center().y()) < 2);
+        QVERIFY(line.x2() - line.x1() > 80);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            al->choose(AlignmentDialog::Source, 4);
+            al->choose(AlignmentDialog::Target, 3);
+            al->choose(AlignmentDialog::Source, 1);
+            QTest::qWait(300);
+            al->grab().save(dir + QStringLiteral("/memory-align.png"));
+            al->choose(AlignmentDialog::Source, 1);
+            al->choose(AlignmentDialog::Source, 4);
+            al->choose(AlignmentDialog::Target, 3);
+        }
+        // A sentence chosen and then its translation takes their line away.
+        QTest::mouseClick(board->segments[0].at(3), Qt::LeftButton);
+        QVERIFY(board->segments[0].at(3)->property("picked").toBool());
+        QTest::mouseClick(board->segments[1].at(2), Qt::LeftButton);
+        QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 4|3"));
+        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. 1 segment has no pair and is left out."));
+        QVERIFY(board->segments[0].at(3)->property("alone").toBool() && !board->segments[0].at(3)->property("picked").toBool());
+        QVERIFY(board->segments[0].at(3)->accessibleName().startsWith(QStringLiteral("Sentence 4, no pair: Der Vermieter")));
+        // The same draws it again, from the keyboard as well.
+        QTest::keyClick(board->segments[1].at(2), Qt::Key_Space);
+        QTest::keyClick(board->segments[0].at(3), Qt::Key_Return);
+        QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 3|2 4|3"));
+        QCOMPARE(al->status(), QStringLiteral("4 units from 5 and 4 segments. All of them fit."));
+        // A line is taken away by choosing it, and drawn by pulling from one text to the other.
+        QTest::mouseClick(board, Qt::LeftButton, {}, line.center().toPoint());
+        QCOMPARE(al->lines().join(' '), QStringLiteral("1|1 2|2 3|2 4|3"));
+        QCOMPARE(al->status(), QStringLiteral("3 units from 5 and 4 segments. 2 segments have no pair and are left out."));
+        QCOMPARE(go->text(), QStringLiteral("Add 3 units to Mietrecht"));
+        QTest::mousePress(s0, Qt::LeftButton, {}, s0->rect().center());
+        QTest::mouseRelease(s0, Qt::LeftButton, {}, s0->mapFromGlobal(t0->mapToGlobal(t0->rect().center())));
+        QCOMPARE(al->lines().join(' '), QStringLiteral("0|0 1|1 2|2 3|2 4|3"));
+        // A sentence joined to a second translation makes one unit of all three.
+        al->choose(AlignmentDialog::Source, 0);
+        al->choose(AlignmentDialog::Target, 1);
+        QCOMPARE(al->unitCount(), 3);
+        al->choose(AlignmentDialog::Source, 0);
+        al->choose(AlignmentDialog::Target, 1);
+        QCOMPARE(al->unitCount(), 4);
+        // The first sentence is left out, and the rest is added.
+        al->takeLine(0, 0);
+        QCOMPARE(go->text(), QStringLiteral("Add 3 units to Mietrecht"));
+        QVERIFY(al->findChild<QPushButton *>(QStringLiteral("nextToLook"))->isEnabled());
+        go->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added 3 units to Mietrecht"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(wait(api->get(QStringLiteral("/api/memories/Mietrecht"))).object().value("units").toInt(), 6, 10000);
+        page.search(here, QStringLiteral("Vermögen"));
+        QTRY_VERIFY_WITH_TIMEOUT(page.found(here).size() == 1 && (table = page.findChild<QTableWidget *>(QStringLiteral("unitsFound"))) && table->rowCount() == 1, 10000);
+        QCOMPARE(cell(table, 0, 0), QStringLiteral("Sie wird bei Beginn des Mietverhältnisses fällig. Der Vermieter legt sie getrennt von seinem Vermögen an."));
+        QCOMPARE(cell(table, 0, 1), QStringLiteral("Il est exigible au début du bail et le bailleur le place séparément de son patrimoine."));
+        page.search(here, QStringLiteral("Werktag"));
+        QTRY_VERIFY_WITH_TIMEOUT(page.found(here).isEmpty() && page.findChild<QLabel *>(QStringLiteral("noUnits")), 10000);
 
         // Closing puts the units away.
         page.findChild<QPushButton *>(QStringLiteral("open:Mietrecht"))->click();

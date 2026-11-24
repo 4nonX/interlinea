@@ -27,6 +27,10 @@ client and the desktop app, with installers and a server image.
 - The best match of every segment is shown beside it in the editor before
   anything is inserted: context, exact and fuzzy matches and repetitions.
 - Analysis of a project against its memories, by match band.
+- Alignment: a document and its translation, done before, are paired
+  sentence by sentence and shown side by side with a line from each
+  sentence to its translation. Lines are drawn and taken away by hand,
+  and what is paired goes into a memory.
 - Translation memories with TMX in and out. The units of a memory are
   searched, added, changed with their formatting tags kept, and deleted.
 - Languages: number formats and digits of every listed script, sentence

@@ -10,7 +10,7 @@ import { run, call, ADMIN_PASSWORD } from "./harness.mjs";
 export default () =>
   run(
     "Team server",
-    async ({ base, send, evaluate, click, text, body, check, sleep, open, setValue, key, samples, waitFor, idp }) => {
+    async ({ base, send, evaluate, click, text, body, check, sleep, open, setValue, key, samples, fixtures, waitFor, idp }) => {
       const api = (method, path, token, b) => call(base, method, path, token, b);
       const admin = (await api("POST", "/api/auth/password", null, { username: "anna", password: ADMIN_PASSWORD })).token;
 
@@ -468,6 +468,23 @@ export default () =>
         await click(`${panel} table .confirm button`, "Delete");
         check(await waitFor("document.querySelector('.toast')?.textContent.includes('Deleted the unit')", 10000), "server memory: the unit is deleted");
         check(await waitFor(`document.querySelector(${JSON.stringify(panel)}).innerText.includes('Nothing found.')`, 10000), "server memory: and no longer found");
+        // A document and its translation are aligned into the memory on the server.
+        await click(`${panel} button`, "Align documents");
+        await waitFor("document.querySelectorAll('dialog[open] input[type=file]').length === 2");
+        for (const [n, f] of [[1, "Mietvertrag_de.txt"], [2, "Mietvertrag_fr.txt"]]) {
+          const doc = await send("DOM.getDocument", { depth: -1, pierce: true });
+          const q = await send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: `dialog[open] label:nth-of-type(${n}) input[type=file]` });
+          await send("DOM.setFileInputFiles", { nodeId: q.nodeId, files: [`${fixtures}/align/${f}`] });
+        }
+        await sleep(300);
+        await click("dialog[open] button", "Pair the sentences");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5", 20000), "server memory: two documents are aligned");
+        await click("dialog[open] button", "Add 4 units");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Added 4 units to')", 10000), "server memory: the aligned units are added");
+        await setValue(`${panel} input[type=search]`, "Werktag");
+        await sleep(100);
+        await click(`${panel} button`, "Search");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes("troisième jour ouvrable")`, 10000), "server memory: and found on the server");
       }
 
       // Termbases on the server, through their whole life: an earlier

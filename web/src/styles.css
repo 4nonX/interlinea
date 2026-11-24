@@ -2720,6 +2720,103 @@ table[aria-label="Units found"] .cell-action .row {
   border-radius: 6px;
 }
 
+/* Alignment of two documents into a memory: the two texts side by side,
+   with lines between the segments that are paired */
+.align-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.align-scroll {
+  max-height: min(50vh, 520px);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.align-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr);
+  padding: var(--s3);
+  touch-action: pan-y;
+}
+
+.align-column {
+  display: grid;
+  gap: var(--s2);
+  align-content: start;
+}
+
+.align-seg {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.align-seg:hover {
+  border-color: var(--accent);
+}
+
+.align-seg.is-picked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.align-seg.is-alone {
+  border-style: dashed;
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.align-n {
+  min-width: 1.75em;
+  color: var(--text-3);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.align-lines {
+  position: absolute;
+  inset: 0 auto auto 0;
+  pointer-events: none;
+}
+
+.align-line {
+  stroke: var(--text-2);
+  stroke-width: 1.5;
+}
+
+.align-line.is-look {
+  stroke: var(--warn);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+.align-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+g:hover > .align-line {
+  stroke: var(--danger);
+  stroke-width: 2.5;
+}
+
 /* Analysis */
 .analysis-band {
   display: flex;

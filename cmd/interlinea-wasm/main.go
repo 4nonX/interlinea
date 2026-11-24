@@ -8,6 +8,8 @@
 //
 // options is JSON: {"keepRevisions": true}.
 //
+//	align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang) -> JSON {source, target, pairs}
+//
 // plus translation memory (tm*, see tm.go), termbase (term*, see
 // term.go), XLIFF, package, spelling and QA (spell*, qa*, see qa.go)
 // functions, and project setups, analysis and pre-translation (see
@@ -21,6 +23,7 @@ import (
 	"fmt"
 	"syscall/js"
 
+	"github.com/4nonX/interlinea/align"
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
@@ -130,11 +133,45 @@ func merge(_ js.Value, args []js.Value) (out any) {
 	return result(arr, nil)
 }
 
+// alignFiles pairs the segments of a document with those of its
+// translation: align(sourceName, sourceBytes, sourceLang, targetName,
+// targetBytes, targetLang). The names tell the formats.
+func alignFiles(args []js.Value) (any, error) {
+	if len(args) != 6 {
+		return nil, fmt.Errorf("align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang)")
+	}
+	read := func(i int) ([]align.Segment, error) {
+		name := args[i].String()
+		data, err := bytesArg(args[i+1])
+		if err != nil {
+			return nil, err
+		}
+		segs, err := align.Read(name, data, args[i+2].String())
+		if err != nil {
+			return nil, fmt.Errorf("%s could not be read: %v.", name, err)
+		}
+		if len(segs) == 0 {
+			return nil, fmt.Errorf("%s has no text.", name)
+		}
+		return segs, nil
+	}
+	src, err := read(0)
+	if err != nil {
+		return nil, err
+	}
+	tgt, err := read(3)
+	if err != nil {
+		return nil, err
+	}
+	return jsonOut(align.Documents(src, tgt))
+}
+
 func main() {
 	api := map[string]any{
 		"extract": js.FuncOf(extract),
+		"align":   guard(alignFiles),
 		"merge":   js.FuncOf(merge),
-		"version": "6",
+		"version": "7",
 	}
 	for k, v := range tmFuncs() {
 		api[k] = v

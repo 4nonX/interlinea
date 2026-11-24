@@ -310,6 +310,10 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(12, 17);
         path.lineTo(20, 17);
         path.addEllipse(QPointF(9.5, 17), 2.5, 2.5);
+    } else if (name == QLatin1String("columns")) {
+        path.addRoundedRect(QRectF(3, 3, 18, 18), 2, 2);
+        path.moveTo(12, 3);
+        path.lineTo(12, 21);
     } else if (name == QLatin1String("file-up")) {
         path.moveTo(14, 3);
         path.lineTo(6, 3);

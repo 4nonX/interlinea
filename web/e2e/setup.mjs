@@ -25,6 +25,8 @@ export default () =>
       errors,
       startFrom,
       downloads,
+      dlg,
+      setFile,
     }) => {
       const setFiles = async (sel, files) => {
         const doc = await send("DOM.getDocument", { depth: -1, pierce: true });
@@ -349,6 +351,89 @@ export default () =>
         await click(`${panel} table .confirm button`, "Delete");
         check(await waitFor("document.querySelector('.toast')?.textContent.includes('Deleted the unit')", 10000), "local memory: the unit is deleted");
         check(await waitFor(`document.querySelector(${JSON.stringify(panel)}).innerText.includes('Nothing found.')`, 10000), "local memory: and no longer found");
+      }
+
+      // A document and its translation, done before, are aligned into the
+      // memory: the sentences are paired with lines between the two texts,
+      // lines are taken away and drawn, and what is paired is added.
+      {
+        const panel = "section[aria-labelledby=localmem-title]";
+        const status = () => evaluate("document.querySelector('dialog[open] [role=status]')?.innerText ?? ''");
+        const lines = () => evaluate("[...document.querySelectorAll('dialog[open] svg [data-line]')].map(g => g.dataset.line).sort().join(' ')");
+        const seg = (side, i) => `dialog[open] button[data-side=${side}][data-i="${i}"]`;
+        const choose = async (side, i) => {
+          await evaluate(`document.querySelector(${JSON.stringify(seg(side, i))}).click()`);
+          await sleep(80);
+        };
+        await click(`${panel} button`, "Align documents");
+        check(await waitFor("document.querySelectorAll('dialog[open] input[type=file]').length === 2"), "alignment: the dialog asks for a document and its translation");
+        check(await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.includes('Pair the sentences')).disabled"), "alignment: both files are needed");
+        const d = (await dlg());
+        check(d.includes("Document in German") && d.includes("Its translation in French"), "alignment: the files are asked for by the memory's languages");
+        await setFile("dialog[open] label:nth-of-type(1) input[type=file]", `${fixtures}/align/Mietvertrag_de.txt`);
+        await setFile("dialog[open] label:nth-of-type(2) input[type=file]", `${fixtures}/align/Mietvertrag_fr.txt`);
+        await click("dialog[open] button", "Pair the sentences");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5", 20000), "alignment: the two texts are shown with lines between them");
+        check((await status()).startsWith("4 units from 5 and 4 segments. All of them fit."), "alignment: four units of five and four segments: " + (await status()));
+        check((await lines()) === "0|0 1|1 2|2 3|2 4|3", "alignment: two sentences translated as one both lead to it: " + (await lines()));
+        check(
+          (await evaluate(`document.querySelector(${JSON.stringify(seg("source", 1))}).innerText`)).includes("Die Kaution beträgt 2.400,00 Euro.") &&
+            (await evaluate(`document.querySelector(${JSON.stringify(seg("target", 1))}).innerText`)).includes("2 400,00 euros"),
+          "alignment: the numbers pair in either notation",
+        );
+        check(await evaluate("(() => { const l = document.querySelector('dialog[open] svg [data-line=\"0|0\"] .align-line'); const a = document.querySelector('dialog[open] button[data-side=source][data-i=\"0\"]').getBoundingClientRect(); const b = document.querySelector('dialog[open] button[data-side=target][data-i=\"0\"]').getBoundingClientRect(); const s = document.querySelector('dialog[open] svg').getBoundingClientRect(); return Math.abs(+l.getAttribute('x1') + s.left - a.right) < 2 && Math.abs(+l.getAttribute('x2') + s.left - b.left) < 2 && Math.abs(+l.getAttribute('y1') + s.top - (a.top + a.height / 2)) < 2 && Math.abs(+l.getAttribute('y2') + s.top - (b.top + b.height / 2)) < 2; })()"), "alignment: a line runs from the sentence to its translation");
+        check((await dlg()).includes("Add 4 units to Weber DE-FR"), "alignment: all four would be added");
+        // A sentence chosen and then its translation takes their line away.
+        await choose("source", 3);
+        check(await evaluate(`document.querySelector(${JSON.stringify(seg("source", 3))}).getAttribute('aria-pressed') === 'true'`), "alignment: a sentence is chosen");
+        await choose("target", 2);
+        check((await lines()) === "0|0 1|1 2|2 4|3", "alignment: choosing both ends takes the line away");
+        check((await status()).includes("4 units") && (await status()).includes("1 segment has no pair and is left out."), "alignment: the sentence without a line is left out: " + (await status()));
+        check(await evaluate(`document.querySelector(${JSON.stringify(seg("source", 3))}).classList.contains('is-alone')`), "alignment: and is marked");
+        // The same draws it again.
+        await choose("target", 2);
+        await choose("source", 3);
+        check((await lines()) === "0|0 1|1 2|2 3|2 4|3" && (await status()).includes("All of them fit."), "alignment: choosing both ends draws the line");
+        // A line is taken away by choosing it, and drawn by pulling from one text to the other.
+        await evaluate("document.querySelector('dialog[open] svg [data-line=\"0|0\"] .align-hit').dispatchEvent(new MouseEvent('click', { bubbles: true }))");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 4"), "alignment: a line chosen is taken away");
+        check((await status()).includes("3 units") && (await status()).includes("2 segments have no pair and are left out.") && (await dlg()).includes("Add 3 units"), "alignment: its two ends are left out: " + (await status()));
+        await evaluate(`(() => { const a = document.querySelector(${JSON.stringify(seg("source", 0))}); const b = document.querySelector(${JSON.stringify(seg("target", 0))}).getBoundingClientRect(); a.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.querySelector('dialog[open] .align-board').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2 })); return true; })()`);
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length === 5"), "alignment: pulling from a sentence to a translation draws a line");
+        // A sentence joined to a second translation makes one unit of all three.
+        await choose("source", 0);
+        await choose("target", 1);
+        check((await status()).startsWith("3 units") && (await dlg()).includes("Add 3 units"), "alignment: segments joined through lines are one unit: " + (await status()));
+        await choose("source", 0);
+        await choose("target", 1);
+        // The first sentence is left out.
+        await choose("source", 0);
+        await choose("target", 0);
+        check(await waitFor("document.querySelector('dialog[open]').innerText.includes('Add 3 units to Weber DE-FR')"), "alignment: a pair without its line is left out");
+        await click("dialog[open] button", "Add 3 units");
+        check(await waitFor("document.querySelector('.toast')?.textContent.includes('Added 3 units to Weber DE-FR')", 10000), "alignment: the units are added");
+        check(!(await evaluate("!!document.querySelector('dialog[open]')")), "alignment: the dialog closes");
+        await setValue(`${panel} input[type=search]`, "Kaution");
+        await sleep(100);
+        await click(`${panel} button`, "Search");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes("Le dépôt de garantie s'élève à 2 400,00 euros.")`, 10000), "alignment: an aligned unit is found in the memory");
+        await setValue(`${panel} input[type=search]`, "Vermögen");
+        await sleep(100);
+        await click(`${panel} button`, "Search");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)} + ' table[aria-label="Units found"]')?.innerText.includes("Sie wird bei Beginn des Mietverhältnisses fällig. Der Vermieter legt sie getrennt von seinem Vermögen an.")`, 10000), "alignment: two sentences with one translation are one unit");
+        await setValue(`${panel} input[type=search]`, "Werktag");
+        await sleep(100);
+        await click(`${panel} button`, "Search");
+        check(await waitFor(`document.querySelector(${JSON.stringify(panel)}).innerText.includes('Nothing found.')`, 10000), "alignment: the sentence left out is not");
+        // A file that is no text says so.
+        await click(`${panel} button`, "Align documents");
+        await waitFor("document.querySelectorAll('dialog[open] input[type=file]').length === 2");
+        await setFile("dialog[open] label:nth-of-type(1) input[type=file]", `${fixtures}/Styleguide.pdf`);
+        await setFile("dialog[open] label:nth-of-type(2) input[type=file]", `${fixtures}/align/Mietvertrag_fr.txt`);
+        await click("dialog[open] button", "Pair the sentences");
+        check(await waitFor("(document.querySelector('dialog[open] [role=alert]')?.innerText ?? '').includes('Styleguide.pdf could not be read')", 10000), "alignment: a file that can't be read says so");
+        await click("dialog[open] button", "Cancel");
+        await sleep(150);
       }
       check(
         errors.length === 0,

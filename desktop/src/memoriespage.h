@@ -25,6 +25,8 @@ class QVBoxLayout;
 // Translation memories, laid out as the web app's Memories page: those on
 // each team server first, then the main and project memories on this
 // computer, with TMX in and out, search, new memories and who may use them.
+class AlignmentDialog;
+
 class MemoriesPage : public QWidget {
     Q_OBJECT
 public:
@@ -43,6 +45,8 @@ public:
     void search(const QString &connectionId, const QString &text, bool inTranslations = false);
     // The dialogs for one unit: a new one, or one found to be changed.
     Web::Dialog *addUnitDialog(const QString &connectionId);
+    // A document and its translation, aligned into the open memory.
+    AlignmentDialog *alignDialog(const QString &connectionId);
     Web::Dialog *editUnitDialog(const QString &connectionId, const QJsonObject &unit);
     // Reads a TMX file into a memory, and writes a memory to a TMX file:
     // what the buttons do once a file is chosen.

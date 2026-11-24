@@ -86,6 +86,33 @@
         },
         "type": "object"
       },
+      "AlignRequest": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/AlignedFile"
+          },
+          "target": {
+            "$ref": "#/components/schemas/AlignedFile"
+          }
+        },
+        "type": "object"
+      },
+      "AlignedFile": {
+        "description": "alignedFile is one of the two documents of an alignment: its name, which tells the format, its language and its bytes in base64.",
+        "properties": {
+          "data": {
+            "format": "byte",
+            "type": "string"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "AnalysisRequest": {
         "properties": {
           "file": {
@@ -1211,6 +1238,61 @@
                 "type": "null"
               }
             ]
+          }
+        },
+        "type": "object"
+      },
+      "align.Pair": {
+        "description": "Pair is a stretch of the source with its translation. A stretch nothing was found for has an empty other side.",
+        "properties": {
+          "score": {
+            "description": "Score says how well the two sides fit, from 0 to 100: their lengths and their numbers. Pairs below about 50 deserve a look.",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/content.Content"
+          },
+          "sourceSegments": {
+            "description": "SourceSegments and TargetSegments are the segments joined on each side, by their position in the documents.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/content.Content"
+          },
+          "targetSegments": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "align.Result": {
+        "description": "Result is an alignment with the segments it was made of, for a review that joins and splits them otherwise.",
+        "properties": {
+          "pairs": {
+            "description": "Pairs are the segments of the document with their translations, in the order of the documents. A pair with an empty side is a segment nothing was found for; a score under 50 deserves a look.",
+            "items": {
+              "$ref": "#/components/schemas/align.Pair"
+            },
+            "type": "array"
+          },
+          "source": {
+            "description": "Source and Target are the segments of the two documents, which the pairs name by their position.",
+            "items": {
+              "$ref": "#/components/schemas/content.Content"
+            },
+            "type": "array"
+          },
+          "target": {
+            "items": {
+              "$ref": "#/components/schemas/content.Content"
+            },
+            "type": "array"
           }
         },
         "type": "object"
@@ -3379,6 +3461,50 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/align": {
+      "post": {
+        "description": "The two documents may be of different formats. The answer has the segments of both documents and the pairs made of them; a review joins and splits them otherwise. Nothing is kept.\n\nAccess: signed in.",
+        "operationId": "alignFiles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/align.Result"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Pairs the segments of a document with those of its translation, so that translations done before can be put into a memory (POST /api/memories/{name}/units/batch).",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
     "/api/auth/exchange": {
       "post": {
         "description": "A code works once and for a few minutes.\n\nAccess: anyone with a code.",
@@ -5016,6 +5142,84 @@
           }
         },
         "summary": "Adds a translation unit.",
+        "tags": [
+          "Memories"
+        ]
+      }
+    },
+    "/api/memories/{name}/units/batch": {
+      "post": {
+        "description": "?policy= is as for one unit. The answer says how many were added.\n\nAccess: edit on the memory.",
+        "operationId": "addUnits",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "policy",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "units": {
+                    "items": {
+                      "$ref": "#/components/schemas/UnitInput"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "added": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Adds many units to a memory at once, all or none.",
         "tags": [
           "Memories"
         ]

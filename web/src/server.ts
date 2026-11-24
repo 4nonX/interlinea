@@ -655,6 +655,9 @@ export function client(conn: Connection) {
     /** With overwrite, the unit replaces the other translations of its source. */
     addUnit: (name: string, source: CoreRun[], target: CoreRun[], overwrite: boolean) =>
       send<ServerUnit>("POST", `/api/memories/${encodeURIComponent(name)}/units${overwrite ? "?policy=overwrite" : ""}`, { source, target }),
+    /** Adds many units at once, all or none. */
+    addUnits: (name: string, units: { source: CoreRun[]; target: CoreRun[] }[], overwrite: boolean) =>
+      send<{ added: number }>("POST", `/api/memories/${encodeURIComponent(name)}/units/batch${overwrite ? "?policy=overwrite" : ""}`, { units }),
     updateUnit: (name: string, u: ServerUnit, target: CoreRun[]) =>
       send<ServerUnit>(
         "PUT",

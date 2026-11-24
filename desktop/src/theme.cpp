@@ -257,6 +257,15 @@ QFrame[role="box"] { background: @surface; border: 1px solid @border; border-rad
 QFrame[role="line"] { background: @border; border: 0; max-height: 1px; min-height: 1px; }
 QFrame[role="historyItem"] { border: 0; border-left: 2px solid @border; background: transparent; }
 QFrame[role="quote"] { background: @surface2; border: 0; border-radius: 6px; }
+/* Alignment (.align-scroll, .align-seg): the two texts with lines between them */
+QScrollArea#alignScroll { background: @surface2; border: 1px solid @border; border-radius: 8px; }
+QWidget#alignBoard { background: @surface2; }
+QFrame[alignSeg="true"] { background: @surface; border: 1px solid @borderStrong; border-radius: 6px; }
+QFrame[alignSeg="true"]:hover { border-color: @accent; }
+QFrame[alignSeg="true"]:focus { border-color: @accent; }
+QFrame[alignSeg="true"][alone="true"] { background: @warnBg; border: 1px dashed @warn; }
+QFrame[alignSeg="true"][picked="true"] { border: 3px solid @accent; }
+QFrame[alignSeg="true"] QLabel { background: transparent; }
 QFrame[note="warn"] { background: @warnBg; border: 0; border-radius: 6px; }
 QFrame[note="ok"] { background: @okBg; border: 0; border-radius: 6px; }
 QFrame[note="info"] { background: @surface2; border: 0; border-radius: 6px; }

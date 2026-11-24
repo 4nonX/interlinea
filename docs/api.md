@@ -975,6 +975,19 @@ Access: edit on the memory.
 - Answer: 201 Created: [UnitView](#unitview)
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `POST /api/memories/{name}/units/batch`
+
+Adds many units to a memory at once, all or none.
+
+?policy= is as for one unit. The answer says how many were added.
+
+Access: edit on the memory.
+
+- Parameters: `name` (path), `policy` (query)
+- Body: {`units`: list of [UnitInput](#unitinput)}
+- Answer: 201 Created: {`added`: integer}
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `GET /api/memories/{name}/units/{uid}`
 
 Returns a translation unit.
@@ -1525,6 +1538,18 @@ Access: signed in; each event is sent only to those who may see it.
 
 ## Other
 
+### `POST /api/align`
+
+Pairs the segments of a document with those of its translation, so that translations done before can be put into a memory (POST /api/memories/{name}/units/batch).
+
+The two documents may be of different formats. The answer has the segments of both documents and the pairs made of them; a review joins and splits them otherwise. Nothing is kept.
+
+Access: signed in.
+
+- Body: [AlignRequest](#alignrequest)
+- Answer: 200 OK: [align.Result](#alignresult)
+- Errors: 401, 403, 422 (see [Error](#error))
+
 ### `GET /api/roles`
 
 Lists the roles: the five that come with the server (read, suggest, edit, approve, manage, each a permission and the ones before it) and those the administrators defined, each with its permissions and how many grants use it.
@@ -1582,6 +1607,23 @@ access is what someone may do in a project.
 |---|---|---|
 | `assigned` | boolean | Assigned is set when they have work in the project, which lets them see it without a grant. |
 | `role` | [authdb.Role](#authdbrole) |  |
+
+### AlignRequest
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | [AlignedFile](#alignedfile) |  |
+| `target` | [AlignedFile](#alignedfile) |  |
+
+### AlignedFile
+
+alignedFile is one of the two documents of an alignment: its name, which tells the format, its language and its bytes in base64.
+
+| Field | Type | Description |
+|---|---|---|
+| `data` | string (byte) |  |
+| `lang` | string |  |
+| `name` | string |  |
 
 ### AnalysisRequest
 
@@ -2059,6 +2101,28 @@ unitView is a memory unit as the API shows it.
 | `disabled` | boolean or null |  |
 | `email` | string or null |  |
 | `name` | string or null |  |
+
+### align.Pair
+
+Pair is a stretch of the source with its translation. A stretch nothing was found for has an empty other side.
+
+| Field | Type | Description |
+|---|---|---|
+| `score` | integer | Score says how well the two sides fit, from 0 to 100: their lengths and their numbers. Pairs below about 50 deserve a look. |
+| `source` | [content.Content](#contentcontent) |  |
+| `sourceSegments` | list of integer | SourceSegments and TargetSegments are the segments joined on each side, by their position in the documents. |
+| `target` | [content.Content](#contentcontent) |  |
+| `targetSegments` | list of integer |  |
+
+### align.Result
+
+Result is an alignment with the segments it was made of, for a review that joins and splits them otherwise.
+
+| Field | Type | Description |
+|---|---|---|
+| `pairs` | list of [align.Pair](#alignpair) | Pairs are the segments of the document with their translations, in the order of the documents. A pair with an empty side is a segment nothing was found for; a score under 50 deserves a look. |
+| `source` | list of [content.Content](#contentcontent) | Source and Target are the segments of the two documents, which the pairs name by their position. |
+| `target` | list of [content.Content](#contentcontent) |  |
 
 ### analysis.Band
 
