@@ -1,0 +1,58 @@
+{
+  "version": "0.1.0",
+  "accounts": [
+    "anna",
+    "ben",
+    "paula"
+  ],
+  "roles": [
+    "Reviewer read+suggest+approve"
+  ],
+  "grants": [
+    "ben project 1 edit",
+    "ben termbase tb-weber Reviewer",
+    "paula memory * manage",
+    "paula memory Mietvertrag Hofmann (en-GB) manage",
+    "paula memory Mietvertrag Hofmann (fr-FR) manage",
+    "paula project * manage",
+    "paula project 1 manage",
+    "paula termbase * manage",
+    "paula termbase Mietvertrag Hofmann manage",
+    "paula termbase tb-weber manage"
+  ],
+  "project": "Mietvertrag Hofmann",
+  "files": [
+    "Mietvertrag.txt",
+    "Styleguide.pdf"
+  ],
+  "segments": [
+    "s1 confirmed Lease.",
+    "s2 draft The tenant pays the rent.",
+    "s3 new",
+    "s4 new"
+  ],
+  "memories": [
+    "Mietvertrag Hofmann (en-GB) 1",
+    "Mietvertrag Hofmann (fr-FR) 0",
+    "Weber DE-EN 1"
+  ],
+  "MemoryQuery": "Mieter",
+  "MemoryTarget": "The tenant pays the rent.",
+  "termbases": [
+    "Mietvertrag Hofmann project 1",
+    "tb-weber master 2"
+  ],
+  "entry": "c1 v2 de-DE=Kaution/ en-GB=security deposit/",
+  "entryHistory": [
+    "v1 paula: de-DE=Kaution/ en-GB=deposit/",
+    "v2 paula: de-DE=Kaution/ en-GB=security deposit/"
+  ],
+  "deleted": "de-DE=Miete/ en-GB=rent/",
+  "mergeRequest": "Hofmann terms open",
+  "mergeItems": [
+    "new approved de-DE=Nebenkosten/ en-GB=service charges/"
+  ],
+  "minorFields": [
+    "Note"
+  ]
+}

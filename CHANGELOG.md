@@ -7,6 +7,12 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Upgrades
+
+- The data of each release is kept and opened by every later version in
+  a test, and the steps of each store's schema can no longer be changed
+  once recorded.
+
 ## [0.1.0] - 2026-11-24
 
 The first release: the core, the team server, the web client and the

@@ -191,6 +191,15 @@ made before the upgrade. Sign-ins survive restarts and upgrades.
 The web app is served by the server, so it updates with it; people with the
 page open get the new one on their next reload.
 
+**What is tested.** Every release leaves a data folder with one of
+everything in it (accounts, roles, a project with translations, memories,
+termbases with a history, a deleted entry and a merge request) in
+`server/testdata/releases`. A test opens each of them with the current
+code, checks through the API that everything is still there, and then
+works on it. The steps of each store's schema are recorded, and a test
+fails when a step that databases have already taken is changed: a change
+to the schema is always a new step.
+
 ## Sizing
 
 The server itself holds little in memory: the sign-in limits, the live

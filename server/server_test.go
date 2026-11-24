@@ -51,7 +51,12 @@ func (e *env) advance(d time.Duration) {
 
 func openStores(t *testing.T) Stores {
 	t.Helper()
-	dir := t.TempDir()
+	return openStoresIn(t, t.TempDir())
+}
+
+// openStoresIn opens the stores of a data folder, as the server does.
+func openStoresIn(t *testing.T, dir string) Stores {
+	t.Helper()
 	var st Stores
 	var err error
 	if st.Auth, err = authdb.Open(filepath.Join(dir, "accounts.db")); err != nil {
@@ -77,7 +82,13 @@ func openStores(t *testing.T) Stores {
 
 func newEnv(t *testing.T, configure ...func(*Config)) *env {
 	t.Helper()
-	e := &env{t: t, st: openStores(t), now: time.Date(2026, 11, 23, 9, 0, 0, 0, time.UTC)}
+	return newEnvIn(t, t.TempDir(), configure...)
+}
+
+// newEnvIn is a server on the SQLite files of a data folder.
+func newEnvIn(t *testing.T, dir string, configure ...func(*Config)) *env {
+	t.Helper()
+	e := &env{t: t, st: openStoresIn(t, dir), now: time.Date(2026, 11, 23, 9, 0, 0, 0, time.UTC)}
 	// The accounts store decides expiry on the server's clock.
 	e.st.Auth.SetClock(e.clock)
 	e.hs = httptest.NewUnstartedServer(nil)
