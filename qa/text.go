@@ -16,6 +16,21 @@ var decimalComma = map[string]bool{
 	"nn": true, "no": true, "fi": true, "et": true, "lv": true, "lt": true, "ru": true, "uk": true,
 	"be": true, "bg": true, "ro": true, "hu": true, "el": true, "tr": true, "az": true, "id": true,
 	"vi": true, "ca": true, "gl": true, "eu": true, "is": true, "lb": true, "kk": true, "ka": true,
+	"sq": true, "mk": true, "hy": true, "af": true, "uz": true, "fo": true, "ky": true,
+	"tg": true, "tk": true,
+}
+
+// Regions that write a decimal point although their language elsewhere
+// writes a comma: Spanish in Mexico, Central America and the United States.
+var decimalPointRegion = map[string]bool{
+	"es-mx": true, "es-us": true, "es-gt": true, "es-hn": true, "es-ni": true, "es-pa": true, "es-pr": true, "es-sv": true,
+	"es-do": true, "es-419": true, "es-pe": true,
+}
+
+// Languages and regions that group digits the Indian way: 12,50,000.
+var indianGroup = map[string]bool{
+	"hi": true, "bn": true, "mr": true, "gu": true, "ta": true, "te": true, "kn": true, "ml": true, "pa": true, "ne": true,
+	"or": true, "as": true,
 }
 
 // Languages that group thousands with a space (1 250,00); an ordinary
@@ -24,10 +39,68 @@ var decimalComma = map[string]bool{
 var spaceGroup = map[string]bool{
 	"fr": true, "pl": true, "cs": true, "sk": true, "sv": true, "nb": true, "nn": true, "no": true,
 	"fi": true, "et": true, "lv": true, "lt": true, "ru": true, "uk": true, "be": true, "bg": true,
-	"hu": true, "kk": true, "ka": true,
+	"hu": true, "kk": true, "ka": true, "af": true, "hy": true, "sq": true, "uz": true,
 }
 
 var numberRe = regexp.MustCompile(`\d+(?:(?:[.,'’\x{00a0}\x{202f}]| )\d{3})*(?:[.,]\d+)?`)
+
+// indianNumberRe also takes the groups of two digits of 12,50,000.
+var indianNumberRe = regexp.MustCompile(`\d+(?:,\d{2})*(?:,\d{3})(?:\.\d+)?|\d+(?:\.\d+)?`)
+
+// westernDigits writes the digits of every script (Arabic-Indic ٠١٢,
+// Persian ۰۱۲, Devanagari ०१२, Thai ๐๑๒ and the others) as 0 to 9, and the
+// Arabic decimal and thousands separators as the language's own, so a
+// number compares equal however it is written. offsets gives, for each
+// byte of the result, where it came from in text.
+func westernDigits(text string, decimal, group byte) (string, []int) {
+	plain := true
+	for i := 0; i < len(text); i++ {
+		if text[i] >= utf8.RuneSelf {
+			plain = false
+			break
+		}
+	}
+	if plain {
+		return text, nil
+	}
+	var b strings.Builder
+	offsets := make([]int, 0, len(text)+1)
+	for i, r := range text {
+		before := b.Len()
+		switch {
+		case r == '٫':
+			b.WriteByte(decimal)
+		case r == '٬':
+			b.WriteByte(group)
+		case r > unicode.MaxASCII && unicode.IsDigit(r):
+			if d, ok := digitValue(r); ok {
+				b.WriteByte(byte('0' + d))
+			} else {
+				b.WriteRune(r)
+			}
+		default:
+			b.WriteRune(r)
+		}
+		for k := before; k < b.Len(); k++ {
+			offsets = append(offsets, i)
+		}
+	}
+	offsets = append(offsets, len(text))
+	return b.String(), offsets
+}
+
+// digitValue is the value of a decimal digit of any script. Unicode lays
+// the digits of a script out in a row from zero to nine.
+func digitValue(r rune) (int, bool) {
+	if !unicode.IsDigit(r) {
+		return 0, false
+	}
+	zero := r
+	for unicode.IsDigit(zero - 1) {
+		zero--
+	}
+	return int(r-zero) % 10, true
+}
 
 // number is a number found in a text: as written and its value.
 type number struct {
@@ -42,13 +115,26 @@ type number struct {
 func numbersIn(text, lang string) []number {
 	primary, region := splitLang(lang)
 	swiss := region == "ch" || region == "li"
-	comma := decimalComma[primary] && !swiss
+	comma := decimalComma[primary] && !swiss && !decimalPointRegion[primary+"-"+region]
 	decimal, group := byte('.'), byte(',')
 	if comma {
 		decimal, group = ',', '.'
 	}
+	original := text
+	text, offsets := westernDigits(text, decimal, group)
+	re := numberRe
+	if indianGroup[primary] || (primary == "en" && region == "in") {
+		re = indianNumberRe
+	}
+	// as written gives the number as the text has it, in its own digits.
+	asWritten := func(from, to int) string {
+		if offsets == nil {
+			return text[from:to]
+		}
+		return original[offsets[from]:offsets[to]]
+	}
 	var out []number
-	for _, loc := range numberRe.FindAllStringIndex(text, -1) {
+	for _, loc := range re.FindAllStringIndex(text, -1) {
 		raw := text[loc[0]:loc[1]]
 		// An ordinary space groups digits only in languages that write
 		// numbers so; elsewhere "5 100" is two numbers.
@@ -56,10 +142,12 @@ func numbersIn(text, lang string) []number {
 		if !spaceGroup[primary] && strings.Contains(raw, " ") {
 			parts = strings.Split(raw, " ")
 		}
+		at := loc[0]
 		for _, p := range parts {
 			if v, ok := numberValue(p, decimal, group); ok {
-				out = append(out, number{text: p, value: v})
+				out = append(out, number{text: asWritten(at, at+len(p)), value: v})
 			}
+			at += len(p) + 1
 		}
 	}
 	return out
@@ -164,7 +252,13 @@ func listMessage(one, many string, items []string) string {
 var endPunct = map[rune]string{
 	'.': ".", '。': ".", '．': ".", '!': "!", '！': "!", '?': "?", '？': "?", '؟': "?",
 	':': ":", '：': ":", ';': ";", '；': ";", '…': "…", '।': ".", '۔': ".",
+	// The full stops of Armenian, Ethiopic, Khmer, Burmese and Tibetan, the
+	// Greek question mark, the Arabic semicolon, the Ethiopic question mark.
+	'։': ".", '።': ".", '។': ".", '။': ".", '།': ".", '\u037e': "?", '؛': ";", '፧': "?", '՞': "?",
 }
+
+// Thai and Lao end a sentence with a space, not a full stop.
+var noFullStop = map[string]bool{"th": true, "lo": true}
 
 // trailingClosers are skipped when looking for the final punctuation:
 // "(see below.)" ends with a full stop.
@@ -186,7 +280,10 @@ func finalPunct(s, lang string) string {
 func (c *checker) punctuation(out *[]Issue, s Segment, src, tgt string) {
 	if c.on[EndPunctuation] && hasLetters(src) {
 		sp, tp := finalPunct(src, c.srcLang), finalPunct(tgt, c.tgtLang)
-		if sp != tp {
+		// A full stop on one side only is right where the other language
+		// writes none.
+		stopOnly := (sp == "." && tp == "" && noFullStop[c.tgtLang]) || (sp == "" && tp == "." && noFullStop[c.srcLang])
+		if sp != tp && !stopOnly {
 			switch {
 			case sp == "":
 				c.add(out, s, EndPunctuation, fmt.Sprintf("The translation ends with “%s”; the source has no final punctuation.", tp), tp)
@@ -219,7 +316,7 @@ func (c *checker) punctuation(out *[]Issue, s Segment, src, tgt string) {
 		}
 	}
 	if c.on[SpaceBeforePunct] {
-		for _, m := range spacingIssues(tgt, c.tgtLang) {
+		for _, m := range spacingIssues(tgt, c.spacingLang) {
 			if !strings.Contains(src, m.found) || c.tgtLang == "fr" {
 				c.add(out, s, SpaceBeforePunct, m.message, m.found)
 			}
@@ -296,7 +393,14 @@ func spacingIssues(t, lang string) []spacing {
 				addIssue(" "+string(r), fmt.Sprintf("A space before “%s”.", string(r)))
 			}
 		case ';', ':', '!', '?':
-			if lang == "fr" {
+			if lang == "fr-ca" && r != ':' {
+				// Canadian French sets ; ! ? close, as English does.
+				if i > 0 && rs[i-1] == ' ' && followedByBoundary(i) {
+					addIssue(" "+string(r), fmt.Sprintf("A space before “%s”.", string(r)))
+				}
+				continue
+			}
+			if lang == "fr" || lang == "fr-ca" {
 				if i == 0 || isSpace(rs[i-1]) || strings.ContainsRune(";:!?…", rs[i-1]) {
 					continue
 				}
@@ -313,11 +417,11 @@ func spacingIssues(t, lang string) []spacing {
 				addIssue(" "+string(r), fmt.Sprintf("A space before “%s”.", string(r)))
 			}
 		case '«':
-			if lang == "fr" && i+1 < len(rs) && !isSpace(rs[i+1]) {
+			if (lang == "fr" || lang == "fr-ca") && i+1 < len(rs) && !isSpace(rs[i+1]) {
 				addIssue("«"+string(rs[i+1]), "French needs a no-break space after “«”.")
 			}
 		case '»':
-			if lang == "fr" && i > 0 && !isSpace(rs[i-1]) {
+			if (lang == "fr" || lang == "fr-ca") && i > 0 && !isSpace(rs[i-1]) {
 				addIssue(string(rs[i-1])+"»", "French needs a no-break space before “»”.")
 			}
 		}

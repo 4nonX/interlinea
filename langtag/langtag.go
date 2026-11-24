@@ -123,3 +123,12 @@ func isAlnum(s string) bool {
 	}
 	return true
 }
+
+// MustNormalizeOr is Normalize, returning the tag as it is when it is
+// not valid.
+func MustNormalizeOr(tag string) string {
+	if n, err := Normalize(tag); err == nil {
+		return n
+	}
+	return tag
+}

@@ -37,6 +37,116 @@
         </rule>
       </languagerule>
 
+      <languagerule languagerulename="French">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:M|MM|Mme|Mmes|Mlle|Mlles|Dr|Pr|Me|St|Ste|av|bd|art|al|chap|cf|ex|fig|pp|vol|no|nos|tél|env|éd|réf|N\.B|p\.\s?ex|c\.-à-d|J\.-C|S\.A|S\.A\.R\.L)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Spanish">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:Sr|Sra|Srta|Sres|Dr|Dra|Ud|Uds|Vd|Vds|Dña|Lic|Ing|Arq|Prof|art|núm|pág|págs|cap|vol|tel|teléf|aprox|fig|p\.\s?ej|a\.\s?C|d\.\s?C|EE\.\s?UU|S\.A|S\.L|av|avda|dpto|máx|mín)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Italian">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:Sig|Sig\.ra|Sigg|Dott|Dr|Prof|Avv|Ing|Arch|Geom|Rag|On|art|artt|nn|pag|pagg|cap|vol|fig|tel|cfr|ca|p\.\s?es|S\.p\.A|S\.r\.l|c\.d|u\.s)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Dutch">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:dhr|mevr|mw|dr|drs|prof|ir|ing|mr|bijv|bv|d\.w\.z|o\.a|m\.b\.t|i\.v\.m|t\.a\.v|t\.o\.v|evt|ca|nr|blz|art|incl|excl|tel|jl|z\.o\.z|n\.a\.v|m\.i\.v)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Portuguese">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:Sr|Sra|Srta|Dr|Dra|Prof|Profa|Eng|Exmo|Exma|V\.\s?Ex|art|nº|pág|págs|cap|vol|tel|fig|aprox|p\.\s?ex|Ltda|S\.A|av|obs)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Polish">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:np|tzn|tj|m\.in|ok|dr|prof|mgr|inż|ul|al|pl|nr|str|tel|art|ust|pkt|godz|tys|mln|mld|św|im|wg|ww)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Russian">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:т\.\s?е|т\.\s?д|т\.\s?п|т\.\s?к|т\.\s?н|др|пр|см|стр|рис|табл|гл|ст|пп|ул|тел|руб|коп|тыс|млн|млрд|им|проф|доц|акад|напр|вул|грн|обл)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Swedish">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:t\.ex|bl\.a|d\.v\.s|m\.m|ca|nr|kl|s\.k|f\.d|fr\.o\.m|t\.o\.m|dvs|resp|inkl|exkl|tel)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="DanishNorwegian">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:f\.eks|bl\.a|dvs|m\.m|ca|nr|kl|evt|inkl|ekskl|tlf|jf|pga|mht|iht|m\.v|o\.l|d\.v\.s)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="CzechSlovak">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:např|napr|tj|tzn|resp|č|str|obr|tab|odst|písm|čl|ul|tel|Ing|Mgr|JUDr|MUDr|PhDr|RNDr|doc|prof|sv|tzv|cca|s\.r\.o|a\.s|vč)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Hungarian">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:pl|ill|kb|ún|u\.n|dr|ifj|id|özv|sz|szt|db|tel|old|bek|ld|vö|max|min)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Romanian">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:dl|dna|dvs|dr|prof|ing|art|nr|pag|tel|str|bd|jud|ș\.a|d\.ex|S\.A|S\.R\.L|alin|lit|pct)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Turkish">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:Dr|Prof|Doç|Av|Sn|bkz|örn|No|Tel|Cad|Sok|Mah|Apt|Ltd|Şti|A\.Ş|T\.C)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Finnish">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:esim|ks|ns|ym|yms|tms|mm|nk|ko|ed|em|vrt|klo|puh|kpl|tri|prof|ins|dipl)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+      </languagerule>
+
+      <languagerule languagerulename="Greek">
+        <rule break="no">
+          <beforebreak>(?:^|[\s(\[«"“„])(?:κ|κα|κκ|δηλ|π\.χ|κ\.λπ|κ\.ά|βλ|σελ|αρ|τηλ|Δρ|Καθ|μ\.Χ|π\.Χ|Α\.Ε|Ε\.Π\.Ε|παρ|άρθ|εδ)\.</beforebreak>
+          <afterbreak>\s</afterbreak>
+        </rule>
+        <!-- The Greek question mark is written as a semicolon. -->
+        <rule break="yes">
+          <beforebreak>[;\x{037e}]</beforebreak>
+          <afterbreak>\s+[\p{Lu}«"(]</afterbreak>
+        </rule>
+      </languagerule>
+
       <languagerule languagerulename="CJK">
         <!-- Full-width sentence punctuation needs no following space. -->
         <rule break="yes">
@@ -63,12 +173,14 @@
         </rule>
         <!-- Sentence end: terminal punctuation, optional closing quotes or brackets, then space and a sentence start. -->
         <rule break="yes">
-          <beforebreak>[.?!…]+["'“”‘’»«›‹)\]]*</beforebreak>
+          <beforebreak>[.?!…؟۔।॥։።፧]+["'“”‘’»«›‹)\]]*</beforebreak>
           <afterbreak>\s+[\p{Lu}\p{Lt}\p{N}"'“„‚«»(\[¿¡\p{Lo}]</afterbreak>
         </rule>
-        <!-- Full-width punctuation also ends sentences in mixed text. -->
+        <!-- Full-width punctuation also ends sentences in mixed text, and so
+             do the Burmese, Khmer and Tibetan full stops, which need no
+             space after them. -->
         <rule break="yes">
-          <beforebreak>[。！？]+</beforebreak>
+          <beforebreak>[。！？။។៕།]+</beforebreak>
           <afterbreak>.</afterbreak>
         </rule>
         <!-- Explicit line breaks inside a paragraph. -->
@@ -82,6 +194,21 @@
     <maprules>
       <languagemap languagepattern="de.*" languagerulename="German"/>
       <languagemap languagepattern="en.*" languagerulename="English"/>
+      <languagemap languagepattern="fr.*" languagerulename="French"/>
+      <languagemap languagepattern="es.*" languagerulename="Spanish"/>
+      <languagemap languagepattern="it.*" languagerulename="Italian"/>
+      <languagemap languagepattern="nl.*" languagerulename="Dutch"/>
+      <languagemap languagepattern="pt.*" languagerulename="Portuguese"/>
+      <languagemap languagepattern="pl.*" languagerulename="Polish"/>
+      <languagemap languagepattern="(?:ru|uk|be|bg).*" languagerulename="Russian"/>
+      <languagemap languagepattern="sv.*" languagerulename="Swedish"/>
+      <languagemap languagepattern="(?:da|nb|nn|no).*" languagerulename="DanishNorwegian"/>
+      <languagemap languagepattern="(?:cs|sk).*" languagerulename="CzechSlovak"/>
+      <languagemap languagepattern="hu.*" languagerulename="Hungarian"/>
+      <languagemap languagepattern="ro.*" languagerulename="Romanian"/>
+      <languagemap languagepattern="tr.*" languagerulename="Turkish"/>
+      <languagemap languagepattern="fi.*" languagerulename="Finnish"/>
+      <languagemap languagepattern="el.*" languagerulename="Greek"/>
       <languagemap languagepattern="(?:ja|zh|ko).*" languagerulename="CJK"/>
       <languagemap languagepattern=".*" languagerulename="Default"/>
     </maprules>

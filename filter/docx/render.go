@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"github.com/4nonX/interlinea/langtag"
 	"strings"
 
 	"github.com/4nonX/interlinea/content"
@@ -65,6 +66,9 @@ type runWriter struct {
 	fmts  []fmtSpan
 	wraps []wrapSpan
 	cache map[string]string
+	// dir is "rtl" or "ltr" when the paragraph has a translation, whose
+	// direction its runs then take; empty leaves them as they are.
+	dir string
 }
 
 func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Translations, lang string) {
@@ -81,7 +85,18 @@ func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Transl
 	}
 	rw := &runWriter{out: out, part: p, doc: d, tr: tr, pa: pa, lang: lang, cache: map[string]string{}}
 	out.Write(pa.open)
-	out.Write(pa.ppr)
+	ppr := pa.ppr
+	if lang != "" && pa.dialect != dml && pa.translated(d, tr) {
+		// A translated paragraph reads in its language's direction: an
+		// Arabic translation of an English paragraph from the right, an
+		// English one of an Arabic paragraph from the left.
+		rw.dir = "ltr"
+		if langtag.RTL(lang) {
+			rw.dir = "rtl"
+		}
+		ppr = []byte(setParaDirection(ppr, pa.ns, rw.dir == "rtl"))
+	}
+	out.Write(ppr)
 	// The edges and the gaps use the paragraph's own tag IDs.
 	all := append(append(content.Content{}, pa.prefix...), pa.suffix...)
 	for _, pc := range pa.pieces {
@@ -328,7 +343,7 @@ func (rw *runWriter) withLang(rpr []byte, prefix string, isDML bool) string {
 	if isDML {
 		s = setLangDML(rpr, prefix, rw.lang)
 	} else {
-		s = setLang(rpr, prefix, rw.lang)
+		s = setLang(rpr, prefix, rw.lang, rw.dir)
 	}
 	rw.cache[k] = s
 	return s
@@ -342,7 +357,9 @@ func langAttr(lang string) string {
 	switch l {
 	case "ja", "zh", "ko":
 		return "eastAsia"
-	case "ar", "he", "fa", "ur", "yi", "th", "hi", "bn", "ta", "te":
+	case "ar", "he", "fa", "ur", "yi", "ps", "sd", "ug", "dv", "th", "lo", "km", "my", "hi", "bn", "ta", "te", "kn", "ml", "mr", "gu",
+		"pa", "ne", "si", "bo":
+		// Word keeps the language of right-to-left and complex scripts here.
 		return "bidi"
 	}
 	return "val"
@@ -360,8 +377,12 @@ func attrName(a xml.Attr) string {
 
 // setLang sets the language of WordprocessingML run properties in the
 // attribute Word uses for the target's script.
-func setLang(rpr []byte, w, lang string) string {
+func setLang(rpr []byte, w, lang, dir string) string {
 	which := langAttr(lang)
+	rtl := ""
+	if dir == "rtl" {
+		rtl = "<" + w + ":rtl/>"
+	}
 	newLang := func(old *node) string {
 		var b strings.Builder
 		b.WriteString("<" + w + ":lang")
@@ -382,7 +403,7 @@ func setLang(rpr []byte, w, lang string) string {
 		return b.String()
 	}
 	if len(rpr) == 0 {
-		return "<" + w + ":rPr>" + newLang(nil) + "</" + w + ":rPr>"
+		return "<" + w + ":rPr>" + rtl + newLang(nil) + "</" + w + ":rPr>"
 	}
 	n, err := parseFragment(rpr)
 	if err != nil {
@@ -390,22 +411,41 @@ func setLang(rpr []byte, w, lang string) string {
 	}
 	var inner strings.Builder
 	placed := false
+	// w:rtl stands before w:cs, w:em and w:lang in the schema's order.
+	rtlPlaced := rtl == ""
+	placeRTL := func() {
+		if !rtlPlaced {
+			inner.WriteString(rtl)
+			rtlPlaced = true
+		}
+	}
 	for _, k := range n.Kids {
 		if !k.IsElement() {
 			continue
 		}
+		if k.Local == "rtl" && dir != "" {
+			// Set anew for the translation's direction, or dropped.
+			placeRTL()
+			continue
+		}
+		if k.Local == "cs" || k.Local == "em" {
+			placeRTL()
+		}
 		if k.Local == "lang" {
+			placeRTL()
 			inner.WriteString(newLang(k))
 			placed = true
 			continue
 		}
 		if !placed && afterLang[k.Local] {
+			placeRTL()
 			inner.WriteString(newLang(nil))
 			placed = true
 		}
 		inner.Write(k.Raw)
 	}
 	if !placed {
+		placeRTL()
 		inner.WriteString(newLang(nil))
 	}
 	open := string(n.Start)
@@ -447,4 +487,77 @@ func setLangDML(rpr []byte, a, lang string) string {
 	}
 	b.WriteString("</" + n.Prefix + ":" + n.Local + ">")
 	return b.String()
+}
+
+// translated reports whether any of the paragraph's units has a translation.
+func (pa *para) translated(d *document, tr filter.Translations) bool {
+	for _, pc := range pa.pieces {
+		if pc.unit >= 0 {
+			if t, ok := tr[d.ext.Units[pc.unit].ID]; ok && len(t) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pPr children that follow w:bidi in the schema's order.
+var afterBidi = map[string]bool{
+	"adjustRightInd": true, "snapToGrid": true, "spacing": true, "ind": true, "contextualSpacing": true, "mirrorIndents": true,
+	"suppressOverlap": true, "jc": true, "textDirection": true, "textAlignment": true, "textboxTightWrap": true, "outlineLvl": true,
+	"divId": true, "cnfStyle": true, "rPr": true, "sectPr": true, "pPrChange": true,
+}
+
+// setParaDirection sets or removes w:bidi in a paragraph's properties, so
+// the paragraph is laid out from the right for a right-to-left language
+// and from the left otherwise. Its alignment needs no change: Word reads
+// "left" as the side a paragraph starts on.
+func setParaDirection(ppr []byte, w string, rtl bool) string {
+	bidi := "<" + w + ":bidi/>"
+	if len(ppr) == 0 {
+		if !rtl {
+			return ""
+		}
+		return "<" + w + ":pPr>" + bidi + "</" + w + ":pPr>"
+	}
+	n, err := parseFragment(ppr)
+	if err != nil {
+		return string(ppr)
+	}
+	has := false
+	for _, k := range n.Kids {
+		if k.IsElement() && k.Local == "bidi" {
+			has = true
+		}
+	}
+	if !has && !rtl {
+		return string(ppr)
+	}
+	var inner strings.Builder
+	placed := !rtl
+	for _, k := range n.Kids {
+		if !k.IsElement() {
+			continue
+		}
+		if k.Local == "bidi" {
+			if !placed {
+				inner.WriteString(bidi)
+				placed = true
+			}
+			continue
+		}
+		if !placed && afterBidi[k.Local] {
+			inner.WriteString(bidi)
+			placed = true
+		}
+		inner.Write(k.Raw)
+	}
+	if !placed {
+		inner.WriteString(bidi)
+	}
+	open := string(n.Start)
+	if len(n.End) == 0 { // <w:pPr/>
+		open = strings.TrimSuffix(strings.TrimSpace(strings.TrimSuffix(open, ">")), "/") + ">"
+	}
+	return open + inner.String() + "</" + n.Prefix + ":" + n.Local + ">"
 }

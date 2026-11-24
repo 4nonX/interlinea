@@ -175,6 +175,9 @@ type checker struct {
 	ignore  map[string]bool
 	srcLang string
 	tgtLang string
+	// spacingLang is tgtLang, or "fr-ca" for Canadian French, whose
+	// spacing rules differ from those of France.
+	spacingLang string
 
 	spellCache map[string]bool
 	sugCache   map[string][]string
@@ -226,6 +229,10 @@ func compileRule(r UserRule) (compiledRule, error) {
 func newChecker(o Options) (*checker, error) {
 	c := &checker{opts: o, on: map[Kind]bool{}, ignore: map[string]bool{}, srcLang: langtag.Primary(o.SourceLang), tgtLang: langtag.Primary(o.TargetLang),
 		spellCache: map[string]bool{}, sugCache: map[string][]string{}}
+	c.spacingLang = c.tgtLang
+	if strings.EqualFold(langtag.MustNormalizeOr(o.TargetLang), "fr-CA") {
+		c.spacingLang = "fr-ca"
+	}
 	for _, k := range Kinds {
 		c.on[k.Kind] = k.Default
 	}

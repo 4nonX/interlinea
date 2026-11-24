@@ -34,7 +34,7 @@ func TestDetect(t *testing.T) {
 	if d := Detect("Xylo qwerty zzzap plonk frobnicate grault garply waldo fred plugh"); d.Lang != "" || d.Reason != Mixed {
 		t.Errorf("gibberish: %+v", d)
 	}
-	if len(Languages()) != 11 {
+	if len(Languages()) < 60 {
 		t.Errorf("languages %v", Languages())
 	}
 }

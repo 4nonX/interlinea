@@ -266,12 +266,12 @@ func (m matcher) tokens(text string) []token {
 			continue
 		}
 		if start >= 0 {
-			out = append(out, token{start, i, fold(text[start:i])})
+			out = append(out, token{start, i, m.fold(text[start:i])})
 			start = -1
 		}
 	}
 	if start >= 0 {
-		out = append(out, token{start, len(text), fold(text[start:])})
+		out = append(out, token{start, len(text), m.fold(text[start:])})
 	}
 	return out
 }
@@ -279,10 +279,6 @@ func (m matcher) tokens(text string) []token {
 func firstRune(s string) rune {
 	r, _ := utf8.DecodeRuneInString(s)
 	return r
-}
-
-func fold(s string) string {
-	return strings.ReplaceAll(strings.ToLower(s), "’", "'")
 }
 
 // umlauts folds the German umlauts so plurals such as Verträge match.
@@ -324,7 +320,7 @@ func (m matcher) find(term, text string, toks []token) []span {
 
 // findSubstring matches term inside text, ignoring case and runs of space.
 func (m matcher) findSubstring(term, text string) []span {
-	key := strings.Join(strings.Fields(fold(term)), "")
+	key := strings.Join(strings.Fields(m.fold(term)), "")
 	if key == "" {
 		return nil
 	}
@@ -335,7 +331,7 @@ func (m matcher) findSubstring(term, text string) []span {
 		if unicode.IsSpace(r) {
 			continue
 		}
-		f := strings.ToLower(string(r))
+		f := m.fold(string(r))
 		squeezed.WriteString(f)
 		for range len(f) {
 			offs = append(offs, i)
@@ -359,7 +355,7 @@ func (m matcher) findSubstring(term, text string) []span {
 				end -= n
 			}
 		}
-		out = append(out, span{offs[a], end, strings.Contains(fold(text[offs[a]:end]), fold(term))})
+		out = append(out, span{offs[a], end, strings.Contains(m.fold(text[offs[a]:end]), m.fold(term))})
 		from = b
 	}
 	return out
@@ -383,7 +379,14 @@ var endings = map[string][]string{
 	"pt": {"s", "es"},
 	"nl": {"s", "en", "'s"},
 	"pl": {"y", "i", "a", "u", "ie", "em", "ami", "ach", "om", "ów"},
+	"ca": {"s", "es"},
+	"gl": {"s", "es"},
+	"af": {"e", "s", "te"},
 }
+
+// everyWord lists the languages in which each word of a term takes the
+// plural, not only the last: contrat social, contrats sociaux.
+var everyWord = map[string]bool{"fr": true, "es": true, "it": true, "pt": true, "ca": true, "gl": true, "pl": true}
 
 // German adjective endings, for the words before the last in a term.
 var deAdjective = []string{"e", "en", "er", "es", "em"}
@@ -399,6 +402,9 @@ func (m matcher) word(term, text string, last, multi bool) (exact, ok bool) {
 		// Particles and endings follow the word: 임대인 in 임대인은.
 		return false, last && n >= 2 && strings.HasPrefix(text, term)
 	}
+	if _, ok := m.rules(term); ok {
+		return false, m.inflected(term, text, last)
+	}
 	if n < 4 {
 		return false, false
 	}
@@ -412,7 +418,7 @@ func (m matcher) word(term, text string, last, multi bool) (exact, ok bool) {
 		}
 		return false, false
 	}
-	if !last {
+	if !last && !everyWord[m.lang] {
 		return false, false
 	}
 	ends := endings[m.lang]
@@ -437,6 +443,30 @@ func (m matcher) word(term, text string, last, multi bool) (exact, ok bool) {
 		}
 	case "en":
 		if strings.HasSuffix(term, "y") && strings.TrimSuffix(term, "y")+"ies" == text {
+			return false, true
+		}
+	case "fr":
+		// travail, travaux; social, sociaux.
+		if stem, ok := strings.CutSuffix(term, "al"); ok && stem+"aux" == text {
+			return false, true
+		}
+		if stem, ok := strings.CutSuffix(term, "ail"); ok && stem+"aux" == text {
+			return false, true
+		}
+	case "pt":
+		// contrato de locação, locações; animal, animais; papel, papéis.
+		for from, tos := range map[string][]string{"ão": {"ões", "ães", "ãos"}, "al": {"ais"}, "el": {"éis"}, "ol": {"óis"}, "m": {"ns"}} {
+			if stem, ok := strings.CutSuffix(term, from); ok {
+				for _, to := range tos {
+					if stem+to == text {
+						return false, true
+					}
+				}
+			}
+		}
+	case "es", "ca", "gl":
+		// luz, luces.
+		if stem, ok := strings.CutSuffix(term, "z"); ok && stem+"ces" == text {
 			return false, true
 		}
 	case "it":
