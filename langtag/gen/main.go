@@ -82,8 +82,8 @@ func main() {
 	check := flag.Bool("check", false, "fail if the files are out of date instead of writing them")
 	flag.Parse()
 	files := map[string][]byte{
-		"web/src/languages.gen.ts": typescript(),
-		"desktop/src/languagelist.h":     cpp(),
+		"web/src/languages.gen.ts":   typescript(),
+		"desktop/src/languagelist.h": cpp(),
 	}
 	stale := false
 	for path, want := range files {
