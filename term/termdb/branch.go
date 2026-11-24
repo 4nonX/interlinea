@@ -30,6 +30,9 @@ type Info struct {
 	// Upstreams are the masters a project is layered over, highest
 	// priority first.
 	Upstreams []string `json:"upstreams,omitempty"`
+	// Projects are the project termbases layered over a master, by name.
+	// A master is not deleted while it has any.
+	Projects []string `json:"projects,omitempty"`
 }
 
 // BaseRef is the master entry and version a project entry started from.
@@ -110,7 +113,19 @@ func (t *Termbase) info(ctx context.Context, q querier) (Info, error) {
 	for _, u := range ups {
 		info.Upstreams = append(info.Upstreams, u.name)
 	}
-	return info, nil
+	rows, err := q.QueryContext(ctx, `SELECT p.name FROM termbase_upstreams u JOIN termbases p ON p.id = u.project_id WHERE u.master_id = ? ORDER BY lower(p.name)`, t.id)
+	if err != nil {
+		return info, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return info, err
+		}
+		info.Projects = append(info.Projects, name)
+	}
+	return info, rows.Err()
 }
 
 // upstreamsOf lists a project's masters in priority order.
@@ -342,6 +357,44 @@ func (t *Termbase) RemoveFromProject(ctx context.Context, master, entryID, by st
 		return err
 	}
 	return tx.Commit()
+}
+
+// RestoreToProject takes back RemoveFromProject: the master entry shows in
+// the project again and the next merge request no longer proposes its
+// deletion. It reports whether there was a removal to take back.
+func (t *Termbase) RestoreToProject(ctx context.Context, master, entryID, by string) (bool, error) {
+	t.db.wmu.Lock()
+	defer t.db.wmu.Unlock()
+	tx, err := t.db.sql.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer rollback(tx)
+	ups, err := t.upstreams(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	var m *Termbase
+	for _, u := range ups {
+		if strings.EqualFold(u.name, strings.TrimSpace(master)) {
+			m = u
+		}
+	}
+	if m == nil {
+		return false, fmt.Errorf("termdb: %s is not layered over %q", t.name, master)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM project_removals WHERE project_id = ? AND base_termbase = ? AND base_entry = ?`, t.id, m.id, entryID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	if err := logChange(ctx, tx, t.id, "", entryID, 0, ChangeCreated, by, "Brought "+m.name+" entry "+entryID+" back into the project", t.db.now()); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 // Removal is a master entry a project has removed.

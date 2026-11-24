@@ -13,18 +13,19 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-AccessPanel::AccessPanel(Connection *connection, const QString &kind, const QString &resource, const QString &title, QWidget *parent)
+AccessPanel::AccessPanel(Connection *connection, const QString &kind, const QString &resource, const QString &title, QWidget *parent, bool embedded)
     : QFrame(parent)
     , m_conn(connection)
     , m_kind(kind)
     , m_resource(resource)
 {
-    setObjectName(QStringLiteral("panel"));
+    setObjectName(embedded ? QStringLiteral("accessSection") : QStringLiteral("panel"));
     setAccessibleName(title);
     auto *v = new QVBoxLayout(this);
-    v->setContentsMargins(24, 24, 24, 24);
-    v->setSpacing(24);
-    v->addWidget(Web::text(title, "panelTitle", this));
+    const int pad = embedded ? 0 : 24;
+    v->setContentsMargins(pad, pad, pad, pad);
+    v->setSpacing(embedded ? 12 : 24);
+    v->addWidget(Web::text(title, embedded ? "settingsTitle" : "panelTitle", this));
     m_problem = Web::text(QString(), "error", this);
     m_problem->hide();
     v->addWidget(m_problem);
@@ -36,10 +37,12 @@ AccessPanel::AccessPanel(Connection *connection, const QString &kind, const QStr
     auto *add = new QHBoxLayout;
     add->setSpacing(12);
     m_who = new QComboBox(this);
+    m_who->setObjectName(QStringLiteral("who"));
     // As wide as the names in it, as the web's select.
     m_who->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     m_who->setMinimumContentsLength(18);
     m_role = new QComboBox(this);
+    m_role->setObjectName(QStringLiteral("role"));
     Roles::fill(m_role, {}, kind == QLatin1String("project") ? QStringLiteral("edit") : QStringLiteral("read"));
     auto labelled = [this](const QString &label, QWidget *control) {
         auto *w = new QWidget(this);
@@ -56,6 +59,7 @@ AccessPanel::AccessPanel(Connection *connection, const QString &kind, const QStr
     add->addWidget(labelled(tr("Who"), m_who));
     add->addWidget(labelled(tr("Role"), m_role));
     auto *give = Web::button(tr("Give the role"), Web::Normal, this);
+    give->setObjectName(QStringLiteral("add"));
     give->setEnabled(false);
     add->addWidget(give, 0, Qt::AlignBottom);
     add->addStretch();

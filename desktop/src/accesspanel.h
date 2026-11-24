@@ -15,7 +15,9 @@ class QVBoxLayout;
 class AccessPanel : public QFrame {
     Q_OBJECT
 public:
-    AccessPanel(Connection *connection, const QString &kind, const QString &resource, const QString &title, QWidget *parent = nullptr);
+    // Embedded, it is a section of a dialog: no card around it, and its
+    // title as the dialog's other sections have theirs.
+    AccessPanel(Connection *connection, const QString &kind, const QString &resource, const QString &title, QWidget *parent = nullptr, bool embedded = false);
 
     static QStringList roles();
     static QString roleText(const QString &role);

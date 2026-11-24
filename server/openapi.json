@@ -950,6 +950,13 @@
           "name": {
             "type": "string"
           },
+          "projects": {
+            "description": "Projects are the project termbases layered over a master, by name. A master is not deleted while it has any.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "role": {
             "type": "string"
           },
@@ -8309,7 +8316,7 @@
     },
     "/api/termbases/{name}": {
       "delete": {
-        "description": "A termbase a project or template uses is not deleted; the answer names them.\n\nAccess: manage on the termbase.",
+        "description": "A termbase a project or template uses is not deleted, and neither is a master that project termbases are based on; the answer names them.\n\nAccess: manage on the termbase.",
         "operationId": "deleteTermbase",
         "parameters": [
           {
@@ -8565,6 +8572,63 @@
           }
         },
         "summary": "Lists deleted entries.",
+        "tags": [
+          "Termbases"
+        ]
+      }
+    },
+    "/api/termbases/{name}/deleted/{eid}/restore": {
+      "post": {
+        "description": "Access: edit on the termbase.",
+        "operationId": "restoreEntry",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The entry's ID.",
+            "in": "path",
+            "name": "eid",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/termdb.Stored"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Brings a deleted entry back as it was when it was deleted, under its old ID if that is still free, and answers with the entry.",
         "tags": [
           "Termbases"
         ]
@@ -10031,6 +10095,59 @@
       }
     },
     "/api/termbases/{name}/removals": {
+      "delete": {
+        "description": "Access: edit on the project termbase.",
+        "operationId": "restoreToProject",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "master",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entry",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Takes a removal back (?master=&entry=): the master entry shows in the project again, and merging no longer asks to delete it.",
+        "tags": [
+          "Termbases"
+        ]
+      },
       "get": {
         "description": "Access: read on the termbase.",
         "operationId": "removals",

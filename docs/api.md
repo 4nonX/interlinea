@@ -1028,7 +1028,7 @@ Access: read on the termbase.
 
 Deletes a termbase and the grants on it.
 
-A termbase a project or template uses is not deleted; the answer names them.
+A termbase a project or template uses is not deleted, and neither is a master that project termbases are based on; the answer names them.
 
 Access: manage on the termbase.
 
@@ -1068,6 +1068,16 @@ Access: read on the termbase.
 - Parameters: `name` (path)
 - Answer: 200 OK: list of [termdb.Deletion](#termdbdeletion)
 - Errors: 401, 403, 404 (see [Error](#error))
+
+### `POST /api/termbases/{name}/deleted/{eid}/restore`
+
+Brings a deleted entry back as it was when it was deleted, under its old ID if that is still free, and answers with the entry.
+
+Access: edit on the termbase.
+
+- Parameters: `name` (path), `eid` (path)
+- Answer: 201 Created: [termdb.Stored](#termdbstored)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `GET /api/termbases/{name}/duplicates`
 
@@ -1317,6 +1327,16 @@ Access: edit on the project termbase.
 
 - Parameters: `name` (path)
 - Body: [MasterEntry](#masterentry)
+- Answer: 204 No Content
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `DELETE /api/termbases/{name}/removals`
+
+Takes a removal back (?master=&entry=): the master entry shows in the project again, and merging no longer asks to delete it.
+
+Access: edit on the project termbase.
+
+- Parameters: `name` (path), `master` (query), `entry` (query)
 - Answer: 204 No Content
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
@@ -1930,6 +1950,7 @@ termHit is a term found in a text, with its place in UTF-16 code units as well, 
 | `entries` | integer |  |
 | `kind` | string | Kind is "master" or "project". |
 | `name` | string |  |
+| `projects` | list of string | Projects are the project termbases layered over a master, by name. A master is not deleted while it has any. |
 | `role` | string |  |
 | `terms` | integer |  |
 | `upstreams` | list of string | Upstreams are the masters a project is layered over, highest priority first. |

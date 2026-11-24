@@ -47,6 +47,9 @@ public:
     // The opened termbase as the core describes it (definition, kind, role,
     // upstreams).
     QJsonObject detail() const { return m_detail; }
+    // Whether the role on the opened termbase includes a permission
+    // (read, suggest, edit, approve, manage).
+    bool may(const char *permission) const;
     QStringList languages() const;
     QJsonArray fields() const;
     QList<QJsonObject> entries() const { return m_entries; }
@@ -55,8 +58,15 @@ public:
     void selectEntry(const QString &id);
     void setQuery(const QString &text);
     void setStatus(const QString &status);
-    // 0 for the entries, 1 for the duplicates.
+    // 0 for the entries, 1 for the duplicates, 2 for the deleted entries,
+    // 3 for the master's entries under a project termbase.
     void setView(int view);
+    int view() const { return m_view; }
+    // The master entries a project termbase shows, and those left out.
+    QList<QJsonObject> masterEntries() const { return m_masterEntries; }
+    QJsonArray removals() const { return m_removals; }
+    QJsonArray deleted() const { return m_deleted; }
+    void selectMasterEntry(const QString &master, const QString &id);
     // Changes waiting to be saved or being saved.
     bool busy() const { return m_saving || !m_queue.isEmpty(); }
 
@@ -76,6 +86,9 @@ signals:
     void duplicatesShown();
     // The entry's history was read and is listed.
     void historyShown();
+    // The deleted entries, or the master's entries, are read and listed.
+    void deletedShown();
+    void masterShown();
     // A merge request of a team server is to be shown.
     void openReview(const QString &connectionId, int mergeRequest);
 
@@ -106,9 +119,13 @@ private:
     void showReviewNote();
     void showEntries();
     void showDuplicates();
+    void showDeleted();
+    void showMaster();
+    void showMasterDetail();
     void showDetail();
     void showHistory(QVBoxLayout *into);
     void showCreateForm(bool open);
+    void readEntry(const QJsonObject &entry, QVBoxLayout *body, QWidget *inner);
     void showNewEntry(bool open);
 
     QWidget *fieldRow(const QJsonObject &field, const QString &value, std::function<void(const QString &)> save, bool small, QWidget *parent);
@@ -141,6 +158,10 @@ private:
     QList<QJsonObject> m_entries;
     QList<QJsonObject> m_pendingEntries;
     QHash<QString, QString> m_bases;
+    QList<QJsonObject> m_masterEntries;
+    QJsonArray m_removals;
+    QJsonArray m_deleted;
+    QString m_masterSelected;
     QJsonArray m_requests;
     QString m_selected;
     QString m_query;
@@ -170,11 +191,17 @@ private:
     EntryListModel *m_model;
     QVBoxLayout *m_emptyHolder;
     QVBoxLayout *m_dupBody;
+    QVBoxLayout *m_deletedBody;
+    QVBoxLayout *m_masterBody;
     QVBoxLayout *m_detailHolder;
     Web::Toast *m_toast;
     QString m_newMasterName;
     QStringList m_newMasterLangs;
     int m_newMasterPlace = 0;
+    // The form makes a project termbase, over these masters.
+    bool m_newProject = false;
+    bool m_createOpen = false;
+    QStringList m_newUpstreams;
 };
 
 class ReviewPage;

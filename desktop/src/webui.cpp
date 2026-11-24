@@ -515,6 +515,15 @@ void ConfirmButton::setAvailable(bool available)
     m_button->setEnabled(available);
 }
 
+void ConfirmButton::setDanger(bool danger)
+{
+    m_yes->setProperty("danger", danger);
+    m_yes->setProperty("primary", !danger);
+    Theme::role(m_text, danger ? "confirmText" : "confirmPlain");
+    m_yes->style()->unpolish(m_yes);
+    m_yes->style()->polish(m_yes);
+}
+
 bool ConfirmButton::asking() const
 {
     return !m_yes->isHidden();
@@ -692,6 +701,12 @@ void Tabs::setEnabledAt(int index, bool enabled)
 {
     if (QPushButton *b = m_tabs.value(index))
         b->setEnabled(enabled);
+}
+
+void Tabs::setVisibleAt(int index, bool visible)
+{
+    if (QPushButton *b = m_tabs.value(index))
+        b->setVisible(visible);
 }
 
 void Tabs::setCurrent(int index)

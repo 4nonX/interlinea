@@ -9,12 +9,14 @@
 #include "languages.h"
 #include "reviewpage.h"
 #include "termbasedialogs.h"
+#include "roles.h"
 #include "termdata.h"
 #include "theme.h"
 #include "words.h"
 
 #include <QAbstractListModel>
 #include <QButtonGroup>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
 #include <QHBoxLayout>
@@ -33,6 +35,8 @@
 #include <QScrollBar>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
+#include <QUrl>
+#include <QUrlQuery>
 #include <QVBoxLayout>
 
 namespace {
@@ -378,8 +382,11 @@ TerminologyPage::TerminologyPage(ConnectionManager *manager, QWidget *parent)
     m_middle->addWidget(head);
 
     m_tabs = new Web::Tabs(tr("Entry lists"), middle, true);
+    m_tabs->setObjectName(QStringLiteral("entryViews"));
     m_tabs->add(tr("Entries"));
     m_tabs->add(tr("Duplicates"), QStringLiteral("copy"));
+    m_tabs->add(tr("Deleted"));
+    m_tabs->add(tr("Master"));
     m_middle->addWidget(m_tabs);
     connect(m_tabs, &Web::Tabs::changed, this, &TerminologyPage::setView);
 
@@ -454,6 +461,16 @@ TerminologyPage::TerminologyPage(ConnectionManager *manager, QWidget *parent)
     dupOuter->addLayout(m_dupBody);
     dupOuter->addStretch();
     m_views->addWidget(dups);
+    // The deleted entries, and the master's entries under a project's.
+    for (QVBoxLayout **body : {&m_deletedBody, &m_masterBody}) {
+        QVBoxLayout *outerBody = nullptr;
+        QScrollArea *view = scroller(m_views, &outerBody, 0, 0);
+        *body = new QVBoxLayout;
+        (*body)->setSpacing(0);
+        outerBody->addLayout(*body);
+        outerBody->addStretch();
+        m_views->addWidget(view);
+    }
     work->addWidget(middle);
 
     auto *right = new QFrame(this);
@@ -538,6 +555,13 @@ bool TerminologyPage::isTeam() const
 {
     const Connection *c = conn();
     return c && !c->isLocal();
+}
+
+bool TerminologyPage::may(const char *permission) const
+{
+    // On this computer everything is one's own.
+    const QString role = str(m_detail, "role");
+    return role.isEmpty() ? !isTeam() : Roles::allows(role, QLatin1String(permission));
 }
 
 bool TerminologyPage::isProject() const
@@ -634,6 +658,9 @@ void TerminologyPage::loadLists()
                 return;
             pickDefault();
             showLists();
+            // What can be made depends on the masters there are.
+            if (!m_createOpen)
+                showCreateForm(false);
             loadTermbase();
         });
     }
@@ -695,6 +722,18 @@ void TerminologyPage::open(const QString &connectionId, const QString &termbase,
 
 void TerminologyPage::showLists()
 {
+    // The opened termbase is counted as it is here, not as it was listed.
+    if (m_opened && str(m_detail, "name") == m_name) {
+        QJsonArray list = m_lists.value(m_conn);
+        for (int i = 0; i < list.size(); i++) {
+            QJsonObject tb = list[i].toObject();
+            if (str(tb, "name") == m_name) {
+                tb.insert(QLatin1String("entries"), qint64(m_entries.size()));
+                list[i] = tb;
+            }
+        }
+        m_lists.insert(m_conn, list);
+    }
     clear(m_listBody);
     QWidget *host = m_listBody->parentWidget();
     const auto group = [&](const QString &title, Connection *c, const QList<QJsonObject> &list, const QString &emptyNote) {
@@ -763,6 +802,7 @@ void TerminologyPage::showLists()
 
 void TerminologyPage::showCreateForm(bool open)
 {
+    m_createOpen = open;
     clear(m_createHolder);
     QWidget *host = m_createHolder->parentWidget();
     if (!open) {
@@ -772,10 +812,31 @@ void TerminologyPage::showCreateForm(bool open)
         v->setContentsMargins(0, 0, 0, 0);
         v->setSpacing(0);
         auto *create = Web::button(tr("New master"), Web::Quiet | Web::Small, w, QStringLiteral("plus"));
+        create->setObjectName(QStringLiteral("newMaster"));
+        auto *project = Web::button(tr("New project termbase"), Web::Quiet | Web::Small, w, QStringLiteral("git-branch"));
+        project->setObjectName(QStringLiteral("newProjectTermbase"));
         auto *import = Web::button(tr("Import termbase"), Web::Quiet | Web::Small, w, QStringLiteral("upload"));
         v->addWidget(create, 0, Qt::AlignLeft);
+        // A project termbase needs a master to be based on.
+        bool anyMaster = false;
+        for (auto it = m_lists.constBegin(); it != m_lists.constEnd(); ++it) {
+            for (const QJsonValue &tb : it.value())
+                anyMaster = anyMaster || str(tb.toObject(), "kind") == QLatin1String("master");
+        }
+        if (anyMaster)
+            v->addWidget(project, 0, Qt::AlignLeft);
+        else
+            project->hide();
         v->addWidget(import, 0, Qt::AlignLeft);
-        connect(create, &QPushButton::clicked, this, [this] { showCreateForm(true); });
+        connect(create, &QPushButton::clicked, this, [this] {
+            m_newProject = false;
+            showCreateForm(true);
+        });
+        connect(project, &QPushButton::clicked, this, [this] {
+            m_newProject = true;
+            m_newUpstreams.clear();
+            showCreateForm(true);
+        });
         connect(import, &QPushButton::clicked, this, [this] { importDialog(true); });
         m_createHolder->addWidget(w);
         return;
@@ -783,14 +844,16 @@ void TerminologyPage::showCreateForm(bool open)
     // .tb-create
     auto *form = new QFrame(host);
     Theme::role(form, "formTop");
-    form->setAccessibleName(tr("New master"));
+    form->setAccessibleName(m_newProject ? tr("New project termbase") : tr("New master"));
     auto *v = new QVBoxLayout(form);
     v->setContentsMargins(S2, S3, S2, S3);
     v->setSpacing(S2);
+    if (m_newProject)
+        v->addWidget(Web::text(tr("New project termbase"), "groupTitle", form));
     auto *nameLabel = new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Name")), form);
     auto *name = new QLineEdit(m_newMasterName, form);
     name->setObjectName(QStringLiteral("newMasterName"));
-    name->setPlaceholderText(tr("For example a client"));
+    name->setPlaceholderText(m_newProject ? tr("For example a case or an order") : tr("For example a client"));
     name->setAccessibleName(tr("Name"));
     nameLabel->setBuddy(name);
     v->addWidget(nameLabel);
@@ -812,8 +875,88 @@ void TerminologyPage::showCreateForm(bool open)
         auto *where = new Web::Segmented(tr("Store on"), placeNames, form);
         where->setObjectName(QStringLiteral("newMasterPlace"));
         where->setCurrent(m_newMasterPlace);
-        connect(where, &Web::Segmented::changed, this, [this](int i) { m_newMasterPlace = i; });
+        connect(where, &Web::Segmented::changed, this, [this, name](int i) {
+            m_newMasterPlace = i;
+            // The masters to choose from are those of the place.
+            if (m_newProject) {
+                m_newMasterName = name->text();
+                m_newUpstreams.clear();
+                showCreateForm(true);
+            }
+        });
         v->addWidget(where);
+    }
+
+    if (m_newProject) {
+        // The masters it is based on: it shows their entries, and its own
+        // new and changed ones go back to them through review.
+        Connection *place = places.value(m_newMasterPlace);
+        auto *label = new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Based on")), form);
+        v->addWidget(label);
+        auto *create = Web::button(tr("Create"), Web::Primary | Web::Small, form);
+        create->setObjectName(QStringLiteral("createProjectTermbase"));
+        create->setAccessibleName(tr("Create project termbase"));
+        const auto ready = [this, name, create] { create->setEnabled(!name->text().trimmed().isEmpty() && !m_newUpstreams.isEmpty()); };
+        int masters = 0;
+        for (const QJsonValue &tb : place ? m_lists.value(place->id()) : QJsonArray()) {
+            if (str(tb.toObject(), "kind") != QLatin1String("master"))
+                continue;
+            masters++;
+            const QString master = str(tb.toObject(), "name");
+            auto *box = new QCheckBox(master, form);
+            box->setObjectName(QStringLiteral("basedOn:%1").arg(master));
+            box->setChecked(m_newUpstreams.contains(master));
+            connect(box, &QCheckBox::toggled, this, [this, master, ready](bool on) {
+                m_newUpstreams.removeAll(master);
+                if (on)
+                    m_newUpstreams << master;
+                ready();
+            });
+            v->addWidget(box);
+        }
+        if (masters == 0) {
+            auto *none = Web::text(tr("There is no master here yet. Make one first."), "help", form);
+            none->setWordWrap(true);
+            v->addWidget(none);
+        }
+        auto *help = Web::text(tr("It has the masters' languages and fields. A project's own termbase is made with the project."), "help", form);
+        help->setWordWrap(true);
+        v->addWidget(help);
+        auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
+        ready();
+        connect(name, &QLineEdit::textChanged, create, ready);
+        v->addWidget(Web::row({create, cancel}, form));
+        const auto reset = [this] {
+            m_newMasterName.clear();
+            m_newUpstreams.clear();
+            m_newProject = false;
+            showCreateForm(false);
+        };
+        connect(cancel, &QPushButton::clicked, this, reset);
+        const auto submit = [this, name, place, reset] {
+            const QString n = name->text().trimmed();
+            if (n.isEmpty() || !place || m_newUpstreams.isEmpty())
+                return;
+            const QJsonObject body{{QLatin1String("definition"), QJsonObject{{QLatin1String("name"), n}}}, {QLatin1String("upstreams"), QJsonArray::fromStringList(m_newUpstreams)}};
+            const QString connId = place->id();
+            onResult(place->api()->post(QStringLiteral("/api/termbases"), body), this, [this, connId, n, reset](const ApiResult &r) {
+                if (!r.ok()) {
+                    notify(r.error.message);
+                    return;
+                }
+                notify(tr("Created project termbase “%1”").arg(n));
+                reset();
+                m_conn = connId;
+                m_name = str(r.object(), "name");
+                m_selected.clear();
+                reload();
+            });
+        };
+        connect(create, &QPushButton::clicked, this, submit);
+        connect(name, &QLineEdit::returnPressed, this, submit);
+        m_createHolder->addWidget(form);
+        name->setFocus();
+        return;
     }
 
     auto *langLabel = new QLabel(QStringLiteral("%1 <span style=\"color:%2\">%3</span>").arg(tr("Languages"), Theme::color("text3").name(), tr("optional")), form);
@@ -987,6 +1130,7 @@ void TerminologyPage::loadEntries(int offset, int reading)
             return;
         }
         m_bases.clear();
+        m_masterEntries.clear();
         m_requests = {};
         auto *left = new int(1);
         const auto done = [left, finish] {
@@ -999,10 +1143,13 @@ void TerminologyPage::loadEntries(int offset, int reading)
             ++*left;
             onResult(c->api()->get(path(QStringLiteral("/layered"))), this, [this, reading, done](const ApiResult &lr) {
                 if (reading == m_reading) {
+                    m_masterEntries.clear();
                     for (const QJsonValue &v : lr.array()) {
                         const QJsonObject o = v.toObject();
                         const QJsonObject base = o.value(QLatin1String("base")).toObject();
-                        if (str(o, "termbase") == m_name && !base.isEmpty())
+                        if (str(o, "termbase") != m_name)
+                            m_masterEntries << o;
+                        else if (!base.isEmpty())
                             m_bases.insert(str(o, "id"), str(base, "termbase"));
                     }
                 }
@@ -1026,10 +1173,18 @@ void TerminologyPage::showTermbase()
     showHead();
     showReviewNote();
     m_tabs->setEnabledAt(1, m_entries.size() >= 2);
-    if (m_view == 1 && m_entries.size() < 2)
+    // Merging duplicates changes entries: for those who may edit.
+    m_tabs->setVisibleAt(1, may("edit"));
+    m_tabs->setVisibleAt(3, isProject());
+    m_tabs->setText(3, tr("Master (%1)").arg(m_masterEntries.size()));
+    m_tabs->tab(3)->setAccessibleName(tr("The master's entries (%1)").arg(m_masterEntries.size()));
+    if ((m_view == 1 && (m_entries.size() < 2 || !may("edit"))) || (m_view == 3 && !isProject()))
         setView(0);
     m_tabs->setVisible(m_opened);
     m_views->setVisible(m_opened);
+    // Adding entries is offered to those who may, once that is known.
+    if (m_opened && may("edit") == m_newEntryHolder->isEmpty())
+        showNewEntry(false);
     if (!m_wantEntry.isEmpty()) {
         if (!entry(m_wantEntry).isEmpty())
             m_selected = m_wantEntry;
@@ -1038,6 +1193,10 @@ void TerminologyPage::showTermbase()
     showEntries();
     if (m_view == 1)
         showDuplicates();
+    else if (m_view == 2)
+        showDeleted();
+    else if (m_view == 3)
+        showMaster();
     showDetail();
 }
 
@@ -1076,7 +1235,11 @@ void TerminologyPage::showHead()
     auto *import = Web::button(tr("Import"), Web::Quiet | Web::Small, tools, QStringLiteral("upload"));
     auto *exp = Web::button(tr("Export"), Web::Quiet | Web::Small, tools, QStringLiteral("download"));
     exp->setEnabled(!m_entries.isEmpty());
-    tl->addWidget(import);
+    // Importing changes the termbase: for those who may edit it.
+    if (may("edit"))
+        tl->addWidget(import);
+    else
+        import->hide();
     tl->addWidget(exp);
     connect(import, &QPushButton::clicked, this, [this] { importDialog(false); });
     connect(exp, &QPushButton::clicked, this, [this] { exportDialog(); });
@@ -1095,8 +1258,12 @@ void TerminologyPage::showHead()
             });
             reload();
         });
-    } else {
+    }
+    // Its name, languages, fields, who may use it and how it is reviewed:
+    // for those who manage it.
+    if (may("manage")) {
         auto *settings = Web::button(tr("Settings"), Web::Quiet | Web::Small, tools, QStringLiteral("sliders"));
+        settings->setObjectName(QStringLiteral("termbaseSettingsButton"));
         tl->addWidget(settings);
         connect(settings, &QPushButton::clicked, this, [this] { settingsDialog(); });
     }
@@ -1114,6 +1281,13 @@ void TerminologyPage::showHead()
     sl->addWidget(count);
     for (const QString &l : languages())
         sl->addWidget(Web::langChip(l, sub));
+    // What one may do here, where it is not everything.
+    if (isTeam() && !may("manage")) {
+        auto *role = Web::chip(Roles::text(str(m_detail, "role")), QString(), sub);
+        role->setObjectName(QStringLiteral("termbaseRole"));
+        role->setToolTip(tr("What you may do in this termbase"));
+        sl->addWidget(role);
+    }
     m_headHolder->addWidget(sub);
 }
 
@@ -1240,10 +1414,15 @@ void TerminologyPage::setView(int view)
     m_tabs->setCurrent(view);
     m_views->setCurrentIndex(view);
     // What was set aside as no duplicates is asked again next time.
+    if (view != 1)
+        m_dismissed.clear();
     if (view == 1)
         showDuplicates();
-    else
-        m_dismissed.clear();
+    else if (view == 2)
+        showDeleted();
+    else if (view == 3)
+        showMaster();
+    showDetail();
 }
 
 void TerminologyPage::selectEntry(const QString &id)
@@ -1286,9 +1465,18 @@ void TerminologyPage::showEntries()
     }
     // .empty
     QWidget *host = m_emptyHolder->parentWidget();
-    if (m_entries.isEmpty()) {
+    if (m_entries.isEmpty() && !may("edit")) {
         m_emptyHolder->addWidget(Web::text(tr("No entries yet"), "emptyTitle", host));
-        auto *p = Web::text(tr("Add an entry above, import a TBX, MultiTerm or Excel file, or add terms while you translate."), "secondary", host);
+        auto *p = Web::text(isProject() && !m_masterEntries.isEmpty() ? tr("The project has no entries of its own. The master's are under Master.") : tr("Those who may edit this termbase add its entries."),
+                            "secondary", host);
+        p->setWordWrap(true);
+        m_emptyHolder->addWidget(p);
+    } else if (m_entries.isEmpty()) {
+        m_emptyHolder->addWidget(Web::text(tr("No entries yet"), "emptyTitle", host));
+        auto *p = Web::text(isProject() && !m_masterEntries.isEmpty()
+                                ? tr("The project has no entries of its own yet: it uses the master's, which are under Master. Add an entry above, or change one of the master's for this project.")
+                                : tr("Add an entry above, import a TBX, MultiTerm or Excel file, or add terms while you translate."),
+                            "secondary", host);
         p->setWordWrap(true);
         m_emptyHolder->addWidget(p);
         auto *b = Web::button(tr("Import a file"), Web::Small, host, QStringLiteral("upload"));
@@ -1312,6 +1500,8 @@ void TerminologyPage::showEntries()
 void TerminologyPage::showNewEntry(bool open)
 {
     clear(m_newEntryHolder);
+    if (m_opened && !may("edit"))
+        return;
     QWidget *host = m_newEntryHolder->parentWidget();
     if (!open) {
         // .new-entry-bar
@@ -1571,6 +1761,10 @@ void TerminologyPage::showDetail()
 {
     clear(m_detailHolder);
     QWidget *host = m_detailHolder->parentWidget();
+    if (m_view == 3 && m_opened) {
+        showMasterDetail();
+        return;
+    }
     const QJsonObject e = entry(m_selected);
     if (e.isEmpty() || !m_opened) {
         m_detailHolder->addStretch();
@@ -1595,9 +1789,13 @@ void TerminologyPage::showDetail()
     if (Languages::rtl(headLang))
         title->setLayoutDirection(Qt::RightToLeft);
     row->addWidget(title, 1);
-    auto *del = new Web::ConfirmButton(tr("Delete entry"), tr("Delete this entry and its history?"), tr("Delete"), headFrame, true, QStringLiteral("trash"));
+    auto *del = new Web::ConfirmButton(tr("Delete entry"), tr("Delete this entry? It can be brought back from Deleted, without its history."), tr("Delete"), headFrame, true,
+                                       QStringLiteral("trash"));
     del->setObjectName(QStringLiteral("deleteEntry"));
-    row->addWidget(del, 0, Qt::AlignTop);
+    if (may("edit"))
+        row->addWidget(del, 0, Qt::AlignTop);
+    else
+        del->hide();
     hv->addLayout(row);
     connect(del, &Web::ConfirmButton::confirmed, this, [this, id, head] {
         Connection *c = conn();
@@ -1663,6 +1861,11 @@ void TerminologyPage::showDetail()
     QWidget *inner = scroll->widget();
     if (m_detailTab == 1) {
         showHistory(body);
+        body->addStretch();
+        return;
+    }
+    if (!may("edit")) {
+        readEntry(e, body, inner);
         body->addStretch();
         return;
     }
@@ -2206,6 +2409,47 @@ void TerminologyPage::showHistory(QVBoxLayout *into)
             auto *m = Web::text(str(ver, "by").isEmpty() ? at : QStringLiteral("%1, %2").arg(str(ver, "by"), at), "meta", item);
             m->setWordWrap(true);
             v->addWidget(m);
+            // What the entry held then, and setting it back to that.
+            const QJsonObject then = ver.value(QLatin1String("entry")).toObject();
+            QStringList held;
+            for (const QString &l : TermData::languages(then)) {
+                QStringList ts;
+                for (const QJsonValue &t : TermData::terms(then, l))
+                    ts << str(t.toObject(), "text");
+                if (!ts.isEmpty())
+                    held << QStringLiteral("%1: %2").arg(l, ts.join(QStringLiteral(", ")));
+            }
+            if (!held.isEmpty()) {
+                auto *h = Web::text(held.join(QStringLiteral("; ")), "small2", item);
+                h->setWordWrap(true);
+                v->addWidget(h);
+            }
+            if (i < versions.size() - 1 && may("edit")) {
+                const int number = ver.value(QLatin1String("version")).toInt();
+                auto *restore = new Web::ConfirmButton(tr("Restore this version"), tr("Set the entry back to this version? What it is now stays in the history."), tr("Restore"), item);
+                restore->setObjectName(QStringLiteral("restore:%1").arg(number));
+                restore->setDanger(false);
+                v->addWidget(restore, 0, Qt::AlignLeft);
+                connect(restore, &Web::ConfirmButton::confirmed, this, [this, number, at] {
+                    Connection *c = conn();
+                    if (!c)
+                        return;
+                    const QString id = m_selected;
+                    onResult(c->api()->post(path(QStringLiteral("/entries/") + ApiClient::seg(id) + QStringLiteral("/revert")), QJsonObject{{QLatin1String("version"), number}}), this,
+                             [this, at](const ApiResult &r) {
+                                 if (!r.ok()) {
+                                     notify(tr("The version was not restored: %1").arg(r.error.message));
+                                     return;
+                                 }
+                                 replaceEntry(r.object());
+                                 notify(tr("Restored the version of %1").arg(at));
+                                 m_detailTab = 0;
+                                 showEntries();
+                                 showDetail();
+                                 emit saved();
+                             });
+                });
+            }
             item->setAccessibleName(QStringLiteral("%1. %2").arg(summary, m->text()));
             list->addWidget(item);
         }
@@ -2424,4 +2668,401 @@ void TerminologySection::openReview(const QString &connectionId, int mergeReques
         return;
     m_review->open(c, mergeRequest);
     m_stack->setCurrentWidget(m_review);
+}
+
+void TerminologyPage::showDeleted()
+{
+    clear(m_deletedBody);
+    QWidget *host = m_deletedBody->parentWidget();
+    auto *holder = new QWidget(host);
+    auto *list = new QVBoxLayout(holder);
+    list->setContentsMargins(S3, S3, S3, S3);
+    list->setSpacing(S2);
+    m_deletedBody->addWidget(holder);
+    Connection *c = conn();
+    if (!c)
+        return;
+    const int reading = m_reading;
+    QPointer<QWidget> alive(holder);
+    onResult(c->api()->get(path(QStringLiteral("/deleted"))), this, [this, alive, list, reading](const ApiResult &r) {
+        if (!alive || reading != m_reading)
+            return;
+        QWidget *host = alive;
+        if (!r.ok()) {
+            auto *e = Web::text(r.error.message, "error", host);
+            e->setWordWrap(true);
+            list->addWidget(e);
+            return;
+        }
+        // Of an entry deleted more than once, the last deletion counts.
+        QJsonArray gone;
+        QSet<QString> seen;
+        for (const QJsonValue &v : r.array()) {
+            const QString id = str(v.toObject(), "entryId");
+            if (seen.contains(id))
+                continue;
+            seen << id;
+            gone.append(v);
+        }
+        m_deleted = gone;
+        if (gone.isEmpty()) {
+            auto *t = Web::text(tr("Nothing deleted"), "emptyTitle", host);
+            t->setObjectName(QStringLiteral("noDeleted"));
+            list->addWidget(t);
+            auto *p = Web::text(tr("Entries you delete are kept here and can be brought back."), "secondary", host);
+            p->setWordWrap(true);
+            list->addWidget(p);
+            emit deletedShown();
+            return;
+        }
+        for (const QJsonValue &v : gone) {
+            const QJsonObject d = v.toObject();
+            const QJsonObject e = d.value(QLatin1String("entry")).toObject();
+            const QString id = str(d, "entryId");
+            auto *box = new QFrame(host);
+            Theme::role(box, "box");
+            box->setProperty("part", QStringLiteral("deletedEntry"));
+            auto *bv = new QVBoxLayout(box);
+            bv->setContentsMargins(S3, S3, S3, S3);
+            bv->setSpacing(S1);
+            QStringList said;
+            for (const QString &l : TermData::languages(e)) {
+                QStringList ts;
+                for (const QJsonValue &t : TermData::terms(e, l))
+                    ts << str(t.toObject(), "text");
+                if (ts.isEmpty())
+                    continue;
+                auto *row = new QHBoxLayout;
+                row->setSpacing(6);
+                row->addWidget(Web::langChip(l, box));
+                auto *terms = new QLabel(ts.join(QStringLiteral(", ")), box);
+                terms->setWordWrap(true);
+                row->addWidget(terms, 1);
+                bv->addLayout(row);
+                said << QStringLiteral("%1: %2").arg(Languages::name(l), ts.join(QStringLiteral(", ")));
+            }
+            const QString whenText = when(str(d, "at"));
+            QString meta = str(d, "by").isEmpty() ? tr("Deleted %1").arg(whenText) : tr("Deleted %1 by %2").arg(whenText, str(d, "by"));
+            // What was written down as the reason, if anything was.
+            if (!str(d, "summary").isEmpty() && str(d, "summary") != QLatin1String("Deleted"))
+                meta += QStringLiteral(". ") + str(d, "summary");
+            auto *m = Web::text(meta, "meta", box);
+            m->setWordWrap(true);
+            bv->addWidget(m);
+            box->setAccessibleName(said.join(QStringLiteral("; ")) + QStringLiteral(". ") + meta);
+            auto *restore = Web::button(tr("Bring back"), Web::Small, box);
+            restore->setObjectName(QStringLiteral("bringBack:%1").arg(id));
+            if (may("edit"))
+                bv->addWidget(restore, 0, Qt::AlignLeft);
+            else
+                restore->hide();
+            connect(restore, &QPushButton::clicked, this, [this, id] {
+                Connection *c = conn();
+                if (!c)
+                    return;
+                onResult(c->api()->post(path(QStringLiteral("/deleted/") + ApiClient::seg(id) + QStringLiteral("/restore")), QJsonObject{}),
+                         this, [this](const ApiResult &r) {
+                             if (!r.ok()) {
+                                 notify(tr("The entry was not brought back: %1").arg(r.error.message));
+                                 return;
+                             }
+                             m_entries << r.object();
+                             m_selected = str(r.object(), "id");
+                             const QString head = TermData::head(r.object(), languages().value(0));
+                             notify(head.isEmpty() ? tr("Brought the entry back") : tr("Brought back “%1”").arg(head));
+                             showHead();
+                             showEntries();
+                             showLists();
+                             showDeleted();
+                             emit saved();
+                         });
+            });
+            list->addWidget(box);
+        }
+        emit deletedShown();
+    });
+}
+
+void TerminologyPage::selectMasterEntry(const QString &master, const QString &id)
+{
+    m_masterSelected = master + QLatin1Char('\n') + id;
+    if (m_view == 3) {
+        showMaster();
+        showDetail();
+    }
+}
+
+void TerminologyPage::showMaster()
+{
+    clear(m_masterBody);
+    QWidget *host = m_masterBody->parentWidget();
+    auto *holder = new QWidget(host);
+    auto *list = new QVBoxLayout(holder);
+    list->setContentsMargins(0, 0, 0, 0);
+    list->setSpacing(0);
+    m_masterBody->addWidget(holder);
+    auto *intro = new QFrame(holder);
+    Theme::role(intro, "paneBar");
+    auto *il = new QVBoxLayout(intro);
+    il->setContentsMargins(S3, S2, S3, S2);
+    auto *text = Web::text(may("edit") ? tr("The master's entries this project uses as they are. Change one for this project only, or leave it out.") : tr("The master's entries this project uses as they are."),
+                           "help", intro);
+    text->setWordWrap(true);
+    il->addWidget(text);
+    list->addWidget(intro);
+
+    const QStringList langs = languages();
+    const auto line = [&langs](const QJsonObject &e) {
+        QStringList parts;
+        for (const QString &l : langs) {
+            QStringList ts;
+            for (const QJsonValue &t : TermData::terms(e, l))
+                ts << str(t.toObject(), "text");
+            if (!ts.isEmpty())
+                parts << ts.join(QStringLiteral(", "));
+        }
+        return parts;
+    };
+    if (m_masterEntries.isEmpty()) {
+        auto *none = Web::text(tr("The masters have no entries the project does not have itself."), "muted", holder);
+        none->setObjectName(QStringLiteral("noMasterEntries"));
+        none->setWordWrap(true);
+        none->setContentsMargins(S4, S3, S4, S3);
+        list->addWidget(none);
+    }
+    for (const QJsonObject &e : std::as_const(m_masterEntries)) {
+        const QString key = str(e, "termbase") + QLatin1Char('\n') + str(e, "id");
+        if (m_masterSelected.isEmpty())
+            m_masterSelected = key;
+        auto *row = new Web::Clickable("tbLink", holder);
+        row->setObjectName(QStringLiteral("master:%1:%2").arg(str(e, "termbase"), str(e, "id")));
+        row->setCurrent(key == m_masterSelected);
+        auto *rv = new QVBoxLayout(row);
+        rv->setContentsMargins(S4, 10, S4, 10);
+        rv->setSpacing(3);
+        const QStringList parts = line(e);
+        auto *head = Web::text(parts.value(0, tr("No term")), "entryTerm", row);
+        head->setWordWrap(true);
+        rv->addWidget(head);
+        if (parts.size() > 1) {
+            auto *rest = Web::text(parts.mid(1).join(QStringLiteral(" · ")), "small2", row);
+            rest->setWordWrap(true);
+            rv->addWidget(rest);
+        }
+        rv->addWidget(Web::text(tr("In %1").arg(str(e, "termbase")), "tbCount", row));
+        row->setAccessibleName(tr("%1, in %2").arg(parts.join(QStringLiteral("; ")), str(e, "termbase")));
+        const QString master = str(e, "termbase"), id = str(e, "id");
+        connect(row, &Web::Clickable::clicked, this, [this, master, id] { selectMasterEntry(master, id); });
+        list->addWidget(row);
+        auto *sep = new QFrame(holder);
+        Theme::role(sep, "line");
+        sep->setFixedHeight(1);
+        list->addWidget(sep);
+    }
+
+    // What was left out of the project, to bring back.
+    Connection *c = conn();
+    if (!c)
+        return;
+    const int reading = m_reading;
+    QPointer<QWidget> alive(holder);
+    onResult(c->api()->get(path(QStringLiteral("/removals"))), this, [this, alive, list, reading](const ApiResult &r) {
+        if (!alive || reading != m_reading)
+            return;
+        QWidget *host = alive;
+        m_removals = r.array();
+        if (!m_removals.isEmpty()) {
+            auto *title = Web::text(tr("Left out of this project"), "groupTitle", host);
+            title->setContentsMargins(S4, S4, S4, S1);
+            list->addWidget(title);
+            auto *note = Web::text(tr("Merging asks the master's reviewers to delete these there."), "meta", host);
+            note->setWordWrap(true);
+            note->setContentsMargins(S4, 0, S4, S2);
+            list->addWidget(note);
+        }
+        for (const QJsonValue &v : std::as_const(m_removals)) {
+            const QJsonObject rem = v.toObject();
+            const QString master = str(rem, "termbase"), id = str(rem, "entryId");
+            auto *box = new QWidget(host);
+            box->setProperty("part", QStringLiteral("removal"));
+            auto *bv = new QVBoxLayout(box);
+            bv->setContentsMargins(S4, S2, S4, S2);
+            bv->setSpacing(S1);
+            auto *label = Web::text(id, "entryTerm", box);
+            label->setWordWrap(true);
+            bv->addWidget(label);
+            bv->addWidget(Web::text(str(rem, "by").isEmpty() ? tr("In %1, left out %2").arg(master, when(str(rem, "at"))) : tr("In %1, left out %2 by %3").arg(master, when(str(rem, "at")), str(rem, "by")),
+                                    "meta", box));
+            auto *back = Web::button(tr("Bring back"), Web::Small, box);
+            back->setObjectName(QStringLiteral("restoreMaster:%1:%2").arg(master, id));
+            if (may("edit"))
+                bv->addWidget(back, 0, Qt::AlignLeft);
+            else
+                back->hide();
+            list->addWidget(box);
+            // The entry is named by its terms, as the master has it.
+            if (Connection *c = conn()) {
+                QPointer<QLabel> named(label);
+                onResult(c->api()->get(QStringLiteral("/api/termbases/") + ApiClient::seg(master) + QStringLiteral("/entries/") + ApiClient::seg(id)), this, [this, named](const ApiResult &er) {
+                    if (named && er.ok()) {
+                        const QString head = TermData::head(er.object(), languages().value(0));
+                        if (!head.isEmpty())
+                            named->setText(head);
+                    }
+                });
+            }
+            connect(back, &QPushButton::clicked, this, [this, master, id] {
+                Connection *c = conn();
+                if (!c)
+                    return;
+                QUrlQuery q;
+                q.addQueryItem(QStringLiteral("master"), QString::fromUtf8(QUrl::toPercentEncoding(master)));
+                q.addQueryItem(QStringLiteral("entry"), QString::fromUtf8(QUrl::toPercentEncoding(id)));
+                onResult(c->api()->del(path(QStringLiteral("/removals")), q), this, [this](const ApiResult &r) {
+                    if (!r.ok()) {
+                        notify(r.error.message);
+                        return;
+                    }
+                    notify(tr("Brought the entry back into the project"));
+                    reload();
+                });
+            });
+        }
+        emit masterShown();
+    });
+}
+
+void TerminologyPage::showMasterDetail()
+{
+    QWidget *host = m_detailHolder->parentWidget();
+    QJsonObject e;
+    for (const QJsonObject &m : std::as_const(m_masterEntries)) {
+        if (str(m, "termbase") + QLatin1Char('\n') + str(m, "id") == m_masterSelected)
+            e = m;
+    }
+    if (e.isEmpty()) {
+        m_detailHolder->addStretch();
+        return;
+    }
+    const QString master = str(e, "termbase"), id = str(e, "id");
+    const QString head = TermData::head(e, languages().value(0));
+
+    auto *headFrame = new QFrame(host);
+    Theme::role(headFrame, "paneHead");
+    auto *hv = new QVBoxLayout(headFrame);
+    hv->setContentsMargins(S4, S3, S4, S3);
+    hv->setSpacing(S1);
+    auto *title = Web::text(head.isEmpty() ? tr("Entry") : head, "paneTitle", headFrame);
+    title->setObjectName(QStringLiteral("masterEntryTitle"));
+    title->setWordWrap(true);
+    hv->addWidget(title);
+    const QString changed = when(str(e, "changedAt").isEmpty() ? str(e, "createdAt") : str(e, "changedAt"));
+    hv->addWidget(Web::text(changed.isEmpty() ? tr("In %1").arg(master) : tr("In %1, last changed %2").arg(master, changed), "meta", headFrame));
+    m_detailHolder->addWidget(headFrame);
+
+    QVBoxLayout *body = nullptr;
+    QScrollArea *scroll = scroller(host, &body, S4, S4);
+    m_detailHolder->addWidget(scroll, 1);
+    QWidget *inner = scroll->widget();
+
+    if (!may("edit")) {
+        readEntry(e, body, inner);
+        body->addStretch();
+        return;
+    }
+    auto *note = Web::note(tr("This is the master's entry. To change it, take it into the project: your version is used here and goes to the master's reviewers when you merge."),
+                           QStringLiteral("info"), inner);
+    body->addWidget(note);
+    auto *change = Web::button(tr("Change in this project"), Web::Small, inner, QStringLiteral("pencil"));
+    change->setObjectName(QStringLiteral("changeInProject"));
+    auto *leave = new Web::ConfirmButton(tr("Leave out of this project"), tr("Leave this entry out of the project? Merging asks the master's reviewers to delete it there."), tr("Leave out"), inner);
+    leave->setObjectName(QStringLiteral("leaveOut"));
+    body->addWidget(Web::row({change, leave}, inner));
+    const QJsonObject which{{QLatin1String("master"), master}, {QLatin1String("entry"), id}};
+    connect(change, &QPushButton::clicked, this, [this, which] {
+        Connection *c = conn();
+        if (!c)
+            return;
+        onResult(c->api()->post(path(QStringLiteral("/overrides")), which), this, [this](const ApiResult &r) {
+            if (!r.ok()) {
+                notify(r.error.message);
+                return;
+            }
+            // The project's own copy is opened to be changed.
+            notify(tr("Took the entry into the project"));
+            m_wantEntry = str(r.object(), "id");
+            m_view = 0;
+            m_tabs->setCurrent(0);
+            m_views->setCurrentIndex(0);
+            m_detailTab = 0;
+            reload();
+        });
+    });
+    connect(leave, &Web::ConfirmButton::confirmed, this, [this, which] {
+        Connection *c = conn();
+        if (!c)
+            return;
+        onResult(c->api()->post(path(QStringLiteral("/removals")), which), this, [this](const ApiResult &r) {
+            if (!r.ok()) {
+                notify(r.error.message);
+                return;
+            }
+            notify(tr("Left the entry out of the project"));
+            m_masterSelected.clear();
+            reload();
+        });
+    });
+
+    readEntry(e, body, inner);
+    body->addStretch();
+}
+
+// The entry as it is, to read: its fields, languages and terms.
+void TerminologyPage::readEntry(const QJsonObject &e, QVBoxLayout *body, QWidget *inner)
+{
+    const auto values = [&](const QJsonArray &fs, QVBoxLayout *into, QWidget *parent) {
+        for (const QJsonValue &v : fs) {
+            auto *l = new QLabel(QStringLiteral("<span style=\"color:%1\">%2:</span> %3").arg(Theme::color("text2").name(), str(v.toObject(), "field").toHtmlEscaped(), str(v.toObject(), "value").toHtmlEscaped()), parent);
+            l->setWordWrap(true);
+            l->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            into->addWidget(l);
+        }
+    };
+    values(e.value(QLatin1String("fields")).toArray(), body, inner);
+    for (const QJsonValue &lv : e.value(QLatin1String("languages")).toArray()) {
+        const QJsonObject l = lv.toObject();
+        const QString code = str(l, "lang");
+        auto *sep = new QFrame(inner);
+        Theme::role(sep, "line");
+        sep->setFixedHeight(1);
+        body->addWidget(sep);
+        auto *tr1 = new QHBoxLayout;
+        tr1->setSpacing(S2);
+        tr1->addWidget(Web::text(Languages::name(code), "langTitle", inner));
+        tr1->addWidget(Web::langChip(code, inner));
+        tr1->addStretch();
+        body->addLayout(tr1);
+        values(l.value(QLatin1String("fields")).toArray(), body, inner);
+        for (const QJsonValue &tv : l.value(QLatin1String("terms")).toArray()) {
+            const QJsonObject t = tv.toObject();
+            const QString status = str(t, "status").isEmpty() ? QStringLiteral("proposed") : str(t, "status");
+            auto *box = new QFrame(inner);
+            Theme::role(box, "term");
+            auto *bv = new QVBoxLayout(box);
+            bv->setContentsMargins(S3, S3, S3, S3);
+            bv->setSpacing(S1);
+            auto *tl = new QHBoxLayout;
+            tl->setSpacing(S2);
+            auto *text = Web::text(str(t, "text"), "termText", box);
+            text->setWordWrap(true);
+            text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            if (Languages::rtl(code))
+                text->setLayoutDirection(Qt::RightToLeft);
+            tl->addWidget(text, 1);
+            tl->addWidget(Web::chip(TermData::statusLabel(status), status, box));
+            bv->addLayout(tl);
+            values(t.value(QLatin1String("fields")).toArray(), bv, box);
+            body->addWidget(box);
+        }
+    }
 }

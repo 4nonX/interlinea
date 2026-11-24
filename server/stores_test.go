@@ -384,6 +384,27 @@ func TestTermbases(t *testing.T) {
 	if len(deleted) == 0 {
 		t.Fatalf("deleted %+v", deleted)
 	}
+	// A deleted entry is brought back, by those who may edit.
+	gone := deleted[0].EntryID
+	_, readerTok := e.user("rosa", false, authdb.Grant{Kind: authdb.KindTermbase, Resource: "*", Role: authdb.RoleRead})
+	if r := e.do("POST", base+"/deleted/"+gone+"/restore", readerTok, nil); r.status != 403 {
+		t.Fatalf("a reader restores: %d", r.status)
+	}
+	var restored termdb.Stored
+	e.call("POST", base+"/deleted/"+gone+"/restore", benTok, nil, 201, &restored)
+	if restored.ID != gone || restored.Version != 1 {
+		t.Fatalf("restored %+v", restored)
+	}
+	e.call("GET", base+"/entries/"+gone, benTok, nil, 200, nil)
+	e.call("GET", base+"/deleted", benTok, nil, 200, &deleted)
+	for _, d := range deleted {
+		if d.EntryID == gone {
+			t.Fatalf("still listed as deleted: %+v", deleted)
+		}
+	}
+	if r := e.do("POST", base+"/deleted/"+gone+"/restore", benTok, nil); r.status != 404 {
+		t.Fatalf("restoring twice: %d", r.status)
+	}
 	var list []termbaseSummary
 	e.call("GET", "/api/termbases", benTok, nil, 200, &list)
 	if len(list) != 1 || list[0].Role != "edit" {
@@ -489,4 +510,69 @@ func TestMergeRequests(t *testing.T) {
 	if r := e.do("GET", mp, eve, nil); r.status != 404 {
 		t.Fatalf("Eve sees the request: %d", r.status)
 	}
+}
+
+func TestLeavingOutAndBringingBack(t *testing.T) {
+	e := newEnv(t)
+	_, tbm := e.user("tess", false, authdb.Grant{Kind: authdb.KindTermbase, Resource: "*", Role: authdb.RoleManage})
+	ben, benTok := e.user("ben", false)
+	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Recht", Languages: []string{"de-DE", "en-GB"}}}, 201, nil)
+	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Hofmann"}, Upstreams: []string{"Recht"}}, 201, nil)
+	var kaution term.Entry
+	e.call("POST", "/api/termbases/Recht/entries", tbm, entryWrite{Entry: entry("Kaution", "deposit")}, 201, &kaution)
+	which := map[string]string{"master": "Recht", "entry": kaution.ID}
+	back := "/api/termbases/Hofmann/removals?master=Recht&entry=" + kaution.ID
+
+	// Reading the project's termbase is not enough to change what it holds.
+	e.call("PUT", "/api/grants", tbm, authdb.Grant{UserID: ben.ID, Kind: authdb.KindTermbase, Resource: "Hofmann", Role: authdb.RoleRead}, 204, nil)
+	if r := e.do("POST", "/api/termbases/Hofmann/removals", benTok, which); r.status != 403 {
+		t.Fatalf("a reader leaves an entry out: %d", r.status)
+	}
+	e.call("PUT", "/api/grants", tbm, authdb.Grant{UserID: ben.ID, Kind: authdb.KindTermbase, Resource: "Hofmann", Role: authdb.RoleEdit}, 204, nil)
+
+	// A master says which project termbases are based on it, and stays
+	// while there are any.
+	var recht termbaseDetail
+	e.call("GET", "/api/termbases/Recht", tbm, nil, 200, &recht)
+	if len(recht.Projects) != 1 || recht.Projects[0] != "Hofmann" {
+		t.Fatalf("the master's project termbases: %+v", recht.Info)
+	}
+	if r := e.do("DELETE", "/api/termbases/Recht", tbm, nil); r.status != 409 || !strings.Contains(string(r.body), "Hofmann is based on Recht") {
+		t.Fatalf("deleting a master with a project termbase: %d %s", r.status, r.body)
+	}
+
+	// Nothing is left out yet, so there is nothing to bring back.
+	if r := e.do("DELETE", back, benTok, nil); r.status != 404 {
+		t.Fatalf("bringing back what was not left out: %d", r.status)
+	}
+	e.call("POST", "/api/termbases/Hofmann/removals", benTok, which, 204, nil)
+	var layered []termdb.Layered
+	e.call("GET", "/api/termbases/Hofmann/layered", benTok, nil, 200, &layered)
+	if len(layered) != 0 {
+		t.Fatalf("the entry left out is still shown: %+v", layered)
+	}
+	var removals []termdb.Removal
+	e.call("GET", "/api/termbases/Hofmann/removals", benTok, nil, 200, &removals)
+	if len(removals) != 1 || removals[0].EntryID != kaution.ID || removals[0].By != "ben" {
+		t.Fatalf("removals %+v", removals)
+	}
+
+	if r := e.do("DELETE", "/api/termbases/Hofmann/removals?master=Recht", benTok, nil); r.status != 422 {
+		t.Fatalf("no entry named: %d", r.status)
+	}
+	e.call("DELETE", back, benTok, nil, 204, nil)
+	e.call("GET", "/api/termbases/Hofmann/layered", benTok, nil, 200, &layered)
+	if len(layered) != 1 || layered[0].Entry.ID != kaution.ID {
+		t.Fatalf("the entry is not back: %+v", layered)
+	}
+	e.call("GET", "/api/termbases/Hofmann/removals", benTok, nil, 200, &removals)
+	if len(removals) != 0 {
+		t.Fatalf("removals after bringing back: %+v", removals)
+	}
+	if r := e.do("DELETE", back, benTok, nil); r.status != 404 {
+		t.Fatalf("bringing back twice: %d", r.status)
+	}
+	// The project termbase is deleted, and then its master can be.
+	e.call("DELETE", "/api/termbases/Hofmann", tbm, nil, 204, nil)
+	e.call("DELETE", "/api/termbases/Recht", tbm, nil, 204, nil)
 }

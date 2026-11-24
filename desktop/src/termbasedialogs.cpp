@@ -1,8 +1,10 @@
 #include "termbasedialogs.h"
 
+#include "accesspanel.h"
 #include "apiclient.h"
 #include "connection.h"
 #include "connectionmanager.h"
+#include "flowlayout.h"
 #include "icons.h"
 #include "languages.h"
 #include "termdata.h"
@@ -260,7 +262,8 @@ TermbaseSettingsDialog::TermbaseSettingsDialog(Connection *conn, const QJsonObje
     m_content->setContentsMargins(0, 0, 0, 0);
     m_content->setSpacing(S3);
     scroll->setWidget(inner);
-    scroll->setMinimumHeight(360);
+    scroll->setObjectName(QStringLiteral("settingsScroll"));
+    scroll->setMinimumHeight(520);
     body()->addWidget(scroll, 1);
 
     auto *done = Web::button(tr("Done"), Web::Primary | Web::Small, this);
@@ -271,6 +274,32 @@ TermbaseSettingsDialog::TermbaseSettingsDialog(Connection *conn, const QJsonObje
         accept();
     });
     render();
+    if (m_conn) {
+        const bool master = str(m_detail, "kind") == QLatin1String("master");
+        if (master) {
+            request(m_conn->api()->get(QStringLiteral("/api/termbases/") + ApiClient::seg(m_name) + QStringLiteral("/review-rules")), [this](const ApiResult &r) {
+                if (r.ok())
+                    m_rules = r.object();
+                render();
+            });
+            // Whom to trust is chosen among the people of a team server.
+            if (!m_conn->isLocal()) {
+                request(m_conn->api()->get(QStringLiteral("/api/people")), [this](const ApiResult &r) {
+                    m_people = r.array();
+                    render();
+                });
+            }
+        } else {
+            request(m_conn->api()->get(QStringLiteral("/api/termbases")), [this](const ApiResult &r) {
+                m_masters.clear();
+                for (const QJsonValue &v : r.array()) {
+                    if (str(v.toObject(), "kind") == QLatin1String("master"))
+                        m_masters << str(v.toObject(), "name");
+                }
+                render();
+            });
+        }
+    }
     // Which projects use it decides whether it can be deleted.
     if (m_conn) {
         request(m_conn->api()->get(QStringLiteral("/api/projects")), [this](const ApiResult &r) {
@@ -343,6 +372,12 @@ void TermbaseSettingsDialog::rename()
         m_detail = r.object();
         emit said(tr("Renamed to “%1”").arg(v));
         emit changed(m_name);
+        // Who may use it is kept under the new name.
+        if (m_access) {
+            m_access->deleteLater();
+            m_access = nullptr;
+        }
+        render();
     });
 }
 
@@ -397,8 +432,261 @@ void TermbaseSettingsDialog::putDefinition(const QJsonObject &definition, const 
     });
 }
 
+void TermbaseSettingsDialog::putRules(const QJsonObject &rules, const QString &done)
+{
+    if (!m_conn)
+        return;
+    request(m_conn->api()->put(QStringLiteral("/api/termbases/") + ApiClient::seg(m_name) + QStringLiteral("/review-rules"), rules), [this, done](const ApiResult &r) {
+        if (!r.ok()) {
+            setError(r.error.message);
+            render();
+            return;
+        }
+        setError(QString());
+        m_rules = r.object();
+        if (!done.isEmpty())
+            emit said(done);
+        render();
+    });
+}
+
+// How what projects submit to this master is reviewed.
+void TermbaseSettingsDialog::reviewSection(QWidget *host)
+{
+    const QJsonObject def = m_detail.value(QLatin1String("definition")).toObject();
+    m_content->addWidget(line(host));
+    m_content->addWidget(Web::text(tr("Review"), "settingsTitle", host));
+    auto *intro = Web::text(tr("Projects submit their new and changed entries to this master, and its reviewers approve them. These rules say what is merged without waiting for them."), "help", host);
+    intro->setWordWrap(true);
+    m_content->addWidget(intro);
+
+    auto *same = new QCheckBox(tr("Entries the master already has as they are need no review"), host);
+    same->setObjectName(QStringLiteral("ruleIdentical"));
+    same->setChecked(!m_rules.value(QLatin1String("keepIdentical")).toBool());
+    m_content->addWidget(same);
+    connect(same, &QCheckBox::toggled, this, [this](bool on) {
+        QJsonObject rules = m_rules;
+        if (on)
+            rules.remove(QLatin1String("keepIdentical"));
+        else
+            rules.insert(QLatin1String("keepIdentical"), true);
+        putRules(rules, on ? tr("Entries the master already has are merged without review") : tr("Entries the master already has wait for review, too"));
+    });
+
+    // Fields whose changes need no approval.
+    QStringList minor;
+    for (const QJsonValue &v : m_rules.value(QLatin1String("minorFields")).toArray())
+        minor << v.toString();
+    const QJsonArray fields = def.value(QLatin1String("fields")).toArray();
+    auto *minorTitle = Web::text(tr("Fields that need no approval"), "fieldLabel", host);
+    m_content->addWidget(minorTitle);
+    if (fields.isEmpty()) {
+        auto *none = Web::text(tr("The termbase has no fields yet. A change to notes or sources only could be merged at once."), "help", host);
+        none->setWordWrap(true);
+        m_content->addWidget(none);
+    } else {
+        auto *boxes = new QWidget(host);
+        boxes->setAccessibleName(tr("Fields that need no approval"));
+        auto *flow = new FlowLayout(boxes, S3);
+        flow->setContentsMargins(0, 0, 0, 0);
+        for (const QJsonValue &fv : fields) {
+            const QString name = str(fv.toObject(), "name");
+            auto *box = new QCheckBox(name, boxes);
+            box->setObjectName(QStringLiteral("minorField:%1").arg(name));
+            box->setChecked(minor.contains(name, Qt::CaseInsensitive));
+            flow->addWidget(box);
+            connect(box, &QCheckBox::toggled, this, [this, name, minor](bool on) {
+                QStringList now = minor;
+                now.removeAll(name);
+                if (on)
+                    now << name;
+                QJsonObject rules = m_rules;
+                if (now.isEmpty())
+                    rules.remove(QLatin1String("minorFields"));
+                else
+                    rules.insert(QLatin1String("minorFields"), QJsonArray::fromStringList(now));
+                putRules(rules, on ? tr("Changes to %1 only are merged without review").arg(name) : tr("Changes to %1 wait for review").arg(name));
+            });
+        }
+        m_content->addWidget(boxes);
+        auto *help = Web::text(tr("An entry changed in these fields only is merged at once."), "help", host);
+        help->setWordWrap(true);
+        m_content->addWidget(help);
+    }
+
+    // Whose entries are approved as they come.
+    m_content->addWidget(Web::text(tr("Trusted authors"), "fieldLabel", host));
+    const QJsonArray trusted = m_rules.value(QLatin1String("trusted")).toArray();
+    const auto nameOf = [this](const QString &username) {
+        for (const QJsonValue &p : std::as_const(m_people)) {
+            if (str(p.toObject(), "username") == username && !str(p.toObject(), "name").isEmpty())
+                return QStringLiteral("%1 (%2)").arg(str(p.toObject(), "name"), username);
+        }
+        return username;
+    };
+    if (trusted.isEmpty()) {
+        auto *none = Web::text(tr("Nobody yet: every entry waits for a reviewer."), "help", host);
+        none->setObjectName(QStringLiteral("noTrusted"));
+        none->setWordWrap(true);
+        m_content->addWidget(none);
+    }
+    for (int i = 0; i < trusted.size(); i++) {
+        const QJsonObject rule = trusted[i].toObject();
+        const QString author = str(rule, "author");
+        QStringList langs;
+        for (const QJsonValue &l : rule.value(QLatin1String("scope")).toObject().value(QLatin1String("langs")).toArray())
+            langs << Languages::name(l.toString());
+        auto *rowWidget = new QWidget(host);
+        rowWidget->setProperty("part", QStringLiteral("trusted"));
+        auto *h = new QHBoxLayout(rowWidget);
+        h->setContentsMargins(0, 0, 0, 0);
+        h->setSpacing(S2);
+        auto *who = new QLabel(QStringLiteral("<b>%1</b>").arg(nameOf(author).toHtmlEscaped()), rowWidget);
+        h->addWidget(who);
+        h->addWidget(Web::text(langs.isEmpty() ? tr("all entries") : tr("entries with terms in %1").arg(langs.join(QStringLiteral(", "))), "meta", rowWidget), 1);
+        auto *remove = Web::button(tr("Remove"), Web::Quiet | Web::Small, rowWidget);
+        remove->setObjectName(QStringLiteral("untrust:%1").arg(author));
+        remove->setAccessibleName(tr("No longer trust %1").arg(author));
+        h->addWidget(remove);
+        rowWidget->setAccessibleName(QStringLiteral("%1, %2").arg(author, langs.isEmpty() ? tr("all entries") : langs.join(QStringLiteral(", "))));
+        m_content->addWidget(rowWidget);
+        connect(remove, &QPushButton::clicked, this, [this, trusted, i, author] {
+            QJsonArray now = trusted;
+            now.removeAt(i);
+            QJsonObject rules = m_rules;
+            if (now.isEmpty())
+                rules.remove(QLatin1String("trusted"));
+            else
+                rules.insert(QLatin1String("trusted"), now);
+            putRules(rules, tr("The entries of %1 wait for review again").arg(author));
+        });
+    }
+    // .role-add
+    auto *add = new QWidget(host);
+    add->setAccessibleName(tr("Trust an author"));
+    auto *al = new QHBoxLayout(add);
+    al->setContentsMargins(0, 0, 0, 0);
+    al->setSpacing(S2);
+    QWidget *whoField = nullptr;
+    std::function<QString()> chosen;
+    if (m_conn && !m_conn->isLocal()) {
+        auto *who = new QComboBox(add);
+        who->setObjectName(QStringLiteral("trustAuthor"));
+        who->addItem(tr("Choose a person…"), QString());
+        for (const QJsonValue &p : std::as_const(m_people)) {
+            const QString username = str(p.toObject(), "username");
+            who->addItem(nameOf(username), username);
+        }
+        who->setCurrentIndex(qMax(0, who->findData(m_trustAuthor)));
+        connect(who, &QComboBox::activated, this, [this, who](int i) { m_trustAuthor = who->itemData(i).toString(); });
+        chosen = [who] { return who->currentData().toString(); };
+        whoField = who;
+    } else {
+        auto *who = new QLineEdit(m_trustAuthor, add);
+        who->setObjectName(QStringLiteral("trustAuthor"));
+        who->setPlaceholderText(tr("Name, as in the history"));
+        connect(who, &QLineEdit::textEdited, this, [this](const QString &t) { m_trustAuthor = t; });
+        chosen = [who] { return who->text().trimmed(); };
+        whoField = who;
+    }
+    whoField->setMinimumWidth(220);
+    al->addWidget(Web::labelled(tr("Author"), whoField, add));
+    auto *lang = new QComboBox(add);
+    lang->setObjectName(QStringLiteral("trustLanguage"));
+    lang->addItem(tr("All entries"), QString());
+    for (const QJsonValue &l : def.value(QLatin1String("languages")).toArray())
+        lang->addItem(tr("Terms in %1").arg(Languages::name(l.toString())), l.toString());
+    lang->setCurrentIndex(qMax(0, lang->findData(m_trustLang)));
+    connect(lang, &QComboBox::activated, this, [this, lang](int i) { m_trustLang = lang->itemData(i).toString(); });
+    al->addWidget(Web::labelled(tr("For"), lang, add));
+    auto *trust = Web::button(tr("Trust"), Web::Small, add);
+    trust->setObjectName(QStringLiteral("trust"));
+    al->addWidget(trust, 0, Qt::AlignBottom);
+    al->addStretch();
+    m_content->addWidget(add);
+    connect(trust, &QPushButton::clicked, this, [this, chosen, lang, trusted] {
+        const QString author = chosen();
+        if (author.isEmpty()) {
+            setError(tr("Say whose entries to trust."));
+            return;
+        }
+        QJsonObject rule{{QLatin1String("author"), author}, {QLatin1String("scope"), QJsonObject{}}};
+        const QString l = lang->currentData().toString();
+        if (!l.isEmpty())
+            rule.insert(QLatin1String("scope"), QJsonObject{{QLatin1String("langs"), QJsonArray{l}}});
+        // One rule an author: a new one replaces the old.
+        QJsonArray now;
+        for (const QJsonValue &t : trusted) {
+            if (str(t.toObject(), "author").compare(author, Qt::CaseInsensitive) != 0)
+                now.append(t);
+        }
+        now.append(rule);
+        QJsonObject rules = m_rules;
+        rules.insert(QLatin1String("trusted"), now);
+        m_trustAuthor.clear();
+        m_trustLang.clear();
+        putRules(rules, tr("The entries of %1 are approved without review").arg(author));
+    });
+    auto *help = Web::text(tr("Their new and changed entries are approved as they are submitted. An entry that conflicts with the master always waits for a reviewer."), "help", host);
+    help->setWordWrap(true);
+    m_content->addWidget(help);
+}
+
+// The masters a project termbase shows the entries of and merges into.
+void TermbaseSettingsDialog::basedOnSection(QWidget *host)
+{
+    QStringList now;
+    for (const QJsonValue &u : m_detail.value(QLatin1String("upstreams")).toArray())
+        now << u.toString();
+    m_content->addWidget(line(host));
+    m_content->addWidget(Web::text(tr("Based on"), "settingsTitle", host));
+    auto *intro = Web::text(tr("The termbase shows the entries of these masters under its own, and its new and changed entries are submitted to them."), "help", host);
+    intro->setWordWrap(true);
+    m_content->addWidget(intro);
+    QStringList all = m_masters;
+    for (const QString &u : std::as_const(now)) {
+        if (!all.contains(u))
+            all << u;
+    }
+    for (const QString &master : std::as_const(all)) {
+        auto *box = new QCheckBox(master, host);
+        box->setObjectName(QStringLiteral("basedOn:%1").arg(master));
+        box->setChecked(now.contains(master));
+        // A project termbase without a master would be a master itself.
+        if (now.size() == 1 && now.contains(master)) {
+            box->setEnabled(false);
+            box->setToolTip(tr("It needs one master at least."));
+        }
+        m_content->addWidget(box);
+        connect(box, &QCheckBox::toggled, this, [this, master, now](bool on) {
+            if (!m_conn)
+                return;
+            QStringList next = now;
+            next.removeAll(master);
+            if (on)
+                next << master;
+            request(m_conn->api()->put(QStringLiteral("/api/termbases/") + ApiClient::seg(m_name) + QStringLiteral("/upstreams"), QJsonObject{{QLatin1String("upstreams"), QJsonArray::fromStringList(next)}}),
+                    [this, master, on](const ApiResult &r) {
+                        if (!r.ok()) {
+                            setError(r.error.message);
+                            render();
+                            return;
+                        }
+                        setError(QString());
+                        m_detail = r.object();
+                        emit said(on ? tr("Now also based on %1").arg(master) : tr("No longer based on %1").arg(master));
+                        emit changed(m_name);
+                        render();
+                    });
+        });
+    }
+}
+
 void TermbaseSettingsDialog::render()
 {
+    // Who may use it stays as it is while the rest is drawn again.
+    if (m_access)
+        m_content->removeWidget(m_access);
     clear(m_content);
     QWidget *host = m_content->parentWidget();
     const QJsonObject def = m_detail.value(QLatin1String("definition")).toObject();
@@ -610,11 +898,38 @@ void TermbaseSettingsDialog::render()
         m_content->addWidget(table);
     }
 
+    if (str(m_detail, "kind") == QLatin1String("master"))
+        reviewSection(host);
+    else
+        basedOnSection(host);
+
+    // Who may use it, on a team server.
+    if (m_conn && !m_conn->isLocal()) {
+        m_content->addWidget(line(host));
+        if (!m_access) {
+            m_access = new AccessPanel(m_conn, QStringLiteral("termbase"), m_name, tr("Who may use it"), host, true);
+            m_access->setObjectName(QStringLiteral("termbaseAccess"));
+        }
+        m_content->addWidget(m_access);
+    }
+
     // Delete (.settings-danger)
-    if (str(m_detail, "kind") == QLatin1String("master")) {
+    {
         m_content->addWidget(line(host));
         m_content->addWidget(Web::text(tr("Delete termbase"), "dangerTitle", host));
-        if (!m_usedBy.isEmpty()) {
+        QStringList based;
+        for (const QJsonValue &v : m_detail.value(QLatin1String("projects")).toArray())
+            based << v.toString();
+        const bool project = str(m_detail, "kind") == QLatin1String("project");
+        if (!based.isEmpty()) {
+            auto *h = Web::text((based.size() == 1 ? tr("%1 is based on this termbase. Delete it, or base it on another master, first.")
+                                                   : tr("%1 are based on this termbase. Delete them, or base them on another master, first."))
+                                    .arg(based.join(QStringLiteral(", "))),
+                                "help", host);
+            h->setObjectName(QStringLiteral("basedOnIt"));
+            h->setWordWrap(true);
+            m_content->addWidget(h);
+        } else if (!m_usedBy.isEmpty()) {
             auto *h = Web::text((m_usedBy.size() == 1 ? tr("%1 uses this termbase. Remove it from the project first.") : tr("%1 use this termbase. Remove it from the project first."))
                                     .arg(m_usedBy.join(QStringLiteral(", "))),
                                 "help", host);
@@ -622,7 +937,9 @@ void TermbaseSettingsDialog::render()
             h->setWordWrap(true);
             m_content->addWidget(h);
         } else {
-            auto *h = Web::text(tr("Deletes %1 and their history. Export the termbase first if you may need it again.").arg(TermData::entries(m_entries.size())), "help", host);
+            auto *h = Web::text(project ? tr("Deletes the project's %1 and their history. The masters keep theirs. Merge what the masters should have first.").arg(TermData::entries(m_entries.size()))
+                                        : tr("Deletes %1 and their history. Export the termbase first if you may need it again.").arg(TermData::entries(m_entries.size())),
+                                "help", host);
             h->setWordWrap(true);
             m_content->addWidget(h);
             auto *del = new Web::ConfirmButton(tr("Delete termbase"), tr("Delete %1 for good?").arg(m_name), tr("Delete"), host);

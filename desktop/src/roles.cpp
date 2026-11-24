@@ -32,6 +32,13 @@ QString text(const QString &name)
         return QCoreApplication::translate("Roles", "Approve changes");
     if (name == QLatin1String("manage"))
         return QCoreApplication::translate("Roles", "Manage");
+    // A set that is no built-in role: what it lets one do.
+    if (name.contains(QLatin1Char('+'))) {
+        QStringList parts;
+        for (const QString &p : name.split(QLatin1Char('+')))
+            parts << text(p);
+        return parts.join(QStringLiteral(", "));
+    }
     return name;
 }
 

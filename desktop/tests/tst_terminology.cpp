@@ -17,6 +17,7 @@
 #include "words.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
 #include <QLabel>
@@ -25,6 +26,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -100,6 +102,16 @@ static QLabel *labelWith(QWidget *root, const QString &part)
             return l;
     }
     return nullptr;
+}
+
+// A picture of the page for the documentation, once it has settled.
+static void shot(QWidget *page, const QString &name)
+{
+    const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS");
+    if (dir.isEmpty())
+        return;
+    QTest::qWait(200);
+    page->grab().save(dir + QLatin1Char('/') + name + QStringLiteral(".png"));
 }
 
 static void choose(QComboBox *box, const QVariant &data)
@@ -730,7 +742,7 @@ private slots:
         auto *del = byName<Web::ConfirmButton>(&page, QStringLiteral("deleteEntry"));
         QVERIFY(del);
         del->button()->click();
-        QVERIFY(label(&page, QStringLiteral("Delete this entry and its history?")));
+        QVERIFY(label(&page, QStringLiteral("Delete this entry? It can be brought back from Deleted, without its history.")));
         del->yes()->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 3, 10000);
         QVERIFY(page.message().startsWith(QStringLiteral("Deleted the entry “")));
@@ -902,6 +914,276 @@ private slots:
         // A request that is not there says so.
         section.openReview(here, 99999);
         QTRY_VERIFY_WITH_TIMEOUT(byName<QLabel>(review, QStringLiteral("state")) && byName<QLabel>(review, QStringLiteral("state"))->property("role").toString() == QStringLiteral("error"), 10000);
+    }
+
+    void lifecycle()
+    {
+        // What was changed or deleted can be taken back: an earlier version
+        // of an entry, a deleted entry, and, in a project's termbase, what
+        // was done with the master's entries.
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        const QString here = m.local()->id();
+        const auto entry = [](const QString &de, const QString &en) {
+            return QJsonObject{{"languages", QJsonArray{QJsonObject{{"lang", "de-DE"}, {"terms", QJsonArray{QJsonObject{{"text", de}, {"status", "approved"}}}}},
+                                                        QJsonObject{{"lang", "en-GB"}, {"terms", QJsonArray{QJsonObject{{"text", en}, {"status", "approved"}}}}}}}};
+        };
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Recht"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}})).ok());
+        const ApiResult kaution = wait(api->post(QStringLiteral("/api/termbases/Recht/entries"), QJsonObject{{"entry", entry(QStringLiteral("Kaution"), QStringLiteral("deposit"))}}));
+        const ApiResult miete = wait(api->post(QStringLiteral("/api/termbases/Recht/entries"), QJsonObject{{"entry", entry(QStringLiteral("Miete"), QStringLiteral("rent"))}}));
+        QVERIFY(kaution.ok() && miete.ok());
+        const QString kid = kaution.object().value("id").toString(), mid = miete.object().value("id").toString();
+        // "deposit" became "security deposit".
+        QJsonObject changed = TermData::withTerms(TermData::forSaving(kaution.object()), QStringLiteral("en-GB"), QJsonArray{QJsonObject{{"text", "security deposit"}, {"status", "approved"}}});
+        QVERIFY(wait(api->put(QStringLiteral("/api/termbases/Recht/entries/") + kid, QJsonObject{{"entry", changed}}, 1)).ok());
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Fall Hofmann"}}}, {"upstreams", QJsonArray{"Recht"}}})).ok());
+
+        TerminologyPage page(&m);
+        page.resize(1360, 900);
+        page.show();
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Recht"), 15000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 2, 10000);
+        auto *views = byName<Web::Tabs>(&page, QStringLiteral("entryViews"));
+        QVERIFY(views);
+        // A master has no master of its own.
+        QVERIFY(!there(views->tab(3), &page));
+
+        // The history says what each version held; an earlier one is restored.
+        page.selectEntry(kid);
+        QSignalSpy history(&page, &TerminologyPage::historyShown);
+        byName<Web::Tabs>(&page, QStringLiteral("entryTabs"))->tab(1)->click();
+        QTRY_COMPARE_WITH_TIMEOUT(history.size(), 1, 10000);
+        QWidget *log = byName<QWidget>(&page, QStringLiteral("history"));
+        QVERIFY(labelWith(log, QStringLiteral("en-GB: security deposit")));
+        QVERIFY(labelWith(log, QStringLiteral("en-GB: deposit")));
+        // The version the entry is at has nothing to restore.
+        QVERIFY(!byName<Web::ConfirmButton>(&page, QStringLiteral("restore:2")));
+        auto *restore = byName<Web::ConfirmButton>(&page, QStringLiteral("restore:1"));
+        QVERIFY(restore);
+        restore->button()->click();
+        QVERIFY(label(&page, QStringLiteral("Set the entry back to this version? What it is now stays in the history.")));
+        shot(&page, QStringLiteral("terminology-restore"));
+        restore = byName<Web::ConfirmButton>(&page, QStringLiteral("restore:1"));
+        QVERIFY(restore && restore->asking());
+        restore->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entry(kid).value("version").toInt(), 3, 10000);
+        QVERIFY(page.message().startsWith(QStringLiteral("Restored the version of ")));
+        QCOMPARE(TermData::terms(page.entry(kid), QStringLiteral("en-GB"))[0].toObject().value("text").toString(), QStringLiteral("deposit"));
+        QCOMPARE(wait(api->get(QStringLiteral("/api/termbases/Recht/entries/") + kid + QStringLiteral("/history"))).array().last().toObject().value("summary").toString(),
+                 QStringLiteral("Reverted to version 1"));
+
+        // Nothing is deleted yet.
+        QSignalSpy deleted(&page, &TerminologyPage::deletedShown);
+        views->tab(2)->click();
+        QTRY_COMPARE_WITH_TIMEOUT(deleted.size(), 1, 10000);
+        QVERIFY(byName<QLabel>(&page, QStringLiteral("noDeleted")));
+        views->tab(0)->click();
+        // A deleted entry is listed, and brought back under its ID.
+        page.selectEntry(mid);
+        auto *del = byName<Web::ConfirmButton>(&page, QStringLiteral("deleteEntry"));
+        QVERIFY(del);
+        del->button()->click();
+        del->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 1, 10000);
+        views->tab(2)->click();
+        QTRY_VERIFY_WITH_TIMEOUT(byName<QPushButton>(&page, QStringLiteral("bringBack:%1").arg(mid)), 10000);
+        QCOMPARE(page.deleted().size(), 1);
+        QVERIFY(label(&page, QStringLiteral("Miete")) && label(&page, QStringLiteral("rent")));
+        QVERIFY(labelWith(&page, QStringLiteral("Deleted ")));
+        shot(&page, QStringLiteral("terminology-deleted"));
+        byName<QPushButton>(&page, QStringLiteral("bringBack:%1").arg(mid))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 2, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Brought back “Miete”"));
+        QCOMPARE(page.entryId(), mid);
+        QTRY_VERIFY_WITH_TIMEOUT(byName<QLabel>(&page, QStringLiteral("noDeleted")), 10000);
+        QVERIFY(wait(api->get(QStringLiteral("/api/termbases/Recht/deleted"))).array().isEmpty());
+        views->tab(0)->click();
+
+        // The project termbase shows the master's entries in a view of their own.
+        Web::Clickable *project = nullptr;
+        QTRY_VERIFY((project = byName<Web::Clickable>(&page, QStringLiteral("tb:%1:Fall Hofmann").arg(here))));
+        QTest::mouseClick(project, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Fall Hofmann"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.masterEntries().size(), 2, 10000);
+        QVERIFY(page.entries().isEmpty());
+        QVERIFY(there(views->tab(3), &page));
+        QCOMPARE(views->tab(3)->text(), QStringLiteral("Master (2)"));
+        QSignalSpy master(&page, &TerminologyPage::masterShown);
+        views->tab(3)->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!master.isEmpty(), 10000);
+        QVERIFY(byName<Web::Clickable>(&page, QStringLiteral("master:Recht:%1").arg(kid)));
+        page.selectMasterEntry(QStringLiteral("Recht"), mid);
+        QTRY_VERIFY(byName<QLabel>(&page, QStringLiteral("masterEntryTitle")));
+        QCOMPARE(byName<QLabel>(&page, QStringLiteral("masterEntryTitle"))->text(), QStringLiteral("Miete"));
+        // The master's entry is read here, not changed.
+        QVERIFY(!byName<Web::ConfirmButton>(&page, QStringLiteral("deleteEntry")));
+        shot(&page, QStringLiteral("terminology-master"));
+
+        // Left out of the project, and brought back.
+        auto *leave = byName<Web::ConfirmButton>(&page, QStringLiteral("leaveOut"));
+        QVERIFY(leave);
+        leave->button()->click();
+        QVERIFY(label(&page, QStringLiteral("Leave this entry out of the project? Merging asks the master's reviewers to delete it there.")));
+        leave->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.masterEntries().size(), 1, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Left the entry out of the project"));
+        QPushButton *back = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((back = byName<QPushButton>(&page, QStringLiteral("restoreMaster:Recht:%1").arg(mid))), 10000);
+        QCOMPARE(page.removals().size(), 1);
+        QVERIFY(label(&page, QStringLiteral("Left out of this project")));
+        // The entry left out is named by its term.
+        QTRY_VERIFY_WITH_TIMEOUT(label(back->parentWidget(), QStringLiteral("Miete")), 10000);
+        shot(&page, QStringLiteral("terminology-left-out"));
+        back = byName<QPushButton>(&page, QStringLiteral("restoreMaster:Recht:%1").arg(mid));
+        QVERIFY(back);
+        back->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.masterEntries().size(), 2, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Brought the entry back into the project"));
+        QTRY_VERIFY_WITH_TIMEOUT(page.removals().isEmpty() && !byName<QPushButton>(&page, QStringLiteral("restoreMaster:Recht:%1").arg(mid)), 10000);
+
+        // Changed for this project only: the project's copy opens to be edited.
+        page.selectMasterEntry(QStringLiteral("Recht"), kid);
+        QPushButton *change = nullptr;
+        QTRY_VERIFY((change = byName<QPushButton>(&page, QStringLiteral("changeInProject"))));
+        change->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.entries().size(), 1, 10000);
+        QCOMPARE(page.message(), QStringLiteral("Took the entry into the project"));
+        QCOMPARE(page.view(), 0);
+        QTRY_COMPARE_WITH_TIMEOUT(page.entryId(), page.entries().first().value("id").toString(), 10000);
+        QTRY_VERIFY(label(&page, QStringLiteral("Based on Recht")));
+        QCOMPARE(page.masterEntries().size(), 1);
+        QCOMPARE(views->tab(3)->text(), QStringLiteral("Master (1)"));
+        QVERIFY(byName<Web::ConfirmButton>(&page, QStringLiteral("deleteEntry")));
+    }
+
+    void managing()
+    {
+        // A project termbase made by hand, the masters it is based on, how
+        // a master is reviewed, and deleting both kinds.
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        const QString here = m.local()->id();
+        const QJsonObject note{{"name", "Note"}, {"level", "entry"}, {"kind", "text"}};
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Recht"}, {"languages", QJsonArray{"de-DE", "en-GB"}}, {"fields", QJsonArray{note}}}}})).ok());
+        QVERIFY(wait(api->post(QStringLiteral("/api/termbases"), QJsonObject{{"definition", QJsonObject{{"name", "Steuer"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}})).ok());
+
+        TerminologyPage page(&m);
+        page.resize(1360, 900);
+        page.show();
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Recht"), 15000);
+        // On this computer everything is one's own.
+        QVERIFY(page.may("manage"));
+
+        // A project termbase, based on a master chosen in the form.
+        QPushButton *fresh = nullptr;
+        QTRY_VERIFY((fresh = byName<QPushButton>(&page, QStringLiteral("newProjectTermbase"))));
+        fresh->click();
+        QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newMasterName")));
+        QPushButton *create = byName<QPushButton>(&page, QStringLiteral("createProjectTermbase"));
+        QVERIFY(create && !create->isEnabled());
+        byName<QLineEdit>(&page, QStringLiteral("newMasterName"))->setText(QStringLiteral("Fall Weber"));
+        // Without a master it would be a master itself.
+        QVERIFY(!create->isEnabled());
+        QVERIFY(byName<QCheckBox>(&page, QStringLiteral("basedOn:Steuer")));
+        byName<QCheckBox>(&page, QStringLiteral("basedOn:Recht"))->click();
+        QVERIFY(create->isEnabled());
+        shot(&page, QStringLiteral("terminology-new-project-termbase"));
+        byName<QPushButton>(&page, QStringLiteral("createProjectTermbase"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Fall Weber"), 10000);
+        QCOMPARE(page.message(), QStringLiteral("Created project termbase “Fall Weber”"));
+        QTRY_VERIFY(byName<Web::Clickable>(&page, QStringLiteral("tb:%1:Fall Weber").arg(here)));
+        QTRY_COMPARE_WITH_TIMEOUT(page.detail().value("kind").toString(), QStringLiteral("project"), 10000);
+        QCOMPARE(page.languages(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+
+        // Its settings: also based on the second master, and back.
+        TermbaseSettingsDialog *set = page.settingsDialog();
+        QVERIFY(set);
+        QCheckBox *recht = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && (recht = byName<QCheckBox>(set, QStringLiteral("basedOn:Recht"))) && byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer")), 10000);
+        // The only master cannot be taken away.
+        QVERIFY(recht->isChecked() && !recht->isEnabled());
+        QVERIFY(!byName<QCheckBox>(set, QStringLiteral("ruleIdentical")));
+        byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Now also based on Steuer"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QCheckBox>(set, QStringLiteral("basedOn:Recht")) && byName<QCheckBox>(set, QStringLiteral("basedOn:Recht"))->isEnabled(), 10000);
+        QCOMPARE(wait(api->get(QStringLiteral("/api/termbases/Fall%20Weber"))).object().value("upstreams").toArray(), QJsonArray({"Recht", "Steuer"}));
+        byName<QScrollArea>(set, QStringLiteral("settingsScroll"))->ensureWidgetVisible(byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer")), 0, 200);
+        shot(set, QStringLiteral("termbase-settings-project"));
+        byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("No longer based on Steuer"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy(), 10000);
+        QCOMPARE(wait(api->get(QStringLiteral("/api/termbases/Fall%20Weber"))).object().value("upstreams").toArray(), QJsonArray({"Recht"}));
+        set->accept();
+
+        // The master: it says what is based on it, and so stays.
+        page.open(here, QStringLiteral("Recht"));
+        QTRY_VERIFY_WITH_TIMEOUT(page.termbase() == QStringLiteral("Recht") && page.detail().value("projects").toArray().size() == 1, 10000);
+        set = page.settingsDialog();
+        QVERIFY(set);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QCheckBox>(set, QStringLiteral("ruleIdentical")), 10000);
+        QVERIFY(byName<QLabel>(set, QStringLiteral("basedOnIt")));
+        QCOMPARE(byName<QLabel>(set, QStringLiteral("basedOnIt"))->text(), QStringLiteral("Fall Weber is based on this termbase. Delete it, or base it on another master, first."));
+        QVERIFY(!byName<Web::ConfirmButton>(set, QStringLiteral("deleteTermbase")));
+        QVERIFY(!byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer")));
+
+        // How it is reviewed: what the master has already, a field that
+        // needs no approval, and an author who is trusted.
+        QVERIFY(byName<QCheckBox>(set, QStringLiteral("ruleIdentical"))->isChecked());
+        QVERIFY(byName<QLabel>(set, QStringLiteral("noTrusted")));
+        byName<QCheckBox>(set, QStringLiteral("ruleIdentical"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Entries the master already has wait for review, too"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QCheckBox>(set, QStringLiteral("minorField:Note")), 10000);
+        byName<QCheckBox>(set, QStringLiteral("minorField:Note"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Changes to Note only are merged without review"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QPushButton>(set, QStringLiteral("trust")), 10000);
+        // Nobody named: nothing is saved.
+        byName<QPushButton>(set, QStringLiteral("trust"))->click();
+        QVERIFY(label(set, QStringLiteral("Say whose entries to trust.")));
+        auto *who = byName<QLineEdit>(set, QStringLiteral("trustAuthor"));
+        QVERIFY(who);
+        QTest::keyClicks(who, QStringLiteral("Eva"));
+        choose(byName<QComboBox>(set, QStringLiteral("trustLanguage")), QStringLiteral("en-GB"));
+        byName<QPushButton>(set, QStringLiteral("trust"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("The entries of Eva are approved without review"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QPushButton>(set, QStringLiteral("untrust:Eva")), 10000);
+        QVERIFY(label(set, QStringLiteral("entries with terms in English (United Kingdom)")));
+        QJsonObject rules = wait(api->get(QStringLiteral("/api/termbases/Recht/review-rules"))).object();
+        QCOMPARE(rules.value("keepIdentical").toBool(), true);
+        QCOMPARE(rules.value("minorFields").toArray(), QJsonArray({"Note"}));
+        QCOMPARE(rules.value("trusted").toArray().size(), 1);
+        QCOMPARE(rules.value("trusted").toArray()[0].toObject().value("scope").toObject().value("langs").toArray(), QJsonArray({"en-GB"}));
+        byName<QScrollArea>(set, QStringLiteral("settingsScroll"))->ensureWidgetVisible(byName<QPushButton>(set, QStringLiteral("trust")), 0, 80);
+        shot(set, QStringLiteral("termbase-settings-review"));
+        byName<QPushButton>(set, QStringLiteral("untrust:Eva"))->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("The entries of Eva wait for review again"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QLabel>(set, QStringLiteral("noTrusted")), 10000);
+        QVERIFY(wait(api->get(QStringLiteral("/api/termbases/Recht/review-rules"))).object().value("trusted").toArray().isEmpty());
+        set->accept();
+
+        // The project termbase is deleted from its settings; then the master can be.
+        page.open(here, QStringLiteral("Fall Weber"));
+        QTRY_VERIFY_WITH_TIMEOUT(page.termbase() == QStringLiteral("Fall Weber") && page.detail().value("kind").toString() == QStringLiteral("project"), 10000);
+        set = page.settingsDialog();
+        QVERIFY(set);
+        Web::ConfirmButton *gone = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && (gone = byName<Web::ConfirmButton>(set, QStringLiteral("deleteTermbase"))), 10000);
+        QVERIFY(labelWith(set, QStringLiteral("The masters keep theirs.")));
+        gone->button()->click();
+        gone->yes()->click();
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted Fall Weber"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Recht"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(page.detail().value("projects").toArray().isEmpty(), 10000);
+        set = page.settingsDialog();
+        QVERIFY(set);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<Web::ConfirmButton>(set, QStringLiteral("deleteTermbase")), 10000);
+        QVERIFY(!byName<QLabel>(set, QStringLiteral("basedOnIt")));
+        set->accept();
     }
 
     void savingMeetsAnotherChange()

@@ -1151,6 +1151,40 @@ func (t *Termbase) Deleted(ctx context.Context) ([]Deletion, error) {
 	return out, rows.Err()
 }
 
+// Restore brings a deleted entry back as it was when it was deleted, under
+// its old ID if that is still free, and takes it off the list of deleted
+// entries. Its versions went with the deletion; the entry starts a new
+// history that says where it came from.
+func (t *Termbase) Restore(ctx context.Context, entryID, by string) (Stored, error) {
+	var out Stored
+	err := t.write(ctx, by, func(tx *wtx, def *term.Definition) error {
+		var js string
+		err := tx.QueryRowContext(ctx, `SELECT entry_json FROM deleted WHERE termbase_id = ? AND entry_id = ? ORDER BY at DESC, `+deletedOrder(t.db.d)+` DESC LIMIT 1`, t.id, entryID).Scan(&js)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		var e term.Entry
+		if err := json.Unmarshal([]byte(js), &e); err != nil {
+			return err
+		}
+		e.ID = entryID
+		p, err := prepare(e, *def)
+		if err != nil {
+			return err
+		}
+		addDefinitionFor(def, p)
+		if out, err = t.insert(ctx, tx, p, by, "Restored after it was deleted", t.db.now()); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM deleted WHERE termbase_id = ? AND entry_id = ?`, t.id, entryID)
+		return err
+	})
+	return out, err
+}
+
 // History returns every version of an entry, oldest first.
 func (t *Termbase) History(ctx context.Context, id string) ([]Version, error) {
 	_, row, err := t.get(ctx, t.db.sql, id)

@@ -199,6 +199,33 @@ func TestEntriesAndHistory(t *testing.T) {
 	if res, _, _ := tb.Search(ctx, Query{Text: "loyer"}); len(res) != 0 {
 		t.Fatal("deleted entry still found by search")
 	}
+
+	// A deleted entry comes back as it was, under its ID, and is found.
+	if _, err := tb.Restore(ctx, "nothing", "Dan"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("restoring what was never deleted: %v", err)
+	}
+	back, err := tb.Restore(ctx, c.ID, "Eva")
+	if err != nil || back.ID != c.ID || back.Version != 1 || terms(back.Entry, "fr")[0] != "loyer" {
+		t.Fatalf("restored: %+v %v", back, err)
+	}
+	if back.CreatedBy != "Dan" || back.ChangedBy != "Eva" {
+		t.Fatalf("restored by: %+v", back.Entry)
+	}
+	if del, _ := tb.Deleted(ctx); len(del) != 0 {
+		t.Fatalf("still listed as deleted: %+v", del)
+	}
+	if res, _, _ := tb.Search(ctx, Query{Text: "loyer"}); len(res) != 1 {
+		t.Fatal("the restored entry is not found by search")
+	}
+	if h, _ := tb.History(ctx, c.ID); len(h) != 1 || h[0].Summary != "Restored after it was deleted" {
+		t.Fatalf("history of the restored entry: %+v", h)
+	}
+	if _, err := tb.Restore(ctx, c.ID, "Eva"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("restoring twice: %v", err)
+	}
+	if err := tb.DeleteEntry(ctx, c.ID, "Dan", ""); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestLookupAndSearch(t *testing.T) {

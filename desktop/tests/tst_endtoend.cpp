@@ -3,6 +3,7 @@
 // its own core: sign in, keep a memory on the server, make a project on
 // each from a document, translate on the server, and get the translated
 // document back. Skipped without a team server.
+#include "termbasedialogs.h"
 #include "accesspanel.h"
 #include "apiclient.h"
 #include "connection.h"
@@ -32,6 +33,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStackedWidget>
@@ -609,16 +611,47 @@ private slots:
         make->click();
         QTRY_VERIFY_WITH_TIMEOUT(page->termbase() == QStringLiteral("E2E Recht") && page->connectionId() == team->id(), 10000);
         QTRY_VERIFY(byName<Web::Clickable>(page, QStringLiteral("tb:%1:E2E Recht").arg(team->id())));
-        // A termbase on the server is read again on demand, and has no
-        // settings dialog here.
-        bool reload = false, settings = false;
-        for (QPushButton *b : page->findChildren<QPushButton *>()) {
-            if (b->isHidden() && b->testAttribute(Qt::WA_WState_ExplicitShowHide))
-                continue;
-            reload = reload || b->text() == QStringLiteral("Reload");
-            settings = settings || b->text() == QStringLiteral("Settings");
+        // A termbase on the server is read again on demand; who manages
+        // it has its settings, with who may use it.
+        QVERIFY(button(page, QStringLiteral("Reload")));
+        QTRY_VERIFY(byName<QPushButton>(page, QStringLiteral("termbaseSettingsButton")));
+        QVERIFY(page->may("manage"));
+        QVERIFY(!byName<QLabel>(page, QStringLiteral("termbaseRole")));
+        qint64 rosa = 0;
+        for (const QJsonValue &v : wait(api->get(QStringLiteral("/api/users"))).array()) {
+            if (v.toObject().value("username").toString() == QStringLiteral("rosa"))
+                wait(api->del(QStringLiteral("/api/users/%1").arg(v.toObject().value("id").toInteger())));
         }
-        QVERIFY(reload && !settings);
+        const ApiResult made = wait(api->post(QStringLiteral("/api/users"), QJsonObject{{"username", "rosa"}, {"name", "Rosa Lind"}, {"password", "another long password"}}));
+        QVERIFY(made.ok());
+        rosa = made.object().value("id").toInteger();
+        TermbaseSettingsDialog *set = page->settingsDialog();
+        QVERIFY(set);
+        AccessPanel *access = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && (access = byName<AccessPanel>(set, QStringLiteral("termbaseAccess"))), 10000);
+        QVERIFY(label(access, QStringLiteral("Who may use it")));
+        // Trusted authors are chosen among the people of the server.
+        QComboBox *author = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((author = byName<QComboBox>(set, QStringLiteral("trustAuthor"))) && author->findData(QStringLiteral("rosa")) > 0, 10000);
+        QCOMPARE(author->itemText(author->findData(QStringLiteral("rosa"))), QStringLiteral("Rosa Lind (rosa)"));
+        // Rosa may read it.
+        QComboBox *who = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((who = access->findChild<QComboBox *>(QStringLiteral("who"))) && who->findData(rosa) >= 0, 10000);
+        pick(who, rosa);
+        pick(access->findChild<QComboBox *>(QStringLiteral("role")), QStringLiteral("read"));
+        access->findChild<QPushButton *>(QStringLiteral("add"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            for (const QJsonValue &g : wait(api->get(QStringLiteral("/api/users/%1/grants").arg(rosa))).array()) {
+                if (g.toObject().value("resource").toString() == QStringLiteral("E2E Recht") && g.toObject().value("role").toString() == QStringLiteral("read"))
+                    return true;
+            }
+            return false;
+        }(), 10000);
+        byName<QScrollArea>(set, QStringLiteral("settingsScroll"))->ensureWidgetVisible(access, 0, 40);
+        QTest::qWait(200);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty())
+            set->grab().save(dir + QStringLiteral("/termbase-settings-access.png"));
+        set->accept();
 
         // An entry, saved on the server.
         byName<QPushButton>(page, QStringLiteral("newEntry"))->click();
@@ -653,6 +686,47 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(review->message(), QStringLiteral("Approved: 1 entry"), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(wait(api->get(QStringLiteral("/api/termbases/E2E%20Recht/entries"))).object().value("total").toInt(), 3, 10000);
 
+
+        // Rosa, who may only read the master: the entries are there to
+        // read, and nothing that changes them is offered.
+        {
+            TestCore hers;
+            ConnectionManager rm(&hers.launcher);
+            rm.start();
+            QTRY_VERIFY_WITH_TIMEOUT(rm.local()->isReady(), 30000);
+            Connection *asRosa = nullptr;
+            bool done = false;
+            rm.signInWithPassword(ConnectionManager::serverUrl(qEnvironmentVariable("INTERLINEA_TEAM_SERVER")), QStringLiteral("rosa"), QStringLiteral("another long password"),
+                                  [&](Connection *c, const ApiError &) { asRosa = c; done = true; });
+            QTRY_VERIFY_WITH_TIMEOUT(done, 20000);
+            QVERIFY(asRosa);
+            TerminologyPage reader(&rm);
+            reader.resize(1360, 900);
+            reader.show();
+            Web::Clickable *recht = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT((recht = byName<Web::Clickable>(&reader, QStringLiteral("tb:%1:E2E Recht").arg(asRosa->id()))), 15000);
+            // The project termbase is not hers to see.
+            QVERIFY(!byName<Web::Clickable>(&reader, QStringLiteral("tb:%1:E2E Fall").arg(asRosa->id())));
+            QTest::mouseClick(recht, Qt::LeftButton);
+            QTRY_VERIFY_WITH_TIMEOUT(reader.termbase() == QStringLiteral("E2E Recht") && reader.entries().size() == 3, 15000);
+            QVERIFY(reader.may("read") && !reader.may("edit") && !reader.may("manage"));
+            QTRY_VERIFY(byName<QLabel>(&reader, QStringLiteral("termbaseRole")));
+            QCOMPARE(byName<QLabel>(&reader, QStringLiteral("termbaseRole"))->text(), QStringLiteral("Read"));
+            QVERIFY(!byName<QPushButton>(&reader, QStringLiteral("termbaseSettingsButton")));
+            QVERIFY(!byName<QPushButton>(&reader, QStringLiteral("newEntry")));
+            QVERIFY(!button(&reader, QStringLiteral("Import")));
+            QVERIFY(button(&reader, QStringLiteral("Export")) && button(&reader, QStringLiteral("Reload")));
+            QTRY_VERIFY(byName<QLabel>(&reader, QStringLiteral("entryTitle")));
+            QVERIFY(!byName<Web::ConfirmButton>(&reader, QStringLiteral("deleteEntry")));
+            QVERIFY(!byName<QPushButton>(&reader, QStringLiteral("addField")));
+            auto *views = byName<Web::Tabs>(&reader, QStringLiteral("entryViews"));
+            QVERIFY(views && !byName<QPushButton>(&reader, QStringLiteral("newEntry")));
+            QVERIFY(views->tab(1)->isHidden());
+            QTest::qWait(200);
+            if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty())
+                reader.grab().save(dir + QStringLiteral("/terminology-reader.png"));
+        }
+        wait(api->del(QStringLiteral("/api/users/%1").arg(rosa)));
         wait(api->del(QStringLiteral("/api/termbases/") + ApiClient::seg(QStringLiteral("E2E Fall"))));
         wait(api->del(QStringLiteral("/api/termbases/") + ApiClient::seg(QStringLiteral("E2E Recht"))));
     }

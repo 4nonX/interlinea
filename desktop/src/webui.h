@@ -109,6 +109,9 @@ public:
     void setQuestion(const QString &question);
     // Greyed out, as a disabled button.
     void setAvailable(bool available);
+    // Whether the step takes something away: then its button is red.
+    // Otherwise it is the page's main button.
+    void setDanger(bool danger);
     bool asking() const;
     QPushButton *button() const { return m_button; }
     QPushButton *yes() const { return m_yes; }
@@ -165,6 +168,7 @@ public:
     QPushButton *add(const QString &text, const QString &icon = QString());
     void setText(int index, const QString &text);
     void setEnabledAt(int index, bool enabled);
+    void setVisibleAt(int index, bool visible);
     int current() const { return m_current; }
     void setCurrent(int index);
     QPushButton *tab(int index) const { return m_tabs.value(index); }

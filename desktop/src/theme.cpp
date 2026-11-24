@@ -177,6 +177,7 @@ QPushButton[quiet="true"]:disabled { color: dim(@accentText); background: transp
 QPushButton[danger="true"]:disabled { background: dim(@danger); border-color: transparent; color: #ffffff; }
 QLabel[role="fieldLabel"] { color: @text2; font-size: 13px; font-weight: 600; }
 QLabel[role="error"], QLabel[role="confirmText"] { color: @danger; font-size: 13px; font-weight: 500; }
+QLabel[role="confirmPlain"] { color: @text; font-size: 13px; font-weight: 500; }
 QPushButton[tiny="true"] { padding: 2px 8px; min-height: 16px; font-size: 12px; border-color: transparent; background: transparent; color: inherit; }
 QPushButton[tiny="true"]:hover { background: rgba(127,140,160,0.16); }
 

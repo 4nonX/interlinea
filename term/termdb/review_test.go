@@ -185,6 +185,30 @@ func TestProjectLayers(t *testing.T) {
 	if len(rs) != 1 || rs[0].EntryID != "c2" {
 		t.Fatalf("removals: %+v", rs)
 	}
+	// Taken back, the master's entry shows in the project again.
+	if ok, err := p.RestoreToProject(ctx, "Mietrecht", "c2", "eva"); err != nil || !ok {
+		t.Fatalf("restore: %v %v", ok, err)
+	}
+	if rs, _ := p.Removals(ctx); len(rs) != 0 {
+		t.Fatalf("removals after restoring: %+v", rs)
+	}
+	layered, _ := p.Layered(ctx)
+	seen := false
+	for _, l := range layered {
+		seen = seen || (l.Termbase == "Mietrecht" && l.ID == "c2")
+	}
+	if !seen {
+		t.Fatalf("the restored entry is not shown: %+v", layered)
+	}
+	if ok, err := p.RestoreToProject(ctx, "Mietrecht", "c2", "eva"); err != nil || ok {
+		t.Fatalf("restoring twice: %v %v", ok, err)
+	}
+	if _, err := p.RestoreToProject(ctx, "Nirgends", "c2", "eva"); err == nil {
+		t.Fatal("restored from a termbase it is not layered over")
+	}
+	if err := p.RemoveFromProject(ctx, "Mietrecht", "c2", "eva"); err != nil {
+		t.Fatal(err)
+	}
 	_ = m
 }
 

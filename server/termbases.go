@@ -41,11 +41,13 @@ func (s *Server) termbaseRoutes() {
 	s.handle("POST /api/termbases/{name}/merge", s.signedIn(s.mergeEntries))
 	s.handle("GET /api/termbases/{name}/duplicates", s.signedIn(s.duplicates))
 	s.handle("GET /api/termbases/{name}/deleted", s.signedIn(s.deletedEntries))
+	s.handle("POST /api/termbases/{name}/deleted/{eid}/restore", s.signedIn(s.restoreEntry))
 	s.handle("GET /api/termbases/{name}/lookup", s.signedIn(s.termLookup))
 	s.handle("GET /api/termbases/{name}/layered", s.signedIn(s.layeredEntries))
 	s.handle("POST /api/termbases/{name}/overrides", s.signedIn(s.overrideEntry))
 	s.handle("POST /api/termbases/{name}/removals", s.signedIn(s.removeFromProject))
 	s.handle("GET /api/termbases/{name}/removals", s.signedIn(s.removals))
+	s.handle("DELETE /api/termbases/{name}/removals", s.signedIn(s.restoreToProject))
 	s.handle("GET /api/termbases/{name}/export", s.signedIn(s.exportTermbase))
 	s.handle("POST /api/termbases/{name}/export", s.signedIn(s.exportEntries))
 	s.handle("POST /api/termbases/{name}/import", s.signedIn(s.importTermbase))
@@ -302,7 +304,8 @@ func usesTermbase(name string) func(project.Settings) bool {
 }
 
 // deleteTermbase deletes a termbase and the grants on it. A termbase a project
-// or template uses is not deleted; the answer names them.
+// or template uses is not deleted, and neither is a master that project
+// termbases are based on; the answer names them.
 //
 // Access: manage on the termbase.
 func (s *Server) deleteTermbase(w http.ResponseWriter, r *http.Request, me session) {
@@ -318,6 +321,15 @@ func (s *Server) deleteTermbase(w http.ResponseWriter, r *http.Request, me sessi
 	}
 	if len(users) > 0 {
 		inUse(w, name, users)
+		return
+	}
+	info, err := tb.Info(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if len(info.Projects) > 0 {
+		writeError(w, http.StatusConflict, "inUse", fmt.Sprintf("%s is based on %s. Delete it, or base it on another master, first.", strings.Join(info.Projects, ", "), name))
 		return
 	}
 	if err := s.cfg.Termbases.DeleteBy(r.Context(), name, me.by()); err != nil {
@@ -777,6 +789,25 @@ func (s *Server) deletedEntries(w http.ResponseWriter, r *http.Request, me sessi
 	writeJSON(w, http.StatusOK, nonNil(ds))
 }
 
+// restoreEntry brings a deleted entry back as it was when it was deleted,
+// under its old ID if that is still free, and answers with the entry.
+//
+// Access: edit on the termbase.
+func (s *Server) restoreEntry(w http.ResponseWriter, r *http.Request, me session) {
+	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
+	if !ok {
+		return
+	}
+	got, err := tb.Restore(r.Context(), r.PathValue("eid"), me.by())
+	if err != nil {
+		if !s.termProblem(w, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusCreated, got)
+}
+
 // termLookup finds the entries that have a term (?text=), case and spacing
 // aside, in a language or its variants (?lang=; empty for all).
 //
@@ -876,6 +907,35 @@ func (s *Server) removals(w http.ResponseWriter, r *http.Request, me session) {
 		return
 	}
 	writeJSON(w, http.StatusOK, nonNil(rs))
+}
+
+// restoreToProject takes a removal back (?master=&entry=): the master
+// entry shows in the project again, and merging no longer asks to delete
+// it.
+//
+// Access: edit on the project termbase.
+func (s *Server) restoreToProject(w http.ResponseWriter, r *http.Request, me session) {
+	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleEdit)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	if q.Get("master") == "" || q.Get("entry") == "" {
+		writeError(w, http.StatusUnprocessableEntity, "invalid", "Name the master and the entry to bring back.")
+		return
+	}
+	found, err := tb.RestoreToProject(r.Context(), q.Get("master"), q.Get("entry"), me.by())
+	if err != nil {
+		if !s.termProblem(w, err) {
+			s.fail(w, r, err)
+		}
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "notFound", "The entry is not left out of this project.")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 var termFormats = map[term.Format]struct{ ext, ct string }{

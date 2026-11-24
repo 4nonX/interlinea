@@ -86,6 +86,9 @@ private:
     void render();
     void rename();
     void putDefinition(const QJsonObject &definition, const QString &done);
+    void putRules(const QJsonObject &rules, const QString &done);
+    void reviewSection(QWidget *host);
+    void basedOnSection(QWidget *host);
     int termsIn(const QString &lang) const;
     int valuesOf(const QString &field) const;
     void request(class ApiReply *reply, std::function<void(const struct ApiResult &)> then);
@@ -95,6 +98,14 @@ private:
     QJsonObject m_detail;
     QList<QJsonObject> m_entries;
     QStringList m_usedBy;
+    // The masters of the place, for what a project termbase is based on.
+    QStringList m_masters;
+    // How merge requests into a master are reviewed, and whom to trust.
+    QJsonObject m_rules;
+    QJsonArray m_people;
+    QString m_trustAuthor;
+    QString m_trustLang;
+    class AccessPanel *m_access = nullptr;
     int m_pending = 0;
     QLineEdit *m_nameEdit;
     QVBoxLayout *m_content;
