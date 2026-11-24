@@ -30,7 +30,7 @@ ends with everything in it working, tested and in CI.
   knows. Everything the app does locally, it does the same way on a team
   server. Nothing needs a network.
 - **File work is part of the API.** What the web app does in WebAssembly
-  (reading and writing Word, XLIFF and Trados packages, segmentation,
+  (reading and writing documents, XLIFF and packages, segmentation,
   language detection, QA, spelling, analysis, termbase files) becomes API
   routes, on the core and on the team server alike. Spelling dictionaries
   are installed per core or server.

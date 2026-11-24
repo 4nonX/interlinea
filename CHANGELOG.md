@@ -12,9 +12,10 @@ client and the desktop app, with installers and a server image.
 
 ### Translating
 
-- Projects from Word documents, plain text, Trados SDLXLIFF and memoQ
-  MQXLIFF files, and from Trados project packages, with the translated
-  files and return packages written back.
+- Projects from Word, PowerPoint and Excel documents, web pages,
+  InDesign documents (IDML), plain text, XLIFF, Trados SDLXLIFF and memoQ
+  MQXLIFF files, and from Trados project packages and memoQ handoff
+  packages, with the translated files and return packages written back.
 - An editor with translation memory matches, concordance search, found
   terms, formatting tags, spelling, quality checks, own rules and length
   limits. The best memory match goes into an empty segment, and a

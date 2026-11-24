@@ -53,8 +53,9 @@ sign-in through a provider, backups.
 
 ## Status
 
-- **Core:** file filters for Word, XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF,
-  Trados packages and plain text; translation memories; termbases with
+- **Core:** file filters for Word, PowerPoint, Excel, web pages (HTML),
+  InDesign (IDML), XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF (also as .mqxlz),
+  Trados packages, memoQ handoff packages and plain text; translation memories; termbases with
   TBX, MultiTerm, CSV and Excel exchange; QA, spelling, analysis and
   pre-translation. Done and tested.
 - **Team server:** accounts and roles, password and OpenID Connect
@@ -88,8 +89,15 @@ The Go packages:
 | `internal/sqlitedb` | Opens the SQLite stores with shared settings (WAL, busy timeout) and migrates their schema |
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |
 | `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
+| `filter/pptx` | PowerPoint filter: slides in the order of the show with their tables, charts and SmartArt, then each slide's speaker notes (shares the reading of DrawingML with the Word filter) |
+| `filter/xlsx` | Excel filter: cells sheet by sheet, a shared text once; comments, text boxes and chart titles; numbers, dates and formulas left alone |
+| `filter/html` | Web page filter: runs of text between block elements with inline elements as tags; the title, description and the attributes people read; scripts, styles and translate="no" left alone; any encoding |
+| `filter/idml` | InDesign IDML filter: stories in page order, paragraphs with character formats and links as tags, tables and footnotes after the paragraph that holds them |
+| `filter/para` | What the document filters share: a paragraph's content cut into sentence units, and translations put back with their tags matched and nested |
+| `filter/formats` | The formats by file name, and one way to extract and merge any document |
 | `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
 | `filter/sdlpackage` | Trados project packages (.sdlppx): languages and bilingual files; return packages (.sdlrpx) with the translated files |
+| `filter/mqpackage` | memoQ handoff packages (.mqout) and memoQ XLIFF archives (.mqxlz): the documents as memoQ XLIFF; delivery packages (.mqback) |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel, and reads MultiTerm termbase files (.sdltb); import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
 | `analysis` | Word counts and analysis against memories as in Trados and memoQ: locked, context matches (101%, segment before or before and after), repetitions within and across files, 100%, fuzzy bands, new; segments, words, characters, tags and placeables per file and in total; weighted word counts for quotes; reports in HTML, CSV and JSON |
 | `qa` | Quality checks as in Trados, memoQ and Xbench: empty and untranslated segments, tags (missing, extra, nesting), numbers read with each language's separators, end punctuation, spacing (double, leading and trailing, before punctuation, French no-break spaces), brackets, repeated words, capitalization, length limits and ratio, consistency across segments, terminology, spelling, rules of your own (regular expressions); reports in HTML, CSV and JSON |
@@ -231,7 +239,7 @@ and are refused with 409 `conflict` when someone saved in between. Errors are
 Creating a project (`POST /api/projects`) makes its own memories and its
 termbase (layered over the masters, or on its own) with it, and removes
 them again if the project is refused. The apps send a translatable file with
-its segments; the server reads Word and XLIFF files itself and refuses
+its segments; the server reads documents and XLIFF files itself and refuses
 segments that are not the file's (and checks that a text file's segments
 are its text), keeping the file's own source text and locks. Memories and termbases a project or
 template uses are not deleted under it, and renaming a termbase renames it
@@ -292,9 +300,12 @@ interlinea lookup -tmx memory.tmx -tgt en-GB -min 60 -n 10 -json "..."
 interlinea concordance -tmx memory.tmx -tgt en-GB Mietsache
 interlinea concordance -tmx memory.tmx -tgt en-GB -target "leased property"
 interlinea score "Der Mieter haftet." "Der Vermieter haftet."
-interlinea extract -lang de-DE lease.docx
+interlinea extract -lang de-DE lease.docx          # also .pptx, .xlsx, .html, .idml
 interlinea extract -lang de-DE -json lease.docx > units.json
 interlinea merge -lang de-DE -target en-GB -o lease_en-GB.docx lease.docx translations.json
+interlinea package info Hofmann.mqout             # also .sdlppx
+interlinea package extract -o work Hofmann.mqout
+interlinea package return -o Hofmann.mqback Hofmann.mqout work
 ```
 
 Bilingual XLIFF files (from Trados, memoQ, Phrase or any XLIFF tool):
@@ -413,7 +424,49 @@ that match by primary language only (`de-AT` for `de-DE`).
   `PackageType="ReturnPackage"` (every other byte as it was, so Trados
   matches it to its project) and the package's SDLXLIFF files, the
   translated ones replaced; memories, termbases and settings are not sent
-  back. memoQ handoff packages (.mqout) are not read yet.
+  back.
+- memoQ handoff packages (.mqout): the documents are read as memoQ XLIFF,
+  out of their archives (.mqxlz) where they are in one; the package's
+  memories (TMX) and term bases (CSV) stay in it and can be imported from
+  it by hand. The delivery package (.mqback) holds the documents as memoQ
+  XLIFF and DeliveryPackageInfo.xml, made from the handoff's
+  HandoffPackageInfo.xml the way delivery packages are put together by
+  hand: the HandoffPackageInfo element named HandoffDeliveryPackageInfo,
+  its UserName named User. memoQ publishes no description of these files,
+  and the delivery package has not been tried against memoQ: if memoQ
+  does not take it, save the documents one by one (Save XLIFF) and bring
+  them in with memoQ's import of bilingual files, which is documented.
+  A memoQ XLIFF archive on its own is a bilingual file and is saved back
+  as the archive it was.
+- PowerPoint: slides in the order of the show, each followed by its
+  charts, SmartArt and speaker notes; tables cell by cell. Slide masters
+  and layouts are not read (their prompts do not show in a show), comments
+  are kept as they are. A paragraph translated into a language of the
+  other direction is turned around, with its alignment.
+- Excel: the text of cells, sheet by sheet along the rows; a text several
+  cells share is one segment. Comments, text boxes and chart titles
+  follow the cells of their sheet. Numbers, dates and formulas are left
+  alone, and so are sheet names, which formulas and charts refer to. A
+  workbook translated into a language of the other direction has its
+  sheets turned.
+- Web pages: a run of text between block elements is a block; inline
+  elements are tags; the title, the description and keywords, and alt,
+  title, placeholder, aria-label and button labels are blocks of their
+  own. Scripts, styles, `translate="no"`, svg, frames and embedded
+  objects are left alone. The page is written back in its own encoding
+  (a character it does not have becomes a numeric reference), with the
+  target's `lang` and `dir` on the html element. Markup that is not well
+  formed is kept as it is.
+- InDesign: stories in the order of their frames on the pages; a
+  paragraph is a block; other character formats and links are pairs,
+  forced line breaks, page numbers, anchored objects, tables and footnote
+  references placeholders; cells and footnotes follow the paragraph that
+  holds them. Notes and tracked changes are kept as they are; a paragraph
+  whose text sits in XML structure tags is kept, with a warning. The
+  language InDesign checks spelling in is not changed; for Arabic and
+  Hebrew the paragraph direction is set, and the World-Ready composer has
+  to be chosen in InDesign. Only IDML is read: save an .indd as IDML in
+  InDesign first.
 - Termbases: an entry is one concept with its terms per language, as in
   MultiTerm, memoQ and TBX. Statuses map to TBX `administrativeStatus`
   (approved = preferredTerm, proposed = admittedTerm, forbidden =

@@ -46,7 +46,7 @@ NewProjectDialog::NewProjectDialog(ConnectionManager *manager, QWidget *parent)
     tl->setBuddy(m_template);
     top->addRow(tl, m_template);
     dl->addLayout(top);
-    auto *intro = new QLabel(tr("Add the documents to translate: Word files, bilingual files (XLIFF, SDLXLIFF, MQXLIFF), Trados packages and text files. Other files travel with the project for reference."), docs);
+    auto *intro = new QLabel(tr("Add the documents to translate: Word, PowerPoint, Excel, InDesign (IDML) and web page files, bilingual files (XLIFF, SDLXLIFF, MQXLIFF), Trados packages, memoQ handoff packages and text files. Other files travel with the project for reference."), docs);
     intro->setWordWrap(true);
     Theme::secondary(intro);
     dl->addWidget(intro);
@@ -264,7 +264,7 @@ void NewProjectDialog::refreshDocs()
     m_files->clear();
     for (const Doc &d : std::as_const(m_docs)) {
         const QJsonObject in = d.inspection;
-        QString role = d.role == QLatin1String("package") ? tr("Trados package")
+        QString role = d.role == QLatin1String("package") ? (d.name.endsWith(QLatin1String(".mqout"), Qt::CaseInsensitive) ? tr("memoQ handoff package") : tr("Trados package"))
             : d.role == QLatin1String("translatable")      ? tr("To translate")
                                                            : tr("Reference");
         QString lang;

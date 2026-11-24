@@ -405,7 +405,7 @@ void ProjectPage::showProgress(const QJsonArray &progress)
         if (role == QLatin1String("reference"))
             item->setText(1, tr("reference"));
         else if (role == QLatin1String("package"))
-            item->setText(1, tr("Trados package"));
+            item->setText(1, name.endsWith(QLatin1String(".mqout"), Qt::CaseInsensitive) ? tr("memoQ handoff package") : tr("Trados package"));
         for (const QJsonValue &pv : progress) {
             const QJsonObject p = pv.toObject();
             if (p.value(QLatin1String("file")).toString() != name)

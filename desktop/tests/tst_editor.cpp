@@ -87,6 +87,102 @@ private slots:
         QCOMPARE(diff, QStringLiteral("Die <span class=\"mark\">Kaution</span> ist fällig"));
     }
 
+    // Every document format opens in the editor and is saved as it came:
+    // a presentation, a workbook, a web page and an InDesign document as
+    // translated documents, a memoQ package's file as a return package.
+    void documentFormats()
+    {
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        auto fixture = [](const QString &name) {
+            QFile f(QStringLiteral(INTERLINEA_FIXTURES "/documents/") + name);
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+        QJsonObject settings = wait(api->get(QStringLiteral("/api/projects/defaults"))).object();
+        settings.insert("name", "Formate");
+        settings.insert("sourceLang", "de-DE");
+        settings.insert("targetLangs", QJsonArray{"en-GB"});
+        settings.insert("projectMemory", false);
+        QJsonObject terminology = settings.value("terminology").toObject();
+        terminology.insert("mode", "own");
+        terminology.insert("termbase", "Formate terms");
+        settings.insert("terminology", terminology);
+        QJsonArray files;
+        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml"};
+        for (const QString &n : names) {
+            const QByteArray data = fixture(n);
+            QVERIFY2(!data.isEmpty(), qPrintable(n));
+            // What the server says of the file before a project is made of it.
+            const ApiResult in = wait(api->upload("POST", QStringLiteral("/api/files/inspect"), data, QStringLiteral("application/octet-stream"), QUrlQuery{{"name", n}}));
+            QVERIFY2(in.ok() && in.object().value("translatable").toBool() && in.object().value("segments").toInt() > 0, qPrintable(n + ": " + in.error.message));
+            files << QJsonObject{{"name", n}, {"role", "translatable"}, {"data", QString::fromLatin1(data.toBase64())}};
+        }
+        const ApiResult made = wait(api->post(QStringLiteral("/api/projects"),
+                                              QJsonObject{{"settings", settings}, {"files", files}, {"termbase", QJsonObject{{"name", "Formate terms"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}}));
+        QVERIFY2(made.ok(), qPrintable(made.error.message));
+        const qint64 id = made.object().value("id").toInteger();
+        Theme::apply(*qApp);
+        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}};
+        for (const QString &n : names) {
+            EditorPage ed(m.local(), id, n, QStringLiteral("en-GB"));
+            ed.resize(1280, 820);
+            ed.show();
+            QTRY_COMPARE_WITH_TIMEOUT(ed.model()->rowCount(), segments.value(n), 10000);
+            QPushButton *save = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT((save = button(&ed, "Save translated document")) && save->isVisible(), 10000);
+            QVERIFY2(button(&ed, "Preview") && button(&ed, "Preview")->isVisible(), qPrintable(n));
+            if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty() && n == "Seite.html") {
+                QTest::qWait(600);
+                ed.grab().save(dir + QStringLiteral("/editor-html.png"));
+            }
+        }
+        // The translated files come back in their formats.
+        const QString base = QStringLiteral("/api/projects/%1").arg(id);
+        const QJsonArray segs = wait(api->get(base + "/segments", {{"file", "Seite.html"}, {"lang", "en-GB"}})).array();
+        QCOMPARE(segs.at(1).toObject().value("source").toArray().at(0).toObject().value("text").toString(), QStringLiteral("Fristen im Mietrecht"));
+        const ApiResult page = wait(api->get(base + "/files/translated", {{"name", "Seite.html"}, {"lang", "en-GB"}}));
+        QVERIFY(page.ok());
+        QCOMPARE(page.fileName(), QStringLiteral("Seite (en-GB).html"));
+        QVERIFY(page.body.contains("<html lang=\"en-GB\">"));
+
+        // A memoQ handoff package: its document is a bilingual file of
+        // the project, saved back as the package's return.
+        QJsonObject s2 = wait(api->get(QStringLiteral("/api/projects/defaults"))).object();
+        s2.insert("name", "Hofmann memoQ");
+        s2.insert("sourceLang", "de-de");
+        s2.insert("targetLangs", QJsonArray{"en-gb"});
+        s2.insert("projectMemory", false);
+        QJsonObject t2 = s2.value("terminology").toObject();
+        t2.insert("mode", "own");
+        t2.insert("termbase", "Hofmann memoQ terms");
+        s2.insert("terminology", t2);
+        const QByteArray handoff = fixture("Hofmann.mqout");
+        const ApiResult in = wait(api->upload("POST", QStringLiteral("/api/files/inspect"), handoff, QStringLiteral("application/octet-stream"), QUrlQuery{{"name", "Hofmann.mqout"}}));
+        QVERIFY(in.ok());
+        QCOMPARE(in.object().value("format").toString(), QStringLiteral("package"));
+        QCOMPARE(in.object().value("package").toObject().value("name").toString(), QStringLiteral("Mietvertrag Hofmann"));
+        const ApiResult made2 = wait(api->post(QStringLiteral("/api/projects"),
+                                               QJsonObject{{"settings", s2},
+                                                           {"files", QJsonArray{QJsonObject{{"name", "Hofmann.mqout"}, {"role", "package"}, {"data", QString::fromLatin1(handoff.toBase64())}}}},
+                                                           {"termbase", QJsonObject{{"name", "Hofmann memoQ terms"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}}));
+        QVERIFY2(made2.ok(), qPrintable(made2.error.message));
+        const qint64 id2 = made2.object().value("id").toInteger();
+        const QString member = made2.object().value("settings").toObject().value("files").toArray().at(1).toObject().value("name").toString();
+        QCOMPARE(member, QStringLiteral("Documents/Mietvertrag.docx.mqxliff"));
+        EditorPage ed(m.local(), id2, member, QStringLiteral("en-gb"));
+        ed.resize(1280, 820);
+        ed.show();
+        QTRY_COMPARE_WITH_TIMEOUT(ed.model()->rowCount(), 3, 10000);
+        QPushButton *save = nullptr;
+        QTRY_VERIFY_WITH_TIMEOUT((save = button(&ed, "Save return package")) && save->isVisible(), 10000);
+        const ApiResult back = wait(api->get(QStringLiteral("/api/projects/%1/return-package").arg(id2)));
+        QVERIFY(back.ok());
+        QCOMPARE(back.fileName(), QStringLiteral("Hofmann.mqback"));
+    }
+
     void translateAFile()
     {
         TestCore core;

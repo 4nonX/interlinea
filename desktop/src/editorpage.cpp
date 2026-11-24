@@ -167,6 +167,27 @@ protected:
 
 } // namespace
 
+// The formats a filter of the core reads as a document, and the bilingual
+// ones, by the file's name (the web's documentFormat and XLIFF_FILE).
+static bool hasSuffix(const QString &name, std::initializer_list<const char *> suffixes)
+{
+    for (const char *s : suffixes) {
+        if (name.endsWith(QLatin1String(s), Qt::CaseInsensitive))
+            return true;
+    }
+    return false;
+}
+
+static bool isDocument(const QString &name)
+{
+    return hasSuffix(name, {".docx", ".docm", ".pptx", ".pptm", ".ppsx", ".xlsx", ".xlsm", ".html", ".htm", ".xhtml", ".idml"});
+}
+
+static bool isBilingual(const QString &name)
+{
+    return hasSuffix(name, {".xlf", ".xliff", ".sdlxliff", ".mqxliff", ".mqxlz"});
+}
+
 EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &file, const QString &lang,
                        QWidget *parent)
     : QWidget(parent)
@@ -496,7 +517,7 @@ QWidget *EditorPage::buildBar()
     connect(action(QStringLiteral("bar-chart"), tr("Analysis")), &QPushButton::clicked, this, &EditorPage::showAnalysisDialog);
     m_preview = action(QStringLiteral("eye"), tr("Preview"));
     m_preview->setCheckable(true);
-    m_preview->setVisible(m_file.endsWith(QLatin1String(".docx"), Qt::CaseInsensitive));
+    m_preview->setVisible(isDocument(m_file));
     connect(m_preview, &QPushButton::toggled, this, [this](bool on) {
         m_previewBox->setVisible(on);
         if (on)
@@ -889,11 +910,12 @@ void EditorPage::loadProject()
         }
         m_langChoice->setVisible(targets.size() > 1);
         m_targetChip->setVisible(targets.size() <= 1);
-        // Saved as the file came: a Word document, a bilingual file, or a
-        // return package for a Trados package's file.
-        const bool docx = m_file.endsWith(QLatin1String(".docx"), Qt::CaseInsensitive);
-        const bool xliff = !docx && !m_file.endsWith(QLatin1String(".txt"), Qt::CaseInsensitive);
-        m_save->setVisible(docx || xliff);
+        // Saved as the file came: a document (Word, PowerPoint, Excel, a
+        // web page, InDesign), a bilingual file, or a return package for
+        // a package's file. Plain text is saved from the project page.
+        const bool document = isDocument(m_file);
+        const bool xliff = !document && isBilingual(m_file);
+        m_save->setVisible(document || xliff);
         if (!fileInfo.value(QLatin1String("package")).toString().isEmpty())
             m_save->setText(tr("Save return package"));
         else if (xliff)

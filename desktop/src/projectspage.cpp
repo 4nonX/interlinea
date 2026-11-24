@@ -60,7 +60,7 @@ ProjectsPage::ProjectsPage(ConnectionManager *manager, QWidget *parent)
     zt->setSpacing(2);
     auto *zh = Web::text(tr("Start a project from files"), "sectionTitle16", zone);
     zt->addWidget(zh);
-    zt->addWidget(Web::text(tr("Drop files, a folder or a Trados package here. Interlinea detects the source language and suggests memories and termbases for the client."),
+    zt->addWidget(Web::text(tr("Drop files, a folder, or a Trados or memoQ package here. Interlinea detects the source language and suggests memories and termbases for the client."),
                             "secondary", zone));
     zl->addLayout(zt, 1);
     auto *choose = Web::button(tr("Choose files"), Web::Primary, zone);

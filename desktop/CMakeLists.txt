@@ -132,6 +132,8 @@ foreach(name apiclient eventfeed secretstore providersignin connections ui proje
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_app Qt6::Test)
+    # One small document of every format, shared with the browser tests.
+    target_compile_definitions(tst_${name} PRIVATE INTERLINEA_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../web/e2e/fixtures")
     add_test(NAME ${name} COMMAND tst_${name})
     set(test_env "QT_QPA_PLATFORM=offscreen")
     if(INTERLINEA_BUILD_CORE)
