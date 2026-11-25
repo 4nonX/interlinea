@@ -1,6 +1,7 @@
 #include "connectionmanager.h"
 #include "corelauncher.h"
 #include "icons.h"
+#include "layoutcheck.h"
 #include "mainwindow.h"
 #include "accountspage.h"
 #include "memoriespage.h"
@@ -42,6 +43,9 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("Interlinea"));
     QApplication::setApplicationVersion(QStringLiteral(INTERLINEA_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/interlinea.png")));
+    // On request, broken layout is written to the log as it is seen.
+    if (qEnvironmentVariableIsSet("INTERLINEA_LAYOUT_CHECK"))
+        LayoutCheck::watch([](const QString &line) { qWarning("layout: %s", qPrintable(line)); });
     // The name of the desktop entry, so the windows are grouped under it.
     QGuiApplication::setDesktopFileName(QStringLiteral("org.interlinea.desktop"));
 

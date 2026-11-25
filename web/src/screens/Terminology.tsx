@@ -41,7 +41,6 @@ import {
 import { go } from "../App";
 import {
   ConfirmButton,
-  ExportDialog,
   ImportDialog,
   SettingsDialog,
   useCore,
@@ -65,6 +64,7 @@ import {
 } from "./ServerTermbase";
 import { roleText } from "./Accounts";
 import { NewTermbaseDialog } from "./NewTermbase";
+import { ExportTermbaseDialog } from "./ExportTermbase";
 
 type DialogKind = "import" | "import-new" | "export" | "settings" | null;
 
@@ -435,7 +435,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
         <ImportDialog onClose={() => setDialog(null)} />
       )}
       {dialog === "export" && (
-        <ExportDialog
+        <ExportTermbaseDialog
           tb={tb}
           entries={entries}
           shown={filtered}

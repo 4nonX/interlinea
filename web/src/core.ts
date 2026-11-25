@@ -239,6 +239,32 @@ declare global {
 
 let loading: Promise<CoreApi> | null = null;
 
+// The fonts a PDF is set in, fetched once, when one is made.
+let fontFiles: Promise<Uint8Array[]> | null = null;
+export function pdfFonts(): Promise<Uint8Array[]> {
+  const names = [
+    "NotoSans-Regular.ttf",
+    "NotoSans-Bold.ttf",
+    "NotoSans-Italic.ttf",
+    "NotoSans-BoldItalic.ttf",
+    "NotoSansArabic-Regular.ttf",
+    "NotoSansArabic-Bold.ttf",
+    "NotoSansHebrew-Regular.ttf",
+    "NotoSansHebrew-Bold.ttf",
+  ];
+  fontFiles ??= Promise.all(
+    names.map(async (n) => {
+      const r = await fetch(`${base()}core/fonts/${n}`);
+      if (!r.ok) throw new Error(`The font ${n} could not be loaded.`);
+      return new Uint8Array(await r.arrayBuffer());
+    }),
+  ).catch((e) => {
+    fontFiles = null;
+    throw e;
+  });
+  return fontFiles;
+}
+
 function base(): string {
   return new URL("./", document.baseURI).href;
 }

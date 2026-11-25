@@ -17,7 +17,10 @@ import (
 	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/term"
+	"github.com/4nonX/interlinea/term/glossary"
 	"github.com/4nonX/interlinea/term/termdb"
+	"github.com/4nonX/interlinea/typeset"
+	"github.com/4nonX/interlinea/typeset/fonts"
 )
 
 func (s *Server) termbaseRoutes() {
@@ -50,6 +53,7 @@ func (s *Server) termbaseRoutes() {
 	s.handle("DELETE /api/termbases/{name}/removals", s.signedIn(s.restoreToProject))
 	s.handle("GET /api/termbases/{name}/export", s.signedIn(s.exportTermbase))
 	s.handle("POST /api/termbases/{name}/export", s.signedIn(s.exportEntries))
+	s.handle("GET /api/export-presets", s.signedIn(s.exportPresets))
 	s.handle("POST /api/termbases/{name}/import", s.signedIn(s.importTermbase))
 	s.handle("POST /api/termfiles/inspect", s.signedIn(s.inspectTermFile))
 	s.handle("GET /api/termbases/{name}/changes", s.signedIn(s.termbaseChanges))
@@ -455,6 +459,16 @@ func (s *Server) setDefinition(w http.ResponseWriter, r *http.Request, me sessio
 		return
 	}
 	def.Name = tb.Name()
+	// Export settings kept must fit the termbase as it will be.
+	for _, p := range def.Exports {
+		if err := glossary.Check(&term.Termbase{Definition: def}, p.Options); err != nil {
+			var pr *glossary.Problem
+			if errors.As(err, &pr) {
+				invalid(w, "exports", p.Name+": "+pr.Message)
+				return
+			}
+		}
+	}
 	if err := tb.SetDefinitionBy(r.Context(), def, me.by()); err != nil {
 		if !s.termProblem(w, err) {
 			s.fail(w, r, err)
@@ -938,55 +952,75 @@ func (s *Server) restoreToProject(w http.ResponseWriter, r *http.Request, me ses
 	w.WriteHeader(http.StatusNoContent)
 }
 
-var termFormats = map[term.Format]struct{ ext, ct string }{
-	term.FormatTBX:       {".tbx", "application/x-tbx+xml; charset=utf-8"},
-	term.FormatTBX2:      {".tbx", "application/x-tbx+xml; charset=utf-8"},
-	term.FormatMultiTerm: {".xml", "application/xml; charset=utf-8"},
-	term.FormatCSV:       {".csv", "text/csv; charset=utf-8"},
-	term.FormatTSV:       {".tsv", "text/tab-separated-values; charset=utf-8"},
-	term.FormatXLSX:      {".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
-}
-
 // exportTermbase sends the termbase as a file: ?format=tbx (the default),
-// tbx2, multiterm, csv, tsv or xlsx.
+// tbx2, multiterm, csv, tsv or xlsx, or a glossary to read: pdf, docx,
+// html or txt. ?preset= names export settings kept with the termbase, or
+// ready-made ones (GET /api/export-presets), instead.
 //
 // Access: read on the termbase.
 func (s *Server) exportTermbase(w http.ResponseWriter, r *http.Request, me session) {
-	s.sendTermbase(w, r, me, nil)
+	q := r.URL.Query()
+	if p := q.Get("preset"); p != "" {
+		s.sendTermbase(w, r, me, nil, nil, p)
+		return
+	}
+	o := glossaryDefaults(q.Get("format"))
+	s.sendTermbase(w, r, me, &o, nil, "")
 }
 
-// exportEntries sends chosen entries of the termbase as a file, in the
-// formats of the export: those a search shows, for one.
+// glossaryDefaults are the options of an export that names only its
+// format: everything, and a glossary as a dictionary with its letters.
+func glossaryDefaults(format string) term.ExportOptions {
+	if format == "" {
+		format = string(term.FormatTBX)
+	}
+	o := term.ExportOptions{Format: format, AllFields: true}
+	if o.Glossary() {
+		o.Layout, o.Letters, o.Labels, o.Status = "dictionary", true, true, true
+	}
+	return o
+}
+
+// exportEntries sends the termbase as a file made as the options say:
+// which languages, fields, statuses and entries (those a search shows,
+// say), and for a glossary its layout. Without options it is the format
+// of ?format= with everything.
 //
 // Access: read on the termbase.
 func (s *Server) exportEntries(w http.ResponseWriter, r *http.Request, me session) {
 	var req struct {
 		// Entries are the IDs of the entries to send.
 		Entries []string `json:"entries"`
+		// Options say what the export holds and how a glossary is laid out.
+		Options *term.ExportOptions `json:"options"`
 	}
 	if !readJSON(w, r, &req, maxBody) {
 		return
 	}
-	if len(req.Entries) == 0 {
+	if req.Options == nil && len(req.Entries) == 0 {
 		invalid(w, "entries", "Say which entries to export.")
 		return
 	}
-	s.sendTermbase(w, r, me, req.Entries)
+	o := glossaryDefaults(r.URL.Query().Get("format"))
+	if req.Options != nil {
+		o = *req.Options
+	}
+	s.sendTermbase(w, r, me, &o, req.Entries, "")
 }
 
-// sendTermbase writes the termbase, or the entries named, as a file.
-func (s *Server) sendTermbase(w http.ResponseWriter, r *http.Request, me session, only []string) {
+// exportPresets lists the ready-made export settings every termbase has.
+//
+// Access: signed in.
+func (s *Server) exportPresets(w http.ResponseWriter, r *http.Request, me session) {
+	writeJSON(w, http.StatusOK, glossary.Presets())
+}
+
+// sendTermbase writes the termbase as the options or the preset say. A
+// glossary says what it holds in X-Interlinea-Summary, and characters no
+// font had in X-Interlinea-Missing (as U+4E2D, space-separated).
+func (s *Server) sendTermbase(w http.ResponseWriter, r *http.Request, me session, o *term.ExportOptions, only []string, preset string) {
 	tb, _, ok := s.openTermbaseFor(w, r, me, authdb.RoleRead)
 	if !ok {
-		return
-	}
-	f := term.Format(r.URL.Query().Get("format"))
-	if f == "" {
-		f = term.FormatTBX
-	}
-	kind, known := termFormats[f]
-	if !known {
-		invalid(w, "format", "The format is tbx, tbx2, multiterm, csv, tsv or xlsx.")
 		return
 	}
 	full, err := tb.Export(r.Context())
@@ -994,28 +1028,53 @@ func (s *Server) sendTermbase(w http.ResponseWriter, r *http.Request, me session
 		s.fail(w, r, err)
 		return
 	}
-	if only != nil {
-		want := map[string]bool{}
-		for _, id := range only {
-			want[id] = true
-		}
-		var kept []term.Entry
-		for _, e := range full.Entries {
-			if want[e.ID] {
-				kept = append(kept, e)
+	if preset != "" {
+		found := false
+		for _, p := range append(append([]term.ExportPreset{}, full.Exports...), glossary.Presets()...) {
+			if strings.EqualFold(p.Name, preset) {
+				opts := p.Options
+				o, found = &opts, true
+				break
 			}
 		}
-		full.Entries = kept
+		if !found {
+			invalid(w, "preset", fmt.Sprintf("%s has no export settings called %s.", tb.Name(), preset))
+			return
+		}
 	}
-	data, err := term.Write(full, f)
+	if len(only) > 0 {
+		o.Entries = only
+	}
+	var fs *typeset.FontSet
+	if o.Format == "pdf" {
+		if fs, err = typeset.NewFontSet(fonts.All(), true); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
+	res, err := glossary.Export(full, *o, fs, time.Now())
 	if err != nil {
+		var p *glossary.Problem
+		if errors.As(err, &p) {
+			invalid(w, p.Field, p.Message)
+			return
+		}
 		s.fail(w, r, err)
 		return
 	}
-	w.Header().Set("Content-Type", kind.ct)
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": tb.Name() + kind.ext}))
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	w.Write(data)
+	w.Header().Set("Content-Type", res.MediaType)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": tb.Name() + res.Extension}))
+	w.Header().Set("Content-Length", strconv.Itoa(len(res.Data)))
+	w.Header().Set("X-Interlinea-Summary", res.Summary)
+	if len(res.Missing) > 0 {
+		var codes []string
+		for _, c := range res.Missing {
+			codes = append(codes, fmt.Sprintf("U+%04X", c))
+		}
+		w.Header().Set("X-Interlinea-Missing", strings.Join(codes, " "))
+	}
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition, X-Interlinea-Summary, X-Interlinea-Missing")
+	w.Write(res.Data)
 }
 
 // termFileInspection says what a termbase file holds.

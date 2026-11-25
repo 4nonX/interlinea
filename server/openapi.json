@@ -1186,6 +1186,13 @@
           "entries": {
             "type": "integer"
           },
+          "exports": {
+            "description": "Exports are export settings kept with the termbase by name, for everyone who exports it.",
+            "items": {
+              "$ref": "#/components/schemas/term.ExportPreset"
+            },
+            "type": "array"
+          },
           "fields": {
             "items": {
               "$ref": "#/components/schemas/term.Field"
@@ -3176,6 +3183,13 @@
       "term.Definition": {
         "description": "Definition is a termbase's structure: languages and fields.",
         "properties": {
+          "exports": {
+            "description": "Exports are export settings kept with the termbase by name, for everyone who exports it.",
+            "items": {
+              "$ref": "#/components/schemas/term.ExportPreset"
+            },
+            "type": "array"
+          },
           "fields": {
             "items": {
               "$ref": "#/components/schemas/term.Field"
@@ -3225,6 +3239,107 @@
               "$ref": "#/components/schemas/term.Language"
             },
             "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "term.ExportOptions": {
+        "description": "ExportOptions say what an export holds and, for a glossary, how it is laid out. They are kept with a termbase as named presets.",
+        "properties": {
+          "allFields": {
+            "description": "AllFields exports every field (what a left-out Fields says, made plain for a preset).",
+            "type": "boolean"
+          },
+          "changedSince": {
+            "description": "Only entries changed on or after this day (YYYY-MM-DD).",
+            "type": "string"
+          },
+          "entries": {
+            "description": "Entries exported by ID, such as those a search shows; all if empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "fields": {
+            "description": "Fields exported by name: all if left out, none if empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "filterField": {
+            "description": "Only entries with this value in this field (an entry, language or term field), such as a subject field.",
+            "type": "string"
+          },
+          "filterValue": {
+            "type": "string"
+          },
+          "format": {
+            "description": "Format is an exchange format (tbx, tbx2, multiterm, csv, tsv, xlsx) or a glossary to read: pdf, docx, html or txt.",
+            "type": "string"
+          },
+          "groupHomonyms": {
+            "description": "GroupHomonyms puts entries with the same headword under it, numbered.",
+            "type": "boolean"
+          },
+          "labels": {
+            "description": "Labels names the fields before their values.",
+            "type": "boolean"
+          },
+          "languages": {
+            "description": "Languages exported, in their order; all if empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "layout": {
+            "description": "Layout of a glossary: \"dictionary\" (entries one after the other, in two columns) or \"table\" (a column per language).",
+            "type": "string"
+          },
+          "letters": {
+            "description": "Letters puts each initial letter before its headwords.",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Page size of a PDF or Word glossary: \"a4\" (default) or \"letter\".",
+            "type": "string"
+          },
+          "perTerm": {
+            "description": "PerTerm makes every term of the sort language a headword of its own, so a synonym is found under its own letter.",
+            "type": "boolean"
+          },
+          "sortBy": {
+            "description": "SortBy is the language a glossary is sorted by and its entries headed with; the first language if empty.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Status marks terms that are proposed or forbidden.",
+            "type": "boolean"
+          },
+          "statuses": {
+            "description": "Statuses of the terms exported (approved, proposed, forbidden); all if empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "description": "Title of a glossary; the termbase's name if empty.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "term.ExportPreset": {
+        "description": "ExportPreset is export options kept under a name.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/term.ExportOptions"
           }
         },
         "type": "object"
@@ -4599,6 +4714,40 @@
         "summary": "Streams the live feed: the changes the person may see in projects, memories, termbases and their account, and presence in projects, as text/event-stream.",
         "tags": [
           "Live feed"
+        ]
+      }
+    },
+    "/api/export-presets": {
+      "get": {
+        "description": "Access: signed in.",
+        "operationId": "exportPresets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/term.ExportPreset"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Lists the ready-made export settings every termbase has.",
+        "tags": [
+          "Other"
         ]
       }
     },
@@ -11008,7 +11157,7 @@
     },
     "/api/termbases/{name}/export": {
       "get": {
-        "description": "Access: read on the termbase.",
+        "description": "?preset= names export settings kept with the termbase, or ready-made ones (GET /api/export-presets), instead.\n\nAccess: read on the termbase.",
         "operationId": "exportTermbase",
         "parameters": [
           {
@@ -11016,6 +11165,13 @@
             "in": "path",
             "name": "name",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "preset",
             "schema": {
               "type": "string"
             }
@@ -11056,13 +11212,13 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Sends the termbase as a file: ?format=tbx (the default), tbx2, multiterm, csv, tsv or xlsx.",
+        "summary": "Sends the termbase as a file: ?format=tbx (the default), tbx2, multiterm, csv, tsv or xlsx, or a glossary to read: pdf, docx, html or txt.",
         "tags": [
           "Termbases"
         ]
       },
       "post": {
-        "description": "Access: read on the termbase.",
+        "description": "Without options it is the format of ?format= with everything.\n\nAccess: read on the termbase.",
         "operationId": "exportEntries",
         "parameters": [
           {
@@ -11093,6 +11249,17 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "options": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/term.ExportOptions"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Options say what the export holds and how a glossary is laid out."
                   }
                 },
                 "type": "object"
@@ -11129,7 +11296,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Sends chosen entries of the termbase as a file, in the formats of the export: those a search shows, for one.",
+        "summary": "Sends the termbase as a file made as the options say: which languages, fields, statuses and entries (those a search shows, say), and for a glossary its layout.",
         "tags": [
           "Termbases"
         ]

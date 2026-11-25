@@ -231,7 +231,7 @@ type Action =
   | {
       type: "updateTermbase";
       termbaseId: string;
-      patch: Partial<Pick<Termbase, "name" | "languages" | "infoTypes" | "rules">>;
+      patch: Partial<Pick<Termbase, "name" | "languages" | "infoTypes" | "rules" | "exportPresets">>;
     }
   | {
       type: "removeLanguage";

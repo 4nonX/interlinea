@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { AlertTriangle, FileUp, Trash2 } from "lucide-react";
-import { core, download, loadCore, type CoreApi } from "../core";
+import { core, loadCore, type CoreApi } from "../core";
 import {
   lang,
   LANGUAGES,
@@ -25,17 +25,14 @@ import { LangChip } from "../components/ui";
 import { go } from "../App";
 import {
   FORMAT_LABEL,
-  FORMATS,
   IMPORT_ACCEPT,
   fileLanguages,
-  fileName,
   fromCoreEntry,
   matchFields,
   remapLanguages,
   suggestLanguage,
   term,
   toCoreEntry,
-  toCoreTermbase,
   type ColumnRole,
   type CoreEntry,
   type CoreLevel,
@@ -46,7 +43,6 @@ import {
   type PlanReport,
   type Policy,
   type ReadReport,
-  type TermFormat,
 } from "../termio";
 
 /** The loaded core, loading it on first use. */
@@ -180,117 +176,6 @@ function nextId(prefix: string): string {
 }
 
 /* Export */
-
-export function ExportDialog({
-  tb,
-  entries,
-  shown,
-  onClose,
-}: {
-  tb: Termbase;
-  entries: Entry[];
-  shown: Entry[];
-  onClose: () => void;
-}) {
-  const { notify } = useLocalStore();
-  const c = useCore();
-  const [format, setFormat] = useState<TermFormat>("tbx");
-  const [scope, setScope] = useState<"all" | "shown">("all");
-  const [error, setError] = useState("");
-  const list = scope === "all" ? entries : shown;
-  const partial = shown.length < entries.length;
-  return (
-    <Modal title={`Export ${tb.name}`} onClose={onClose}>
-      <fieldset className="field">
-        <legend>Format</legend>
-        <ul className="choice-list">
-          {FORMATS.map((f) => (
-            <li key={f.id}>
-              <label className="choice">
-                <input
-                  type="radio"
-                  name="export-format"
-                  checked={format === f.id}
-                  onChange={() => setFormat(f.id)}
-                />
-                <span className="choice-body">
-                  <span className="choice-title">{f.label}</span>
-                  <span className="choice-desc">{f.note}</span>
-                </span>
-              </label>
-            </li>
-          ))}
-        </ul>
-      </fieldset>
-      {partial && (
-        <fieldset className="field">
-          <legend>Entries</legend>
-          <label className="check">
-            <input
-              type="radio"
-              name="export-scope"
-              checked={scope === "all"}
-              onChange={() => setScope("all")}
-            />
-            <span>All {plural(entries.length, "entry", "entries")}</span>
-          </label>
-          <label className="check">
-            <input
-              type="radio"
-              name="export-scope"
-              checked={scope === "shown"}
-              onChange={() => setScope("shown")}
-            />
-            <span>
-              The {plural(shown.length, "entry", "entries")} the search shows
-            </span>
-          </label>
-        </fieldset>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="row">
-        <button
-          type="button"
-          className="btn btn-quiet btn-small"
-          onClick={onClose}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="btn btn-primary btn-small"
-          disabled={!c || list.length === 0}
-          onClick={() => {
-            if (!c) return;
-            try {
-              const f = FORMATS.find((x) => x.id === format)!;
-              const name = fileName(tb, format);
-              download(
-                term.write(c, toCoreTermbase(tb, list), format),
-                name,
-                f.type,
-              );
-              notify(
-                `Exported ${plural(list.length, "entry", "entries")} to ${name}`,
-              );
-              onClose();
-            } catch (e) {
-              setError(`The export failed: ${errText(e)}`);
-            }
-          }}
-        >
-          {c
-            ? `Export ${plural(list.length, "entry", "entries")}`
-            : "Loading the core…"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
 
 /* Settings */
 

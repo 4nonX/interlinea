@@ -7,6 +7,38 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Terminology
+
+- Glossaries to read and print: a termbase is exported as a PDF, a Word
+  document, a web page or plain text, laid out as a dictionary (headwords
+  in two columns, each language on a line under them, initial letters,
+  the first and last headword of each page in its head) or as a table
+  with a column for each language.
+- Grammar as dictionaries set it: part of speech, gender and number in
+  short italics after each term, with a list of the abbreviations used.
+- PDF files are made by the core itself, with their fonts embedded:
+  Latin, Greek, Cyrillic, Arabic and Hebrew come with the app; Chinese,
+  Japanese, Korean and other scripts take the fonts installed on the
+  computer or server. Arabic letters join and right-to-left text runs as
+  it should. The letters of a glossary are the bookmarks of its PDF.
+- An export chooses its languages, entries, term statuses and fields,
+  can keep only entries with a field value or changed since a day, and
+  applies the same to the exchange formats. Export settings are kept with
+  a termbase by name, for everyone who exports it; a few ready-made ones
+  come with every termbase.
+
+### Desktop app
+
+- Every window is checked by the tests for broken layout, at 100% and
+  150% scaling, at several window sizes and in both themes: text cut off,
+  parts lying over each other, buttons narrower than their labels, boxes
+  too low for a line. The app writes what it finds to its log when
+  INTERLINEA_LAYOUT_CHECK is set.
+- Dialogs scroll when they are taller than the screen, and grow when what
+  they show changes. The licence is shown in full; the analysis and
+  memories windows of the editor are built like the others; long choices
+  wrap.
+
 ## [0.2.0] - 2026-11-25
 
 Termbases made from scratch, with fields of every kind, and a desktop

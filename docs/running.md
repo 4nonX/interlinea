@@ -86,6 +86,21 @@ them.
 | `-oidc-scopes` | `INTERLINEA_OIDC_SCOPES` | scopes asked for (`openid,email,profile`) |
 | `-oidc-create-users` | `INTERLINEA_OIDC_CREATE_USERS` | make an account, without roles, for people the provider signs in |
 
+### Fonts for PDF glossaries
+
+Glossaries exported as PDF are set in the fonts that come with the server
+for Latin, Greek, Cyrillic, Arabic and Hebrew. For other scripts (Chinese,
+Japanese, Korean, Thai, Devanagari and more) the server takes the fonts
+installed on its computer. The server image has none: give it a folder of
+fonts with `INTERLINEA_FONTS` (several separated by `:`), for example the
+host's own:
+
+```
+docker run ... -v /usr/share/fonts:/fonts:ro -e INTERLINEA_FONTS=/fonts interlinea-server
+```
+
+Characters no font has show as boxes, and the export says which they are.
+
 ## HTTPS and a reverse proxy
 
 Run the server behind HTTPS: passwords and sign-ins travel with every

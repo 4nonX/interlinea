@@ -214,7 +214,9 @@ export default () =>
       // Export TBX and Excel.
       await click(".pane-tools button", "Export");
       await sleep(400);
-      await click("dialog button", "Export");
+      check((await dlg()).includes("To read and print") && (await dlg()).includes("To exchange with other tools"), "the export offers glossaries to read and exchange formats");
+      await click("dialog label.choice", "TBX 3");
+      await click("dialog button.btn-primary", "Export");
       await sleep(800);
       await click(".pane-tools button", "Export");
       await sleep(300);
@@ -222,14 +224,54 @@ export default () =>
       await sleep(100);
       await click("dialog button.btn-primary", "Export");
       await sleep(800);
-
+      // A printable dictionary, made in the browser with the app's fonts.
+      await click(".pane-tools button", "Export");
+      await sleep(300);
+      await click("dialog label.choice", ".pdf");
+      await click("dialog button", "Continue");
+      await sleep(100);
+      check((await dlg()).includes("Languages") && (await dlg()).includes("Fields"), "the content is chosen");
+      await click("dialog button", "Continue");
+      await sleep(100);
+      check((await dlg()).includes("Dictionary") && (await dlg()).includes("Sorted by"), "and the layout");
+      await click("dialog button.btn-primary", "Export to .pdf");
+      check(await waitFor("[...document.querySelectorAll('.toast')].some(t => t.textContent.includes('Kanzlei_Weber.pdf'))", 20000), "the PDF is made");
+      // A table in Word, German and English only, kept as settings of the termbase.
+      await click(".pane-tools button", "Export");
+      await sleep(300);
+      await click("dialog label.choice", ".docx");
+      await click("dialog button", "Continue");
+      await sleep(100);
+      await evaluate("[...document.querySelectorAll('dialog [aria-label=\"Languages exported\"] label.check')].filter(l => !/de-DE|en-GB/.test(l.textContent)).forEach(l => l.querySelector('input').click())");
+      await click("dialog button", "Continue");
+      await sleep(100);
+      await click("dialog label.choice", "Table");
+      await setValue("#exp-keep", "Client table");
+      await click("dialog button", "Keep");
+      check(await waitFor("[...document.querySelectorAll('.toast')].some(t => t.textContent.includes('Kept the export settings'))"), "export settings are kept with the termbase");
+      await click("dialog button.btn-primary", "Export to .docx");
+      await sleep(800);
+      await click(".pane-tools button", "Export");
+      await sleep(300);
+      check(await evaluate("[...document.querySelectorAll('#exp-preset option')].some(o => o.textContent === 'Client table') && [...document.querySelectorAll('#exp-preset option')].some(o => o.textContent === 'Printable dictionary')"), "kept and ready-made settings are offered");
+      await setValue("#exp-preset", "Web page");
+      await sleep(100);
+      await click("dialog button.btn-primary", "Export to .html");
+      await sleep(800);
       const fs = await import("node:fs");
       const files = fs.readdirSync(downloads);
       check(
-        files.includes("Kanzlei_Weber.tbx") &&
-          files.includes("Kanzlei_Weber.xlsx"),
+        ["tbx", "xlsx", "pdf", "docx", "html"].every((x) => files.includes(`Kanzlei_Weber.${x}`)),
         "exports downloaded: " + files.join(", "),
       );
+      if (files.includes("Kanzlei_Weber.pdf")) {
+        const pdf = fs.readFileSync(`${downloads}/Kanzlei_Weber.pdf`, "latin1");
+        check(pdf.startsWith("%PDF-1.7") && pdf.includes("/FontFile2") && pdf.includes("/Outlines"), "the PDF has its fonts and its letters as bookmarks");
+      }
+      if (files.includes("Kanzlei_Weber.html")) {
+        const html = fs.readFileSync(`${downloads}/Kanzlei_Weber.html`, "utf8");
+        check(html.includes("<!DOCTYPE html>") && html.includes("Mietsache") && html.includes('id="find"'), "the web page has the entries and a search");
+      }
       if (files.includes("Kanzlei_Weber.tbx")) {
         const x = fs.readFileSync(`${downloads}/Kanzlei_Weber.tbx`, "utf8");
         check(

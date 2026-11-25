@@ -61,6 +61,7 @@ add_library(interlinea_app STATIC
     src/reviewpage.cpp
     src/termbasedialogs.cpp
     src/termfields.cpp
+    src/layoutcheck.cpp
     src/newtermbasedialog.cpp
     src/termdata.cpp
     src/terminologypage.cpp
@@ -148,4 +149,8 @@ foreach(name apiclient eventfeed secretstore providersignin connections ui proje
         list(APPEND test_env "INTERLINEA_CORE=${CORE_DIR}/interlinea-core${CMAKE_EXECUTABLE_SUFFIX}")
     endif()
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "${test_env}" TIMEOUT 180)
+    # Again at 150% scaling, as many screens are set: the layout check
+    # finds what only breaks there.
+    add_test(NAME ${name}_150 COMMAND tst_${name})
+    set_tests_properties(${name}_150 PROPERTIES ENVIRONMENT "${test_env};QT_SCALE_FACTOR=1.5" TIMEOUT 180)
 endforeach()

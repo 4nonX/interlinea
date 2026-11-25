@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"sync"
 	"syscall/js"
+	"time"
 
 	"github.com/4nonX/interlinea/term"
+	"github.com/4nonX/interlinea/term/glossary"
+	"github.com/4nonX/interlinea/typeset"
 )
 
 // Termbases are kept by the page; these functions read, write and plan
@@ -17,6 +20,8 @@ import (
 //	termDetect(bytes, fileName) -> JSON {format, tabular, rows?, mapping?}
 //	termImport(bytes, format, mapping?) -> JSON {termbase, report}
 //	termExport(termbase JSON, format) -> Uint8Array
+//	termGlossary(termbase JSON, options JSON, fonts [Uint8Array]) -> {data, extension, mediaType, summary, missing}
+//	termPresets() -> JSON [{name, options}], the ready-made export settings
 //	termPlan(existing entries JSON, incoming entries JSON, policy JSON) -> JSON {actions, report}
 //	termMerge(entry JSON, entry JSON) -> JSON entry
 //	termDuplicates(entries JSON, lang) -> JSON [[index, ...], ...]
@@ -34,6 +39,8 @@ func termFuncs() map[string]any {
 		"termDetect":     guard(termDetect),
 		"termImport":     guard(termImport),
 		"termExport":     guard(termExport),
+		"termGlossary":   guard(termGlossary),
+		"termPresets":    guard(termPresets),
 		"termPlan":       guard(termPlan),
 		"termMerge":      guard(termMerge),
 		"termDuplicates": guard(termDuplicates),
@@ -224,6 +231,54 @@ func termExport(args []js.Value) (any, error) {
 	arr := js.Global().Get("Uint8Array").New(len(data))
 	js.CopyBytesToJS(arr, data)
 	return arr, nil
+}
+
+// termGlossary exports a termbase as its options say: a glossary (PDF,
+// Word, a web page, text) or an exchange format with only what is chosen.
+// A PDF is set in the fonts given (the app's, fetched by the page); the
+// characters none of them has come back in missing.
+func termGlossary(args []js.Value) (any, error) {
+	if len(args) != 3 {
+		return nil, fmt.Errorf("termGlossary(termbase, options, fonts)")
+	}
+	var tb term.Termbase
+	if err := json.Unmarshal([]byte(args[0].String()), &tb); err != nil {
+		return nil, fmt.Errorf("termbase: %w", err)
+	}
+	var o term.ExportOptions
+	if err := json.Unmarshal([]byte(args[1].String()), &o); err != nil {
+		return nil, fmt.Errorf("options: %w", err)
+	}
+	var fs *typeset.FontSet
+	if o.Format == "pdf" {
+		var files [][]byte
+		for i := 0; i < args[2].Length(); i++ {
+			b := make([]byte, args[2].Index(i).Get("length").Int())
+			js.CopyBytesToGo(b, args[2].Index(i))
+			files = append(files, b)
+		}
+		var err error
+		if fs, err = typeset.NewFontSet(files, false); err != nil {
+			return nil, err
+		}
+	}
+	res, err := glossary.Export(&tb, o, fs, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	arr := js.Global().Get("Uint8Array").New(len(res.Data))
+	js.CopyBytesToJS(arr, res.Data)
+	out := js.Global().Get("Object").New()
+	out.Set("data", arr)
+	out.Set("extension", res.Extension)
+	out.Set("mediaType", res.MediaType)
+	out.Set("summary", res.Summary)
+	out.Set("missing", string(res.Missing))
+	return out, nil
+}
+
+func termPresets(args []js.Value) (any, error) {
+	return jsonOut(glossary.Presets())
 }
 
 func termPlan(args []js.Value) (any, error) {

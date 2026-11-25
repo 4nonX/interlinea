@@ -15,6 +15,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}"
  && mkdir -p /out/core \
  && GOOS=js GOARCH=wasm go build -trimpath -ldflags "-s -w" -o /out/core/interlinea.wasm ./cmd/interlinea-wasm \
  && cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" /out/core/ \
+ && mkdir -p /out/core/fonts && cp typeset/fonts/*.ttf typeset/fonts/OFL.txt /out/core/fonts/ \
  && mkdir -p /out/data
 
 FROM node:22-bookworm-slim AS web

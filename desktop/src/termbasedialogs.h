@@ -30,35 +30,77 @@ QString termFormatLabel(const QString &id);
 // The file dialog's filter for termbase files to import.
 QString termImportFilter();
 
-// Export a termbase, as the web app's dialog: the format, and all entries
-// or those the search shows.
+// Export a termbase, as the web app's dialog, in steps: the format (or
+// settings kept before), what goes in (languages, entries, statuses,
+// fields, a filter), and for a glossary to read (PDF, Word, a web page,
+// text) how it is laid out. Settings can be kept with the termbase.
 class ExportDialog : public Web::Dialog {
     Q_OBJECT
 public:
-    ExportDialog(Connection *conn, const QString &termbase, int total, const QStringList &shown, QWidget *parent);
-    QString format() const;
+    enum Step { FormatStep, ContentStep, LayoutStep };
+
+    // detail is the termbase as the server sends it (its definition);
+    // shown are the IDs of the entries the search shows.
+    ExportDialog(Connection *conn, const QJsonObject &detail, int total, const QStringList &shown, bool manage, QWidget *parent);
+    QString format() const { return m_options.value(QLatin1String("format")).toString(); }
     void setFormat(const QString &id);
     bool shownOnly() const { return m_shownOnly; }
     void setShownOnly(bool only);
+    QJsonObject options() const { return m_options; }
+    void setOption(const QString &key, const QJsonValue &value);
+    // Starts from settings kept with the termbase or ready-made ones.
+    void choosePreset(const QString &name);
+    QStringList presetNames() const;
+    // Keeps the settings with the termbase under a name.
+    void keep(const QString &name);
+    Step step() const { return m_steps.value(m_at, FormatStep); }
+    Web::Stepper *stepper() const { return m_stepper; }
+    void next();
+    void back();
     // The file name offered: the termbase's name with the format's ending.
     QString fileName() const;
     QPushButton *exportButton() const { return m_export; }
     // Writes the export to a file; what the button does once one is chosen.
     void exportTo(const QString &path);
+    bool busy() const { return m_pending > 0; }
 
 signals:
     void exported(const QString &message);
+    // A notice for the page.
+    void said(const QString &text);
+    // The step shown is up to date.
+    void ready();
 
 private:
+    bool glossary() const;
+    void render();
+    void showFormat();
+    void showContent();
+    void showLayout();
+    void showKeep();
     void update();
+    QStringList languages() const;
+    void request(class ApiReply *reply, std::function<void(const struct ApiResult &)> then);
 
     QPointer<Connection> m_conn;
     QString m_termbase;
+    QJsonObject m_definition;
     int m_total;
     QStringList m_shown;
+    bool m_manage;
     bool m_shownOnly = false;
-    QButtonGroup *m_formats;
-    QButtonGroup *m_scope = nullptr;
+    bool m_exporting = false;
+    QJsonObject m_options;
+    QJsonArray m_kept;
+    QJsonArray m_ready;
+    QString m_preset;
+    QList<Step> m_steps;
+    int m_at = 0;
+    int m_pending = 0;
+    Web::Stepper *m_stepper;
+    QVBoxLayout *m_content;
+    QPushButton *m_back;
+    QPushButton *m_next;
     QPushButton *m_export;
 };
 

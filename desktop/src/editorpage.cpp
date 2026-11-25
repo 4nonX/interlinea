@@ -3386,54 +3386,40 @@ Web::Dialog *EditorPage::showReplaceDialog()
     return d;
 }
 
-void EditorPage::showMemoriesDialog()
+Web::Dialog *EditorPage::showMemoriesDialog()
 {
     // As the web's "Translation memories" dialog.
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Translation memories"));
-    dlg.resize(640, 420);
-    auto *v = new QVBoxLayout(&dlg);
-    v->setContentsMargins(S5, S5, S5, S5);
-    v->setSpacing(S3);
-    auto *title = new QLabel(tr("Translation memories"), &dlg);
-    title->setStyleSheet(QStringLiteral("font-size: 17px; font-weight: 600;"));
-    v->addWidget(title);
+    auto *dlg = new Web::Dialog(tr("Translation memories"), this);
+    dlg->setObjectName(QStringLiteral("memoriesDialog"));
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
     auto *help = label(tr("Memories for %1, highest priority first. Matches are scored in the core, with each memory's penalty taken off. "
                           "<a href=\"project\">Change them in the project settings</a>.")
                            .arg(Languages::name(m_lang)),
-                       "secondary", &dlg);
+                       "secondary", dlg);
     help->setTextFormat(Qt::RichText);
-    connect(help, &QLabel::linkActivated, &dlg, [this, &dlg] {
-        dlg.accept();
+    connect(help, &QLabel::linkActivated, dlg, [this, dlg] {
+        dlg->accept();
         saveActive();
         emit openProject();
     });
-    v->addWidget(help);
+    dlg->body()->addWidget(help);
     const QJsonArray mems = memorySettings();
     const QString projectMemory = settings().value(QLatin1String("projectMemory")).toBool()
         ? QStringLiteral("%1 (%2)").arg(settings().value(QLatin1String("name")).toString(), m_lang)
         : QString();
     if (mems.isEmpty()) {
-        v->addWidget(label(tr("This language of the project uses no memory, so the editor shows no matches."), "muted", &dlg));
+        dlg->body()->addWidget(label(tr("This language of the project uses no memory, so the editor shows no matches."), "muted", dlg));
     } else {
-        auto *t = new QTableWidget(int(mems.size()), 4, &dlg);
+        auto *t = new Web::Table({tr("Memory"), tr("Used for"), tr("Units"), QString()}, dlg);
+        t->setObjectName(QStringLiteral("projectMemories"));
         t->setAccessibleName(tr("Memories of this project"));
-        t->setHorizontalHeaderLabels({tr("Memory"), tr("Used for"), tr("Units"), QString()});
-        t->verticalHeader()->hide();
-        t->setEditTriggers(QAbstractItemView::NoEditTriggers);
-        t->setSelectionMode(QAbstractItemView::NoSelection);
-        t->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-        for (int c = 1; c < 4; ++c)
-            t->horizontalHeader()->setSectionResizeMode(c, QHeaderView::ResizeToContents);
+        t->setProperty("inDialog", true);
+        t->setNumeric({2});
+        t->setStretch(0);
         for (int i = 0; i < mems.size(); ++i) {
             const QJsonObject m = mems.at(i).toObject();
             const QString name = m.value(QLatin1String("memory")).toString();
             const bool isProject = name == projectMemory;
-            auto *nameItem = new QTableWidgetItem(isProject ? tr("%1 (project memory)").arg(name) : name);
-            QFont bold = nameItem->font();
-            bold.setWeight(QFont::DemiBold);
-            nameItem->setFont(bold);
-            t->setItem(i, 0, nameItem);
             QStringList uses;
             if (m.value(QLatin1String("lookup")).toBool()) {
                 const int penalty = m.value(QLatin1String("penalty")).toInt();
@@ -3443,29 +3429,20 @@ void EditorPage::showMemoriesDialog()
                 uses << tr("concordance");
             if (m.value(QLatin1String("update")).toBool())
                 uses << tr("updated on confirm");
-            t->setItem(i, 1, new QTableWidgetItem(uses.join(QLatin1String(", "))));
-            auto *units = new QTableWidgetItem(QStringLiteral("…"));
-            units->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            t->setItem(i, 2, units);
-            QPointer<QTableWidget> table(t);
-            const int rowIndex = i;
-            auto fillUnits = [this, name, table, rowIndex] {
-                onResult(m_conn->api()->get(QStringLiteral("/api/memories/%1").arg(ApiClient::seg(name))), this, [table, rowIndex](const ApiResult &r) {
-                    if (table && table->item(rowIndex, 2))
-                        table->item(rowIndex, 2)->setText(r.ok() ? QLocale().toString(r.object().value(QLatin1String("units")).toInt())
-                                                                 : QStringLiteral("–"));
+            auto *units = qobject_cast<QLabel *>(Web::cellText(QStringLiteral("…"), t, true));
+            QPointer<QLabel> unitsLabel(units);
+            auto fillUnits = [this, name, unitsLabel] {
+                onResult(m_conn->api()->get(QStringLiteral("/api/memories/%1").arg(ApiClient::seg(name))), this, [unitsLabel](const ApiResult &r) {
+                    if (unitsLabel)
+                        unitsLabel->setText(r.ok() ? QLocale().toString(r.object().value(QLatin1String("units")).toInt()) : QStringLiteral("–"));
                 });
             };
             fillUnits();
-            auto *cell = new QWidget(t);
-            auto *cl = new QHBoxLayout(cell);
-            cl->setContentsMargins(S1, S1, S1, S1);
-            cl->setSpacing(S1);
+            QList<QWidget *> actions;
             if (isProject) {
-                auto *imp = new QPushButton(Icons::get(QStringLiteral("upload")), tr("Import TMX"), cell);
-                Theme::smallButton(imp);
-                connect(imp, &QPushButton::clicked, this, [this, name, fillUnits, &dlg] {
-                    const QString path = QFileDialog::getOpenFileName(&dlg, tr("Import TMX"), QString(), tr("TMX files (*.tmx)"));
+                auto *imp = Web::button(tr("Import TMX"), Web::Quiet | Web::Small, t, QStringLiteral("upload"));
+                connect(imp, &QPushButton::clicked, this, [this, name, fillUnits, dlg] {
+                    const QString path = QFileDialog::getOpenFileName(dlg, tr("Import TMX"), QString(), tr("TMX files (*.tmx)"));
                     if (path.isEmpty())
                         return;
                     QFile f(path);
@@ -3487,16 +3464,14 @@ void EditorPage::showMemoriesDialog()
                                  fillUnits();
                              });
                 });
-                cl->addWidget(imp);
+                actions << imp;
             }
-            auto *exp = new QPushButton(Icons::get(QStringLiteral("download"), Theme::color("accentText")), tr("Export TMX"), cell);
-            Theme::smallButton(exp);
-            Theme::quietButton(exp);
-            connect(exp, &QPushButton::clicked, this, [this, name, &dlg] {
+            auto *exp = Web::button(tr("Export TMX"), Web::Quiet | Web::Small, t, QStringLiteral("download"));
+            connect(exp, &QPushButton::clicked, this, [this, name, dlg] {
                 QString base = name;
                 base.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}]+")), QStringLiteral("_"));
                 const QString to = QFileDialog::getSaveFileName(
-                    &dlg, tr("Export TMX"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QLatin1Char('/') + base + QStringLiteral(".tmx"),
+                    dlg, tr("Export TMX"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QLatin1Char('/') + base + QStringLiteral(".tmx"),
                     tr("TMX files (*.tmx)"));
                 if (to.isEmpty())
                     return;
@@ -3513,50 +3488,39 @@ void EditorPage::showMemoriesDialog()
                     notify(tr("Saved %1").arg(QFileInfo(to).fileName()));
                 });
             });
-            cl->addWidget(exp);
-            t->setCellWidget(i, 3, cell);
+            actions << exp;
+            t->addRow({Web::cell(name, isProject ? tr("project memory") : QString(), t), Web::cellText(uses.join(QLatin1String(", ")), t), units,
+                       Web::cellActions(actions, t)});
         }
-        t->resizeRowsToContents();
-        v->addWidget(t, 1);
+        t->fit();
+        dlg->body()->addWidget(t);
     }
-    auto *row = new QHBoxLayout;
-    row->addStretch();
-    auto *close = new QPushButton(tr("Close"), &dlg);
-    Theme::primary(close);
-    Theme::smallButton(close);
-    connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
-    row->addWidget(close);
-    v->addLayout(row);
-    dlg.exec();
+    auto *close = Web::button(tr("Close"), Web::Primary | Web::Small, dlg);
+    connect(close, &QPushButton::clicked, dlg, &QDialog::accept);
+    dlg->buttons()->addWidget(close);
+    dlg->open();
+    return dlg;
 }
 
-void EditorPage::showAnalysisDialog()
+Web::Dialog *EditorPage::showAnalysisDialog()
 {
     if (!m_conn)
-        return;
-    QDialog dlg(this);
-    dlg.setWindowTitle(tr("Analysis"));
-    dlg.resize(640, 540);
-    auto *v = new QVBoxLayout(&dlg);
-    v->setContentsMargins(S5, S5, S5, S5);
-    v->setSpacing(S3);
-    auto *title = new QLabel(tr("Analysis"), &dlg);
-    title->setStyleSheet(QStringLiteral("font-size: 17px; font-weight: 600;"));
-    v->addWidget(title);
-    auto *help = label(tr("Analysing…"), "secondary", &dlg);
-    v->addWidget(help);
+        return nullptr;
+    auto *dlg = new Web::Dialog(tr("Analysis"), this);
+    dlg->setObjectName(QStringLiteral("analysisDialog"));
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    auto *help = label(tr("Analysing…"), "secondary", dlg);
+    dlg->body()->addWidget(help);
     auto *holder = new QVBoxLayout;
-    v->addLayout(holder, 1);
-    auto *row = new QHBoxLayout;
-    row->addStretch();
-    auto *close = new QPushButton(tr("Close"), &dlg);
-    Theme::primary(close);
-    Theme::smallButton(close);
-    connect(close, &QPushButton::clicked, &dlg, &QDialog::accept);
-    row->addWidget(close);
-    v->addLayout(row);
-    onResult(m_conn->api()->post(projectPath() + QStringLiteral("/analysis"), QJsonObject{{QStringLiteral("lang"), m_lang}}), &dlg,
-             [this, help, holder, &dlg](const ApiResult &r) {
+    dlg->body()->addLayout(holder);
+    auto *close = Web::button(tr("Close"), Web::Primary | Web::Small, dlg);
+    connect(close, &QPushButton::clicked, dlg, &QDialog::accept);
+    dlg->buttons()->addWidget(close);
+    QPointer<Web::Dialog> alive(dlg);
+    onResult(m_conn->api()->post(projectPath() + QStringLiteral("/analysis"), QJsonObject{{QStringLiteral("lang"), m_lang}}), dlg,
+             [this, help, holder, alive](const ApiResult &r) {
+                 if (!alive)
+                     return;
                  if (!r.ok()) {
                      help->setText(r.error.message);
                      return;
@@ -3578,9 +3542,11 @@ void EditorPage::showAnalysisDialog()
                  if (settings().value(QLatin1String("projectMemory")).toBool() && !memories.contains(projectMemory))
                      text += QLatin1Char(' ') + tr("The project memory is left out: it holds this project's own translations.");
                  help->setText(text);
-                 holder->addWidget(Bands::analysisTable(report, &dlg));
+                 holder->addWidget(Bands::analysisTable(report, alive));
+                 emit analysisShown();
              });
-    dlg.exec();
+    dlg->open();
+    return dlg;
 }
 
 void EditorPage::saveDocument()

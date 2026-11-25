@@ -1079,9 +1079,9 @@ void TerminologyPage::showHead()
     row->addWidget(title);
     auto *tools = new QWidget(rowWidget);
     tools->setAccessibleName(tr("%1 tools").arg(m_name));
-    auto *tl = new QHBoxLayout(tools);
+    // The tools wrap in turn in a narrow pane.
+    auto *tl = new FlowLayout(tools, 2);
     tl->setContentsMargins(0, 0, 0, 0);
-    tl->setSpacing(2);
     auto *import = Web::button(tr("Import"), Web::Quiet | Web::Small, tools, QStringLiteral("upload"));
     auto *exp = Web::button(tr("Export"), Web::Quiet | Web::Small, tools, QStringLiteral("download"));
     exp->setEnabled(!m_entries.isEmpty());
@@ -2446,9 +2446,10 @@ ExportDialog *TerminologyPage::exportDialog()
     const QList<QJsonObject> list = shown();
     for (const QJsonObject &e : list)
         shownIds << str(e, "id");
-    auto *d = new ExportDialog(c, m_name, int(m_entries.size()), shownIds, window());
+    auto *d = new ExportDialog(c, m_detail, int(m_entries.size()), shownIds, may("manage"), window());
     d->setAttribute(Qt::WA_DeleteOnClose);
     connect(d, &ExportDialog::exported, this, &TerminologyPage::notify);
+    connect(d, &ExportDialog::said, this, &TerminologyPage::notify);
     d->open();
     return d;
 }

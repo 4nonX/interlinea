@@ -59,10 +59,16 @@ int FlowLayout::doLayout(const QRect &rect, bool measureOnly) const
             y += lineHeight + m_spacing;
             lineHeight = 0;
         }
+        // A part wider than the line gets the line, and the height that
+        // width asks for (a row of buttons that wraps in turn).
+        const int w = qMin(hint.width(), area.width());
+        int h = hint.height();
+        if (w < hint.width() && item->hasHeightForWidth())
+            h = qMax(h, item->heightForWidth(w));
         if (!measureOnly)
-            item->setGeometry(QRect(QPoint(x, y), QSize(qMin(hint.width(), area.width()), hint.height())));
-        x += hint.width() + m_spacing;
-        lineHeight = qMax(lineHeight, hint.height());
+            item->setGeometry(QRect(QPoint(x, y), QSize(w, h)));
+        x += w + m_spacing;
+        lineHeight = qMax(lineHeight, h);
     }
     return y + lineHeight - rect.y() + m.bottom();
 }

@@ -44,6 +44,15 @@ static ApiResult wait(ApiReply *reply)
     return spy.first().first().value<ApiResult>();
 }
 
+static QLabel *labelWith(QWidget *root, const QString &part)
+{
+    for (QLabel *l : root->findChildren<QLabel *>()) {
+        if (l->text().contains(part) && l->isVisible())
+            return l;
+    }
+    return nullptr;
+}
+
 static QPushButton *button(QWidget *root, const QString &text)
 {
     for (QPushButton *b : root->findChildren<QPushButton *>()) {
@@ -597,6 +606,13 @@ private slots:
         QCOMPARE(ed->file(), QStringLiteral("Mietvertrag.txt"));
         QTRY_COMPARE_WITH_TIMEOUT(ed->model()->rowCount(), 4, 10000);
         QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), 0, 10000);
+        // The editor holds together in a small window and a large one: its
+        // bar wraps, nothing is cut off or lies over something else.
+        for (const QSize size : {QSize(1024, 700), QSize(1920, 1080), QSize(1280, 820)}) {
+            projects.resize(size);
+            const QString broken = layoutProblems(&projects);
+            QVERIFY2(broken.isEmpty(), qPrintable(QStringLiteral("%1x%2:\n%3").arg(size.width()).arg(size.height()).arg(broken)));
+        }
 
         // The match column shows a match once it is in the segment, not
         // what the memory would offer: the third segment has a fuzzy match
@@ -936,31 +952,26 @@ private slots:
         QCOMPARE(here.size(), 1);
         QCOMPARE(here.at(0).toObject().value("segment").toString(), QStringLiteral("s1"));
 
-        // The Memories and Analysis dialogs.
-        int memoryRows = -1;
-        QTimer::singleShot(300, [&memoryRows] {
-            auto *dlg = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-            if (!dlg)
-                return;
-            for (QTableWidget *t : dlg->findChildren<QTableWidget *>()) {
-                if (t->accessibleName() == QLatin1String("Memories of this project"))
-                    memoryRows = t->rowCount();
-            }
-            dlg->accept();
-        });
+        // The Memories and Analysis dialogs, open over the editor while
+        // the layout check looks at them.
         button(ed, "Memories")->click();
-        QCOMPARE(memoryRows, 1);
-        int bands = -1;
-        QTimer::singleShot(200, [&bands] {
-            auto *dlg = qobject_cast<QDialog *>(QApplication::activeModalWidget());
-            if (!dlg)
-                return;
-            QTRY_VERIFY_WITH_TIMEOUT(dlg->findChild<QTableWidget *>(), 10000);
-            bands = dlg->findChild<QTableWidget *>()->rowCount();
-            dlg->accept();
-        });
+        Web::Dialog *dlg = nullptr;
+        QTRY_VERIFY((dlg = ed->window()->findChild<Web::Dialog *>(QStringLiteral("memoriesDialog"))) && dlg->isVisible());
+        QCOMPARE(dlg->findChild<QTableWidget *>(QStringLiteral("projectMemories"))->rowCount(), 1);
+        QTRY_VERIFY(!labelWith(dlg, QStringLiteral("…")));
+        QTest::qWait(600);
+        dlg->accept();
+        QTRY_VERIFY(!ed->window()->findChild<Web::Dialog *>(QStringLiteral("memoriesDialog")));
+        QSignalSpy analysed(ed, &EditorPage::analysisShown);
         button(ed, "Analysis")->click();
-        QVERIFY(bands > 1);
+        QTRY_VERIFY_WITH_TIMEOUT(!analysed.isEmpty(), 10000);
+        dlg = ed->window()->findChild<Web::Dialog *>(QStringLiteral("analysisDialog"));
+        QVERIFY(dlg && dlg->findChild<QTableWidget *>()->rowCount() > 1);
+        QTest::qWait(600);
+        dlg->accept();
+        QTRY_VERIFY(!ed->window()->findChild<Web::Dialog *>(QStringLiteral("analysisDialog")));
+        projects.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&projects));
 
         // Tags: the source's tags go in with F9 and are saved as tags.
         emit ed->back();

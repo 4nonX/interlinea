@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -211,8 +212,57 @@ func TestTermbases(t *testing.T) {
 	if !strings.HasPrefix(csv.header.Get("Content-Type"), "text/csv") {
 		t.Fatalf("csv %v", csv.header)
 	}
-	if r := e.do("GET", base+"/export?format=pdf", benTok, nil); r.status != 422 {
+	if r := e.do("GET", base+"/export?format=rtf", benTok, nil); r.status != 422 {
 		t.Fatalf("unknown format: %d", r.status)
+	}
+	// Glossaries to read: a PDF with its fonts, as set out by options, and
+	// as kept or ready-made export settings say.
+	pdfOut := e.call("GET", base+"/export?format=pdf", benTok, nil, 200, nil)
+	if pdfOut.header.Get("Content-Type") != "application/pdf" || !bytes.HasPrefix(pdfOut.body, []byte("%PDF-1.7")) || !bytes.Contains(pdfOut.body, []byte("/FontFile2")) {
+		t.Fatalf("pdf %v", pdfOut.header)
+	}
+	if !strings.Contains(pdfOut.header.Get("X-Interlinea-Summary"), "entr") || !strings.Contains(pdfOut.header.Get("Content-Disposition"), ".pdf") {
+		t.Fatalf("pdf says what it holds: %v", pdfOut.header)
+	}
+	html := e.call("POST", base+"/export", benTok, map[string]any{"options": term.ExportOptions{Format: "html", Languages: []string{"de-DE"}, Letters: true}}, 200, nil)
+	if !strings.Contains(string(html.body), "<!DOCTYPE html>") || strings.Contains(string(html.body), "renter") {
+		t.Fatalf("an HTML glossary in German only:\n%s", html.body)
+	}
+	if r := e.do("POST", base+"/export", benTok, map[string]any{"options": term.ExportOptions{Format: "pdf", SortBy: "ja-JP"}}); r.status != 422 || !strings.Contains(string(r.body), "sortBy") {
+		t.Fatalf("a language the termbase lacks: %d %s", r.status, r.body)
+	}
+	var presets []term.ExportPreset
+	e.call("GET", "/api/export-presets", benTok, nil, 200, &presets)
+	if len(presets) < 3 {
+		t.Fatalf("ready-made export settings: %+v", presets)
+	}
+	word := e.call("GET", base+"/export?preset="+url.QueryEscape(presets[2].Name), benTok, nil, 200, nil)
+	if !bytes.HasPrefix(word.body, []byte("PK")) || !strings.Contains(word.header.Get("Content-Disposition"), ".docx") {
+		t.Fatalf("a ready-made preset: %v", word.header)
+	}
+	{
+		var d termbaseDetail
+		e.call("GET", base, tbm, nil, 200, &d)
+		def := d.Definition
+		def.Exports = []term.ExportPreset{{Name: "Client list", Options: term.ExportOptions{Format: "csv", Languages: []string{"en-GB"}}}}
+		e.call("PUT", base+"/definition", tbm, def, 200, nil)
+		list := e.call("GET", base+"/export?preset=client%20list", benTok, nil, 200, nil)
+		if strings.Contains(string(list.body), "Mieter") || !strings.Contains(string(list.body), "renter") {
+			t.Fatalf("kept export settings, English only:\n%s", list.body)
+		}
+		def.Exports = append(def.Exports, term.ExportPreset{Name: "Bad", Options: term.ExportOptions{Format: "pdf", SortBy: "xx-XX"}})
+		if r := e.do("PUT", base+"/definition", tbm, def); r.status != 422 {
+			t.Fatalf("settings that do not fit the termbase are refused: %d", r.status)
+		}
+		def.Exports = []term.ExportPreset{{Name: "Same"}, {Name: "same"}}
+		if r := e.do("PUT", base+"/definition", tbm, def); r.status != 422 {
+			t.Fatalf("settings without a format: %d", r.status)
+		}
+		def.Exports = nil
+		e.call("PUT", base+"/definition", tbm, def, 200, nil)
+	}
+	if r := e.do("GET", base+"/export?preset=nothing", benTok, nil); r.status != 422 {
+		t.Fatalf("an unknown preset: %d", r.status)
 	}
 	e.call("POST", "/api/termbases", tbm, newTermbase{Definition: term.Definition{Name: "Copy", Languages: []string{"de-DE", "en-GB"}}}, 201, nil)
 	var rep struct {

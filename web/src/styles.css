@@ -4681,3 +4681,37 @@ input.mono {
 .lang-pick-list .muted {
   white-space: nowrap;
 }
+
+/* Exporting a termbase */
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--s2);
+}
+
+.stepper-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.export-keep {
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border);
+}
+
+.export-keep .row input {
+  flex: 1 1 220px;
+  width: auto;
+}
+
+.check-stack {
+  display: grid;
+  gap: var(--s2);
+}

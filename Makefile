@@ -57,6 +57,9 @@ wasm:
 	mkdir -p $(WASM_DIR)
 	GOOS=js GOARCH=wasm go build -trimpath -ldflags "-s -w" -o $(WASM_DIR)/interlinea.wasm ./cmd/interlinea-wasm
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" $(WASM_DIR)/
+	# The fonts a PDF is set in, fetched by the page when it makes one.
+	mkdir -p $(WASM_DIR)/fonts
+	cp typeset/fonts/*.ttf typeset/fonts/OFL.txt $(WASM_DIR)/fonts/
 
 # The sample lease of the browser client's sample project.
 sample:

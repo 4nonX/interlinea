@@ -1311,22 +1311,26 @@ Access: edit on the termbase.
 
 ### `GET /api/termbases/{name}/export`
 
-Sends the termbase as a file: ?format=tbx (the default), tbx2, multiterm, csv, tsv or xlsx.
+Sends the termbase as a file: ?format=tbx (the default), tbx2, multiterm, csv, tsv or xlsx, or a glossary to read: pdf, docx, html or txt.
+
+?preset= names export settings kept with the termbase, or ready-made ones (GET /api/export-presets), instead.
 
 Access: read on the termbase.
 
-- Parameters: `name` (path), `format` (query)
+- Parameters: `name` (path), `preset` (query), `format` (query)
 - Answer: 200 OK: `application/octet-stream`
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `POST /api/termbases/{name}/export`
 
-Sends chosen entries of the termbase as a file, in the formats of the export: those a search shows, for one.
+Sends the termbase as a file made as the options say: which languages, fields, statuses and entries (those a search shows, say), and for a glossary its layout.
+
+Without options it is the format of ?format= with everything.
 
 Access: read on the termbase.
 
 - Parameters: `name` (path), `format` (query)
-- Body: {`entries`: list of string}
+- Body: {`entries`: list of string, `options`: [term.ExportOptions](#termexportoptions) or null}
 - Answer: 200 OK: `application/octet-stream`
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
@@ -1660,6 +1664,15 @@ Access: signed in.
 - Body: [AlignRequest](#alignrequest)
 - Answer: 200 OK: [align.Result](#alignresult)
 - Errors: 401, 403, 422 (see [Error](#error))
+
+### `GET /api/export-presets`
+
+Lists the ready-made export settings every termbase has.
+
+Access: signed in.
+
+- Answer: 200 OK: list of [term.ExportPreset](#termexportpreset)
+- Errors: 401, 403 (see [Error](#error))
 
 ### `GET /api/providers`
 
@@ -2265,6 +2278,7 @@ termHit is a term found in a text, with its place in UTF-16 code units as well, 
 |---|---|---|
 | `createdAt` | string (date-time) |  |
 | `entries` | integer |  |
+| `exports` | list of [term.ExportPreset](#termexportpreset) | Exports are export settings kept with the termbase by name, for everyone who exports it. |
 | `fields` | list of [term.Field](#termfield) |  |
 | `kind` | string |  |
 | `languages` | list of string |  |
@@ -3109,6 +3123,7 @@ Definition is a termbase's structure: languages and fields.
 
 | Field | Type | Description |
 |---|---|---|
+| `exports` | list of [term.ExportPreset](#termexportpreset) | Exports are export settings kept with the termbase by name, for everyone who exports it. |
 | `fields` | list of [term.Field](#termfield) |  |
 | `languages` | list of string |  |
 | `name` | string |  |
@@ -3126,6 +3141,40 @@ Entry is a concept with its terms in several languages.
 | `fields` | list of [term.Value](#termvalue) |  |
 | `id` | string |  |
 | `languages` | list of [term.Language](#termlanguage) |  |
+
+### term.ExportOptions
+
+ExportOptions say what an export holds and, for a glossary, how it is laid out. They are kept with a termbase as named presets.
+
+| Field | Type | Description |
+|---|---|---|
+| `allFields` | boolean | AllFields exports every field (what a left-out Fields says, made plain for a preset). |
+| `changedSince` | string | Only entries changed on or after this day (YYYY-MM-DD). |
+| `entries` | list of string | Entries exported by ID, such as those a search shows; all if empty. |
+| `fields` | list of string | Fields exported by name: all if left out, none if empty. |
+| `filterField` | string | Only entries with this value in this field (an entry, language or term field), such as a subject field. |
+| `filterValue` | string |  |
+| `format` | string | Format is an exchange format (tbx, tbx2, multiterm, csv, tsv, xlsx) or a glossary to read: pdf, docx, html or txt. |
+| `groupHomonyms` | boolean | GroupHomonyms puts entries with the same headword under it, numbered. |
+| `labels` | boolean | Labels names the fields before their values. |
+| `languages` | list of string | Languages exported, in their order; all if empty. |
+| `layout` | string | Layout of a glossary: "dictionary" (entries one after the other, in two columns) or "table" (a column per language). |
+| `letters` | boolean | Letters puts each initial letter before its headwords. |
+| `page` | string | Page size of a PDF or Word glossary: "a4" (default) or "letter". |
+| `perTerm` | boolean | PerTerm makes every term of the sort language a headword of its own, so a synonym is found under its own letter. |
+| `sortBy` | string | SortBy is the language a glossary is sorted by and its entries headed with; the first language if empty. |
+| `status` | boolean | Status marks terms that are proposed or forbidden. |
+| `statuses` | list of string | Statuses of the terms exported (approved, proposed, forbidden); all if empty. |
+| `title` | string | Title of a glossary; the termbase's name if empty. |
+
+### term.ExportPreset
+
+ExportPreset is export options kept under a name.
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string |  |
+| `options` | [term.ExportOptions](#termexportoptions) |  |
 
 ### term.Field
 

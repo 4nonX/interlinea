@@ -247,6 +247,15 @@ private:
 // .detect: a note with an icon, kind "warn", "ok" or "info".
 QFrame *note(const QString &text, const QString &kind, QWidget *parent);
 
+// What a dialog shows, scrolling when it is taller than the screen allows:
+// it asks for the height of what it holds, and gives way below that.
+class DialogScroll : public QScrollArea {
+public:
+    using QScrollArea::QScrollArea;
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
+};
+
 // .dialog: a window over the page with its title (17 px, 600) and 24 px
 // around its parts, which are 12 px apart; 640 wide, or 920 (.dialog-wide).
 // Its buttons sit in a row at the bottom right.
@@ -265,9 +274,11 @@ public:
 
 protected:
     void showEvent(QShowEvent *e) override;
+    bool event(QEvent *e) override;
 
 private:
     void fitText(int passes);
+    bool m_fitting = false;
     QLabel *m_title;
     QVBoxLayout *m_body;
     QVBoxLayout *m_outer;

@@ -9,6 +9,8 @@ import {
   LANGUAGES,
   primary,
   type Entry,
+  type ExportOptions,
+  type ExportPreset,
   type InfoType,
   type LangCode,
   type Removal,
@@ -120,6 +122,14 @@ interface TermCore {
     termbase: string,
     format: string,
   ): { ok: true; value: Uint8Array } | { ok: false; error: string };
+  termGlossary(
+    termbase: string,
+    options: string,
+    fonts: Uint8Array[],
+  ):
+    | { ok: true; value: { data: Uint8Array; extension: string; mediaType: string; summary: string; missing: string } }
+    | { ok: false; error: string };
+  termPresets(): { ok: true; value: string } | { ok: false; error: string };
   termPlan(
     existing: string,
     incoming: string,
@@ -237,6 +247,14 @@ export const term = {
   },
   write(c: CoreApi, tb: CoreTermbase, format: TermFormat): Uint8Array {
     return unwrap(api(c).termExport(JSON.stringify(tb), format));
+  },
+  /** A file made as the options say: a glossary or an exchange format. */
+  exportWith(c: CoreApi, tb: CoreTermbase, options: ExportOptions, fonts: Uint8Array[]) {
+    return unwrap(api(c).termGlossary(JSON.stringify(tb), JSON.stringify(options), fonts));
+  },
+  /** The ready-made export settings. */
+  presets(c: CoreApi): ExportPreset[] {
+    return JSON.parse(unwrap(api(c).termPresets())) as ExportPreset[];
   },
   plan(
     c: CoreApi,
@@ -510,13 +528,14 @@ export function fileLanguages(tb: CoreTermbase): string[] {
   return [...seen];
 }
 
-export function fileName(tb: Termbase, format: TermFormat): string {
-  const f = FORMATS.find((x) => x.id === format)!;
-  const base = tb.name
-    .replace(/ \(project\)$/, "")
-    .replace(/[^\p{L}\p{N}]+/gu, "_")
-    .replace(/^_|_$/g, "");
-  return `${base || "termbase"}${format === "tbx2" ? "_tbx2" : ""}${f.ext}`;
+/** A termbase's name as a file name, without its ending. */
+export function fileBase(tb: Termbase): string {
+  return (
+    tb.name
+      .replace(/ \(project\)$/, "")
+      .replace(/[^\p{L}\p{N}]+/gu, "_")
+      .replace(/^_|_$/g, "") || "termbase"
+  );
 }
 
 /* Term recognition */

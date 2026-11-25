@@ -548,7 +548,12 @@ export interface ProjectTermbase {
   name: string;
   kind: "master" | "project";
   upstreams?: string[];
-  definition: { name?: string; languages: string[]; fields?: { name: string; level: string; kind: string; values?: string[] }[] };
+  definition: {
+    name?: string;
+    languages: string[];
+    fields?: { name: string; level: string; kind: string; values?: string[] }[];
+    exports?: { name: string; options: import("./data").ExportOptions }[];
+  };
   entries: LayeredEntry[];
 }
 
@@ -732,6 +737,25 @@ export function client(conn: Connection) {
       ),
     deleteEntry: (name: string, id: string) =>
       send<void>("DELETE", `/api/termbases/${encodeURIComponent(name)}/entries/${encodeURIComponent(id)}`),
+    // A file made as the options say, with what it holds and the
+    // characters no font had (a PDF).
+    exportWith: async (name: string, options: import("./data").ExportOptions) => {
+      const r = await call(`/api/termbases/${encodeURIComponent(name)}/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ options }),
+      });
+      return {
+        data: new Uint8Array(await r.arrayBuffer()),
+        type: r.headers.get("Content-Type") ?? "application/octet-stream",
+        summary: r.headers.get("X-Interlinea-Summary") ?? "",
+        missing: (r.headers.get("X-Interlinea-Missing") ?? "")
+          .split(" ")
+          .filter(Boolean)
+          .map((u) => String.fromCodePoint(parseInt(u.slice(2), 16)))
+          .join(""),
+      };
+    },
     exportTermbase: async (name: string, format: string) =>
       new Uint8Array(await (await call(`/api/termbases/${encodeURIComponent(name)}/export?${q({ format })}`)).arrayBuffer()),
     deleteTermbase: (name: string) => send<void>("DELETE", `/api/termbases/${encodeURIComponent(name)}`),

@@ -348,6 +348,27 @@ func cleanDefinition(def term.Definition) (term.Definition, error) {
 		fields = append(fields, f)
 	}
 	def.Fields = fields
+	// Export settings kept by name: each named once, each workable.
+	var exports []term.ExportPreset
+	presetNames := map[string]bool{}
+	for _, p := range def.Exports {
+		p.Name = strings.TrimSpace(p.Name)
+		k := strings.ToLower(p.Name)
+		if p.Name == "" {
+			return def, &InvalidError{Field: "exports", Message: "Give the export settings a name."}
+		}
+		if presetNames[k] {
+			return def, &InvalidError{Field: "exports", Message: fmt.Sprintf("Export settings called %s are there already.", p.Name)}
+		}
+		presetNames[k] = true
+		if _, msg := p.Options.Problem(); msg != "" {
+			return def, &InvalidError{Field: "exports", Message: fmt.Sprintf("%s: %s", p.Name, msg)}
+		}
+		// Settings for some entries are not kept: they are for one export.
+		p.Options.Entries = nil
+		exports = append(exports, p)
+	}
+	def.Exports = exports
 	return def, nil
 }
 

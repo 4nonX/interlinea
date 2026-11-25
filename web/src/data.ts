@@ -180,6 +180,36 @@ export interface Termbase {
   role?: string;
   /** A master on the server: the project termbases based on it. */
   dependents?: string[];
+  /** Export settings kept with a termbase in this browser, by name. */
+  exportPresets?: ExportPreset[];
+}
+
+/** What an export holds and how a glossary is laid out (the core's ExportOptions). */
+export interface ExportOptions {
+  format: string;
+  title?: string;
+  languages?: string[];
+  sortBy?: string;
+  /** Left out: all fields. Empty: none. */
+  fields?: string[];
+  allFields?: boolean;
+  statuses?: string[];
+  entries?: string[];
+  filterField?: string;
+  filterValue?: string;
+  changedSince?: string;
+  layout?: "dictionary" | "table";
+  perTerm?: boolean;
+  groupHomonyms?: boolean;
+  letters?: boolean;
+  labels?: boolean;
+  status?: boolean;
+  page?: "a4" | "letter";
+}
+
+export interface ExportPreset {
+  name: string;
+  options: ExportOptions;
 }
 
 export type SetupMode = "layered" | "own" | "direct";

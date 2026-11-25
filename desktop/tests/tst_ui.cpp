@@ -6,6 +6,10 @@
 #include "mainwindow.h"
 #include "navigationrail.h"
 #include "settingspage.h"
+#include "accountspage.h"
+#include "memoriespage.h"
+#include "projectspage.h"
+#include "terminologypage.h"
 #include "testcore.h"
 #include "theme.h"
 
@@ -105,6 +109,10 @@ private slots:
             const QString said = licence->toPlainText();
             QVERIFY(said.startsWith(QStringLiteral("Interlinea\nCopyright (C) 2026 Dan Dreßen")));
             QVERIFY(said.contains(QStringLiteral("GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007")) && said.contains(QStringLiteral("END OF TERMS AND CONDITIONS")));
+            // The licence is there to read, many lines at a time.
+            QVERIFY2(licence->viewport()->height() > 20 * licence->fontMetrics().lineSpacing(), qPrintable(QString::number(licence->height())));
+            const QString broken = layoutProblems(licence->window());
+            QVERIFY2(broken.isEmpty(), qPrintable(broken));
             qobject_cast<QDialog *>(licence->window())->accept();
         }
         // A translation service is added on this computer, listed by its
@@ -239,6 +247,37 @@ private slots:
         }
         const QStringList missing = unnamed(&w);
         QVERIFY2(missing.isEmpty(), qPrintable(missing.join(QStringLiteral(", "))));
+    }
+
+    // Every page holds together from a small window to a large one, in
+    // both themes: nothing cut off, over something else or out of place.
+    void everyPageAtEverySize()
+    {
+        for (const char *theme : {"light", "dark"}) {
+            qputenv("INTERLINEA_THEME", theme);
+            Theme::apply(*qApp);
+            TestCore core;
+            ConnectionManager m(&core.launcher);
+            MainWindow w(&m);
+            w.addPage(QStringLiteral("projects"), QStringLiteral("Projects"), QIcon(), new ProjectsPage(&m, &w));
+            w.addPage(QStringLiteral("memories"), QStringLiteral("Memories"), QIcon(), new MemoriesPage(&m, &w));
+            w.addPage(QStringLiteral("terminology"), QStringLiteral("Terminology"), QIcon(), new TerminologySection(&m, &w));
+            w.addPage(QStringLiteral("accounts"), QStringLiteral("Accounts"), QIcon(), new AccountsPage(&m, &w));
+            w.addPage(QStringLiteral("settings"), QStringLiteral("Settings"), QIcon(), new SettingsPage(&m, &w));
+            w.show();
+            m.start();
+            QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+            for (const QString page : {"projects", "memories", "terminology", "accounts", "settings"}) {
+                w.showPage(page);
+                for (const QSize size : {QSize(1024, 680), QSize(1366, 768), QSize(1920, 1080)}) {
+                    w.resize(size);
+                    const QString broken = layoutProblems(&w);
+                    QVERIFY2(broken.isEmpty(), qPrintable(QStringLiteral("%1 at %2x%3 (%4):\n%5").arg(page).arg(size.width()).arg(size.height()).arg(QString::fromLatin1(theme), broken)));
+                }
+            }
+        }
+        qunsetenv("INTERLINEA_THEME");
+        Theme::apply(*qApp);
     }
 
     void coreFailureShown()

@@ -120,6 +120,8 @@ public:
     void replaceAll(const QString &find, const QString &with, bool matchCase, bool wholeWords);
 
 signals:
+    // The analysis window shows its report.
+    void analysisShown();
     void back();
     void openProject();
     void openReview(const QString &termbase);
@@ -188,8 +190,8 @@ private:
     void notify(const QString &text);
     void addWord(const QString &word);
     void ignoreIssue(const QString &text);
-    void showMemoriesDialog();
-    void showAnalysisDialog();
+    Web::Dialog *showMemoriesDialog();
+    Web::Dialog *showAnalysisDialog();
     void saveDocument();
     bool editable() const;
     bool dirty() const;

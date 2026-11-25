@@ -557,8 +557,11 @@ private slots:
         ExportDialog *exp = page.exportDialog();
         QVERIFY(exp);
         QCOMPARE(exp->title(), QStringLiteral("Export Kanzlei Weber"));
-        QCOMPARE(exp->exportButton()->text(), QStringLiteral("Export 2 entries"));
-        QVERIFY(!label(exp, QStringLiteral("<b>Entries</b>")));
+        QCOMPARE(exp->stepper()->steps(), QStringList({QStringLiteral("Format"), QStringLiteral("Content"), QStringLiteral("Layout")}));
+        QCOMPARE(exp->exportButton()->text(), QStringLiteral("Export to .pdf"));
+        exp->setFormat(QStringLiteral("tbx"));
+        QCOMPARE(exp->stepper()->steps(), QStringList({QStringLiteral("Format"), QStringLiteral("Content")}));
+        QCOMPARE(exp->exportButton()->text(), QStringLiteral("Export to TBX 3"));
         QCOMPARE(exp->fileName(), QStringLiteral("Kanzlei Weber.tbx"));
         const QString tbxFile = m_tmp.filePath(QStringLiteral("out.tbx"));
         exp->exportTo(tbxFile);
@@ -569,13 +572,39 @@ private slots:
             const QByteArray data = f.readAll();
             QVERIFY(data.contains("<tbx") && data.contains("Nebenkosten") && data.contains("rent deposit"));
         }
+        // A printable dictionary, its layout chosen, and its settings kept.
+        exp = page.exportDialog();
+        QTRY_VERIFY_WITH_TIMEOUT(exp->presetNames().contains(QStringLiteral("Printable dictionary")), 10000);
+        exp->next();
+        QCOMPARE(exp->step(), ExportDialog::ContentStep);
+        QVERIFY(byName<QCheckBox>(exp, QStringLiteral("exportLanguage:en-GB"))->isChecked());
+        exp->next();
+        QCOMPARE(exp->step(), ExportDialog::LayoutStep);
+        byName<QRadioButton>(exp, QStringLiteral("exportLayout:table"))->click();
+        QCOMPARE(exp->options().value("layout").toString(), QStringLiteral("table"));
+        shot(exp, QStringLiteral("terminology-export-layout"));
+        exp->keep(QStringLiteral("Client table"));
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Kept the export settings “Client table” with Kanzlei Weber"), 10000);
+        const QString pdfFile = m_tmp.filePath(QStringLiteral("out.pdf"));
+        exp->exportTo(pdfFile);
+        QTRY_VERIFY_WITH_TIMEOUT(page.message().startsWith(QStringLiteral("Exported 2 entries to out.pdf")), 20000);
+        {
+            QFile f(pdfFile);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            const QByteArray data = f.readAll();
+            QVERIFY(data.startsWith("%PDF-1.7") && data.contains("/FontFile2"));
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(page.ready(), 10000);
+        exp = page.exportDialog();
+        QTRY_VERIFY_WITH_TIMEOUT(exp->presetNames().contains(QStringLiteral("Client table")), 10000);
+        exp->choosePreset(QStringLiteral("Client table"));
+        QCOMPARE(exp->options().value("layout").toString(), QStringLiteral("table"));
+        exp->reject();
         page.setQuery(QStringLiteral("Nebenkosten"));
         exp = page.exportDialog();
-        QVERIFY(button(exp, QStringLiteral("All 2 entries")) == nullptr);
-        QVERIFY(exp->findChild<QRadioButton *>() != nullptr);
         exp->setFormat(QStringLiteral("csv"));
         exp->setShownOnly(true);
-        QCOMPARE(exp->exportButton()->text(), QStringLiteral("Export 1 entry"));
+        QCOMPARE(exp->exportButton()->text(), QStringLiteral("Export to CSV"));
         QCOMPARE(exp->fileName(), QStringLiteral("Kanzlei Weber.csv"));
         const QString csvFile = m_tmp.filePath(QStringLiteral("out.csv"));
         exp->exportTo(csvFile);

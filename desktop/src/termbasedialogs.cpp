@@ -14,6 +14,8 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateEdit>
+#include <QTimer>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -124,84 +126,650 @@ QString termImportFilter()
 
 // ---- Export ---------------------------------------------------------------
 
-ExportDialog::ExportDialog(Connection *conn, const QString &termbase, int total, const QStringList &shown, QWidget *parent)
-    : Web::Dialog(tr("Export %1").arg(termbase), parent)
+namespace {
+
+struct ReadFormat {
+    const char *id;
+    const char *note;
+};
+// Glossaries to read and print.
+const ReadFormat readFormats[] = {
+    {"pdf", QT_TRANSLATE_NOOP("ExportDialog", "To print or send: fonts included, the same everywhere.")},
+    {"docx", QT_TRANSLATE_NOOP("ExportDialog", "To edit further in a word processor.")},
+    {"html", QT_TRANSLATE_NOOP("ExportDialog", "One web page with a letter index and a search.")},
+    {"txt", QT_TRANSLATE_NOOP("ExportDialog", "Plain text.")},
+};
+
+bool glossaryFormat(const QString &f)
+{
+    return f == QLatin1String("pdf") || f == QLatin1String("docx") || f == QLatin1String("html") || f == QLatin1String("txt");
+}
+
+// Options as a fresh export of a format starts, as on the web.
+QJsonObject defaultOptions(const QString &format)
+{
+    QJsonObject o{{QLatin1String("format"), format}, {QLatin1String("allFields"), true}};
+    if (glossaryFormat(format)) {
+        o.insert(QLatin1String("layout"), QStringLiteral("dictionary"));
+        o.insert(QLatin1String("letters"), true);
+        o.insert(QLatin1String("labels"), true);
+        o.insert(QLatin1String("status"), true);
+    }
+    return o;
+}
+
+QStringList strings(const QJsonValue &v)
+{
+    QStringList out;
+    for (const QJsonValue &x : v.toArray())
+        out << x.toString();
+    return out;
+}
+
+} // namespace
+
+ExportDialog::ExportDialog(Connection *conn, const QJsonObject &detail, int total, const QStringList &shown, bool manage, QWidget *parent)
+    : Web::Dialog(tr("Export %1").arg(str(detail, "name")), parent, true)
     , m_conn(conn)
-    , m_termbase(termbase)
+    , m_termbase(str(detail, "name"))
+    , m_definition(detail.value(QLatin1String("definition")).toObject())
     , m_total(total)
     , m_shown(shown)
+    , m_manage(manage)
+    , m_options(defaultOptions(QStringLiteral("pdf")))
 {
     setObjectName(QStringLiteral("exportDialog"));
-    body()->addWidget(bold(tr("Format"), this));
-    auto *list = new QVBoxLayout;
-    list->setSpacing(S2);
-    m_formats = new QButtonGroup(this);
-    int i = 0;
-    for (const TermFormat &f : termExportFormats()) {
-        auto *r = new QRadioButton(f.label, this);
-        r->setProperty("format", f.id);
-        r->setChecked(i == 0);
-        m_formats->addButton(r, i++);
-        list->addWidget(Web::choice(r, f.note, this));
-    }
-    body()->addLayout(list);
-    if (m_shown.size() < m_total) {
-        body()->addWidget(bold(tr("Entries"), this));
-        m_scope = new QButtonGroup(this);
-        auto *all = new QRadioButton(tr("All %1").arg(TermData::entries(m_total)), this);
-        auto *some = new QRadioButton(m_shown.size() == 1 ? tr("The 1 entry the search shows") : tr("The %1 entries the search shows").arg(QLocale().toString(m_shown.size())), this);
-        all->setChecked(true);
-        m_scope->addButton(all, 0);
-        m_scope->addButton(some, 1);
-        body()->addWidget(all);
-        body()->addWidget(some);
-        connect(m_scope, &QButtonGroup::idClicked, this, [this](int id) { setShownOnly(id == 1); });
-    }
+    m_kept = m_definition.value(QLatin1String("exports")).toArray();
+    m_stepper = new Web::Stepper(this);
+    m_stepper->setClickable(true);
+    body()->addWidget(m_stepper);
+    connect(m_stepper, &Web::Stepper::stepClicked, this, [this](int i) {
+        m_at = i;
+        render();
+    });
+    auto *holder = new QWidget(this);
+    m_content = new QVBoxLayout(holder);
+    m_content->setContentsMargins(0, 0, 0, 0);
+    m_content->setSpacing(S3);
+    body()->addWidget(holder, 1);
+
     auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, this);
+    m_back = Web::button(tr("Back"), Web::Small, this);
+    m_next = Web::button(tr("Continue"), Web::Small, this);
     m_export = Web::button(QString(), Web::Primary | Web::Small, this);
+    m_export->setObjectName(QStringLiteral("exportButton"));
     buttons()->addWidget(cancel);
+    buttons()->addWidget(m_back);
+    buttons()->addWidget(m_next);
     buttons()->addWidget(m_export);
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    connect(m_back, &QPushButton::clicked, this, &ExportDialog::back);
+    connect(m_next, &QPushButton::clicked, this, &ExportDialog::next);
     connect(m_export, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getSaveFileName(this, title(), fileName());
         if (!path.isEmpty())
             exportTo(path);
     });
-    update();
+    if (m_conn) {
+        // The settings kept with the termbase as they are now.
+        request(m_conn->api()->get(QStringLiteral("/api/termbases/") + ApiClient::seg(m_termbase)), [this](const ApiResult &r) {
+            if (!r.ok())
+                return;
+            m_definition = r.object().value(QLatin1String("definition")).toObject();
+            m_kept = m_definition.value(QLatin1String("exports")).toArray();
+            render();
+        });
+        request(m_conn->api()->get(QStringLiteral("/api/export-presets")), [this](const ApiResult &r) {
+            if (r.ok()) {
+                m_ready = r.array();
+                if (step() == FormatStep)
+                    render();
+            }
+        });
+    }
+    render();
 }
 
-QString ExportDialog::format() const
+void ExportDialog::request(ApiReply *reply, std::function<void(const ApiResult &)> then)
 {
-    return m_formats->checkedButton()->property("format").toString();
+    m_pending++;
+    onResult(reply, this, [this, then](const ApiResult &r) {
+        m_pending--;
+        then(r);
+        if (m_pending == 0)
+            emit ready();
+    });
+}
+
+bool ExportDialog::glossary() const
+{
+    return glossaryFormat(format());
+}
+
+QStringList ExportDialog::languages() const
+{
+    const QStringList all = strings(m_definition.value(QLatin1String("languages")));
+    if (!m_options.contains(QLatin1String("languages")))
+        return all;
+    return strings(m_options.value(QLatin1String("languages")));
 }
 
 void ExportDialog::setFormat(const QString &id)
 {
-    for (QAbstractButton *b : m_formats->buttons()) {
-        if (b->property("format").toString() == id)
-            b->setChecked(true);
+    m_preset.clear();
+    if (glossaryFormat(id) && !glossary()) {
+        QJsonObject o = defaultOptions(id);
+        for (const char *k : {"languages", "statuses", "fields", "allFields", "filterField", "filterValue", "changedSince"}) {
+            if (m_options.contains(QLatin1String(k)))
+                o.insert(QLatin1String(k), m_options.value(QLatin1String(k)));
+        }
+        m_options = o;
+    } else {
+        m_options.insert(QLatin1String("format"), id);
     }
+    render();
+}
+
+void ExportDialog::setOption(const QString &key, const QJsonValue &value)
+{
+    if (value.isUndefined() || value.isNull() || (value.isString() && value.toString().isEmpty()))
+        m_options.remove(key);
+    else
+        m_options.insert(key, value);
+    update();
 }
 
 void ExportDialog::setShownOnly(bool only)
 {
-    m_shownOnly = only && m_scope;
-    if (m_scope)
-        m_scope->button(m_shownOnly ? 1 : 0)->setChecked(true);
+    m_shownOnly = only && m_shown.size() < m_total;
+    render();
+}
+
+QStringList ExportDialog::presetNames() const
+{
+    QStringList out;
+    for (const QJsonValue &p : m_kept)
+        out << str(p.toObject(), "name");
+    for (const QJsonValue &p : m_ready)
+        out << str(p.toObject(), "name");
+    return out;
+}
+
+void ExportDialog::choosePreset(const QString &name)
+{
+    m_preset = name;
+    for (const QJsonArray &list : {m_kept, m_ready}) {
+        for (const QJsonValue &v : list) {
+            if (str(v.toObject(), "name") != name)
+                continue;
+            QJsonObject o = v.toObject().value(QLatin1String("options")).toObject();
+            // Languages or a sort the termbase lacks are left to it.
+            const QStringList have = strings(m_definition.value(QLatin1String("languages")));
+            if (o.contains(QLatin1String("languages"))) {
+                QStringList keep;
+                for (const QString &l : strings(o.value(QLatin1String("languages")))) {
+                    if (have.contains(l))
+                        keep << l;
+                }
+                if (keep.isEmpty())
+                    o.remove(QLatin1String("languages"));
+                else
+                    o.insert(QLatin1String("languages"), QJsonArray::fromStringList(keep));
+            }
+            if (o.contains(QLatin1String("sortBy")) && !have.contains(str(o, "sortBy")))
+                o.remove(QLatin1String("sortBy"));
+            m_options = o;
+            render();
+            return;
+        }
+    }
+    render();
+}
+
+void ExportDialog::keep(const QString &typed)
+{
+    const QString name = typed.trimmed();
+    if (name.isEmpty() || !m_conn)
+        return;
+    QJsonObject options = m_options;
+    options.remove(QLatin1String("entries"));
+    QJsonArray next;
+    for (const QJsonValue &p : m_kept) {
+        if (str(p.toObject(), "name").compare(name, Qt::CaseInsensitive) != 0)
+            next.append(p);
+    }
+    next.append(QJsonObject{{QLatin1String("name"), name}, {QLatin1String("options"), options}});
+    QJsonObject def = m_definition;
+    def.insert(QLatin1String("exports"), next);
+    setError(QString());
+    request(m_conn->api()->put(QStringLiteral("/api/termbases/") + ApiClient::seg(m_termbase) + QStringLiteral("/definition"), def),
+            [this, next, def, name](const ApiResult &r) {
+                if (!r.ok()) {
+                    setError(r.error.message);
+                    return;
+                }
+                m_definition = def;
+                m_kept = next;
+                m_preset = name;
+                emit said(tr("Kept the export settings “%1” with %2").arg(name, m_termbase));
+                render();
+            });
+}
+
+void ExportDialog::next()
+{
+    if (m_at < m_steps.size() - 1) {
+        m_at++;
+        render();
+    }
+}
+
+void ExportDialog::back()
+{
+    if (m_at > 0) {
+        m_at--;
+        render();
+    }
+}
+
+void ExportDialog::render()
+{
+    m_steps = glossary() ? QList<Step>{FormatStep, ContentStep, LayoutStep} : QList<Step>{FormatStep, ContentStep};
+    m_at = qBound(0, m_at, int(m_steps.size()) - 1);
+    QStringList names;
+    for (Step s : m_steps)
+        names << (s == FormatStep ? tr("Format") : s == ContentStep ? tr("Content") : tr("Layout"));
+    m_stepper->setSteps(names, m_at);
+    while (QLayoutItem *item = m_content->takeAt(0)) {
+        if (QWidget *w = item->widget()) {
+            w->hide();
+            w->deleteLater();
+        } else if (QLayout *l = item->layout()) {
+            clear(l);
+            delete l;
+            continue;
+        }
+        delete item;
+    }
+    switch (step()) {
+    case FormatStep:
+        showFormat();
+        break;
+    case ContentStep:
+        showContent();
+        break;
+    case LayoutStep:
+        showLayout();
+        break;
+    }
+    showKeep();
     update();
+}
+
+void ExportDialog::showFormat()
+{
+    QWidget *host = m_content->parentWidget();
+    if (!m_kept.isEmpty() || !m_ready.isEmpty()) {
+        auto *from = new QComboBox(host);
+        from->setObjectName(QStringLiteral("exportPreset"));
+        from->addItem(tr("Settings of my own"), QString());
+        if (!m_kept.isEmpty()) {
+            from->insertSeparator(from->count());
+            for (const QJsonValue &p : m_kept)
+                from->addItem(str(p.toObject(), "name"), str(p.toObject(), "name"));
+        }
+        from->insertSeparator(from->count());
+        for (const QJsonValue &p : m_ready)
+            from->addItem(str(p.toObject(), "name"), str(p.toObject(), "name"));
+        from->setCurrentIndex(qMax(0, from->findData(m_preset)));
+        m_content->addWidget(Web::field(tr("Start from"), from, host));
+        connect(from, &QComboBox::activated, this, [this, from] {
+            const QString name = from->currentData().toString();
+            QTimer::singleShot(0, this, [this, name] { choosePreset(name); });
+        });
+        bool keptChosen = false;
+        for (const QJsonValue &p : m_kept)
+            keptChosen = keptChosen || str(p.toObject(), "name") == m_preset;
+        if (keptChosen && m_manage) {
+            auto *remove = Web::button(tr("Remove “%1”").arg(m_preset), Web::Quiet | Web::Small, host);
+            remove->setObjectName(QStringLiteral("removePreset"));
+            connect(remove, &QPushButton::clicked, this, [this] {
+                QJsonArray next;
+                for (const QJsonValue &p : m_kept) {
+                    if (str(p.toObject(), "name") != m_preset)
+                        next.append(p);
+                }
+                QJsonObject def = m_definition;
+                def.insert(QLatin1String("exports"), next);
+                const QString gone = m_preset;
+                request(m_conn->api()->put(QStringLiteral("/api/termbases/") + ApiClient::seg(m_termbase) + QStringLiteral("/definition"), def),
+                        [this, next, def, gone](const ApiResult &r) {
+                            if (!r.ok()) {
+                                setError(r.error.message);
+                                return;
+                            }
+                            m_definition = def;
+                            m_kept = next;
+                            m_preset.clear();
+                            emit said(tr("Removed the export settings “%1”").arg(gone));
+                            render();
+                        });
+            });
+            m_content->addWidget(Web::row({remove}, host));
+        }
+    }
+    auto *group = new QButtonGroup(host);
+    const auto grid = [this, host, group](const QString &title, const QList<std::pair<QString, std::pair<QString, QString>>> &items) {
+        m_content->addWidget(bold(title, host));
+        auto *box = new QWidget(host);
+        auto *g = new QGridLayout(box);
+        g->setContentsMargins(0, 0, 0, 0);
+        g->setSpacing(S2);
+        int i = 0;
+        for (const auto &[id, text] : items) {
+            auto *r = new QRadioButton(text.first, box);
+            r->setObjectName(QStringLiteral("exportFormat:%1").arg(id));
+            r->setChecked(format() == id);
+            group->addButton(r);
+            g->addWidget(Web::choice(r, text.second, box), i / 3, i % 3);
+            const QString f = id;
+            connect(r, &QRadioButton::clicked, this, [this, f] { QTimer::singleShot(0, this, [this, f] { setFormat(f); }); });
+            i++;
+        }
+        for (int c = 0; c < 3; c++)
+            g->setColumnStretch(c, 1);
+        m_content->addWidget(box);
+    };
+    QList<std::pair<QString, std::pair<QString, QString>>> read, exchange;
+    for (const ReadFormat &f : readFormats)
+        read.append({QString::fromLatin1(f.id), {QLatin1Char('.') + QString::fromLatin1(f.id), tr(f.note)}});
+    for (const TermFormat &f : termExportFormats())
+        exchange.append({f.id, {f.label, f.note}});
+    grid(tr("To read and print"), read);
+    grid(tr("To exchange with other tools"), exchange);
+}
+
+void ExportDialog::showContent()
+{
+    QWidget *host = m_content->parentWidget();
+    const QStringList all = strings(m_definition.value(QLatin1String("languages")));
+    const QStringList chosen = languages();
+    m_content->addWidget(bold(tr("Languages"), host));
+    auto *langs = new QWidget(host);
+    langs->setAccessibleName(tr("Languages exported"));
+    auto *lf = new FlowLayout(langs, S3);
+    for (const QString &l : all) {
+        auto *box = new QCheckBox(QStringLiteral("%1  %2").arg(Languages::name(l), l), langs);
+        box->setObjectName(QStringLiteral("exportLanguage:%1").arg(l));
+        box->setChecked(chosen.contains(l));
+        lf->addWidget(box);
+        connect(box, &QCheckBox::toggled, this, [this, l, all](bool on) {
+            QStringList now = languages();
+            QStringList next;
+            for (const QString &x : all) {
+                if (x == l ? on : now.contains(x))
+                    next << x;
+            }
+            setOption(QStringLiteral("languages"), next.size() == all.size() ? QJsonValue() : QJsonValue(QJsonArray::fromStringList(next)));
+        });
+    }
+    m_content->addWidget(langs);
+    if (m_shown.size() < m_total) {
+        m_content->addWidget(bold(tr("Entries"), host));
+        auto *scope = new QButtonGroup(host);
+        auto *allEntries = new QRadioButton(tr("All %1").arg(TermData::entries(m_total)), host);
+        auto *some = new QRadioButton(m_shown.size() == 1 ? tr("The 1 entry the search shows") : tr("The %1 entries the search shows").arg(QLocale().toString(m_shown.size())), host);
+        some->setObjectName(QStringLiteral("exportShown"));
+        allEntries->setChecked(!m_shownOnly);
+        some->setChecked(m_shownOnly);
+        scope->addButton(allEntries, 0);
+        scope->addButton(some, 1);
+        m_content->addWidget(allEntries);
+        m_content->addWidget(some);
+        connect(scope, &QButtonGroup::idClicked, this, [this](int id) {
+            m_shownOnly = id == 1;
+            update();
+        });
+    }
+    m_content->addWidget(bold(tr("Terms"), host));
+    auto *statuses = new QWidget(host);
+    statuses->setAccessibleName(tr("Statuses exported"));
+    auto *sf = new FlowLayout(statuses, S3);
+    const QStringList allStatuses{QStringLiteral("approved"), QStringLiteral("proposed"), QStringLiteral("forbidden")};
+    const QStringList statusNames{tr("Approved"), tr("Proposed"), tr("Forbidden")};
+    for (int i = 0; i < allStatuses.size(); i++) {
+        const QString st = allStatuses[i];
+        auto *box = new QCheckBox(statusNames[i], statuses);
+        box->setObjectName(QStringLiteral("exportStatus:%1").arg(st));
+        box->setChecked(!m_options.contains(QLatin1String("statuses")) || strings(m_options.value(QLatin1String("statuses"))).contains(st));
+        sf->addWidget(box);
+        connect(box, &QCheckBox::toggled, this, [this, st, allStatuses](bool on) {
+            const QStringList cur = m_options.contains(QLatin1String("statuses")) ? strings(m_options.value(QLatin1String("statuses"))) : allStatuses;
+            QStringList next;
+            for (const QString &x : allStatuses) {
+                if (x == st ? on : cur.contains(x))
+                    next << x;
+            }
+            setOption(QStringLiteral("statuses"), next.size() == allStatuses.size() ? QJsonValue() : QJsonValue(QJsonArray::fromStringList(next)));
+        });
+    }
+    m_content->addWidget(statuses);
+    const QJsonArray fields = m_definition.value(QLatin1String("fields")).toArray();
+    if (!fields.isEmpty()) {
+        m_content->addWidget(bold(tr("Fields"), host));
+        auto *fw = new QWidget(host);
+        fw->setAccessibleName(tr("Fields exported"));
+        auto *ff = new FlowLayout(fw, S3);
+        QStringList names;
+        for (const QJsonValue &f : fields)
+            names << str(f.toObject(), "name");
+        const bool every = m_options.value(QLatin1String("allFields")).toBool() || !m_options.contains(QLatin1String("fields"));
+        const QStringList chosenFields = every ? names : strings(m_options.value(QLatin1String("fields")));
+        for (const QString &n : names) {
+            auto *box = new QCheckBox(n, fw);
+            box->setObjectName(QStringLiteral("exportField:%1").arg(n));
+            box->setChecked(chosenFields.contains(n));
+            ff->addWidget(box);
+            connect(box, &QCheckBox::toggled, this, [this, n, names](bool on) {
+                const bool all = m_options.value(QLatin1String("allFields")).toBool() || !m_options.contains(QLatin1String("fields"));
+                const QStringList cur = all ? names : strings(m_options.value(QLatin1String("fields")));
+                QStringList next;
+                for (const QString &x : names) {
+                    if (x == n ? on : cur.contains(x))
+                        next << x;
+                }
+                if (next.size() == names.size()) {
+                    m_options.insert(QLatin1String("allFields"), true);
+                    m_options.remove(QLatin1String("fields"));
+                } else {
+                    m_options.insert(QLatin1String("allFields"), false);
+                    m_options.insert(QLatin1String("fields"), QJsonArray::fromStringList(next));
+                }
+                update();
+            });
+        }
+        m_content->addWidget(fw);
+    }
+    // Only entries with a value in a field, and changed since a day.
+    auto *filter = new QComboBox(host);
+    filter->setObjectName(QStringLiteral("exportFilterField"));
+    filter->setAccessibleName(tr("Only entries with"));
+    filter->addItem(tr("Any entry"), QString());
+    for (const QJsonValue &f : fields)
+        filter->addItem(str(f.toObject(), "name"), str(f.toObject(), "name"));
+    filter->setCurrentIndex(qMax(0, filter->findData(str(m_options, "filterField"))));
+    QWidget *value = nullptr;
+    for (const QJsonValue &f : fields) {
+        if (str(f.toObject(), "name") != str(m_options, "filterField"))
+            continue;
+        if (str(f.toObject(), "kind") == QLatin1String("picklist")) {
+            auto *c = new QComboBox(host);
+            c->addItem(tr("Any value"), QString());
+            for (const QString &v : strings(f.toObject().value(QLatin1String("values"))))
+                c->addItem(v, v);
+            c->setCurrentIndex(qMax(0, c->findData(str(m_options, "filterValue"))));
+            connect(c, &QComboBox::activated, this, [this, c] { setOption(QStringLiteral("filterValue"), c->currentData().toString()); });
+            value = c;
+        } else {
+            auto *e = new QLineEdit(str(m_options, "filterValue"), host);
+            e->setPlaceholderText(tr("Any value"));
+            connect(e, &QLineEdit::textChanged, this, [this](const QString &t) { setOption(QStringLiteral("filterValue"), t); });
+            value = e;
+        }
+        value->setObjectName(QStringLiteral("exportFilterValue"));
+        value->setAccessibleName(tr("Value of %1").arg(str(f.toObject(), "name")));
+    }
+    connect(filter, &QComboBox::activated, this, [this, filter] {
+        m_options.remove(QLatin1String("filterValue"));
+        setOption(QStringLiteral("filterField"), filter->currentData().toString());
+        QTimer::singleShot(0, this, &ExportDialog::render);
+    });
+    QList<QWidget *> filterRow{filter};
+    if (value)
+        filterRow << value;
+    auto *since = new QDateEdit(host);
+    since->setObjectName(QStringLiteral("exportChangedSince"));
+    since->setCalendarPopup(true);
+    since->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+    const QDate none(1752, 9, 14);
+    since->setMinimumDate(none);
+    since->setSpecialValueText(tr("Any day"));
+    const QDate was = QDate::fromString(str(m_options, "changedSince"), Qt::ISODate);
+    since->setDate(was.isValid() ? was : none);
+    connect(since, &QDateEdit::dateChanged, this, [this, none](const QDate &d) { setOption(QStringLiteral("changedSince"), d == none ? QString() : d.toString(Qt::ISODate)); });
+    m_content->addWidget(Web::row({Web::labelled(tr("Only entries with"), Web::row(filterRow, host), host), Web::labelled(tr("Changed since"), since, host)}, host, S4));
+}
+
+void ExportDialog::showLayout()
+{
+    QWidget *host = m_content->parentWidget();
+    m_content->addWidget(bold(tr("Layout"), host));
+    auto *layouts = new QWidget(host);
+    auto *lg = new QHBoxLayout(layouts);
+    lg->setContentsMargins(0, 0, 0, 0);
+    lg->setSpacing(S2);
+    auto *group = new QButtonGroup(host);
+    const QString layout = m_options.value(QLatin1String("layout")).toString(QStringLiteral("dictionary"));
+    const std::pair<const char *, std::pair<QString, QString>> kinds[] = {
+        {"dictionary", {tr("Dictionary"), tr("Headwords in two columns, each language on a line under them.")}},
+        {"table", {tr("Table"), tr("A column for each language, a row for each entry.")}},
+    };
+    for (const auto &[id, text] : kinds) {
+        auto *r = new QRadioButton(text.first, layouts);
+        r->setObjectName(QStringLiteral("exportLayout:%1").arg(QString::fromLatin1(id)));
+        r->setChecked(layout == QLatin1String(id));
+        group->addButton(r);
+        lg->addWidget(Web::choice(r, text.second, layouts), 1);
+        const QString v = QString::fromLatin1(id);
+        connect(r, &QRadioButton::clicked, this, [this, v] { setOption(QStringLiteral("layout"), v); });
+    }
+    lg->addStretch(1);
+    m_content->addWidget(layouts);
+    auto *sort = new QComboBox(host);
+    sort->setObjectName(QStringLiteral("exportSortBy"));
+    for (const QString &l : languages())
+        sort->addItem(Languages::name(l), l);
+    sort->setCurrentIndex(qMax(0, sort->findData(str(m_options, "sortBy"))));
+    connect(sort, &QComboBox::activated, this, [this, sort] { setOption(QStringLiteral("sortBy"), sort->currentData().toString()); });
+    auto *title = new QLineEdit(str(m_options, "title"), host);
+    title->setObjectName(QStringLiteral("exportTitle"));
+    title->setPlaceholderText(m_termbase);
+    connect(title, &QLineEdit::textChanged, this, [this](const QString &t) { setOption(QStringLiteral("title"), t); });
+    auto *pair = new QWidget(host);
+    auto *pg = new QGridLayout(pair);
+    pg->setContentsMargins(0, 0, 0, 0);
+    pg->setHorizontalSpacing(S4);
+    pg->addWidget(Web::field(tr("Sorted by"), sort, pair), 0, 0);
+    pg->addWidget(Web::field(tr("Title"), title, pair), 0, 1);
+    pg->setColumnStretch(0, 1);
+    pg->setColumnStretch(1, 1);
+    m_content->addWidget(pair);
+    m_content->addWidget(bold(tr("Show"), host));
+    const std::pair<const char *, QString> shows[] = {
+        {"letters", tr("Initial letters before their headwords")},
+        {"perTerm", tr("Every synonym as a headword of its own")},
+        {"groupHomonyms", tr("Entries with the same headword under it, numbered")},
+        {"labels", tr("The names of fields before their values")},
+        {"status", tr("Proposed and forbidden terms marked")},
+    };
+    for (const auto &[key, text] : shows) {
+        auto *box = new QCheckBox(text, host);
+        const QString k = QString::fromLatin1(key);
+        box->setObjectName(QStringLiteral("exportShow:%1").arg(k));
+        box->setChecked(m_options.value(k).toBool());
+        connect(box, &QCheckBox::toggled, this, [this, k](bool on) { setOption(k, on ? QJsonValue(true) : QJsonValue()); });
+        m_content->addWidget(box);
+    }
+    if (format() != QLatin1String("txt")) {
+        m_content->addWidget(bold(tr("Page"), host));
+        auto *pages = new QButtonGroup(host);
+        auto *a4 = new QRadioButton(tr("A4"), host);
+        auto *letter = new QRadioButton(tr("Letter"), host);
+        letter->setObjectName(QStringLiteral("exportPage:letter"));
+        a4->setChecked(str(m_options, "page") != QLatin1String("letter"));
+        letter->setChecked(str(m_options, "page") == QLatin1String("letter"));
+        pages->addButton(a4);
+        pages->addButton(letter);
+        connect(a4, &QRadioButton::clicked, this, [this] { setOption(QStringLiteral("page"), QStringLiteral("a4")); });
+        connect(letter, &QRadioButton::clicked, this, [this] { setOption(QStringLiteral("page"), QStringLiteral("letter")); });
+        m_content->addWidget(a4);
+        m_content->addWidget(letter);
+    }
+}
+
+void ExportDialog::showKeep()
+{
+    if (!m_manage)
+        return;
+    QWidget *host = m_content->parentWidget();
+    m_content->addWidget(line(host));
+    auto *name = new QLineEdit(host);
+    name->setObjectName(QStringLiteral("exportKeepName"));
+    name->setPlaceholderText(tr("For example Client glossary"));
+    auto *keepButton = Web::button(tr("Keep"), Web::Small, host);
+    keepButton->setObjectName(QStringLiteral("exportKeep"));
+    keepButton->setEnabled(false);
+    connect(name, &QLineEdit::textChanged, keepButton, [keepButton](const QString &t) { keepButton->setEnabled(!t.trimmed().isEmpty()); });
+    connect(keepButton, &QPushButton::clicked, this, [this, name] { keep(name->text()); });
+    auto *row = new QWidget(host);
+    auto *h = new QHBoxLayout(row);
+    h->setContentsMargins(0, 0, 0, 0);
+    h->setSpacing(S2);
+    h->addWidget(name, 1);
+    h->addWidget(keepButton);
+    m_content->addWidget(Web::field(tr("Keep these settings as"), row, host, false, tr("Kept with %1, for everyone who exports it.").arg(m_termbase)));
 }
 
 void ExportDialog::update()
 {
+    m_back->setVisible(m_at > 0);
+    m_next->setVisible(m_at < m_steps.size() - 1);
+    QString label = format();
+    for (const TermFormat &f : termExportFormats()) {
+        if (f.id == format())
+            label = f.label;
+    }
+    if (glossary())
+        label = QLatin1Char('.') + format();
+    m_export->setText(m_exporting ? tr("Exporting…") : tr("Export to %1").arg(label));
     const int n = m_shownOnly ? int(m_shown.size()) : m_total;
-    m_export->setText(tr("Export %1").arg(TermData::entries(n)));
-    m_export->setEnabled(n > 0);
+    QString blocking;
+    if (languages().isEmpty())
+        blocking = tr("Choose a language at least.");
+    else if (glossary() && m_options.contains(QLatin1String("sortBy")) && !languages().contains(str(m_options, "sortBy")))
+        blocking = tr("Sort by one of the languages exported.");
+    else if (n == 0)
+        blocking = tr("There is no entry to export.");
+    m_export->setEnabled(blocking.isEmpty() && !m_exporting);
+    m_export->setToolTip(blocking);
 }
 
 QString ExportDialog::fileName() const
 {
     QString base = m_termbase;
     base.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]+")), QStringLiteral(" "));
+    if (glossary())
+        return base.trimmed() + QLatin1Char('.') + format();
     for (const TermFormat &f : termExportFormats()) {
         if (f.id == format())
             return base.trimmed() + f.ext;
@@ -214,13 +782,13 @@ void ExportDialog::exportTo(const QString &path)
     if (!m_conn)
         return;
     setError(QString());
-    m_export->setEnabled(false);
+    QJsonObject options = m_options;
+    if (m_shownOnly)
+        options.insert(QLatin1String("entries"), QJsonArray::fromStringList(m_shown));
     const QString route = QStringLiteral("/api/termbases/") + ApiClient::seg(m_termbase) + QStringLiteral("/export");
-    QUrlQuery q;
-    q.addQueryItem(QStringLiteral("format"), format());
-    const int n = m_shownOnly ? int(m_shown.size()) : m_total;
-    ApiReply *reply = m_shownOnly ? m_conn->api()->post(route, QJsonObject{{QLatin1String("entries"), QJsonArray::fromStringList(m_shown)}}, q) : m_conn->api()->get(route, q);
-    onResult(reply, this, [this, path, n](const ApiResult &r) {
+    m_exporting = true;
+    request(m_conn->api()->post(route, QJsonObject{{QLatin1String("options"), options}}), [this, path](const ApiResult &r) {
+        m_exporting = false;
         update();
         if (!r.ok()) {
             setError(tr("The export failed: %1").arg(r.error.message));
@@ -232,9 +800,23 @@ void ExportDialog::exportTo(const QString &path)
             return;
         }
         f.close();
-        emit exported(tr("Exported %1 to %2").arg(TermData::entries(n), QFileInfo(path).fileName()));
+        const QString summary = QString::fromUtf8(r.header("X-Interlinea-Summary"));
+        QString message = tr("Exported %1 to %2").arg(summary, QFileInfo(path).fileName());
+        const QByteArray missing = r.header("X-Interlinea-Missing");
+        if (!missing.isEmpty()) {
+            QString chars;
+            for (const QByteArray &code : missing.split(' ').mid(0, 12)) {
+                bool ok = false;
+                const uint cp = code.mid(2).toUInt(&ok, 16);
+                if (ok)
+                    chars += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1) + QLatin1Char(' ');
+            }
+            message = tr("Exported %1 to %2. No font has %3: they show as boxes.").arg(summary, QFileInfo(path).fileName(), chars.trimmed());
+        }
+        emit exported(message);
         accept();
     });
+    update();
 }
 
 // ---- Settings -------------------------------------------------------------
@@ -1721,7 +2303,8 @@ void ImportDialog::showReview()
             r->setObjectName(QStringLiteral("match:%1").arg(QLatin1String(id)));
             r->setChecked(m_match == QLatin1String(id));
             match->addButton(r);
-            left->addWidget(r);
+            // Long choices wrap rather than run out of their column.
+            left->addWidget(TermFields::checkText(r, label, host));
             const QString way = QString::fromLatin1(id);
             connect(r, &QRadioButton::clicked, this, [this, way] { setPolicy(way, m_matchLang, m_onMatch); });
             if (way == QLatin1String("term") && m_match == way) {
@@ -1765,7 +2348,7 @@ void ImportDialog::showReview()
                 r->setObjectName(QStringLiteral("onMatch:%1").arg(QLatin1String(id)));
                 r->setChecked(m_onMatch == QLatin1String(id));
                 on->addButton(r);
-                right->addWidget(r);
+                right->addWidget(TermFields::checkText(r, label, host));
                 const QString what = QString::fromLatin1(id);
                 connect(r, &QRadioButton::clicked, this, [this, what] { setPolicy(m_match, m_matchLang, what); });
             }

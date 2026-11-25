@@ -215,6 +215,26 @@ termbase's settings, and added from any entry. Each kind of field has its
 own control in an entry: a list to choose from, yes or no, a date, a
 number that is checked, or text.
 
+## Glossaries
+
+A termbase is exported as a glossary to read, print or send: a PDF, a
+Word document, a web page with a letter index and a search, or plain
+text. The dictionary layout sets headwords in two columns with each
+language on a line under them, initial letters, and the first and last
+headword of each page in its running head; the table layout gives each
+language a column. Grammar fields (part of speech, gender, number) are
+abbreviated as dictionaries do, with a list of the abbreviations used.
+
+What goes in is chosen in the same dialog, for glossaries and exchange
+formats alike: languages and the one to sort by, entries (all, those a
+search shows, those with a field value, those changed since a day), term
+statuses and fields. Settings are kept with the termbase by name.
+
+PDF files are made without any other program. The fonts for Latin,
+Greek, Cyrillic, Arabic and Hebrew come with the app (Noto, under the SIL
+Open Font License); other scripts take the fonts installed where the PDF
+is made.
+
 ## Team server
 
 `interlinea-server` is first of all where a team shares its terminology:

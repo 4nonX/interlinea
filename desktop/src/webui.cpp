@@ -1,8 +1,12 @@
 #include "webui.h"
 
+#include "layoutcheck.h"
+
 #include "icons.h"
 #include "languages.h"
 #include "theme.h"
+
+#include <QScreen>
 
 #include <QAbstractButton>
 #include <QDragEnterEvent>
@@ -664,6 +668,8 @@ Toast::Toast(QWidget *page)
     , m_timer(new QTimer(this))
 {
     setAccessibleName(QObject::tr("Notice"));
+    // It lies over the page on purpose.
+    LayoutCheck::markOverlay(this);
     setStyleSheet(QStringLiteral("QLabel { background: #1f2630; color: #ffffff; border-radius: 8px; padding: 10px 16px; font-weight: 500; }"));
     setWordWrap(true);
     setMaximumWidth(560);
@@ -981,9 +987,22 @@ Dialog::Dialog(const QString &title, QWidget *parent, bool wide)
     m_title->setProperty("role", QStringLiteral("dialogTitle"));
     m_title->setWordWrap(true);
     m_outer->addWidget(m_title);
-    m_body = new QVBoxLayout;
+    // The parts scroll when they are taller than the screen allows; until
+    // then the dialog is as tall as they are.
+    auto *scroll = new DialogScroll(this);
+    scroll->setObjectName(QStringLiteral("dialogScroll"));
+    Theme::role(scroll, "paneScroll");
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto *inner = new QWidget(scroll);
+    Theme::role(inner, "paneBody");
+    m_body = new QVBoxLayout(inner);
+    m_body->setContentsMargins(0, 0, 0, 0);
     m_body->setSpacing(S3);
-    m_outer->addLayout(m_body);
+    scroll->setWidget(inner);
+    fitScroll(scroll);
+    m_outer->addWidget(scroll, 1);
     m_error = text(QString(), "error", this);
     m_error->setWordWrap(true);
     m_error->hide();
@@ -1087,11 +1106,60 @@ void fitScroll(QScrollArea *scroll)
     new ScrollFit(scroll);
 }
 
+QSize DialogScroll::sizeHint() const
+{
+    QWidget *w = widget();
+    if (!w)
+        return QScrollArea::sizeHint();
+    const QSize hint = w->sizeHint().expandedTo(w->minimumSize());
+    const int width = viewport()->width() > 0 ? viewport()->width() : hint.width();
+    int h = hint.height();
+    if (w->hasHeightForWidth())
+        h = qMax(h, w->heightForWidth(width));
+    return QSize(hint.width(), h + 2 * frameWidth());
+}
+
+QSize DialogScroll::minimumSizeHint() const
+{
+    // It may scroll rather than push the dialog off the screen.
+    return QSize(0, qMin(sizeHint().height(), 160));
+}
+
+// The tallest a dialog may be: most of the screen it is on.
+static int roomOnScreen(const QWidget *w)
+{
+    const QScreen *screen = w->screen();
+    return screen ? screen->availableGeometry().height() * 92 / 100 : 900;
+}
+
 void Dialog::showEvent(QShowEvent *e)
 {
     QDialog::showEvent(e);
-    // Once the dialog is laid out, as tall as its texts need.
-    QTimer::singleShot(0, this, [this] { fitText(4); });
+    // Once the dialog is laid out, as tall as its parts and texts need,
+    // within the screen.
+    QTimer::singleShot(0, this, [this] {
+        const int want = qMin(sizeHint().height(), roomOnScreen(this));
+        if (want > height())
+            resize(width(), want);
+        fitText(4);
+    });
+}
+
+bool Dialog::event(QEvent *e)
+{
+    // What it shows changed (a text set, a part added): it grows again to
+    // what that needs, once the layout has settled.
+    if (e->type() == QEvent::LayoutRequest && isVisible() && !m_fitting) {
+        m_fitting = true;
+        QTimer::singleShot(0, this, [this] {
+            m_fitting = false;
+            const int want = qMin(sizeHint().height(), roomOnScreen(this));
+            if (want > height())
+                resize(width(), want);
+            fitText(4);
+        });
+    }
+    return QDialog::event(e);
 }
 
 void Dialog::fitText(int passes)
@@ -1099,7 +1167,9 @@ void Dialog::fitText(int passes)
     const int lack = textDeficit(this);
     if (lack <= 0 || passes <= 0)
         return;
-    resize(width(), height() + lack);
+    if (height() >= roomOnScreen(this))
+        return;
+    resize(width(), qMin(height() + lack, roomOnScreen(this)));
     QTimer::singleShot(0, this, [this, passes] { fitText(passes - 1); });
 }
 

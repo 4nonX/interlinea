@@ -58,6 +58,9 @@ type Definition struct {
 	Name      string   `json:"name,omitempty"`
 	Languages []string `json:"languages"`
 	Fields    []Field  `json:"fields,omitempty"`
+	// Exports are export settings kept with the termbase by name, for
+	// everyone who exports it.
+	Exports []ExportPreset `json:"exports,omitempty"`
 }
 
 // Value is one field value. Order is kept as in the source file.
