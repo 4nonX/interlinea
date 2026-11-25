@@ -804,24 +804,6 @@ Settings holds the editor options and switches between plain wording and git
 terms. `PRODUCT.md` and `DESIGN.md` describe the product and the visual
 system.
 
-## Design skills
-
-UI and UX work on the desktop and browser clients uses agent skills pinned by
-commit in `skills-lock.json`:
-
-- `frontend-design` (anthropics/skills): visual direction and typography
-- `impeccable` (pbakaus/impeccable): design critique, polish, accessibility, design systems
-- `design-taste-frontend` (Leonxlnx/taste-skill): layout, components, copy
-- emilkowalski/skills: motion and interaction (`animate`, `choreograph`,
-  `review-animations`, `remove-animations`, `animation-performance`,
-  `gestures`, `break-ui` and others)
-
-They are not committed (about 42 MB); restore them with
-
-```
-npx skills experimental_install
-```
-
 ## License
 
 Copyright (C) 2026 Dan Dreßen.
