@@ -413,6 +413,14 @@ void draw(QPainter &p, const QString &name)
         path.lineTo(12, 16);
         path.moveTo(12, 8);
         path.lineTo(12, 8.2);
+    } else if (name == QLatin1String("chevron-down")) {
+        path.moveTo(6, 9);
+        path.lineTo(12, 15);
+        path.lineTo(18, 9);
+    } else if (name == QLatin1String("chevron-up")) {
+        path.moveTo(6, 15);
+        path.lineTo(12, 9);
+        path.lineTo(18, 15);
     } else if (name == QLatin1String("chevron-right")) {
         path.moveTo(9, 6);
         path.lineTo(15, 12);

@@ -16,6 +16,7 @@ import (
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/formats"
 	"github.com/4nonX/interlinea/filter/mqpackage"
 	"github.com/4nonX/interlinea/filter/sdlpackage"
@@ -42,6 +43,7 @@ func (s *Server) projectRoutes() {
 	s.handle("POST /api/projects/{id}/files", s.signedIn(s.addProjectFile))
 	s.handle("DELETE /api/projects/{id}/files", s.signedIn(s.removeProjectFile))
 	s.handle("GET /api/projects/{id}/files/content", s.signedIn(s.projectFileContent))
+	s.handle("GET /api/projects/{id}/files/layout", s.signedIn(s.projectFileLayout))
 	s.handle("GET /api/projects/{id}/files/translated", s.signedIn(s.projectTranslatedFile))
 	s.handle("GET /api/projects/{id}/return-package", s.signedIn(s.projectReturnPackage))
 	s.handle("GET /api/projects/{id}/segments", s.signedIn(s.projectSegments))
@@ -1073,6 +1075,42 @@ func (s *Server) projectFileContent(w http.ResponseWriter, r *http.Request, me s
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": path.Base(f.Name)}))
 	w.Header().Set("Content-Length", strconv.Itoa(len(f.Data)))
 	w.Write(f.Data)
+}
+
+// fileLayout is the paragraphs of a document, for a preview of it.
+type fileLayout struct {
+	// Blocks are the paragraphs in the order of the document: each with
+	// its place (body, header, footnote, table cell), its style and
+	// whether it is a heading or a list item. A segment names the block
+	// it is in. Empty for a bilingual file and a package, which have none.
+	Blocks []filter.Block `json:"blocks"`
+}
+
+// projectFileLayout returns the paragraphs of a project's document
+// (?name=), as its filter reads them: what a preview of the translated
+// document is built from, together with the file's segments.
+//
+// Access: read on the project, or work in it.
+func (s *Server) projectFileLayout(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	f, err := s.cfg.Projects.File(r.Context(), p.ID, r.URL.Query().Get("name"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	out := fileLayout{Blocks: []filter.Block{}}
+	if formats.Document(f.Format) {
+		ex, err := formats.Extract(f.Format, f.Data, p.Settings.SourceLang)
+		if err != nil {
+			writeError(w, http.StatusUnprocessableEntity, "invalid", fmt.Sprintf("%s could not be read: %v.", f.Name, err))
+			return
+		}
+		out.Blocks = append(out.Blocks, ex.Blocks...)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // projectSegments returns a file's segments in a target language

@@ -526,6 +526,10 @@ private slots:
         }
         ImportDialog *imp = page.importDialog(false);
         QSignalSpy ready(imp, &ImportDialog::ready);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(400);
+            imp->grab().save(dir + QStringLiteral("/import-file.png"));
+        }
         QTRY_VERIFY_WITH_TIMEOUT(!imp->busy(), 10000);
         QCOMPARE(imp->title(), QStringLiteral("Import into Kanzlei Weber"));
         QCOMPARE(imp->stepper()->steps(), QStringList({QStringLiteral("File"), QStringLiteral("Languages"), QStringLiteral("Review")}));
@@ -572,6 +576,10 @@ private slots:
         byName<QRadioButton>(imp, QStringLiteral("fallbackProposed"))->setChecked(true);
         imp->next();
         QTRY_VERIFY_WITH_TIMEOUT(imp->step() == ImportDialog::Review && !imp->busy() && !imp->plan().isEmpty(), 10000);
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(400);
+            imp->grab().save(dir + QStringLiteral("/import-review.png"));
+        }
         // Kaution is there already: its new synonym and source are merged.
         QCOMPARE(imp->plan().value("added").toInt(), 2);
         QCOMPARE(imp->plan().value("merged").toInt(), 1);

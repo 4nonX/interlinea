@@ -31,4 +31,7 @@ public:
     explicit LanguageCombo(QWidget *parent = nullptr);
     QString language() const;
     void setLanguage(const QString &tag);
+
+protected:
+    bool eventFilter(QObject *o, QEvent *e) override;
 };

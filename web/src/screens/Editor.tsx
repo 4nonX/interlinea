@@ -1512,7 +1512,7 @@ export function Editor({
             >
               <p className="preview-note">
                 Layout from the document. Untranslated text appears in the
-                source language. The saved file is exact.
+                source language, grey and underlined. The saved file is exact.
               </p>
               <Preview
                 blocks={file.blocks}

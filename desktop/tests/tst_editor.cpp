@@ -217,6 +217,32 @@ private slots:
                 QTest::qWait(600);
                 ed.grab().save(dir + QStringLiteral("/editor-html.png"));
             }
+            // The preview is the document: its paragraphs as the file has
+            // them, formatting where the segments have tags, and what is
+            // not translated yet in the source text, grey and underlined.
+            if (n == "Seite.html") {
+                ed.showPreview(true);
+                QTRY_VERIFY_WITH_TIMEOUT(!ed.layout().isEmpty(), 10000);
+                QString html = ed.previewHtml();
+                QVERIFY2(html.contains(QStringLiteral("<b>")) && !html.contains(QChar(0x203A)) && !html.contains(QChar(0x2039)), qPrintable(html));
+                QVERIFY2(html.contains(QStringLiteral("font-size:14px; font-weight:700;")) && html.contains(QStringLiteral("Title and description of the page")), qPrintable(html));
+                QVERIFY(html.contains(QStringLiteral("color:#6b7280;")) && html.contains(QStringLiteral("Not translated yet: the source text is used")));
+                // A translation takes the place of its source text, in black.
+                const QString first = ed.model()->segments().first().value("id").toString();
+                ed.goToSegment(first);
+                QTRY_COMPARE_WITH_TIMEOUT(ed.activeId(), first, 5000);
+                QSignalSpy saved(&ed, &EditorPage::saved);
+                ed.target()->setContent(QJsonArray{QJsonObject{{"text", "Deadlines"}}});
+                emit ed.target()->edited();
+                ed.confirm();
+                QVERIFY(saved.wait(10000));
+                html = ed.previewHtml();
+                QVERIFY2(html.contains(QStringLiteral("color:#111111;\">Deadlines</a>")), qPrintable(html.left(1500)));
+                if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+                    QTest::qWait(400);
+                    ed.grab().save(dir + QStringLiteral("/editor-preview.png"));
+                }
+            }
         }
         // The translated files come back in their formats.
         const QString base = QStringLiteral("/api/projects/%1").arg(id);

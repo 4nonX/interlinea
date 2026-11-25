@@ -10,7 +10,13 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QDir>
+#include <QEvent>
+#include <QFile>
 #include <QFont>
+#include <QImage>
+#include <QPainter>
+#include <QTemporaryDir>
 #include <QFontDatabase>
 #include <QPalette>
 #include <QStyle>
@@ -77,6 +83,24 @@ bool systemDark()
     return QGuiApplication::palette().color(QPalette::Window).lightness() < 128;
 }
 
+// arrowFile draws an arrow in a colour and returns the file it is kept
+// in, as a style sheet names it. The file is written once for a colour.
+QString arrowFile(const QString &name, const QColor &color)
+{
+    static QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("%1-%2.png").arg(name, color.name().mid(1)));
+    if (!QFile::exists(path)) {
+        // Three times the size it is shown at, for sharp edges on any screen.
+        QImage img(42, 42, QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::transparent);
+        QPainter p(&img);
+        Icons::paint(p, QRectF(0, 0, 42, 42), name, color, 2.2);
+        p.end();
+        img.save(path);
+    }
+    return QDir::fromNativeSeparators(path);
+}
+
 QString sheet(const Tokens &t)
 {
     QString s = QStringLiteral(R"(
@@ -131,7 +155,15 @@ QTextEdit[lines="few"]:read-only { background: @surface2; }
 QLineEdit:hover, QPlainTextEdit:hover, QSpinBox:hover, QDateTimeEdit:hover, QComboBox:hover { border-color: @text3; }
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus, QDateTimeEdit:focus, QComboBox:focus { border: 2px solid @accent; padding: 4px 7px; }
 QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDateTimeEdit:disabled, QPlainTextEdit:disabled { background: @surface2; color: @text3; border-color: @border; }
-QComboBox::drop-down, QDateTimeEdit::drop-down { border: 0; width: 22px; }
+QComboBox::drop-down, QDateTimeEdit::drop-down { border: 0; width: 24px; subcontrol-origin: padding; subcontrol-position: center right; }
+/* The mark of a list to choose from, as a select has it. */
+QComboBox::down-arrow, QDateTimeEdit::down-arrow { image: url(@chevronDown); width: 14px; height: 14px; }
+QComboBox::down-arrow:disabled, QDateTimeEdit::down-arrow:disabled { image: url(@chevronDownOff); }
+QSpinBox::up-button, QSpinBox::down-button { border: 0; width: 18px; background: transparent; }
+QSpinBox::up-arrow { image: url(@chevronUp); width: 10px; height: 10px; }
+QSpinBox::down-arrow { image: url(@chevronDown); width: 10px; height: 10px; }
+QSpinBox::up-arrow:disabled, QSpinBox::up-arrow:off { image: url(@chevronUpOff); }
+QSpinBox::down-arrow:disabled, QSpinBox::down-arrow:off { image: url(@chevronDownOff); }
 QComboBox QAbstractItemView { background: @surface; border: 1px solid @border; border-radius: 6px; padding: 4px; selection-background-color: @accentWeak; selection-color: @accentText; }
 QCheckBox, QRadioButton { spacing: 8px; }
 
@@ -322,6 +354,12 @@ QFrame#issue[forbidden="true"] QLabel { color: @danger; }
 QTextEdit#targetEditor { background: @surface; border: 2px solid @accent; border-radius: 0; padding: 10px; }
 QTextBrowser#activeSource { background: transparent; border: 0; padding: 0; }
 )");
+    // The arrows of lists and number fields are pictures to a style
+    // sheet: drawn here in the theme's colours, and kept as files.
+    s.replace(QLatin1String("@chevronDownOff"), arrowFile(QStringLiteral("chevron-down"), QColor(QLatin1String(t.border))));
+    s.replace(QLatin1String("@chevronUpOff"), arrowFile(QStringLiteral("chevron-up"), QColor(QLatin1String(t.border))));
+    s.replace(QLatin1String("@chevronDown"), arrowFile(QStringLiteral("chevron-down"), QColor(QLatin1String(t.text2))));
+    s.replace(QLatin1String("@chevronUp"), arrowFile(QStringLiteral("chevron-up"), QColor(QLatin1String(t.text2))));
     const std::pair<const char *, const char *> vars[] = {
         {"@borderStrong", t.borderStrong}, {"@accentHover", t.accentHover}, {"@accentWeak", t.accentWeak}, {"@accentText", t.accentText},
         {"@surface2", t.surface2},         {"@onAccent", t.onAccent},       {"@surface", t.surface},       {"@border", t.border},

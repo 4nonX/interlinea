@@ -262,6 +262,7 @@ TermbaseSettingsDialog::TermbaseSettingsDialog(Connection *conn, const QJsonObje
     m_content->setContentsMargins(0, 0, 0, 0);
     m_content->setSpacing(S3);
     scroll->setWidget(inner);
+    Web::fitScroll(scroll);
     scroll->setObjectName(QStringLiteral("settingsScroll"));
     scroll->setMinimumHeight(520);
     body()->addWidget(scroll, 1);
@@ -1550,6 +1551,7 @@ void ImportDialog::showColumns()
         }
     }
     scroll->setWidget(inner);
+    Web::fitScroll(scroll);
     scroll->setMinimumHeight(qMin(340, inner->sizeHint().height() + 14));
     scroll->setMaximumHeight(340);
     m_content->addWidget(scroll);
@@ -1822,6 +1824,7 @@ void ImportDialog::showReview()
         wrap->setFrameShape(QFrame::NoFrame);
         wrap->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         wrap->setWidget(table);
+        Web::fitScroll(wrap);
         wrap->setMaximumHeight(260);
         wrap->setMinimumHeight(qMin(260, table->sizeHint().height() + 4));
         m_content->addWidget(wrap);

@@ -41,6 +41,11 @@ public:
     ~EditorPage() override;
 
     QString file() const { return m_file; }
+    // The preview as it is shown: the HTML of the page, and the
+    // paragraphs it is built from.
+    QString previewHtml() const;
+    QJsonArray layout() const { return m_layout; }
+    void showPreview(bool on);
     QString lang() const { return m_lang; }
     SegmentModel *model() const { return m_model; }
     QTableView *grid() const { return m_grid; }
@@ -195,6 +200,12 @@ private:
     QPointer<Connection> m_conn;
     qint64 m_id;
     QString m_file;
+    // The paragraphs of the open document, for its preview, and the file
+    // they were asked for.
+    QJsonArray m_layout;
+    QString m_layoutFile;
+    bool m_layoutAsked = false;
+    void loadLayout();
     QString m_lang;
     QJsonObject m_project;
     QString m_sourceLang;

@@ -15,6 +15,10 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QStyle>
+#include <QTextDocument>
+#include <QHash>
+#include <QAbstractScrollArea>
+#include <QEvent>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -52,6 +56,7 @@ Page page(QWidget *parent, int maxWidth)
     h->addWidget(column, 1);
     h->addStretch(0);
     p.scroll->setWidget(outer);
+    fitScroll(p.scroll);
     return p;
 }
 
@@ -230,6 +235,17 @@ Table::Table(const QStringList &headers, QWidget *parent)
     horizontalHeader()->setHighlightSections(false);
     horizontalHeader()->setSectionsClickable(false);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    // Wrapped text is as tall as the width its column gets, whenever
+    // that changes.
+    connect(horizontalHeader(), &QHeaderView::sectionResized, this, [this] {
+        if (m_fitting)
+            return;
+        m_fitting = true;
+        QTimer::singleShot(0, this, [this] {
+            fitRows();
+            m_fitting = false;
+        });
+    });
 }
 
 void Table::setNumeric(const QList<int> &columns)
@@ -273,9 +289,15 @@ int Table::addRow(const QList<QWidget *> &cells)
         if (wrapping && wrapping->wordWrap() && !m_numeric.contains(c)) {
             wrapping->setAlignment(Qt::AlignLeft | Qt::AlignTop);
             l->addWidget(w, 1);
+        } else if (w->property("fillsCell").toBool()) {
+            // A name with a line under it: as wide as the column too.
+            l->addWidget(w, 1, Qt::AlignTop);
         } else {
             l->addWidget(w, 1, m_numeric.contains(c) ? Qt::AlignRight | Qt::AlignTop : Qt::AlignLeft | Qt::AlignTop);
         }
+        // What a cell holds may ask for another size later, when its fonts
+        // are set or its column changes: the rows follow.
+        wrap->installEventFilter(this);
         setCellWidget(row, c, wrap);
         // The text for screen readers, without sizing the column.
         auto *item = new QTableWidgetItem;
@@ -332,6 +354,18 @@ void Table::fit()
             m_refit = false;
         });
     }
+}
+
+bool Table::eventFilter(QObject *o, QEvent *e)
+{
+    if ((e->type() == QEvent::LayoutRequest || e->type() == QEvent::Resize) && !m_fitting && o->parent() == viewport()) {
+        m_fitting = true;
+        QTimer::singleShot(0, this, [this] {
+            fitRows();
+            m_fitting = false;
+        });
+    }
+    return QTableWidget::eventFilter(o, e);
 }
 
 void Table::showEvent(QShowEvent *e)
@@ -423,6 +457,7 @@ QWidget *cell(const QString &title, const QString &sub, QWidget *parent, std::fu
     small.setPixelSize(13);
     w->setMinimumHeight(QFontMetrics(f).lineSpacing() + 2 + (sub.isEmpty() ? 0 : 2 + QFontMetrics(small).lineSpacing() + 2));
     w->setAccessibleName(sub.isEmpty() ? title : QStringLiteral("%1, %2").arg(title, sub));
+    w->setProperty("fillsCell", true);
     return w;
 }
 
@@ -502,9 +537,36 @@ QWidget *row(const QList<QWidget *> &widgets, QWidget *parent, int spacing)
     auto *h = new QHBoxLayout(w);
     h->setContentsMargins(0, 0, 0, 0);
     h->setSpacing(spacing);
-    for (QWidget *x : widgets)
+    // Text that may wrap, at the end of a row, gets the room that is
+    // left: it wraps only when it has to, and the row is as tall as it.
+    auto *last = widgets.isEmpty() ? nullptr : qobject_cast<QLabel *>(widgets.last());
+    const bool wraps = last && last->wordWrap();
+    for (QWidget *x : widgets) {
+        if (wraps && x == last) {
+            h->addWidget(x, 1);
+            continue;
+        }
+        // A control with its label over it is as wide as the label on one
+        // line: beside other things a label would else be broken where
+        // nothing makes room for its second line.
+        if (!qobject_cast<QLabel *>(x)) {
+            int need = 0;
+            for (QLabel *l : x->findChildren<QLabel *>(Qt::FindDirectChildrenOnly)) {
+                if (!l->wordWrap() || l->text().size() > 48)
+                    continue;
+                l->ensurePolished();
+                QTextDocument doc;
+                doc.setDefaultFont(l->font());
+                doc.setHtml(l->textFormat() == Qt::PlainText ? l->text().toHtmlEscaped() : l->text());
+                need = qMax(need, int(doc.idealWidth()) + 2);
+            }
+            if (need > x->minimumWidth())
+                x->setMinimumWidth(need);
+        }
         h->addWidget(x, 0, Qt::AlignVCenter);
-    h->addStretch();
+    }
+    if (!wraps)
+        h->addStretch();
     return w;
 }
 
@@ -842,6 +904,9 @@ void Stepper::setSteps(const QStringList &names, int current)
         } else {
             auto *name = new QLabel(names[i], step);
             name->setProperty("stepName", state);
+            // As wide as its name in the face its state gives it.
+            name->ensurePolished();
+            name->setMinimumWidth(name->sizeHint().width());
             h->addWidget(name);
             step->setAccessibleName(i == current ? tr("Step %1, %2, current").arg(i + 1).arg(names[i]) : tr("Step %1, %2").arg(i + 1).arg(names[i]));
         }
@@ -923,6 +988,119 @@ Dialog::Dialog(const QString &title, QWidget *parent, bool wide)
     m_error->setWordWrap(true);
     m_error->hide();
     m_outer->addWidget(m_error);
+}
+
+// How much the texts under a widget lack in height where they stand:
+// those under each other add up, of those side by side the largest
+// counts. Texts in lists and tables, and in scrolling areas of their
+// own, are left to those.
+static int textDeficit(const QWidget *root)
+{
+    QHash<const QWidget *, int> byParent;
+    for (const QLabel *l : root->findChildren<QLabel *>()) {
+        if (!l->isVisible() || l->text().isEmpty() || l->width() <= 0)
+            continue;
+        bool skip = false;
+        for (const QWidget *p = l->parentWidget(); p && p != root; p = p->parentWidget()) {
+            if (qobject_cast<const QAbstractScrollArea *>(p)) {
+                skip = true;
+                break;
+            }
+        }
+        if (skip)
+            continue;
+        const int need = l->wordWrap() ? l->heightForWidth(l->width()) : l->sizeHint().height();
+        const int lack = need - l->height();
+        if (lack <= 1 || need > l->maximumHeight())
+            continue;
+        const QWidget *parent = l->parentWidget();
+        const bool beside = parent && qobject_cast<QHBoxLayout *>(parent->layout());
+        byParent[parent] = beside ? qMax(byParent.value(parent), lack) : byParent.value(parent) + lack;
+    }
+    int all = 0;
+    for (int lack : std::as_const(byParent))
+        all += lack;
+    return all;
+}
+
+namespace {
+
+class ScrollFit : public QObject {
+public:
+    explicit ScrollFit(QScrollArea *scroll)
+        : QObject(scroll)
+        , m_scroll(scroll)
+    {
+        scroll->viewport()->installEventFilter(this);
+        if (scroll->widget())
+            scroll->widget()->installEventFilter(this);
+    }
+
+protected:
+    bool eventFilter(QObject *o, QEvent *e) override
+    {
+        const bool mine = (o == m_scroll->viewport() && e->type() == QEvent::Resize) || (o == m_scroll->widget() && (e->type() == QEvent::LayoutRequest || e->type() == QEvent::Resize));
+        if (mine && !m_pending) {
+            m_pending = true;
+            QTimer::singleShot(0, this, [this] {
+                m_pending = false;
+                fit();
+            });
+        }
+        return false;
+    }
+
+private:
+    void fit()
+    {
+        QWidget *inner = m_scroll->widget();
+        if (!inner)
+            return;
+        // Another width, another wrapping: from the start.
+        if (m_scroll->viewport()->width() != m_width) {
+            m_width = m_scroll->viewport()->width();
+            m_passes = 0;
+            if (inner->minimumHeight() > 0) {
+                inner->setMinimumHeight(0);
+                return;
+            }
+        }
+        const int lack = textDeficit(inner);
+        if (lack <= 0) {
+            m_passes = 0;
+            return;
+        }
+        if (m_passes++ < 8)
+            inner->setMinimumHeight(inner->height() + lack);
+    }
+
+    QScrollArea *m_scroll;
+    int m_width = -1;
+    int m_passes = 0;
+    bool m_pending = false;
+};
+
+} // namespace
+
+void fitScroll(QScrollArea *scroll)
+{
+    new ScrollFit(scroll);
+}
+
+void Dialog::showEvent(QShowEvent *e)
+{
+    QDialog::showEvent(e);
+    // Once the dialog is laid out, as tall as its texts need.
+    QTimer::singleShot(0, this, [this] { fitText(4); });
+}
+
+void Dialog::fitText(int passes)
+{
+    const int lack = textDeficit(this);
+    if (lack <= 0 || passes <= 0)
+        return;
+    resize(width(), height() + lack);
+    QTimer::singleShot(0, this, [this, passes] { fitText(passes - 1); });
 }
 
 void Dialog::setTitle(const QString &title)

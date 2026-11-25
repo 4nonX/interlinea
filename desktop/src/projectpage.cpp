@@ -657,11 +657,7 @@ void ProjectPage::fillAnalysis()
         // As tall as its rows: the page scrolls, not the table.
         table->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         table->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        table->resizeRowsToContents();
-        int height = table->horizontalHeader()->height() + 2 * table->frameWidth();
-        for (int r = 0; r < table->rowCount(); ++r)
-            height += table->rowHeight(r);
-        table->setFixedHeight(height);
+        table->setProperty("tallAsRows", true);
         m_analysisBody->addWidget(table);
     }
 }

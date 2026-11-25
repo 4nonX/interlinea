@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QLayout>
 #include <QDialog>
 #include <QFrame>
 #include <QScrollArea>
@@ -76,11 +77,13 @@ protected:
     void showEvent(QShowEvent *e) override;
 
 private:
+    bool eventFilter(QObject *o, QEvent *e) override;
     void fitRows();
     QSize inset() const;
 
     QList<int> m_numeric;
     bool m_refit = false;
+    bool m_fitting = false;
 };
 
 // A cell's title and grey line under it (.cell-title, .cell-sub). With
@@ -260,13 +263,25 @@ public:
     void setError(const QString &text);
     QString error() const;
 
+protected:
+    void showEvent(QShowEvent *e) override;
+
 private:
+    void fitText(int passes);
     QLabel *m_title;
     QVBoxLayout *m_body;
     QVBoxLayout *m_outer;
     QLabel *m_error;
     QBoxLayout *m_buttons = nullptr;
 };
+
+// Keeps what a scrolling area holds as tall as its texts need. A layout
+// works out how tall wrapped text is at the width it gets, but not in
+// every nesting, on every system and at every scaling; where it comes out
+// short, texts are cut off or lie over each other. This looks at the
+// texts as they are laid out and makes the content taller by what they
+// lack.
+void fitScroll(QScrollArea *scroll);
 
 // .dropzone: a dashed box that takes dropped files and folders.
 class DropZone : public QFrame {

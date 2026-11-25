@@ -134,6 +134,7 @@ QScrollArea *scroller(QWidget *parent, QVBoxLayout **body, int margin, int spaci
     (*body)->setContentsMargins(margin, margin, margin, margin);
     (*body)->setSpacing(spacing);
     s->setWidget(w);
+    Web::fitScroll(s);
     return s;
 }
 

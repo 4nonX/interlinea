@@ -2,6 +2,8 @@
 
 #include "theme.h"
 
+#include <QTimer>
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonArray>
@@ -9,6 +11,75 @@
 #include <QHash>
 #include <QLocale>
 #include <QTableWidget>
+
+namespace {
+
+// Fits a table's rows to what they hold whenever the table is shown or
+// gets another width.
+class RowFitter : public QObject {
+public:
+    explicit RowFitter(QTableWidget *t)
+        : QObject(t)
+        , m_table(t)
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *, QEvent *e) override
+    {
+        if ((e->type() == QEvent::Show || e->type() == QEvent::Resize) && !m_pending) {
+            m_pending = true;
+            // Once now, and once when the cells have the widths they keep.
+            QTimer::singleShot(0, m_table, [this] { fit(); });
+            QTimer::singleShot(80, m_table, [this] {
+                m_pending = false;
+                fit();
+            });
+        }
+        return false;
+    }
+
+    void fit()
+    {
+        int rows = 0;
+        for (int r = 0; r < m_table->rowCount(); ++r) {
+            // A row of plain cells keeps the height it has.
+            if (QWidget *w = m_table->cellWidget(r, 0)) {
+                // The text of the cell at the width it has: its name, and
+                // under it what the band means. The row grows or shrinks
+                // by what the text lacks or has too much; the style keeps
+                // a margin around a cell, so the row is not simply as
+                // tall as what it holds.
+                int change = 0;
+                bool measured = false;
+                for (QLabel *l : w->findChildren<QLabel *>()) {
+                    if (!l->wordWrap() || l->width() <= 0 || l->height() <= 0)
+                        continue;
+                    const int diff = l->heightForWidth(l->width()) - l->height();
+                    change = measured ? qMax(change, diff) : diff;
+                    measured = true;
+                }
+                if (measured && change != 0)
+                    m_table->setRowHeight(r, qMax(m_table->rowHeight(r) + change, 28));
+            }
+            rows += m_table->rowHeight(r);
+        }
+        // A table that is as tall as its rows, on a page that scrolls.
+        if (m_table->property("tallAsRows").toBool()) {
+            const int height = m_table->horizontalHeader()->height() + 2 * m_table->frameWidth() + rows;
+            if (height != m_table->height() || m_table->minimumHeight() != height)
+                m_table->setFixedHeight(height);
+        } else {
+            m_table->updateGeometry();
+        }
+    }
+
+private:
+    QTableWidget *m_table;
+    bool m_pending = false;
+};
+
+} // namespace
 
 namespace Bands {
 
@@ -162,6 +233,9 @@ QTableWidget *analysisTable(const QJsonObject &report, QWidget *parent)
     num(last, 2, loc.toString(totalWords));
     num(last, 3, QStringLiteral("100%"));
     t->resizeRowsToContents();
+    // The hints under the names wrap at the width the table gets, which is
+    // known once it is shown: the rows follow.
+    t->installEventFilter(new RowFitter(t));
     return t;
 }
 

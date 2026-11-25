@@ -293,3 +293,46 @@ func TestMemoQArchiveFile(t *testing.T) {
 		t.Error("the document in the archive lacks the translation")
 	}
 }
+
+// The paragraphs of a project's document, for a preview of it.
+func TestFileLayout(t *testing.T) {
+	te := newTeam(t)
+	req := leaseRequest()
+	req.Settings.Name = "Layout"
+	plain, err := os.ReadFile("../filter/xliff/testdata/xliff2.xlf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Files = []fileUpload{
+		{Name: "Seite.html", Role: project.Translatable, Data: []byte(`<html lang="de"><body><h1>Fristen</h1><p>Die Kaution ist <b>fällig</b>.</p><table><tr><td>Miete</td></tr></table></body></html>`)},
+		{Name: "Plain.xlf", Role: project.Translatable, Data: plain},
+	}
+	var p projectView
+	te.call("POST", "/api/projects", te.pm, req, 201, &p)
+	var got fileLayout
+	te.call("GET", fmt.Sprintf("/api/projects/%d/files/layout?name=Seite.html", p.ID), te.pm, nil, 200, &got)
+	if len(got.Blocks) != 3 || got.Blocks[0].Heading != 1 || got.Blocks[1].Heading != 0 || got.Blocks[2].Cell == nil {
+		t.Fatalf("blocks %+v", got.Blocks)
+	}
+	// Every segment of the file is in one of the blocks.
+	var segs []project.Segment
+	te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=Seite.html&lang=en-GB", p.ID), te.pm, nil, 200, &segs)
+	ids := map[string]bool{}
+	for _, b := range got.Blocks {
+		ids[b.ID] = true
+	}
+	for _, s := range segs {
+		if !ids[s.Block] {
+			t.Fatalf("segment %s is in block %q, which the layout does not have", s.ID, s.Block)
+		}
+	}
+	// A bilingual file has none, and a file that is not there is not found.
+	var none fileLayout
+	te.call("GET", fmt.Sprintf("/api/projects/%d/files/layout?name=Plain.xlf", p.ID), te.pm, nil, 200, &none)
+	if none.Blocks == nil || len(none.Blocks) != 0 {
+		t.Fatalf("a bilingual file: %+v", none.Blocks)
+	}
+	if r := te.do("GET", fmt.Sprintf("/api/projects/%d/files/layout?name=Nichts.docx", p.ID), te.pm, nil); r.status != 404 {
+		t.Fatalf("a file that is not there: %d", r.status)
+	}
+}

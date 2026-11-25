@@ -15,6 +15,8 @@
 #include "targeteditor.h"
 #include "theme.h"
 
+#include <QHash>
+#include <QMap>
 #include <QButtonGroup>
 #include <QComboBox>
 #include <QDateTime>
@@ -302,8 +304,11 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
     auto *pv = new QVBoxLayout(m_previewBox);
     pv->setContentsMargins(S4, S3, S4, S3);
     pv->setSpacing(S2);
-    pv->addWidget(label(tr("Layout from the document. Untranslated text appears in the source language. The saved file is exact."),
-                        "muted", m_previewBox));
+    // Wrapped: on one line it would make the pane wider than the window
+    // has room for, and push what is right of it out of sight.
+    auto *previewNote = label(tr("Layout from the document. Untranslated text appears in the source language, grey and underlined. The saved file is exact."), "muted", m_previewBox);
+    previewNote->setWordWrap(true);
+    pv->addWidget(previewNote);
     m_previewPane = new QTextBrowser(m_previewBox);
     m_previewPane->setOpenLinks(false);
     m_previewPane->setAccessibleName(tr("Preview of the translated document"));
@@ -311,9 +316,19 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
         if (url.scheme() == QLatin1String("seg"))
             goToSegment(url.path());
     });
-    pv->addWidget(m_previewPane, 1);
-    m_previewBox->setStyleSheet(QStringLiteral("QWidget { background: %1; } QTextBrowser { border: 0; border-left: 1px solid %2; }")
-                                    .arg(Theme::color("surface").name(), Theme::color("border").name()));
+    // The sheet in the middle of the pane, as wide as it may be.
+    auto *sheet = new QHBoxLayout;
+    sheet->addStretch(0);
+    sheet->addWidget(m_previewPane, 1);
+    sheet->addStretch(0);
+    pv->addLayout(sheet, 1);
+    // A sheet of paper on the pane, as the document is: white in either theme.
+    m_previewPane->setObjectName(QStringLiteral("previewPage"));
+    m_previewPane->document()->setDocumentMargin(32);
+    m_previewPane->setMaximumWidth(680);
+    m_previewPane->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_previewBox->setStyleSheet(QStringLiteral("QWidget { background: %1; } QTextBrowser#previewPage { background: #ffffff; color: #111111; border: 1px solid %2; border-radius: 2px; }")
+                                    .arg(Theme::color("surface2").name(), Theme::color("border").name()));
     m_previewBox->setMinimumWidth(320);
     m_previewBox->hide();
     body->addWidget(m_previewBox, 1);
@@ -466,11 +481,18 @@ EditorPage::~EditorPage()
 QWidget *EditorPage::buildBar()
 {
     // .editor-bar: one row, 12 px by 24 px of padding, 16 px between.
+    // The file and the search stay on the first line; the actions follow
+    // on it while there is room, and go on in lines of their own when the
+    // window is narrower (flex-wrap).
     auto *bar = new QFrame(this);
     bar->setObjectName(QStringLiteral("editorBar"));
-    auto *row = new QHBoxLayout(bar);
-    row->setContentsMargins(S5, S3, S5, S3);
+    auto *lines = new FlowLayout(bar, S2);
+    lines->setContentsMargins(S5, S3, S5, S3);
+    auto *first = new QWidget(bar);
+    auto *row = new QHBoxLayout(first);
+    row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(S4);
+    lines->addWidget(first);
 
     auto *toProjects = new QPushButton(Icons::get(QStringLiteral("arrow-left"), Theme::color("accentText")), tr("Projects"), bar);
     Theme::smallButton(toProjects);
@@ -594,8 +616,7 @@ QWidget *EditorPage::buildBar()
     row->addWidget(m_found);
 
     // .editor-actions.
-    auto *actions = new QHBoxLayout;
-    actions->setSpacing(S2);
+    auto *actions = lines;
     auto action = [bar, actions](const QString &icon, const QString &text) {
         auto *b = new QPushButton(Icons::get(icon), text, bar);
         Theme::smallButton(b);
@@ -620,14 +641,15 @@ QWidget *EditorPage::buildBar()
     m_preview->setVisible(isDocument(m_file));
     connect(m_preview, &QPushButton::toggled, this, [this](bool on) {
         m_previewBox->setVisible(on);
-        if (on)
+        if (on) {
+            loadLayout();
             updatePreview();
+        }
         m_rowsTimer.start();
     });
     m_save = action(QStringLiteral("download"), tr("Save translated document"));
     m_save->hide();
     connect(m_save, &QPushButton::clicked, this, &EditorPage::saveDocument);
-    row->addLayout(actions);
     return bar;
 }
 
@@ -754,7 +776,17 @@ QWidget *EditorPage::buildPanel()
     m_issueSeverity->setObjectName(QStringLiteral("issueSeverity"));
     for (const auto &[id, name, points] : issueSeverities())
         m_issueSeverity->addItem(tr("%1 (%2)").arg(name, points == 1 ? tr("1 point") : tr("%1 points").arg(points)), id);
-    reviewBody->addWidget(Web::row({Web::field(tr("Kind of issue"), m_issueCategory, body), Web::field(tr("Severity"), m_issueSeverity, body)}, body));
+    // Side by side, each half of the panel wide, whatever their longest choice.
+    for (QComboBox *c : {m_issueCategory, m_issueSeverity}) {
+        c->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        c->setMinimumContentsLength(6);
+        c->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    }
+    auto *kinds = new QHBoxLayout;
+    kinds->setSpacing(S2);
+    kinds->addWidget(Web::field(tr("Kind of issue"), m_issueCategory, body), 1);
+    kinds->addWidget(Web::field(tr("Severity"), m_issueSeverity, body), 1);
+    reviewBody->addLayout(kinds);
     m_issueNote = new QLineEdit(body);
     m_issueNote->setObjectName(QStringLiteral("issueNote"));
     m_issueNote->setAccessibleName(tr("What is wrong, if you want to say"));
@@ -1008,6 +1040,7 @@ QWidget *EditorPage::buildPanel()
     v->addWidget(m_shortcuts);
     v->addStretch();
     m_panel->setWidget(body);
+    Web::fitScroll(m_panel);
     return m_panel;
 }
 
@@ -2291,30 +2324,260 @@ void EditorPage::updateProgress()
     m_progressText->setText(tr("%1 of %2 confirmed").arg(wordsText(done), QLocale().toString(total)));
 }
 
+void EditorPage::showPreview(bool on)
+{
+    if (m_preview->isChecked() != on)
+        m_preview->setChecked(on);
+}
+
+// The paragraphs of the open document, asked for once for a file.
+void EditorPage::loadLayout()
+{
+    if (!m_conn || (m_layoutAsked && m_layoutFile == m_file))
+        return;
+    m_layoutAsked = true;
+    m_layoutFile = m_file;
+    m_layout = {};
+    const QString file = m_file;
+    onResult(m_conn->api()->get(projectPath() + QStringLiteral("/files/layout"), {{QStringLiteral("name"), file}}), this, [this, file](const ApiResult &r) {
+        if (file != m_file)
+            return;
+        // Without the layout the preview shows the segments paragraph by
+        // paragraph, as it does for a bilingual file.
+        m_layout = r.ok() ? r.object().value(QLatin1String("blocks")).toArray() : QJsonArray();
+        updatePreview();
+    });
+}
+
+namespace {
+
+// The runs of a segment with the formatting their tags stand for, as the
+// preview shows them: no tags, but bold, italic and the like. notes
+// counts the footnote marks of the page.
+QString formatted(const QJsonArray &runs, int *notes)
+{
+    struct Frame {
+        QString type;
+        QString id;
+        QString html;
+    };
+    QList<Frame> stack{Frame{}};
+    const auto wrap = [](const Frame &f) {
+        if (f.type == QLatin1String("bold"))
+            return QStringLiteral("<b>%1</b>").arg(f.html);
+        if (f.type == QLatin1String("italic"))
+            return QStringLiteral("<i>%1</i>").arg(f.html);
+        if (f.type == QLatin1String("underline"))
+            return QStringLiteral("<u>%1</u>").arg(f.html);
+        if (f.type == QLatin1String("superscript"))
+            return QStringLiteral("<sup>%1</sup>").arg(f.html);
+        if (f.type == QLatin1String("subscript"))
+            return QStringLiteral("<sub>%1</sub>").arg(f.html);
+        if (f.type == QLatin1String("link"))
+            return QStringLiteral("<span style=\"color:#0563c1; text-decoration:underline\">%1</span>").arg(f.html);
+        return f.html;
+    };
+    for (const QJsonValue &v : runs) {
+        const QJsonObject run = v.toObject();
+        if (!run.contains(QLatin1String("tag"))) {
+            QString text = run.value(QLatin1String("text")).toString().toHtmlEscaped();
+            text.replace(QLatin1Char('\n'), QLatin1String("<br>"));
+            stack.last().html += text;
+            continue;
+        }
+        const QJsonObject tag = run.value(QLatin1String("tag")).toObject();
+        const QString kind = tag.value(QLatin1String("kind")).toString();
+        const QString type = tag.value(QLatin1String("type")).toString();
+        const QString id = tag.value(QLatin1String("id")).toString();
+        if (kind == QLatin1String("open")) {
+            stack.append(Frame{type, id, QString()});
+        } else if (kind == QLatin1String("close")) {
+            int at = -1;
+            for (int i = int(stack.size()) - 1; i > 0; --i) {
+                if (stack.at(i).id == id) {
+                    at = i;
+                    break;
+                }
+            }
+            if (at <= 0)
+                continue;
+            while (stack.size() > at) {
+                const Frame f = stack.takeLast();
+                stack.last().html += wrap(f);
+            }
+        } else if (type == QLatin1String("footnote")) {
+            stack.last().html += QStringLiteral("<sup>%1</sup>").arg(++*notes);
+        } else if (type == QLatin1String("lb")) {
+            stack.last().html += QStringLiteral("<br>");
+        } else if (type == QLatin1String("tab")) {
+            stack.last().html += QStringLiteral("&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;");
+        } else if (type == QLatin1String("field")) {
+            stack.last().html += QStringLiteral("<span style=\"background:#e8e8e8; color:#555555\">&nbsp;#&nbsp;</span>");
+        } else if (type == QLatin1String("image")) {
+            stack.last().html += QStringLiteral("<span style=\"color:#777777; font-size:10px\">[%1]</span>").arg(QObject::tr("image"));
+        }
+    }
+    while (stack.size() > 1) {
+        const Frame f = stack.takeLast();
+        stack.last().html += wrap(f);
+    }
+    return stack.first().html;
+}
+
+} // namespace
+
+// The preview: the document's paragraphs with their styles, tables,
+// notes, header and footer, each segment in its translation, or in the
+// source text, grey and underlined, while it has none. Built like the
+// browser client's.
+QString EditorPage::previewHtml() const
+{
+    int notes = 0;
+    QHash<QString, QList<QJsonObject>> byBlock;
+    for (const QJsonObject &s : m_model->segments())
+        byBlock[s.value(QLatin1String("block")).toString()].append(s);
+    const auto segments = [this, &notes](const QList<QJsonObject> &segs) {
+        QString out;
+        for (int i = 0; i < segs.size(); ++i) {
+            const QJsonObject &s = segs.at(i);
+            const QJsonArray target = s.value(QLatin1String("target")).toArray();
+            const bool translated = !SegmentContent::plainText(target).trimmed().isEmpty();
+            const QString id = s.value(QLatin1String("id")).toString();
+            QString style = QStringLiteral("text-decoration:none; color:%1;").arg(translated ? QStringLiteral("#111111") : QStringLiteral("#6b7280"));
+            if (id == m_activeId)
+                style += QStringLiteral(" background:#dbe6fb;");
+            QString text = formatted(translated ? target : s.value(QLatin1String("source")).toArray(), &notes);
+            if (!translated)
+                text = QStringLiteral("<u>%1</u>").arg(text);
+            if (i > 0)
+                out += QLatin1Char(' ');
+            out += QStringLiteral("<a href=\"seg:%1\" title=\"%2\" style=\"%3\">%4</a>")
+                       .arg(id.toHtmlEscaped(), translated ? QString() : tr("Not translated yet: the source text is used").toHtmlEscaped(), style, text);
+        }
+        return out;
+    };
+    const auto marks = [&notes](const QJsonArray &types, const QString &note) {
+        QString out;
+        for (const QJsonValue &t : types) {
+            if (t.toString() == QLatin1String("footnote"))
+                out += QStringLiteral("<sup>%1</sup>").arg(++notes);
+            else if (t.toString() == QLatin1String("note-mark"))
+                out += QStringLiteral("<sup>%1</sup>").arg(note.toHtmlEscaped());
+            else if (t.toString() == QLatin1String("field"))
+                out += QStringLiteral("<span style=\"background:#e8e8e8; color:#555555\">&nbsp;#&nbsp;</span>");
+        }
+        return out;
+    };
+    const auto paragraph = [&](const QJsonObject &b, const QString &base) {
+        const QString inner = marks(b.value(QLatin1String("lead")).toArray(), b.value(QLatin1String("note")).toString()) +
+                              segments(byBlock.value(b.value(QLatin1String("id")).toString())) +
+                              marks(b.value(QLatin1String("trail")).toArray(), b.value(QLatin1String("note")).toString());
+        QString style = base;
+        const int heading = b.value(QLatin1String("heading")).toInt();
+        if (heading > 0 && b.value(QLatin1String("style")).toString() == QLatin1String("Title"))
+            style += QStringLiteral("font-size:18px; font-weight:700; text-align:center; margin-bottom:14px;");
+        else if (heading == 1)
+            style += QStringLiteral("font-size:14px; font-weight:700; margin-top:14px;");
+        else if (heading > 1)
+            style += QStringLiteral("font-size:13px; font-weight:700; margin-top:10px;");
+        const QString align = b.value(QLatin1String("align")).toString();
+        if (align == QLatin1String("center"))
+            style += QStringLiteral("text-align:center;");
+        else if (align == QLatin1String("right") || align == QLatin1String("end"))
+            style += QStringLiteral("text-align:right;");
+        else if (align == QLatin1String("both"))
+            style += QStringLiteral("text-align:justify;");
+        if (b.value(QLatin1String("list")).toBool())
+            style += QStringLiteral("margin-left:18px;");
+        return QStringLiteral("<p style=\"%1\">%2</p>").arg(style, inner);
+    };
+    QHash<QString, QList<QJsonObject>> parts;
+    for (const QJsonValue &v : m_layout)
+        parts[v.toObject().value(QLatin1String("part")).toString()].append(v.toObject());
+
+    QString html = QStringLiteral("<html><body style=\"font-family:Calibri,Carlito,'Segoe UI',sans-serif; font-size:13px; color:#111111;\">");
+    if (m_layout.isEmpty()) {
+        // No layout (a bilingual file, or none yet): paragraph by paragraph.
+        QString block;
+        QList<QJsonObject> run;
+        const auto flush = [&] {
+            if (!run.isEmpty())
+                html += QStringLiteral("<p style=\"margin:0 0 9px 0;\">%1</p>").arg(segments(run));
+            run.clear();
+        };
+        for (const QJsonObject &s : m_model->segments()) {
+            const QString b = s.value(QLatin1String("block")).toString();
+            if (b != block || b.isEmpty())
+                flush();
+            block = b;
+            run.append(s);
+        }
+        flush();
+        return html + QStringLiteral("</body></html>");
+    }
+    for (const QJsonObject &b : parts.value(QStringLiteral("header")))
+        html += paragraph(b, QStringLiteral("margin:0 0 4px 0; color:#666666; font-size:10px; text-align:right;"));
+    // The body, cells that follow each other as tables.
+    const QList<QJsonObject> body = parts.value(QStringLiteral("body"));
+    for (int i = 0; i < body.size();) {
+        const QJsonObject b = body.at(i);
+        if (!b.contains(QLatin1String("cell"))) {
+            html += paragraph(b, QStringLiteral("margin:0 0 9px 0;"));
+            ++i;
+            continue;
+        }
+        const int table = b.value(QLatin1String("cell")).toObject().value(QLatin1String("table")).toInt();
+        QMap<int, QMap<int, QString>> rows;
+        int cols = 0;
+        for (; i < body.size() && body.at(i).contains(QLatin1String("cell")) && body.at(i).value(QLatin1String("cell")).toObject().value(QLatin1String("table")).toInt() == table; ++i) {
+            const QJsonObject cell = body.at(i).value(QLatin1String("cell")).toObject();
+            const int col = cell.value(QLatin1String("col")).toInt();
+            rows[cell.value(QLatin1String("row")).toInt()][col] += paragraph(body.at(i), QStringLiteral("margin:0;"));
+            cols = qMax(cols, col + 1);
+        }
+        html += QStringLiteral("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"4\" border=\"1\" style=\"border-collapse:collapse; border-color:#333333; margin-bottom:9px;\">");
+        for (auto row = rows.cbegin(); row != rows.cend(); ++row) {
+            html += QStringLiteral("<tr>");
+            for (int c = 0; c < cols; ++c)
+                html += QStringLiteral("<td valign=\"top\">%1</td>").arg(row.value().value(c));
+            html += QStringLiteral("</tr>");
+        }
+        html += QStringLiteral("</table>");
+    }
+    const QList<QJsonObject> footnotes = parts.value(QStringLiteral("footnote")) + parts.value(QStringLiteral("endnote"));
+    if (!footnotes.isEmpty()) {
+        html += QStringLiteral("<hr width=\"40%\" align=\"left\">");
+        for (const QJsonObject &b : footnotes)
+            html += paragraph(b, QStringLiteral("margin:0 0 2px 0; font-size:10px;"));
+    }
+    for (const QJsonObject &b : parts.value(QStringLiteral("footer")))
+        html += paragraph(b, QStringLiteral("margin:4px 0 0 0; font-size:10px; text-align:center;"));
+    // What is not on the page itself, each kind under its name.
+    const std::pair<const char *, QString> extras[] = {
+        {"chart", tr("Charts")},
+        {"diagram", tr("SmartArt")},
+        {"comment", tr("Comments")},
+        {"notes", tr("Speaker notes")},
+        {"meta", tr("Title and description of the page")},
+        {"attribute", tr("Texts of pictures, links and form fields")},
+    };
+    for (const auto &[part, title] : extras) {
+        const QList<QJsonObject> blocks = parts.value(QLatin1String(part));
+        if (blocks.isEmpty())
+            continue;
+        html += QStringLiteral("<hr><p style=\"margin:8px 0 4px 0; color:#6b7280; font-size:11px; font-weight:600;\">%1</p>").arg(title.toHtmlEscaped());
+        for (const QJsonObject &b : blocks)
+            html += paragraph(b, QStringLiteral("margin:0 0 4px 0; font-size:12px;"));
+    }
+    return html + QStringLiteral("</body></html>");
+}
+
 void EditorPage::updatePreview()
 {
     if (!m_previewBox->isVisible())
         return;
-    QString html = QStringLiteral("<style>%1 a{color:%2; text-decoration:none;} .active{background:%3;}</style>")
-                       .arg(SegmentContent::css(), Theme::color("text").name(), Theme::color("accentWeak").name());
-    QString block;
-    bool first = true;
-    for (const QJsonObject &s : m_model->segments()) {
-        const QString b = s.value(QLatin1String("block")).toString();
-        if (first || b != block || b.isEmpty())
-            html += first ? QStringLiteral("<p>") : QStringLiteral("</p><p>");
-        first = false;
-        block = b;
-        const QJsonArray target = s.value(QLatin1String("target")).toArray();
-        const QString id = s.value(QLatin1String("id")).toString();
-        const QString text = SegmentContent::toHtml(target.isEmpty() ? s.value(QLatin1String("source")).toArray() : target);
-        html += QStringLiteral("<a href=\"seg:%1\"><span class=\"%2\">%3</span></a> ")
-                    .arg(id.toHtmlEscaped(), id == m_activeId ? QStringLiteral("active") : QString(), text);
-    }
-    if (!first)
-        html += QStringLiteral("</p>");
     const int scroll = m_previewPane->verticalScrollBar()->value();
-    m_previewPane->setHtml(html);
+    m_previewPane->setHtml(previewHtml());
     m_previewPane->verticalScrollBar()->setValue(scroll);
 }
 

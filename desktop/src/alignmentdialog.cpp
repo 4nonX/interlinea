@@ -1316,6 +1316,7 @@ void AlignmentDialog::render()
     connect(m_board, &AlignBoard::portChosen, this, [this](int side, int index) { choose(Side(side), index); });
     connect(m_board, &AlignBoard::portPulled, this, [this](int side, int index, int, int other) { pull(Side(side), index, other); });
     m_scroll->setWidget(m_board);
+    Web::fitScroll(m_scroll);
     m_scroll->setMinimumHeight(240);
     m_scroll->setMaximumHeight(520);
     body()->addWidget(m_scroll);

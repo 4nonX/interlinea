@@ -588,6 +588,16 @@ Access: read on the project, or work in it.
 - Answer: 200 OK: `application/octet-stream`
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `GET /api/projects/{id}/files/layout`
+
+Returns the paragraphs of a project's document (?name=), as its filter reads them: what a preview of the translated document is built from, together with the file's segments.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path), `name` (query)
+- Answer: 200 OK: [FileLayout](#filelayout)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `GET /api/projects/{id}/files/translated`
 
 Sends a file of the project (?name=) with the translations of a target language (?lang=): a document (Word, PowerPoint, Excel, a web page, InDesign IDML) in the target language, a bilingual file with its translations and states, or a text.
@@ -1866,6 +1876,14 @@ apiError is the body of every error answer.
 | `message` | string | Message says what went wrong, for people. |
 | `problems` | list of [project.Problem](#projectproblem) | Problems are the problems of a refused request, by field. |
 
+### FileLayout
+
+fileLayout is the paragraphs of a document, for a preview of it.
+
+| Field | Type | Description |
+|---|---|---|
+| `blocks` | list of [filter.Block](#filterblock) | Blocks are the paragraphs in the order of the document: each with its place (body, header, footnote, table cell), its style and whether it is a heading or a list item. A segment names the block it is in. Empty for a bilingual file and a package, which have none. |
+
 ### FileProgress
 
 fileProgress is how far a file is in one target language.
@@ -2517,6 +2535,43 @@ Tag is an inline element. ID pairs open and close tags inside a segment. Type is
 | `kind` | `open` \| `close` \| `standalone` |  |
 | `native` | string |  |
 | `type` | string |  |
+
+### filter.Block
+
+Block is a paragraph of the original document. Units refer to their block, so previews and checks can show them in context.
+
+| Field | Type | Description |
+|---|---|---|
+| `align` | string | Align is the paragraph alignment as written in the file ("center", "right", "both"). |
+| `cell` | [filter.Cell](#filtercell) |  |
+| `file` | string |  |
+| `frame` | string | Frame is "textbox" for text in a text box or shape. |
+| `heading` | integer | Heading is the outline level from 1, or 0 for body text. |
+| `id` | string |  |
+| `lead` | list of string | Lead and Trail list the types of tags kept at the paragraph edges, outside the units (a footnote mark at the end, a link around the whole paragraph), so previews can show them. |
+| `list` | boolean | List is true for numbered or bulleted paragraphs. |
+| `note` | string | Note is the footnote, endnote or comment number for blocks in those parts. |
+| `part` | [filter.Part](#filterpart) | Part is the document area; File is the file inside the package. |
+| `revisions` | boolean | Revisions is true when the paragraph contains tracked changes. |
+| `style` | string | Style is the paragraph style ID and StyleName its display name. |
+| `styleName` | string |  |
+| `trail` | list of string |  |
+
+### filter.Cell
+
+Cell locates a block inside a table: the table's number in its part (from zero, outermost tables only), and the row and column within it.
+
+| Field | Type | Description |
+|---|---|---|
+| `col` | integer |  |
+| `row` | integer |  |
+| `table` | integer |  |
+
+### filter.Part
+
+Part names the area of a document a block belongs to.
+
+One of `attribute`, `body`, `chart`, `comment`, `diagram`, `endnote`, `footer`, `footnote`, `header`, `meta`, `notes`.
 
 ### langdetect.Detection
 
