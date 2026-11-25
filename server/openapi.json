@@ -1906,6 +1906,18 @@
         },
         "type": "object"
       },
+      "project.JoinedUnit": {
+        "description": "JoinedUnit is one of the units a joined segment was made of.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/content.Content"
+          }
+        },
+        "type": "object"
+      },
       "project.Location": {
         "description": "Location is where a termbase or memory is kept.",
         "enum": [
@@ -2087,6 +2099,12 @@
             },
             "type": "array"
           },
+          "joined": {
+            "items": {
+              "$ref": "#/components/schemas/project.JoinedUnit"
+            },
+            "type": "array"
+          },
           "locked": {
             "type": "boolean"
           },
@@ -2111,6 +2129,14 @@
           },
           "source": {
             "$ref": "#/components/schemas/content.Content"
+          },
+          "split": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/project.SplitPart"
+              }
+            ],
+            "description": "Split says the segment is a part of a unit of the file that was split, and Joined lists the units of the file a joined segment was made of; the segment's ID is then the first unit's."
           },
           "status": {
             "$ref": "#/components/schemas/project.Status"
@@ -2184,6 +2210,20 @@
           },
           "terminology": {
             "$ref": "#/components/schemas/project.Terminology"
+          }
+        },
+        "type": "object"
+      },
+      "project.SplitPart": {
+        "description": "SplitPart says that a segment is a part of a unit that was split.",
+        "properties": {
+          "space": {
+            "description": "Space is the whitespace that stood before the part where the unit was cut; the first part has none.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Unit is the ID of the unit the part belongs to.",
+            "type": "string"
           }
         },
         "type": "object"
@@ -2507,6 +2547,12 @@
             },
             "type": "array"
           },
+          "joined": {
+            "items": {
+              "$ref": "#/components/schemas/project.JoinedUnit"
+            },
+            "type": "array"
+          },
           "locked": {
             "type": "boolean"
           },
@@ -2531,6 +2577,14 @@
           },
           "source": {
             "$ref": "#/components/schemas/content.Content"
+          },
+          "split": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/project.SplitPart"
+              }
+            ],
+            "description": "Split says the segment is a part of a unit of the file that was split, and Joined lists the units of the file a joined segment was made of; the segment's ID is then the first unit's."
           },
           "status": {
             "$ref": "#/components/schemas/project.Status"
@@ -8302,6 +8356,303 @@
           }
         },
         "summary": "Saves a translation.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/segments/join": {
+      "post": {
+        "description": "Their translations are put together, and the document is written with the joined translation where the two stood. The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the assignee of both segments.",
+        "operationId": "joinProjectSegments",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version the change was made from (or send ?version=).",
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version the change was made from, when If-Match is not sent.",
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/projectdb.StoredSegment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "428": {
+            "$ref": "#/components/responses/428"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it: two segments of the same paragraph, or two parts of a segment that was split.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/segments/separate": {
+      "post": {
+        "description": "The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the segment's assignee.",
+        "operationId": "separateProjectSegments",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version the change was made from (or send ?version=).",
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version the change was made from, when If-Match is not sent.",
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/projectdb.StoredSegment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "428": {
+            "$ref": "#/components/responses/428"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Undoes the joining of a segment (?file=, ?lang=, ?segment=): the segments it was joined from stand apart again, the translation staying with the first.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/segments/split": {
+      "post": {
+        "description": "The translation stays with the first part. The document is written with the parts' translations one after the other where the segment stood. Only that language of the file is cut differently. The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the segment's assignee.",
+        "operationId": "splitProjectSegment",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version the change was made from (or send ?version=).",
+            "in": "header",
+            "name": "If-Match",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The version the change was made from, when If-Match is not sent.",
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "before": {
+                    "$ref": "#/components/schemas/content.Content"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/projectdb.StoredSegment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "409": {
+            "$ref": "#/components/responses/409"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "428": {
+            "$ref": "#/components/responses/428"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Cuts a segment (?file=, ?lang=, ?segment=) in two where the body's \"before\", the start of its source, ends.",
         "tags": [
           "Projects"
         ]

@@ -40,6 +40,12 @@ type Segment struct {
 	// translation that did not change.
 	File *FileState `json:"file,omitempty"`
 
+	// Split says the segment is a part of a unit of the file that was
+	// split, and Joined lists the units of the file a joined segment was
+	// made of; the segment's ID is then the first unit's.
+	Split  *SplitPart   `json:"split,omitempty"`
+	Joined []JoinedUnit `json:"joined,omitempty"`
+
 	// What the translator's work left on it.
 
 	// Origin is where the translation came from when it was inserted.

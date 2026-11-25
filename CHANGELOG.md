@@ -57,6 +57,10 @@ client and the desktop app, with installers and a server image.
   and Word output; Thai, Lao, Khmer and Burmese counted and matched by
   character.
 
+### Segments
+
+- A segment of a document can be split in two, and two segments of a paragraph joined into one, in the editor (Alt+Shift+S, Alt+Shift+J). A joined segment can be separated again. The translated document has the parts one after the other where the segment stood, and one translation where joined sentences stood, with the formatting of both. Only the language at hand is cut differently. Files that bring their own segments (XLIFF and packages) and plain text keep them.
+
 ### Typing
 
 - While a translation is typed, the terms found for the segment and the words of its memory matches are offered after two letters. Tab or Enter takes one, Escape closes the list. It can be turned off in the settings.

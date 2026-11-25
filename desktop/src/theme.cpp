@@ -505,7 +505,8 @@ QPushButton *keyButton(const QString &text, const QString &keys, const QString &
     }
     auto *t = new QLabel(text, b);
     t->setAttribute(Qt::WA_TransparentForMouseEvents);
-    t->setStyleSheet(QStringLiteral("font-size: 13px; font-weight: 500; background: transparent;"));
+    // Disabled, the words are as dim as the icon.
+    t->setStyleSheet(QStringLiteral("QLabel { font-size: 13px; font-weight: 500; background: transparent; } QLabel:disabled { color: %1; }").arg(color("text3").name()));
     l->addWidget(t);
     auto *k = new QLabel(keys, b);
     k->setProperty("kbd", true);

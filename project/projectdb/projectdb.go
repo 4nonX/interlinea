@@ -75,7 +75,10 @@ const (
 	ChangeSegment        = "segment-changed"
 	// ChangeComments: the comments on a segment changed; its translation
 	// and its version did not.
-	ChangeComments        = "segment-commented"
+	ChangeComments = "segment-commented"
+	// ChangeResegmented: a segment was split, or segments were joined or
+	// separated, so the file's list of segments is another one.
+	ChangeResegmented     = "file-resegmented"
 	ChangeTemplateSaved   = "template-saved"
 	ChangeTemplateDeleted = "template-deleted"
 )
@@ -259,18 +262,20 @@ var (
 
 // segmentExtra is the part of a segment kept in extra_json.
 type segmentExtra struct {
-	Block     string             `json:"block,omitempty"`
-	MaxLength int                `json:"maxLength,omitempty"`
-	Notes     []string           `json:"notes,omitempty"`
-	File      *project.FileState `json:"file,omitempty"`
-	Origin    *project.Origin    `json:"origin,omitempty"`
-	Warnings  []project.Warning  `json:"warnings,omitempty"`
-	Ignored   []string           `json:"ignored,omitempty"`
-	Comments  []project.Comment  `json:"comments,omitempty"`
+	Block     string               `json:"block,omitempty"`
+	MaxLength int                  `json:"maxLength,omitempty"`
+	Notes     []string             `json:"notes,omitempty"`
+	File      *project.FileState   `json:"file,omitempty"`
+	Origin    *project.Origin      `json:"origin,omitempty"`
+	Warnings  []project.Warning    `json:"warnings,omitempty"`
+	Ignored   []string             `json:"ignored,omitempty"`
+	Comments  []project.Comment    `json:"comments,omitempty"`
+	Split     *project.SplitPart   `json:"split,omitempty"`
+	Joined    []project.JoinedUnit `json:"joined,omitempty"`
 }
 
 func extraJSON(s project.Segment) (string, error) {
-	b, err := json.Marshal(segmentExtra{Block: s.Block, MaxLength: s.MaxLength, Notes: s.Notes, File: s.File, Origin: s.Origin, Warnings: s.Warnings, Ignored: s.Ignored, Comments: s.Comments})
+	b, err := json.Marshal(segmentExtra{Block: s.Block, MaxLength: s.MaxLength, Notes: s.Notes, File: s.File, Origin: s.Origin, Warnings: s.Warnings, Ignored: s.Ignored, Comments: s.Comments, Split: s.Split, Joined: s.Joined})
 	return noNUL(string(b)), err
 }
 
@@ -278,6 +283,7 @@ func (x segmentExtra) apply(s *project.Segment) {
 	s.Block, s.MaxLength, s.Notes, s.File = x.Block, x.MaxLength, x.Notes, x.File
 	s.Origin, s.Warnings, s.Ignored = x.Origin, x.Warnings, x.Ignored
 	s.Comments = x.Comments
+	s.Split, s.Joined = x.Split, x.Joined
 }
 
 // noNUL keeps NUL out of text columns, which PostgreSQL refuses.

@@ -4,7 +4,11 @@
 // file from translations, keeping everything it did not extract unchanged.
 package filter
 
-import "github.com/4nonX/interlinea/content"
+import (
+	"strconv"
+
+	"github.com/4nonX/interlinea/content"
+)
 
 // Part names the area of a document a block belongs to.
 type Part string
@@ -158,3 +162,51 @@ type Extraction struct {
 // Translations maps unit IDs to target content. Units without an entry keep
 // their source text, as in other CAT tools.
 type Translations map[string]content.Content
+
+// joinedType is the type of the tag that marks a unit as joined to the
+// one before it.
+const joinedType = "interlinea:joined"
+
+// Joined is the translation of a unit that was joined to the unit before
+// it in its paragraph: the two are translated as one, and the translation
+// stands under the first unit. The first unit's translation uses the tag
+// IDs JoinTags gives.
+func Joined() content.Content {
+	return content.Content{{Tag: &content.Tag{Kind: content.TagStandalone, ID: "0", Type: joinedType}}}
+}
+
+// IsJoined reports whether c is the mark Joined returns.
+func IsJoined(c content.Content) bool {
+	return len(c) == 1 && c[0].IsTag() && c[0].Tag.Type == joinedType
+}
+
+// JoinTags gives the tags of b, a unit joined to a, the IDs they have in
+// the joined unit: the whole numbers after the highest of a's, in the
+// order b's tags first appear. It returns b with those IDs and the map
+// from them to b's own.
+func JoinTags(a, b content.Content) (content.Content, map[string]string) {
+	top := 0
+	for _, r := range a {
+		if r.IsTag() {
+			if n, err := strconv.Atoi(r.Tag.ID); err == nil && n > top {
+				top = n
+			}
+		}
+	}
+	ids, back := map[string]string{}, map[string]string{}
+	out := b.Clone()
+	for i := range out {
+		if !out[i].IsTag() {
+			continue
+		}
+		id, ok := ids[out[i].Tag.ID]
+		if !ok {
+			top++
+			id = strconv.Itoa(top)
+			ids[out[i].Tag.ID] = id
+			back[id] = out[i].Tag.ID
+		}
+		out[i].Tag.ID = id
+	}
+	return out, back
+}

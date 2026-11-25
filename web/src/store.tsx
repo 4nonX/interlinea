@@ -207,6 +207,8 @@ type Action =
     }
   | { type: "ignoreIssue"; at: SegmentsAt; segmentId: string; text: string }
   | { type: "setComments"; at: SegmentsAt; segmentId: string; comments: SegmentComment[] }
+  /** A file's segments in a language after one was split or some were joined. */
+  | { type: "resegmented"; at: SegmentsAt; segments: Segment[] }
   | { type: "saveProvider"; provider: LocalProvider }
   | { type: "deleteProvider"; name: string }
   | {
@@ -476,6 +478,8 @@ function reduce(state: State, action: Action): State {
         entries: [...state.entries.filter((e) => e.termbaseId !== t.id), ...action.entries],
       };
     }
+    case "resegmented":
+      return withSegments(state, action.at, () => action.segments);
     case "remoteSegments": {
       const byId = new Map(action.segments.map((sg) => [sg.id, sg]));
       return withSegments(state, action.at, (segs) => segs.map((sg) => byId.get(sg.id) ?? sg));

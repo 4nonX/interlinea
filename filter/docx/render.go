@@ -110,7 +110,8 @@ func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Transl
 	}
 	paraLevel := tagSource{src: all}
 	rw.write(pa.prefix, paraLevel, -1)
-	for i, pc := range pa.pieces {
+	for i := 0; i < len(pa.pieces); i++ {
+		pc := pa.pieces[i]
 		switch {
 		case pc.unit == -1:
 			rw.write(pc.gap, paraLevel, -1)
@@ -120,12 +121,47 @@ func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Transl
 			rw.end(i)
 			continue
 		}
+		owner := i
 		target, ok := tr[d.ext.Units[pc.unit].ID]
-		if !ok || len(target) == 0 {
-			target = pc.src
+		if !ok || len(target) == 0 || filter.IsJoined(target) {
+			rw.write(pc.src, tagSource{src: pc.src, ids: pc.ids}, owner)
+			rw.end(owner)
+			continue
 		}
-		rw.write(target, tagSource{src: pc.src, ids: pc.ids}, i)
-		rw.end(i)
+		// The units joined to this one are translated with it: their
+		// tags count on from its own, and the tags that stood between
+		// them follow the translation.
+		src, ids := pc.src, pc.ids
+		var between content.Content
+		for {
+			k := i + 1
+			var gap content.Content
+			for k < len(pa.pieces) && pa.pieces[k].unit == -1 {
+				gap = append(gap, pa.pieces[k].gap...)
+				k++
+			}
+			if k >= len(pa.pieces) || pa.pieces[k].unit < 0 || !filter.IsJoined(tr[d.ext.Units[pa.pieces[k].unit].ID]) {
+				break
+			}
+			more, back := filter.JoinTags(src, pa.pieces[k].src)
+			joined := map[string]string{}
+			for id, pid := range ids {
+				joined[id] = pid
+			}
+			for id, own := range back {
+				joined[id] = pa.pieces[k].ids[own]
+			}
+			src, ids = append(src.Clone(), more...), joined
+			for _, r := range gap {
+				if r.IsTag() {
+					between = between.AppendTag(*r.Tag)
+				}
+			}
+			i = k
+		}
+		rw.write(target, tagSource{src: src, ids: ids}, owner)
+		rw.end(owner)
+		rw.write(between, paraLevel, -1)
 	}
 	rw.write(pa.suffix, paraLevel, -1)
 	rw.end(-1)

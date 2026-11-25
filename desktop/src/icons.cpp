@@ -326,6 +326,26 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(4, 16);
         path.lineTo(6.5, 13.5);
         path.lineTo(9, 16);
+    } else if (name == QLatin1String("scissors")) {
+        // Two rings and the blades that cross.
+        path.addEllipse(QPointF(6, 6), 3, 3);
+        path.addEllipse(QPointF(6, 18), 3, 3);
+        path.moveTo(8.12, 8.12);
+        path.lineTo(12, 12);
+        path.moveTo(20, 4);
+        path.lineTo(8.12, 15.88);
+        path.moveTo(14.8, 14.8);
+        path.lineTo(20, 20);
+    } else if (name == QLatin1String("combine")) {
+        // Two boxes brought into one.
+        path.addRoundedRect(QRectF(3, 3, 8, 8), 1.5, 1.5);
+        path.addRoundedRect(QRectF(13, 13, 8, 8), 1.5, 1.5);
+        path.moveTo(14, 7);
+        path.lineTo(17, 7);
+        path.lineTo(17, 10);
+        path.moveTo(10, 17);
+        path.lineTo(7, 17);
+        path.lineTo(7, 14);
     } else if (name == QLatin1String("comment")) {
         // A speech bubble with its tail at the bottom left.
         path.moveTo(21, 15);

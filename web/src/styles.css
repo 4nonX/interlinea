@@ -2814,6 +2814,47 @@ table[aria-label="Units found"] .cell-action .row {
   font-weight: 600;
 }
 
+/* Splitting a segment: the source with the caret, and the two parts */
+.split-source {
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  line-height: 1.7;
+  caret-color: var(--accent);
+  cursor: text;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.split-source:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.split-parts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.split-parts dt {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.split-parts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cut-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /* Comments on a segment */
 .comment-list {
   display: grid;

@@ -43,6 +43,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QTextDocumentFragment>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleOptionViewItem>
@@ -183,6 +184,28 @@ static bool hasSuffix(const QString &name, std::initializer_list<const char *> s
     return false;
 }
 
+// Content without the whitespace at its end, or at its start.
+static QJsonArray trimmedContent(QJsonArray c, bool end)
+{
+    if (c.isEmpty())
+        return c;
+    const int i = end ? int(c.size()) - 1 : 0;
+    QJsonObject run = c.at(i).toObject();
+    if (!run.contains(QLatin1String("text")))
+        return c;
+    QString t = run.value(QLatin1String("text")).toString();
+    if (end) {
+        while (!t.isEmpty() && t.back().isSpace())
+            t.chop(1);
+    } else {
+        while (!t.isEmpty() && t.front().isSpace())
+            t.remove(0, 1);
+    }
+    run.insert(QStringLiteral("text"), t);
+    c.replace(i, run);
+    return c;
+}
+
 static bool isDocument(const QString &name)
 {
     return hasSuffix(name, {".docx", ".docm", ".pptx", ".pptm", ".ppsx", ".xlsx", ".xlsm", ".html", ".htm", ".xhtml", ".idml", ".odt", ".ods", ".odp", ".xml",
@@ -304,6 +327,16 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
         connect(s, &QShortcut::activated, this, fn);
     };
     bind(QKeySequence(Qt::CTRL | Qt::Key_H), [this] { showReplaceDialog(); });
+    bind(QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_S), [this] {
+        if (m_separate && m_separate->isVisibleTo(m_cutBox) && m_separate->isEnabled() && m_cutBox->isVisibleTo(this))
+            resegment(QStringLiteral("separate"));
+        else if (m_split && m_split->isEnabled() && m_cutBox->isVisibleTo(this))
+            showSplitDialog();
+    });
+    bind(QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_J), [this] {
+        if (m_join && m_join->isEnabled() && m_cutBox->isVisibleTo(this))
+            resegment(QStringLiteral("join"));
+    });
     bind(QKeySequence(Qt::CTRL | Qt::Key_Return), [this] { confirm(); });
     bind(QKeySequence(Qt::CTRL | Qt::Key_Enter), [this] { confirm(); });
     bind(QKeySequence(Qt::ALT | Qt::Key_Down), [this] { move(1); });
@@ -376,6 +409,28 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
                        && data.value(QLatin1String("targetLang")).toString() == m_lang) {
                 // Only the comments changed: the translations here stay as they are.
                 refreshComments();
+            } else if (kind == QLatin1String("file-resegmented") && data.value(QLatin1String("file")).toString() == m_file
+                       && data.value(QLatin1String("targetLang")).toString() == m_lang) {
+                // Someone split or joined segments: the file's list is another one.
+                const int row = m_model->rowOf(data.value(QLatin1String("segment")).toString());
+                if (row >= 0 && m_model->segment(row).value(QLatin1String("version")).toInt() >= data.value(QLatin1String("version")).toInt())
+                    return;
+                const QUrlQuery q{{QStringLiteral("file"), m_file}, {QStringLiteral("lang"), m_lang}};
+                onResult(m_conn->api()->get(projectPath() + QStringLiteral("/segments"), q), this, [this](const ApiResult &r) {
+                    if (!r.ok())
+                        return;
+                    // What is being typed stays, if its segment is still the one it was.
+                    const QString was = m_activeId;
+                    const int version = m_model->segment(activeRow()).value(QLatin1String("version")).toInt();
+                    const bool typing = dirty();
+                    const QJsonArray typed = typing ? m_target->content() : QJsonArray();
+                    takeSegments(r.array(), qMax(0, activeRow()));
+                    if (const int now = m_model->rowOf(was); now >= 0) {
+                        goToSegment(was);
+                        if (typing && m_target && m_model->segment(now).value(QLatin1String("version")).toInt() == version)
+                            m_target->setContent(typed);
+                    }
+                });
             } else if (kind == QLatin1String("settings-changed")) {
                 loadProject();
             } else if (kind == QLatin1String("file-removed") || kind == QLatin1String("project-deleted")) {
@@ -823,6 +878,33 @@ QWidget *EditorPage::buildPanel()
     tools->addWidget(confirmButton);
     v->addWidget(toolsBox);
 
+    // Split, separate, join: in files whose segments are Interlinea's own.
+    m_cutBox = new QWidget(body);
+    auto *cutV = new QVBoxLayout(m_cutBox);
+    cutV->setContentsMargins(0, 0, 0, 0);
+    cutV->setSpacing(S2);
+    auto *cutRow = new QWidget(m_cutBox);
+    auto *cuts = new FlowLayout(cutRow, S2);
+    m_split = Theme::keyButton(tr("Split"), QStringLiteral("Alt+Shift+S"), QStringLiteral("scissors"), body);
+    m_separate = Theme::keyButton(tr("Separate"), QStringLiteral("Alt+Shift+S"), QStringLiteral("scissors"), body);
+    m_join = Theme::keyButton(tr("Join with next"), QStringLiteral("Alt+Shift+J"), QStringLiteral("combine"), body);
+    m_split->setObjectName(QStringLiteral("splitSegment"));
+    m_separate->setObjectName(QStringLiteral("separateSegment"));
+    m_join->setObjectName(QStringLiteral("joinSegment"));
+    connect(m_split, &QPushButton::clicked, this, [this] { showSplitDialog(); });
+    connect(m_separate, &QPushButton::clicked, this, [this] { resegment(QStringLiteral("separate")); });
+    connect(m_join, &QPushButton::clicked, this, [this] { resegment(QStringLiteral("join")); });
+    cuts->addWidget(m_split);
+    cuts->addWidget(m_separate);
+    cuts->addWidget(m_join);
+    cutV->addWidget(cutRow);
+    m_cutNote = label(QString(), "help", m_cutBox);
+    m_cutNote->setObjectName(QStringLiteral("cutNote"));
+    m_cutNote->setWordWrap(true);
+    cutV->addWidget(m_cutNote);
+    m_cutBox->setVisible(isDocument(m_file));
+    v->addWidget(m_cutBox);
+
     // Keyboard shortcuts, folded (.shortcuts).
     auto *keysToggle = new QPushButton(Icons::get(QStringLiteral("keyboard"), Theme::color("accentText")), tr("Keyboard shortcuts"), body);
     Theme::smallButton(keysToggle);
@@ -844,6 +926,7 @@ QWidget *EditorPage::buildPanel()
         {"F9", QT_TR_NOOP("Insert the next missing tag")},
         {"Ctrl+E", QT_TR_NOOP("Add a term from the selections")},
         {"Ctrl+H", QT_TR_NOOP("Find and replace in the translations")},
+        {"Alt+Shift+S, Alt+Shift+J", QT_TR_NOOP("Split the segment, join it with the next one of its paragraph")},
         {"Ctrl+K or F3", QT_TR_NOOP("Search the memory for the selection")},
     };
     int r = 0;
@@ -1313,6 +1396,7 @@ void EditorPage::activate(int row)
     showSuggestions();
     updatePreview();
     sendPresence();
+    updateCut();
     lookup();
     recognize();
     runChecks();
@@ -2409,6 +2493,195 @@ void EditorPage::replaceAll(const QString &find, const QString &with, bool match
         save(c.id, c.target, empty ? QStringLiteral("new") : QStringLiteral("draft"), {}, {}, [step, i](bool) { (*step)(i + 1); });
     };
     (*step)(0);
+}
+
+void EditorPage::updateCut()
+{
+    if (!m_cutBox)
+        return;
+    const int row = activeRow();
+    const QJsonObject s = m_model->segment(row);
+    const QJsonObject next = row >= 0 && row + 1 < m_model->rowCount() ? m_model->segment(row + 1) : QJsonObject();
+    const auto locked = [this](int r) { return m_model->index(r, 0).data(SegmentModel::LockedRole).toBool(); };
+    const bool cuts = row >= 0 && !locked(row) && !s.contains(QLatin1String("file"));
+    const int joinedFrom = int(s.value(QLatin1String("joined")).toArray().size());
+    const QString part = s.value(QLatin1String("split")).toObject().value(QLatin1String("unit")).toString();
+    const QString nextPart = next.value(QLatin1String("split")).toObject().value(QLatin1String("unit")).toString();
+    const QString block = s.value(QLatin1String("block")).toString();
+    const bool joins = cuts && !next.isEmpty() && !locked(row + 1)
+        && (!part.isEmpty() || !nextPart.isEmpty() ? part == nextPart : !block.isEmpty() && block == next.value(QLatin1String("block")).toString());
+    m_split->setVisible(joinedFrom == 0);
+    m_separate->setVisible(joinedFrom > 0);
+    m_split->setEnabled(cuts);
+    m_separate->setEnabled(cuts);
+    m_join->setEnabled(joins);
+    m_cutNote->setText(joinedFrom > 0 ? tr("Joined from %1 segments of the document.").arg(joinedFrom)
+                       : !part.isEmpty() ? tr("A part of a segment of the document that was split.")
+                                         : QString());
+    m_cutNote->setVisible(!m_cutNote->text().isEmpty());
+}
+
+void EditorPage::takeSegments(const QJsonArray &segments, int row)
+{
+    if (const int old = activeRow(); old >= 0) {
+        m_model->setMarks(m_activeId, {});
+        m_model->clearPending(m_activeId);
+        m_target = nullptr;
+        m_source = nullptr;
+        m_counter = nullptr;
+        m_grid->closePersistentEditor(m_model->index(old, SegmentModel::Source));
+        m_grid->closePersistentEditor(m_model->index(old, SegmentModel::Target));
+    }
+    m_saveTimer.stop();
+    m_activeId.clear();
+    m_model->setSegments(segments);
+    applyFilter();
+    updateProgress();
+    loadAvailable();
+    m_grid->resizeRowsToContents();
+    if (m_model->rowCount() > 0)
+        goToSegment(m_model->segment(qBound(0, row, m_model->rowCount() - 1)).value(QLatin1String("id")).toString());
+}
+
+void EditorPage::resegment(const QString &how, const QJsonArray &before, std::function<void(const QString &)> failed)
+{
+    if (!m_conn || m_activeId.isEmpty())
+        return;
+    const QString id = m_activeId;
+    const auto go = [this, how, before, failed, id] {
+        const int row = m_model->rowOf(id);
+        if (row < 0 || id != m_activeId)
+            return;
+        const QUrlQuery q{{QStringLiteral("file"), m_file},
+                          {QStringLiteral("lang"), m_lang},
+                          {QStringLiteral("segment"), id},
+                          {QStringLiteral("version"), QString::number(m_model->segment(row).value(QLatin1String("version")).toInt())}};
+        const QJsonValue body = how == QLatin1String("split") ? QJsonValue(QJsonObject{{QStringLiteral("before"), before}}) : QJsonValue();
+        onResult(m_conn->api()->post(projectPath() + QStringLiteral("/segments/") + how, body, q), this, [this, how, failed, row](const ApiResult &r) {
+            if (!r.ok()) {
+                if (failed)
+                    failed(r.error.message);
+                else
+                    notify(r.error.message);
+                emit resegmented(how, false);
+                return;
+            }
+            takeSegments(r.array(), row);
+            notify(how == QLatin1String("split")  ? tr("Split in two segments")
+                   : how == QLatin1String("join") ? tr("Joined with the next segment")
+                                                  : tr("The segments stand apart again"));
+            emit resegmented(how, true);
+        });
+    };
+    // What was typed is saved first, so it is what gets split or joined.
+    if (dirty()) {
+        m_saveTimer.stop();
+        const QJsonArray target = m_target->content();
+        const bool empty = plainText(target).trimmed().isEmpty() && SegmentContent::tags(target).isEmpty();
+        save(id, target, empty ? QStringLiteral("new") : QStringLiteral("draft"), {}, m_origin, [go, this, how](bool ok) {
+            if (ok)
+                go();
+            else
+                emit resegmented(how, false);
+        });
+    } else {
+        go();
+    }
+}
+
+Web::Dialog *EditorPage::showSplitDialog()
+{
+    const int row = activeRow();
+    if (row < 0 || !m_split || !m_split->isEnabled())
+        return nullptr;
+    const QJsonArray source = m_model->segment(row).value(QLatin1String("source")).toArray();
+    auto *d = new Web::Dialog(tr("Split the segment"), window());
+    d->setObjectName(QStringLiteral("splitDialog"));
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    auto *help = Web::text(tr("Click where the second part begins, or go there with the arrow keys. The translation stays with the first part."), "help", d);
+    help->setWordWrap(true);
+    // The source with a caret in it, which nothing can be typed at.
+    auto *box = new TargetEditor(d);
+    box->setObjectName(QStringLiteral("splitSource"));
+    box->setAccessibleName(tr("Source of the segment"));
+    box->setAccessibleDescription(help->text());
+    box->setContent(source);
+    box->setReadOnly(true);
+    box->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
+    box->setProperty("lines", QStringLiteral("few"));
+    box->moveCursor(QTextCursor::Start);
+    auto *parts = new QWidget(d);
+    auto *grid = new QGridLayout(parts);
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setHorizontalSpacing(S3);
+    grid->setVerticalSpacing(6);
+    auto *first = new QLabel(parts);
+    auto *second = new QLabel(parts);
+    first->setObjectName(QStringLiteral("splitFirst"));
+    second->setObjectName(QStringLiteral("splitSecond"));
+    for (QLabel *l : {first, second}) {
+        l->setWordWrap(true);
+        l->setTextFormat(Qt::RichText);
+        l->setMinimumHeight(l->fontMetrics().lineSpacing() + 4);
+        l->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    }
+    grid->addWidget(Web::text(tr("First part"), "fieldLabel", parts), 0, 0, Qt::AlignTop);
+    grid->addWidget(first, 0, 1);
+    grid->addWidget(Web::text(tr("Second part"), "fieldLabel", parts), 1, 0, Qt::AlignTop);
+    grid->addWidget(second, 1, 1);
+    grid->setColumnStretch(1, 1);
+    d->body()->addWidget(help);
+    d->body()->addWidget(box);
+    d->body()->addWidget(parts);
+    auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, d);
+    auto *go = Web::button(tr("Split"), Web::Primary | Web::Small, d);
+    go->setObjectName(QStringLiteral("save"));
+    d->buttons()->addWidget(cancel);
+    d->buttons()->addWidget(go);
+    connect(cancel, &QPushButton::clicked, d, &QDialog::reject);
+    // The caret divides the source: what is before it and what is after.
+    const auto side = [box](bool before) {
+        QTextCursor c = box->textCursor();
+        c.setPosition(c.position());
+        c.movePosition(before ? QTextCursor::Start : QTextCursor::End, QTextCursor::KeepAnchor);
+        QTextDocument part;
+        SegmentContent::enableTags(&part);
+        QTextCursor(&part).insertFragment(c.selection());
+        return SegmentContent::fromDocument(&part);
+    };
+    const auto show = [side, first, second, go] {
+        static const QRegularExpression text(QStringLiteral("[\\p{L}\\p{N}]"), QRegularExpression::UseUnicodePropertiesOption);
+        const QJsonArray a = side(true), b = side(false);
+        const bool ok = plainText(a).contains(text) && plainText(b).contains(text);
+        const QString muted = QStringLiteral("<span style=\"color:%1\">%2</span>").arg(Theme::color("text3").name());
+        first->setText(ok ? SegmentContent::toHtml(trimmedContent(a, true)) : muted.arg(tr("Place the cursor inside the text.")));
+        second->setText(ok ? SegmentContent::toHtml(trimmedContent(b, false)) : muted.arg(tr("Both parts need text.")));
+        go->setEnabled(ok);
+    };
+    connect(box, &QTextEdit::cursorPositionChanged, d, show);
+    show();
+    QPointer<Web::Dialog> dialog(d);
+    connect(go, &QPushButton::clicked, this, [this, dialog, side, go] {
+        if (!dialog)
+            return;
+        go->setEnabled(false);
+        dialog->setError(QString());
+        resegment(QStringLiteral("split"), side(true), [dialog, go](const QString &why) {
+            if (!dialog)
+                return;
+            dialog->setError(why);
+            go->setEnabled(true);
+        });
+    });
+    connect(this, &EditorPage::resegmented, d, [dialog](const QString &how, bool ok) {
+        if (dialog && ok && how == QLatin1String("split"))
+            dialog->accept();
+    });
+    d->open();
+    d->layout()->activate();
+    d->resize(d->width(), qMax(d->height(), d->layout()->totalHeightForWidth(d->width())));
+    box->setFocus();
+    return d;
 }
 
 Web::Dialog *EditorPage::showReplaceDialog()

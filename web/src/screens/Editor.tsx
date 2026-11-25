@@ -27,6 +27,8 @@ import {
   Repeat2,
   Search,
   Replace,
+  Scissors,
+  Combine,
   Settings2,
   Tag,
   X,
@@ -98,12 +100,14 @@ import {
 import {
   TargetEditor,
   chipText,
+  read as readRuns,
+  render as renderRuns,
   tagDescription,
   type TargetEditorHandle,
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
-import { usePresence, useSegmentComments, useServerConcordance, useTranslationServices } from "../remote";
+import { usePresence, useResegment, useSegmentComments, useServerConcordance, useTranslationServices } from "../remote";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -301,6 +305,28 @@ export function Editor({
   // On a team server: who else has which segment open.
   const present = usePresence(project, file?.id ?? "", target, activeId);
   const commenting = useSegmentComments(project, file?.id ?? "", target);
+  // Splitting and joining, in files whose segments are Interlinea's own.
+  const cut = useResegment(project, file?.id ?? "", target);
+  const [splitting, setSplitting] = useState(false);
+  const after = segments[index + 1];
+  const cuts = file?.kind === "docx" && !!active && !active.locked && !active.file;
+  const joins =
+    cuts && !!after && !after.locked &&
+    (active.split || after.split ? active.split?.unit === after.split?.unit : !!active.block && active.block === after.block);
+  // A segment that was split or joined has another name: the one in its place is the open one.
+  const place = useRef(0);
+  useEffect(() => {
+    if (index >= 0) place.current = index;
+    else if (activeId && segments.length) setActiveId(segments[Math.min(place.current, segments.length - 1)]!.id);
+  }, [index, activeId, segments]);
+  async function recut(how: "join" | "separate") {
+    if (!active) return;
+    const no = await cut(how, active.id);
+    const said = no ?? (how === "join" ? "Joined with the next segment" : "The segments stand apart again");
+    if (no) notify(no);
+    setAnnouncement(said);
+    editor.current?.focus();
+  }
   const services = useTranslationServices(project, target);
   const here = useMemo(() => {
     const m = new Map<string, typeof present>();
@@ -851,7 +877,13 @@ export function Editor({
       openLookup();
     } else if (e.key === "F9") {
       e.preventDefault();
-      insertNextTag();
+      insertNextTag();    } else if (e.altKey && e.shiftKey && e.code === "KeyS" && cuts) {
+      e.preventDefault();
+      if (active?.joined) void recut("separate");
+      else setSplitting(true);
+    } else if (e.altKey && e.shiftKey && e.code === "KeyJ" && joins) {
+      e.preventDefault();
+      void recut("join");
     }
   }
 
@@ -1054,6 +1086,23 @@ export function Editor({
         </div>
       </header>
 
+      {splitting && active && (
+        <SplitDialog
+          segment={active}
+          lang={source}
+          onClose={() => {
+            setSplitting(false);
+            editor.current?.focus();
+          }}
+          onSplit={async (before) => {
+            const no = await cut("split", active.id, before);
+            if (no) return no;
+            setSplitting(false);
+            setAnnouncement("Split in two segments");
+            return undefined;
+          }}
+        />
+      )}
       {replacing && (
         <ReplaceDialog
           segments={segments}
@@ -1707,6 +1756,36 @@ export function Editor({
                   </button>
                 </div>
 
+                {file?.kind === "docx" && !active.file && (
+                  <div className="tool-row">
+                    {active.joined ? (
+                      <button type="button" className="btn btn-small" onClick={() => void recut("separate")} disabled={!cuts}>
+                        <Scissors size={14} aria-hidden="true" />
+                        Separate
+                        <kbd>Alt+Shift+S</kbd>
+                      </button>
+                    ) : (
+                      <button type="button" className="btn btn-small" onClick={() => setSplitting(true)} disabled={!cuts}>
+                        <Scissors size={14} aria-hidden="true" />
+                        Split
+                        <kbd>Alt+Shift+S</kbd>
+                      </button>
+                    )}
+                    <button type="button" className="btn btn-small" onClick={() => void recut("join")} disabled={!joins}>
+                      <Combine size={14} aria-hidden="true" />
+                      Join with next
+                      <kbd>Alt+Shift+J</kbd>
+                    </button>
+                    {(active.joined || active.split) && (
+                      <p className="help cut-note">
+                        {active.joined
+                          ? `Joined from ${active.joined.length} segments of the document.`
+                          : "A part of a segment of the document that was split."}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <details className="shortcuts">
                   <summary>
                     <Keyboard size={14} aria-hidden="true" />
@@ -1736,6 +1815,11 @@ export function Editor({
                     <dd>Add a term from the selections</dd>
                     <dt>Ctrl+H</dt>
                     <dd>Find and replace in the translations</dd>
+                    <dt>Alt+Shift+S, Alt+Shift+J</dt>
+                    <dd>
+                      Split the segment, join it with the next one of its
+                      paragraph
+                    </dd>
                     <dt>Ctrl+K or F3</dt>
                     <dd>Search the memory for the selection</dd>
                   </dl>
@@ -2389,6 +2473,122 @@ function SegmentComments({
         Add comment
       </button>
     </>
+  );
+}
+
+/**
+ * Asks where a segment is split: the caret in its source is the place.
+ * onSplit resolves to why it could not be done, or to nothing.
+ */
+function SplitDialog({
+  segment,
+  lang: sourceLang,
+  onClose,
+  onSplit,
+}: {
+  segment: Segment;
+  lang: LangCode;
+  onClose: () => void;
+  onSplit: (before: Run[]) => Promise<string | undefined>;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const [parts, setParts] = useState<[Run[], Run[]]>([[], segment.source]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const el = box.current!;
+    renderRuns(el, segment.source);
+    const stop = (e: Event) => e.preventDefault();
+    for (const t of ["beforeinput", "paste", "cut", "drop"]) el.addEventListener(t, stop);
+    // The caret divides the source: what is before it and what is after.
+    const where = () => {
+      const sel = window.getSelection();
+      if (!sel?.rangeCount || !el.contains(sel.focusNode)) return;
+      const side = (first: boolean) => {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        if (first) r.setEnd(sel.focusNode!, sel.focusOffset);
+        else r.setStart(sel.focusNode!, sel.focusOffset);
+        const d = document.createElement("div");
+        d.append(r.cloneContents());
+        return readRuns(d, true);
+      };
+      setParts([side(true), side(false)]);
+    };
+    document.addEventListener("selectionchange", where);
+    el.focus();
+    return () => {
+      document.removeEventListener("selectionchange", where);
+      for (const t of ["beforeinput", "paste", "cut", "drop"]) el.removeEventListener(t, stop);
+    };
+  }, [segment.source]);
+  const [first, second] = parts;
+  const hasText = (runs: Run[]) => /[\p{L}\p{N}]/u.test(plain(runs));
+  const ok = hasText(first) && hasText(second);
+  const trimmed = (runs: Run[], end: boolean): Run[] =>
+    runs.map((r, i) =>
+      typeof r !== "string" ? r : end && i === runs.length - 1 ? r.trimEnd() : !end && i === 0 ? r.trimStart() : r,
+    );
+  const split = async () => {
+    if (!ok || busy) return;
+    setBusy(true);
+    setError("");
+    const no = await onSplit(first);
+    setBusy(false);
+    if (no) setError(no);
+  };
+  return (
+    <Modal title="Split the segment" onClose={onClose}>
+      <form
+        className="dialog-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void split();
+        }}
+      >
+        <p className="help" id="split-help">
+          Click where the second part begins, or go there with the arrow keys. The translation stays with the first part.
+        </p>
+        <div
+          ref={box}
+          className="split-source"
+          role="textbox"
+          aria-multiline="true"
+          aria-readonly="true"
+          aria-label="Source of the segment"
+          aria-describedby="split-help"
+          contentEditable
+          suppressContentEditableWarning
+          spellCheck={false}
+          lang={sourceLang}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void split();
+            }
+          }}
+        />
+        <dl className="split-parts" aria-live="polite">
+          <dt>First part</dt>
+          <dd lang={sourceLang}>{ok ? <RunsView runs={trimmed(first, true)} /> : <span className="muted">Place the cursor inside the text.</span>}</dd>
+          <dt>Second part</dt>
+          <dd lang={sourceLang}>{ok ? <RunsView runs={trimmed(second, false)} /> : <span className="muted">Both parts need text.</span>}</dd>
+        </dl>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="row">
+          <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary btn-small" disabled={!ok || busy}>
+            Split
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

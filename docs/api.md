@@ -752,6 +752,43 @@ Access: edit on the project, or the segment's assignee.
 - Answer: 200 OK: [projectdb.StoredSegment](#projectdbstoredsegment)
 - Errors: 401, 403, 404, 409, 428, 422 (see [Error](#error))
 
+### `POST /api/projects/{id}/segments/join`
+
+Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it: two segments of the same paragraph, or two parts of a segment that was split.
+
+Their translations are put together, and the document is written with the joined translation where the two stood. The answer is the file's segments as they are now.
+
+Access: edit on the project, or the assignee of both segments.
+
+- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `If-Match` or `?version=`
+- Answer: 200 OK: list of [projectdb.StoredSegment](#projectdbstoredsegment)
+- Errors: 401, 403, 404, 409, 428, 422 (see [Error](#error))
+
+### `POST /api/projects/{id}/segments/separate`
+
+Undoes the joining of a segment (?file=, ?lang=, ?segment=): the segments it was joined from stand apart again, the translation staying with the first.
+
+The answer is the file's segments as they are now.
+
+Access: edit on the project, or the segment's assignee.
+
+- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `If-Match` or `?version=`
+- Answer: 200 OK: list of [projectdb.StoredSegment](#projectdbstoredsegment)
+- Errors: 401, 403, 404, 409, 428, 422 (see [Error](#error))
+
+### `POST /api/projects/{id}/segments/split`
+
+Cuts a segment (?file=, ?lang=, ?segment=) in two where the body's "before", the start of its source, ends.
+
+The translation stays with the first part. The document is written with the parts' translations one after the other where the segment stood. Only that language of the file is cut differently. The answer is the file's segments as they are now.
+
+Access: edit on the project, or the segment's assignee.
+
+- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `If-Match` or `?version=`
+- Body: {`before`: [content.Content](#contentcontent)}
+- Answer: 200 OK: list of [projectdb.StoredSegment](#projectdbstoredsegment)
+- Errors: 401, 403, 404, 409, 428, 422 (see [Error](#error))
+
 ### `PUT /api/projects/{id}/settings`
 
 Replaces a project's settings.
@@ -2506,6 +2543,15 @@ FileState is a segment's state in its bilingual file.
 | `state` | string | State is "new", "draft", "translated", "reviewed", "final" or "rejected". |
 | `target` | string | Target is the translation in the file, as content JSON. |
 
+### project.JoinedUnit
+
+JoinedUnit is one of the units a joined segment was made of.
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string |  |
+| `source` | [content.Content](#contentcontent) |  |
+
 ### project.Location
 
 Location is where a termbase or memory is kept.
@@ -2587,11 +2633,13 @@ Segment is a segment of a file in one target language.
 | `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
 | `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |
+| `joined` | list of [project.JoinedUnit](#projectjoinedunit) |  |
 | `locked` | boolean |  |
 | `maxLength` | integer | MaxLength is the longest the translation may be, in characters. |
 | `notes` | list of string | Notes are a bilingual file's comments on the segment. |
 | `origin` | [project.Origin](#projectorigin) | Origin is where the translation came from when it was inserted. |
 | `source` | [content.Content](#contentcontent) |  |
+| `split` | [project.SplitPart](#projectsplitpart) | Split says the segment is a part of a unit of the file that was split, and Joined lists the units of the file a joined segment was made of; the segment's ID is then the first unit's. |
 | `status` | [project.Status](#projectstatus) |  |
 | `target` | [content.Content](#contentcontent) |  |
 | `warnings` | list of [project.Warning](#projectwarning) | Warnings are the checks' results saved when it was confirmed. |
@@ -2615,6 +2663,15 @@ Settings is a project as it is set up.
 | `sourceLang` | string |  |
 | `targetLangs` | list of string |  |
 | `terminology` | [project.Terminology](#projectterminology) |  |
+
+### project.SplitPart
+
+SplitPart says that a segment is a part of a unit that was split.
+
+| Field | Type | Description |
+|---|---|---|
+| `space` | string | Space is the whitespace that stood before the part where the unit was cut; the first part has none. |
+| `unit` | string | Unit is the ID of the unit the part belongs to. |
 
 ### project.Status
 
@@ -2747,11 +2804,13 @@ StoredSegment is a segment with its version.
 | `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
 | `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |
+| `joined` | list of [project.JoinedUnit](#projectjoinedunit) |  |
 | `locked` | boolean |  |
 | `maxLength` | integer | MaxLength is the longest the translation may be, in characters. |
 | `notes` | list of string | Notes are a bilingual file's comments on the segment. |
 | `origin` | [project.Origin](#projectorigin) | Origin is where the translation came from when it was inserted. |
 | `source` | [content.Content](#contentcontent) |  |
+| `split` | [project.SplitPart](#projectsplitpart) | Split says the segment is a part of a unit of the file that was split, and Joined lists the units of the file a joined segment was made of; the segment's ID is then the first unit's. |
 | `status` | [project.Status](#projectstatus) |  |
 | `target` | [content.Content](#contentcontent) |  |
 | `version` | integer |  |

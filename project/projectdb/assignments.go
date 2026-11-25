@@ -371,6 +371,11 @@ func (d *DB) AssignedTo(ctx context.Context, projectID, userID int64, file, targ
 		if a.Task != task && !(task == TaskTranslate && a.Task == TaskReview) {
 			continue
 		}
+		if a.TargetLang == "" && a.FromSegment != "" {
+			// A range for every language is measured in the language asked
+			// about, whose segments may be split or joined differently.
+			a.TargetLang = target
+		}
 		_, sp, err := resolve(ctx, d.sql, p, a)
 		if err != nil {
 			continue

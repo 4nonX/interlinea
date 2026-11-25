@@ -6,6 +6,7 @@ import {
   coreToRuns,
   plain,
   runsToCore,
+  runsToCoreWhole,
   type Block,
   type CoreRun,
   type FileState,
@@ -64,9 +65,10 @@ export interface CoreApi {
     bytes: Uint8Array,
     lang: string,
     target: string,
-    translations: string,
+    segments: string,
     options?: string,
   ): Res<Uint8Array>;
+  resegment(how: string, segments: string, index: number, before: string): Res<string>;
   tmOpen(name: string, source: string, target: string): Res<boolean>;
   tmAdd(name: string, units: string, overwrite?: boolean): Res<number>;
   tmSetTarget(name: string, id: number, target: string, by: string): Res<string>;
@@ -421,6 +423,72 @@ export async function extractDocx(
   };
 }
 
+/** A segment as the core takes it, with how it was split or joined. */
+function coreSegment(s: Segment) {
+  return {
+    id: s.id,
+    source: runsToCoreWhole(s.source),
+    target: runsToCoreWhole(s.target),
+    status: s.status,
+    locked: !!s.locked && !s.lockedReason,
+    block: s.block,
+    maxLength: s.maxLength,
+    notes: s.notes,
+    comments: s.comments,
+    file: s.file,
+    split: s.split,
+    joined: s.joined?.map((j) => ({ id: j.id, source: runsToCoreWhole(j.source) })),
+  };
+}
+
+/** How a file's segments are cut differently. */
+export type Resegment = "split" | "join" | "separate";
+
+/**
+ * Splits segment index where before, the start of its source, ends, joins
+ * it with the one after it, or separates what was joined. The answer is
+ * the file's segments as they are then: those the change left alone are
+ * the same objects. What the segments do not allow is thrown, as the
+ * sentence to show.
+ */
+export async function resegment(how: Resegment, segments: Segment[], index: number, before: Run[] = []): Promise<Segment[]> {
+  const core = await loadCore();
+  const r = core.resegment(how, JSON.stringify(segments.map(coreSegment)), index, JSON.stringify(runsToCoreWhole(before)));
+  if (!r.ok) throw new Error(r.error);
+  const out = JSON.parse(r.value) as {
+    id: string;
+    source: CoreRun[];
+    target: CoreRun[] | null;
+    status: Segment["status"];
+    block?: string;
+    maxLength?: number;
+    notes?: string[];
+    comments?: Segment["comments"];
+    split?: Segment["split"];
+    joined?: { id: string; source: CoreRun[] }[];
+  }[];
+  const gone = how === "join" ? 2 : 1;
+  const come = out.length - segments.length + gone;
+  // Counted on, so an open editor shows what the segment is now.
+  const rev = Math.max(0, ...segments.slice(index, index + gone).map((x) => x.rev ?? 0)) + 1;
+  const fresh = out.slice(index, index + come).map(
+    (x): Segment => ({
+      rev,
+      id: x.id,
+      source: coreToRuns(x.source),
+      target: coreToRuns(x.target ?? []),
+      status: x.status,
+      block: x.block,
+      maxLength: x.maxLength || undefined,
+      notes: x.notes?.length ? x.notes : undefined,
+      comments: x.comments?.length ? x.comments : undefined,
+      split: x.split ?? undefined,
+      joined: x.joined?.length ? x.joined.map((j) => ({ id: j.id, source: coreToRuns(j.source) })) : undefined,
+    }),
+  );
+  return [...segments.slice(0, index), ...fresh, ...segments.slice(index + gone)];
+}
+
 /**
  * Writes the translated document. Segments without a translation keep their
  * source text, as in other CAT tools.
@@ -433,19 +501,11 @@ export async function mergeDocx(
   name = "document.docx",
 ): Promise<Uint8Array> {
   const core = await loadCore();
-  const tr: Record<string, CoreRun[]> = {};
-  for (const s of segments) {
-    if (
-      s.target.length &&
-      s.target.some((r) => typeof r !== "string" || r.trim())
-    )
-      tr[s.id] = runsToCore(s.target);
-  }
   const r = core.merge(
     bytes,
     lang,
     target,
-    JSON.stringify(tr),
+    JSON.stringify(segments.map(coreSegment)),
     JSON.stringify({ format: documentFormat(name) ?? "docx" }),
   );
   if (!r.ok) throw new Error(r.error);

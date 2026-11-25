@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/4nonX/interlinea/analysis"
+	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/tm"
 )
@@ -142,6 +143,42 @@ func pretranslate(args []js.Value) (any, error) {
 	return jsonOut(out)
 }
 
+// resegment(how, segments, index, before): cuts a file's segments
+// differently. how is "split" (where before, the start of the segment's
+// source, ends), "join" (with the segment after it) or "separate" (what
+// was joined). It returns the file's segments as they are afterwards;
+// what the segments do not allow is the error's text.
+func resegment(args []js.Value) (any, error) {
+	if len(args) != 4 {
+		return nil, fmt.Errorf("resegment(how, segments, index, before)")
+	}
+	var segs []project.Segment
+	if err := json.Unmarshal([]byte(args[1].String()), &segs); err != nil {
+		return nil, fmt.Errorf("segments: %w", err)
+	}
+	i := args[2].Int()
+	var out []project.Segment
+	var err error
+	switch args[0].String() {
+	case "split":
+		var before content.Content
+		if err := json.Unmarshal([]byte(args[3].String()), &before); err != nil {
+			return nil, fmt.Errorf("before: %w", err)
+		}
+		out, err = project.Split(segs, i, before)
+	case "join":
+		out, err = project.Join(segs, i)
+	case "separate":
+		out, err = project.Separate(segs, i)
+	default:
+		return nil, fmt.Errorf("resegment: unknown way %q", args[0].String())
+	}
+	if err != nil {
+		return nil, err
+	}
+	return jsonOut(out)
+}
+
 func projectFuncs() map[string]any {
 	return map[string]any{
 		"projectDefaults":         guard(projectDefaults),
@@ -149,5 +186,6 @@ func projectFuncs() map[string]any {
 		"projectTemplateValidate": guard(projectTemplateValidate),
 		"analyze":                 guard(analyze),
 		"pretranslate":            guard(pretranslate),
+		"resegment":               guard(resegment),
 	}
 }

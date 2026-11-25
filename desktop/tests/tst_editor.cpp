@@ -11,6 +11,8 @@
 #include "testcore.h"
 #include "theme.h"
 
+#include <QLabel>
+#include <QPointer>
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -253,6 +255,162 @@ private slots:
         const ApiResult back = wait(api->get(QStringLiteral("/api/projects/%1/return-package").arg(id2)));
         QVERIFY(back.ok());
         QCOMPARE(back.fileName(), QStringLiteral("Hofmann.mqback"));
+    }
+
+    // Segments of a document are split and joined by the translator;
+    // the file is written with what was translated where they stood.
+    void splitAndJoin()
+    {
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        ApiClient *api = m.local()->api();
+        QFile f(QStringLiteral(INTERLINEA_FIXTURES "/documents/LIESMICH.md"));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        const QByteArray data = f.readAll();
+        QJsonObject settings = wait(api->get(QStringLiteral("/api/projects/defaults"))).object();
+        settings.insert("name", "Umschnitt");
+        settings.insert("sourceLang", "de-DE");
+        settings.insert("targetLangs", QJsonArray{"en-GB"});
+        settings.insert("projectMemory", false);
+        QJsonObject terminology = settings.value("terminology").toObject();
+        terminology.insert("mode", "own");
+        terminology.insert("termbase", "Umschnitt terms");
+        settings.insert("terminology", terminology);
+        const ApiResult made = wait(api->post(QStringLiteral("/api/projects"),
+                                              QJsonObject{{"settings", settings},
+                                                          {"files", QJsonArray{QJsonObject{{"name", "LIESMICH.md"}, {"role", "translatable"}, {"data", QString::fromLatin1(data.toBase64())}}}},
+                                                          {"termbase", QJsonObject{{"name", "Umschnitt terms"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}}));
+        QVERIFY2(made.ok(), qPrintable(made.error.message));
+        const qint64 id = made.object().value("id").toInteger();
+        const QString base = QStringLiteral("/api/projects/%1").arg(id);
+        Theme::apply(*qApp);
+        EditorPage ed(m.local(), id, QStringLiteral("LIESMICH.md"), QStringLiteral("en-GB"));
+        ed.resize(1280, 820);
+        ed.show();
+        QTRY_COMPARE_WITH_TIMEOUT(ed.model()->rowCount(), 3, 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(ed.activeRow(), 0, 10000);
+        auto *split = ed.findChild<QPushButton *>("splitSegment");
+        auto *separate = ed.findChild<QPushButton *>("separateSegment");
+        auto *join = ed.findChild<QPushButton *>("joinSegment");
+        auto *note = ed.findChild<QLabel *>("cutNote");
+        QVERIFY(split && separate && join && note);
+        auto source = [&ed](int row) { return SegmentContent::plainText(ed.model()->segment(row).value("source").toArray()); };
+        auto idOf = [&ed](int row) { return ed.model()->segment(row).value("id").toString(); };
+        QSignalSpy cut(&ed, &EditorPage::resegmented);
+        // A heading is not joined with the paragraph after it.
+        QVERIFY(split->isVisible() && split->isEnabled() && !separate->isVisible() && !join->isEnabled() && !note->isVisible());
+
+        // Two sentences of a paragraph are joined; what was typed is joined with them.
+        ed.goToSegment(idOf(1));
+        QTRY_VERIFY(ed.target() && ed.target()->hasFocus());
+        QVERIFY(join->isEnabled());
+        QTest::keyClicks(ed.target(), QStringLiteral("The tenant pays."));
+        join->click();
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 1, 10000);
+        QCOMPARE(cut.at(0).at(0).toString(), QStringLiteral("join"));
+        QVERIFY(cut.at(0).at(1).toBool());
+        QCOMPARE(ed.model()->rowCount(), 2);
+        QCOMPARE(ed.activeRow(), 1);
+        QCOMPARE(source(1), QStringLiteral("Der Mieter zahlt die Miete. Der Vermieter haftet nicht."));
+        QTRY_VERIFY(ed.target());
+        QCOMPARE(ed.target()->toPlainText(), QStringLiteral("The tenant pays."));
+        QVERIFY(separate->isVisible() && !split->isVisible() && !join->isEnabled());
+        QCOMPARE(note->text(), QStringLiteral("Joined from 2 segments of the document."));
+        ed.target()->selectAll();
+        QTest::keyClicks(ed.target(), QStringLiteral("The landlord is not liable, and the tenant pays."));
+        QSignalSpy saved(&ed, &EditorPage::saved);
+        ed.goToSegment(idOf(0));
+        QTRY_VERIFY_WITH_TIMEOUT(saved.size() >= 1, 10000);
+        ApiResult out = wait(api->get(base + "/files/translated", {{"name", "LIESMICH.md"}, {"lang", "en-GB"}}));
+        QVERIFY(out.ok());
+        QCOMPARE(QString::fromUtf8(out.body), QStringLiteral("# Mietvertrag\n\nThe landlord is not liable, and the tenant pays.\n\n```\nnicht übersetzen\n```\n"));
+
+        // Separated, the sentences stand apart again, the translation with the first.
+        ed.goToSegment(idOf(1));
+        QTRY_VERIFY(separate->isVisible());
+        QTest::keySequence(&ed, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_S));
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 2, 10000);
+        QCOMPARE(cut.at(1).at(0).toString(), QStringLiteral("separate"));
+        QCOMPARE(ed.model()->rowCount(), 3);
+        QCOMPARE(source(2), QStringLiteral("Der Vermieter haftet nicht."));
+        QVERIFY(split->isVisible() && !note->isVisible());
+
+        // Split: the caret in the source is the place.
+        ed.goToSegment(idOf(2));
+        QTRY_COMPARE(ed.activeRow(), 2);
+        const QString whole = idOf(2);
+        Web::Dialog *d = ed.showSplitDialog();
+        QVERIFY(d);
+        auto *box = d->findChild<TargetEditor *>("splitSource");
+        auto *go = d->findChild<QPushButton *>("save");
+        auto *first = d->findChild<QLabel *>("splitFirst");
+        auto *second = d->findChild<QLabel *>("splitSecond");
+        QVERIFY(box && go && first && second);
+        QTRY_VERIFY(box->hasFocus());
+        QVERIFY(!go->isEnabled());
+        QCOMPARE(box->toPlainText(), QStringLiteral("Der Vermieter haftet nicht."));
+        // Typing changes nothing; the arrow keys move the caret.
+        QTest::keyClicks(box, QStringLiteral("x"));
+        QCOMPARE(box->toPlainText(), QStringLiteral("Der Vermieter haftet nicht."));
+        for (int i = 0; i < 14; ++i)
+            QTest::keyClick(box, Qt::Key_Right);
+        QCOMPARE(box->textCursor().position(), 14);
+        QVERIFY(go->isEnabled());
+        QVERIFY2(first->text().contains(QStringLiteral("Der Vermieter")) && !first->text().contains(QStringLiteral("haftet")), qPrintable(first->text()));
+        QVERIFY2(second->text().contains(QStringLiteral("haftet nicht.")), qPrintable(second->text()));
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            QTest::qWait(300);
+            ed.window()->grab().save(dir + QStringLiteral("/editor-split.png"));
+            d->grab().save(dir + QStringLiteral("/split-dialog.png"));
+        }
+        QPointer<Web::Dialog> open(d);
+        go->click();
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 3, 10000);
+        QVERIFY(cut.at(2).at(1).toBool());
+        QTRY_VERIFY(!open || !open->isVisible());
+        QCOMPARE(ed.model()->rowCount(), 4);
+        QCOMPARE(idOf(2), whole + QStringLiteral("#1"));
+        QCOMPARE(source(2), QStringLiteral("Der Vermieter"));
+        QCOMPARE(source(3), QStringLiteral("haftet nicht."));
+        QCOMPARE(ed.activeRow(), 2);
+        QCOMPARE(note->text(), QStringLiteral("A part of a segment of the document that was split."));
+        QVERIFY(join->isEnabled());
+        ed.goToSegment(idOf(3));
+        QTRY_COMPARE(ed.activeRow(), 3);
+        QTRY_VERIFY(ed.target());
+        QTest::keyClicks(ed.target(), QStringLiteral("is not liable."));
+        saved.clear();
+        ed.goToSegment(idOf(2));
+        QTRY_VERIFY_WITH_TIMEOUT(saved.size() >= 1, 10000);
+        out = wait(api->get(base + "/files/translated", {{"name", "LIESMICH.md"}, {"lang", "en-GB"}}));
+        QVERIFY2(out.body.contains("and the tenant pays. Der Vermieter is not liable.\n"), out.body.constData());
+        // Alt+Shift+J joins the parts into the segment it was.
+        // The dialog is gone; without a window system the page has to be told it is in front again.
+        ed.activateWindow();
+        QTRY_VERIFY(ed.isActiveWindow());
+        QTest::keySequence(&ed, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_J));
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 4, 10000);
+        QCOMPARE(ed.model()->rowCount(), 3);
+        QCOMPARE(idOf(2), whole);
+        QCOMPARE(source(2), QStringLiteral("Der Vermieter haftet nicht."));
+        QTRY_VERIFY(ed.target());
+        QCOMPARE(ed.target()->toPlainText(), QStringLiteral("is not liable."));
+
+        // What someone else cuts differently shows without opening the file again.
+        const QJsonObject mine = ed.model()->segment(2);
+        const ApiResult theirs = wait(api->post(base + "/segments/split", QJsonObject{{"before", QJsonArray{QJsonObject{{"text", "Der Vermieter"}}}}},
+                                                {{"file", "LIESMICH.md"}, {"lang", "en-GB"}, {"segment", whole}, {"version", QString::number(mine.value("version").toInt())}}));
+        QVERIFY2(theirs.ok(), qPrintable(theirs.error.message));
+        QTRY_COMPARE_WITH_TIMEOUT(ed.model()->rowCount(), 4, 10000);
+        // What the segments do not allow is said, and nothing changes.
+        ed.goToSegment(idOf(0));
+        ed.resegment(QStringLiteral("join"));
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 5, 10000);
+        QVERIFY(!cut.at(4).at(1).toBool());
+        QVERIFY2(ed.message().contains(QStringLiteral("different paragraphs")), qPrintable(ed.message()));
+        QCOMPARE(ed.model()->rowCount(), 4);
     }
 
     void translateAFile()

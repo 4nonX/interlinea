@@ -45,6 +45,9 @@ func (s *Server) projectRoutes() {
 	s.handle("GET /api/projects/{id}/return-package", s.signedIn(s.projectReturnPackage))
 	s.handle("GET /api/projects/{id}/segments", s.signedIn(s.projectSegments))
 	s.handle("PUT /api/projects/{id}/segments", s.signedIn(s.saveProjectSegment))
+	s.handle("POST /api/projects/{id}/segments/split", s.signedIn(s.splitProjectSegment))
+	s.handle("POST /api/projects/{id}/segments/join", s.signedIn(s.joinProjectSegments))
+	s.handle("POST /api/projects/{id}/segments/separate", s.signedIn(s.separateProjectSegments))
 	s.handle("POST /api/projects/{id}/comments", s.signedIn(s.addSegmentComment))
 	s.handle("DELETE /api/projects/{id}/comments", s.signedIn(s.deleteSegmentComment))
 	s.handle("POST /api/projects/{id}/pretranslate", s.signedIn(s.pretranslateProject))
@@ -1126,6 +1129,109 @@ func (s *Server) saveProjectSegment(w http.ResponseWriter, r *http.Request, me s
 			s.cfg.Log.Error("updating the project's memories failed", "project", p.ID, "segment", seg, "err", err)
 			w.Header().Set("Interlinea-Warning", "memories-not-updated")
 		}
+	}
+	writeJSON(w, http.StatusOK, got)
+}
+
+// splitProjectSegment cuts a segment (?file=, ?lang=, ?segment=) in two
+// where the body's "before", the start of its source, ends. The
+// translation stays with the first part. The document is written with the
+// parts' translations one after the other where the segment stood. Only
+// that language of the file is cut differently. The answer is the file's
+// segments as they are now.
+//
+// Access: edit on the project, or the segment's assignee.
+func (s *Server) splitProjectSegment(w http.ResponseWriter, r *http.Request, me session) {
+	var req struct {
+		Before content.Content `json:"before"`
+	}
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	s.resegment(w, r, me, projectdb.ResegmentSplit, req.Before)
+}
+
+// joinProjectSegments makes one segment of a segment (?file=, ?lang=,
+// ?segment=) and the one after it: two segments of the same paragraph, or
+// two parts of a segment that was split. Their translations are put
+// together, and the document is written with the joined translation where
+// the two stood. The answer is the file's segments as they are now.
+//
+// Access: edit on the project, or the assignee of both segments.
+func (s *Server) joinProjectSegments(w http.ResponseWriter, r *http.Request, me session) {
+	s.resegment(w, r, me, projectdb.ResegmentJoin, nil)
+}
+
+// separateProjectSegments undoes the joining of a segment (?file=,
+// ?lang=, ?segment=): the segments it was joined from stand apart again,
+// the translation staying with the first. The answer is the file's
+// segments as they are now.
+//
+// Access: edit on the project, or the segment's assignee.
+func (s *Server) separateProjectSegments(w http.ResponseWriter, r *http.Request, me session) {
+	s.resegment(w, r, me, projectdb.ResegmentSeparate, nil)
+}
+
+func (s *Server) resegment(w http.ResponseWriter, r *http.Request, me session, how string, before content.Content) {
+	p, a, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	file, lang, seg := q.Get("file"), q.Get("lang"), q.Get("segment")
+	v, ok := version(w, r)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	f, err := s.cfg.Projects.File(ctx, p.ID, file)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	format := f.Format
+	if format == "" {
+		format = formatOf(f.Name)
+	}
+	if !formats.Document(format) {
+		writeError(w, http.StatusUnprocessableEntity, "notHere", "This file brings its own segments, which stay as they are.")
+		return
+	}
+	if !a.edit() {
+		mine := []string{seg}
+		if how == projectdb.ResegmentJoin {
+			segs, err := s.cfg.Projects.Segments(ctx, p.ID, file, lang)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			for i := range segs {
+				if segs[i].ID == seg && i+1 < len(segs) {
+					mine = append(mine, segs[i+1].ID)
+				}
+			}
+		}
+		for _, id := range mine {
+			ok, err := s.cfg.Projects.AssignedTo(ctx, p.ID, me.User.ID, file, lang, id, projectdb.TaskTranslate)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			if !ok {
+				forbidden(w, "This segment is not assigned to you.")
+				return
+			}
+		}
+	}
+	got, err := s.cfg.Projects.Resegment(ctx, p.ID, file, lang, seg, how, before, v, me.by())
+	var no *project.ErrResegment
+	if errors.As(err, &no) {
+		writeError(w, http.StatusUnprocessableEntity, "notHere", no.Message)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, got)
 }

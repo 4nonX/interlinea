@@ -116,6 +116,15 @@ export function runsToCore(runs: Run[]): CoreRun[] {
     );
 }
 
+/** Runs for the core with what a tag is, so that it comes back as it went. */
+export function runsToCoreWhole(runs: Run[]): CoreRun[] {
+  return runs
+    .filter((r) => r !== "")
+    .map((r) =>
+      typeof r === "string" ? { text: r } : { tag: { kind: r.kind, id: r.id, type: r.type, desc: r.desc } },
+    );
+}
+
 export type Run = string | TagRun;
 
 /** A remark on a segment by someone working on the project. */
@@ -159,6 +168,10 @@ export interface Segment {
   file?: { state: FileState; target: string; match?: number };
   /** Bilingual files: comments on the segment. */
   notes?: string[];
+  /** A part of a segment of the file that was split: the file's segment, and the space before the part. */
+  split?: { unit: string; space?: string };
+  /** A segment joined from several of the file: those, as the file has them. */
+  joined?: { id: string; source: Run[] }[];
   /** What the people working on the project wrote about the segment, oldest first. */
   comments?: SegmentComment[];
 }

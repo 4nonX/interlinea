@@ -83,6 +83,13 @@ public:
 
     // Find and replace in the translations of the open file.
     Web::Dialog *showReplaceDialog();
+    // Asks where the open segment is split; the caret in its source is the place.
+    Web::Dialog *showSplitDialog();
+    // Splits the open segment where before, the start of its source,
+    // ends ("split"), joins it with the one after it ("join") or
+    // separates what was joined ("separate"). failed gets why not; without
+    // it that is shown as a message.
+    void resegment(const QString &how, const QJsonArray &before = {}, std::function<void(const QString &)> failed = {});
     // Replaces every place of the text; says what it did when it is done.
     void replaceAll(const QString &find, const QString &with, bool matchCase, bool wholeWords);
 
@@ -97,6 +104,9 @@ signals:
     void suggested(bool ok);
     // The comments of a segment changed here.
     void commented(const QString &id);
+    // A segment was split, or segments were joined or separated ("split",
+    // "join", "separate"), or it could not be done.
+    void resegmented(const QString &how, bool ok);
     // Find and replace is done: how many places in how many segments.
     void replaced(int places, int segments);
     // The best memory match was put into the segment that just opened;
@@ -244,6 +254,15 @@ private:
     QLabel *m_captureHelp;
     QPushButton *m_captureAdd;
     QPushButton *m_nextTag;
+    QWidget *m_cutBox = nullptr;
+    QPushButton *m_split = nullptr;
+    QPushButton *m_separate = nullptr;
+    QPushButton *m_join = nullptr;
+    QLabel *m_cutNote = nullptr;
+    // The file's segments as they are now take the place of the list; the
+    // segment at the row is the open one.
+    void takeSegments(const QJsonArray &segments, int row);
+    void updateCut();
     QWidget *m_shortcuts;
     QLabel *m_toast;
 };

@@ -56,8 +56,8 @@ import {
   type Termbase,
   type TranslationMemory,
 } from "./data";
-import { coreToRuns, runsToCore, type Run, type Segment } from "./editor/model";
-import { core, documentFormat, extractDocx, extractXliff, loadCore } from "./core";
+import { coreToRuns, runsToCore, runsToCoreWhole, type Run, type Segment } from "./editor/model";
+import { core, documentFormat, extractDocx, extractXliff, loadCore, resegment as resegmentHere, type Resegment } from "./core";
 import { openRemoteMemory } from "./editor/memory";
 import { fromCoreEntry, infoTypesFromCore, toCoreEntry } from "./termio";
 import { go } from "./App";
@@ -159,6 +159,12 @@ interface Remote {
   openTermbase(name: string): Promise<string>;
   /** Subscribes to the live feed; returns the function that unsubscribes. */
   listen(on: (e: FeedEvent) => void): () => void;
+  /**
+   * In a server project: splits a segment where before ends, joins it with
+   * the next, or separates what was joined. What the segments do not allow
+   * is thrown, as the sentence to show.
+   */
+  resegment(project: Project, fileId: string, lang: LangCode, segId: string, how: Resegment, before: Run[]): Promise<void>;
 }
 
 const Ctx = createContext<Remote | null>(null);
@@ -193,6 +199,9 @@ function segmentOf(s: StoredSegment, local?: Segment): Segment {
     locked: s.locked || undefined,
     lockedReason: undefined,
     comments: s.comments?.length ? s.comments : undefined,
+    block: s.block ?? local?.block,
+    split: s.split ?? undefined,
+    joined: s.joined?.length ? s.joined.map((j) => ({ id: j.id, source: coreToRuns(j.source) })) : undefined,
   };
 }
 
@@ -624,6 +633,54 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
     [api, dispatch, notify],
   );
 
+  // The file's segments as the server has them now take the place of the
+  // list here; those that did not change stay the objects they were.
+  const takeSegments = useCallback(
+    (project: Project, fileId: string, lang: LangCode, fresh: StoredSegment[]) => {
+      if (!project.remote) return;
+      const n = project.remote.id;
+      const file = project.remote.files[fileId]!;
+      const now = latest.current.projects.find((p) => p.id === project.id);
+      const mine = new Map((now?.files.find((f) => f.id === fileId)?.segments[lang] ?? []).map((x) => [x.id, x]));
+      const segments = fresh.map((x) => {
+        const k = vkey(n, file, lang, x.id);
+        const had = mine.get(x.id);
+        if (had && versions.current.get(k) === x.version) return had;
+        versions.current.set(k, x.version);
+        const seg = segmentOf(x, had && !had.split && !had.joined && !x.split && !x.joined ? had : undefined);
+        seg.rev = (had?.rev ?? 0) + 1;
+        if (had?.lockedReason) {
+          seg.locked = true;
+          seg.lockedReason = had.lockedReason;
+        }
+        sent.current.set(k, content(seg));
+        known.current.add(seg);
+        return seg;
+      });
+      dispatch({ type: "resegmented", at: { projectId: project.id, fileId, lang }, segments });
+    },
+    [dispatch],
+  );
+
+  const resegment = useCallback(
+    async (project: Project, fileId: string, lang: LangCode, segId: string, how: Resegment, before: Run[]) => {
+      if (!api || !project.remote) throw new Error("Sign in to the team server first.");
+      const n = project.remote.id;
+      const file = project.remote.files[fileId]!;
+      // What was typed in the segments is saved first, so it is what gets split or joined.
+      const list = () => latest.current.projects.find((p) => p.id === project.id)?.files.find((f) => f.id === fileId)?.segments[lang] ?? [];
+      const at = list().findIndex((x) => x.id === segId);
+      for (const x of list().slice(at, at + (how === "join" ? 2 : 1))) {
+        clearTimeout(pending.current.get(vkey(n, file, lang, x.id)));
+        pending.current.delete(vkey(n, file, lang, x.id));
+        await push(project, fileId, lang, x.id);
+      }
+      const fresh = await api.resegment(n, file, lang, segId, how, runsToCoreWhole(before), versions.current.get(vkey(n, file, lang, segId)) ?? 1);
+      takeSegments(project, fileId, lang, fresh);
+    },
+    [api, push, takeSegments],
+  );
+
   // Changed segments of server projects are saved shortly after the change.
   useEffect(() => {
     for (const p of state.projects) {
@@ -748,6 +805,18 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
                   const theirs = fresh.find((x) => x.id === segId);
                   if (theirs) dispatch({ type: "setComments", at: { projectId: p.id, fileId, lang }, segmentId: segId, comments: theirs.comments ?? [] });
                 });
+              });
+              return;
+            }
+            if (c.kind === "file-resegmented" && c.file && c.targetLang && c.segment) {
+              // Someone split or joined segments: the file's list is another one.
+              const k = vkey(p.remote.id, c.file, c.targetLang, c.segment);
+              if ((versions.current.get(k) ?? 0) >= (c.version ?? 0)) return;
+              const fileId = Object.entries(p.remote.files).find(([, n]) => n === c.file)?.[0];
+              const lang = c.targetLang;
+              if (!fileId) return;
+              later(`cut|${p.remote.id}|${c.file}|${lang}`, 150, () => {
+                void api.segments(p.remote!.id, c.file!, lang).then((fresh) => takeSegments(p, fileId, lang, fresh));
               });
               return;
             }
@@ -879,8 +948,9 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       open,
       openTermbase,
       listen,
+      resegment,
     }),
-    [conn, info, api, live, unsaved, projects, work, people, roles, error, signIn, setup, signInWithProvider, signOut, refresh, open, openTermbase, listen],
+    [conn, info, api, live, unsaved, projects, work, people, roles, error, signIn, setup, signInWithProvider, signOut, refresh, open, openTermbase, listen, resegment],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -1021,6 +1091,36 @@ export function useSegmentComments(project: Project | undefined, fileId: string,
       },
     };
   }, [api, conn?.user.username, dispatch, notify, n, file, projectId, fileId, lang, role]);
+}
+
+/**
+ * Splitting and joining the segments of a file in a language: on the
+ * server for a server project, here for one on this computer. Each
+ * resolves to the sentence that says why not, or to nothing when done.
+ */
+export function useResegment(project: Project | undefined, fileId: string, lang: LangCode) {
+  const { resegment } = useRemote();
+  const { state, dispatch } = useStore();
+  const latest = useRef(state);
+  latest.current = state;
+  const projectId = project?.id ?? "";
+  const remote = !!project?.remote;
+  return useCallback(
+    async (how: Resegment, segId: string, before: Run[] = []): Promise<string | undefined> => {
+      const p = latest.current.projects.find((x) => x.id === projectId);
+      const segments = p?.files.find((f) => f.id === fileId)?.segments[lang] ?? [];
+      const index = segments.findIndex((x) => x.id === segId);
+      if (!p || index < 0) return "The segment is not there any more.";
+      try {
+        if (remote) await resegment(p, fileId, lang, segId, how, before);
+        else dispatch({ type: "resegmented", at: { projectId, fileId, lang }, segments: await resegmentHere(how, segments, index, before) });
+      } catch (e) {
+        return e instanceof Error ? e.message : String(e);
+      }
+      return undefined;
+    },
+    [resegment, dispatch, projectId, fileId, lang, remote],
+  );
 }
 
 /**

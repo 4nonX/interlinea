@@ -1,7 +1,7 @@
 // Every document format goes from the file to the translated file:
 // PowerPoint, Excel, a web page and InDesign IDML in one project, and a
 // memoQ handoff package to its delivery package.
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { run } from "./harness.mjs";
 
@@ -212,6 +212,75 @@ export default () =>
       check(await translate("film.srt", "Auf Wiedersehen.", "Goodbye."), "a subtitle is a segment");
       check(await save("Save translated document", "film_en-GB.srt"), "the subtitles are saved");
       check(readFileSync(`${downloads}/film_en-GB.srt`, "utf8").endsWith("2\n00:00:04,000 --> 00:00:05,000\nGoodbye.\n"), "with their numbers and times");
+      // Segments are joined and split by the translator; the file is
+      // written with what was translated where its sentences stood.
+      {
+        const pick = async (source) => {
+          await evaluate(`(() => { const s = [...document.querySelectorAll('.seg')].find(s => s.querySelector('.seg-source').innerText.replace(/\\s+/g, ' ').includes(${JSON.stringify(source)})); (s.querySelector('.seg-target-view') ?? s.querySelector('.target-editor')).click(); })()`);
+          await sleep(400);
+        };
+        const button = (label) => `[...document.querySelectorAll('.tool-row button')].find(b => b.textContent.includes(${JSON.stringify(label)}))`;
+        const count = () => evaluate("document.querySelectorAll('.seg').length");
+        const activeSource = () => evaluate("document.querySelector('.seg.is-active .seg-source').innerText.replace(/\\s+/g, ' ').trim()");
+        await setValue("#ed-file", await evaluate(`[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes("app.properties")).value`));
+        await waitFor("document.querySelectorAll('.seg').length === 2");
+        await pick("Auf Wiedersehen");
+        check(await evaluate(`${button("Join with next")}.disabled && !${button("Split")}.disabled`), "strings of a properties file are not joined, each is its own paragraph");
+        await setValue("#ed-file", await evaluate(`[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes("LIESMICH.md")).value`));
+        await waitFor("document.querySelector('#ed-file option:checked')?.textContent.includes('LIESMICH.md') && document.querySelectorAll('.seg').length === 3");
+        await pick("Mietvertrag");
+        check(await evaluate(`${button("Join with next")}.disabled`), "a heading is not joined with the paragraph after it");
+        await pick("zahlt die Miete");
+        await evaluate(`${button("Join with next")}.click()`);
+        check(await waitFor("document.querySelectorAll('.seg').length === 2", 5000), "two sentences of a paragraph are joined");
+        check((await activeSource()).endsWith("zahlt die Miete. Der Vermieter haftet nicht.") && (await evaluate("!!document.querySelector('.seg.is-active .target-editor')")), "the joined segment is the open one, with both sentences: " + (await activeSource()));
+        await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable." && (await text()).includes("Joined from 2 segments of the document."), "it has the translation there was, and says what it is");
+        await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+        await key("a", "KeyA", 65, 2);
+        await send("Input.insertText", { text: "The landlord is not liable, and the tenant pays." });
+        await sleep(300);
+        check(await save("Save translated document", "LIESMICH_en-GB.md"), "the file is saved with the joined segment");
+        check(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8") === "# Mietvertrag\n\nThe landlord is not liable, and the tenant pays.\n\n```\nnicht übersetzen\n```\n", "one translation stands where the two sentences stood: " + JSON.stringify(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8")));
+        if (process.env.INTERLINEA_SHOTS) {
+          const shot = await send("Page.captureScreenshot", { format: "png" });
+          writeFileSync(`${process.env.INTERLINEA_SHOTS}/joined-segment.png`, Buffer.from(shot.data, "base64"));
+        }
+        check(await evaluate(`!!${button("Separate")} && !${button("Split")}`), "a joined segment is separated, not split");
+        await evaluate(`${button("Separate")}.click()`);
+        check(await waitFor("document.querySelectorAll('.seg').length === 3", 5000), "separated, the sentences stand apart again");
+        // Split: the caret in the source is the place.
+        await pick("Der Vermieter haftet nicht.");
+        await evaluate(`${button("Split")}.click()`);
+        check(await waitFor("!!document.querySelector('.split-source')", 5000) && (await evaluate("document.activeElement?.classList.contains('split-source')")), "the split dialog shows the source, with the caret in it");
+        check(await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').disabled"), "at the start there is nothing to split");
+        await evaluate("(() => { const el = document.querySelector('.split-source'); const r = document.createRange(); r.setStart(el.firstChild, 14); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()");
+        check(await waitFor("document.querySelector('.split-parts')?.innerText.replace(/\\s+/g, ' ').includes('First part Der Vermieter Second part haftet nicht.')", 3000), "the two parts are shown: " + (await evaluate("document.querySelector('.split-parts').innerText")));
+        if (process.env.INTERLINEA_SHOTS) {
+          const shot = await send("Page.captureScreenshot", { format: "png" });
+          writeFileSync(`${process.env.INTERLINEA_SHOTS}/split-dialog.png`, Buffer.from(shot.data, "base64"));
+        }
+        await send("Input.insertText", { text: "x" });
+        await sleep(150);
+        check((await evaluate("document.querySelector('.split-source').innerText")) === "Der Vermieter haftet nicht.", "the source is not changed by typing");
+        await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').click()");
+        check(await waitFor("document.querySelectorAll('.seg').length === 4 && !document.querySelector('.split-source')", 5000), "split, there is one segment more");
+        check((await activeSource()) === "Der Vermieter" && (await text()).includes("A part of a segment of the document that was split."), "the first part is the open one: " + (await activeSource()));
+        await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable.", "and keeps the translation the segment had");
+        await pick("haftet nicht.");
+        await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+        await send("Input.insertText", { text: "is not liable." });
+        await sleep(300);
+        check(await save("Save translated document", "LIESMICH_en-GB.md"), "the file is saved with the split segment");
+        check(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8").includes("the tenant pays. The landlord is not liable. is not liable.\n"), "the parts' translations stand one after the other: " + JSON.stringify(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8")));
+        await pick("Der Vermieter");
+        await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+        await key("j", "KeyJ", 74, 9);
+        check(await waitFor("document.querySelectorAll('.seg').length === 3", 5000) && (await activeSource()) === "Der Vermieter haftet nicht.", "Alt+Shift+J joins the parts into the segment it was");
+        await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable. is not liable.", "with what was translated of its parts");
+      }
       check(errors.length === 0, "no console errors: " + errors.join(" | "));
     },
   );

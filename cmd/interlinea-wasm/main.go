@@ -24,10 +24,10 @@ import (
 	"syscall/js"
 
 	"github.com/4nonX/interlinea/align"
-	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
 	"github.com/4nonX/interlinea/filter/formats"
+	"github.com/4nonX/interlinea/project"
 )
 
 func result(v any, err error) any {
@@ -105,7 +105,7 @@ func merge(_ js.Value, args []js.Value) (out any) {
 		}
 	}()
 	if len(args) < 4 {
-		return result(nil, fmt.Errorf("merge(bytes, lang, target, translations, options)"))
+		return result(nil, fmt.Errorf("merge(bytes, lang, target, segments, options)"))
 	}
 	format, opts, err := options(args, 4)
 	if err != nil {
@@ -115,15 +115,19 @@ func merge(_ js.Value, args []js.Value) (out any) {
 	if err != nil {
 		return result(nil, err)
 	}
-	var raw map[string]content.Content
-	if err := json.Unmarshal([]byte(args[3].String()), &raw); err != nil {
-		return result(nil, fmt.Errorf("translations: %w", err))
+	// The file's segments as the translator has them, split and joined
+	// ones among them: each with its id, source, target and what was
+	// done to it.
+	var segs []project.Segment
+	if err := json.Unmarshal([]byte(args[3].String()), &segs); err != nil {
+		return result(nil, fmt.Errorf("segments: %w", err))
 	}
+	raw := project.Translations(segs)
 	var out2 []byte
 	if format == formats.Word {
-		out2, err = docx.Merge(data, args[1].String(), args[2].String(), filter.Translations(raw), opts)
+		out2, err = docx.Merge(data, args[1].String(), args[2].String(), raw, opts)
 	} else {
-		out2, err = formats.Merge(format, data, args[1].String(), args[2].String(), filter.Translations(raw))
+		out2, err = formats.Merge(format, data, args[1].String(), args[2].String(), raw)
 	}
 	if err != nil {
 		return result(nil, err)
@@ -181,7 +185,7 @@ func main() {
 		"extract": js.FuncOf(extract),
 		"align":   guard(alignFiles),
 		"merge":   js.FuncOf(merge),
-		"version": "7",
+		"version": "8",
 	}
 	for k, v := range tmFuncs() {
 		api[k] = v

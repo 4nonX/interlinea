@@ -58,13 +58,18 @@ function chip(t: TagRun): HTMLElement {
   return el;
 }
 
-function render(el: HTMLElement, runs: Run[]) {
+export function render(el: HTMLElement, runs: Run[]) {
   el.textContent = "";
   for (const r of runs)
     el.append(typeof r === "string" ? document.createTextNode(r) : chip(r));
 }
 
-function read(el: HTMLElement): Run[] {
+/**
+ * The runs an element shows. Text a person typed has the non-breaking
+ * spaces browsers put at its edges turned back into spaces; asIs leaves
+ * text that was only shown as it is.
+ */
+export function read(el: HTMLElement, asIs = false): Run[] {
   const out: Run[] = [];
   const walk = (n: Node) => {
     if (n.nodeType === Node.TEXT_NODE) {
@@ -86,6 +91,7 @@ function read(el: HTMLElement): Run[] {
     n.childNodes.forEach(walk);
   };
   el.childNodes.forEach(walk);
+  if (asIs) return normalize(out);
   // Browsers insert non-breaking spaces at the edges of editable text.
   return normalize(
     out.map((r) => (typeof r === "string" ? r.replace(/ /g, " ") : r)),

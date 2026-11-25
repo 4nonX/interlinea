@@ -219,21 +219,56 @@ func fill(f *fileUpload, ex *filter.Extraction, langs []string) error {
 		return nil
 	}
 	for lang, segs := range f.Segments {
-		if len(segs) != len(ex.Units) {
-			return problemf("%s has %d segments, not %d as sent for %s.", f.Name, len(ex.Units), len(segs), lang)
+		// Segments the translator split or joined stand for the file's
+		// units all the same.
+		units := project.Units(segs)
+		if len(units) != len(ex.Units) {
+			return problemf("%s has %d segments, not %d as sent for %s.", f.Name, len(ex.Units), len(units), lang)
 		}
-		for i := range segs {
+		for i, got := range units {
 			u := ex.Units[i]
-			if segs[i].ID != u.ID || plainKey(segs[i].Source.Plain()) != plainKey(u.Source.Plain()) {
+			if got.ID != u.ID || plainKey(got.Source.Plain()) != plainKey(u.Source.Plain()) {
 				return problemf("Segment %d of %s is not the file's: the file has %q.", i+1, f.Name, u.Source.Plain())
 			}
 			fromFile := unitSegment(u)
-			segs[i].Source = u.Source
-			segs[i].Locked = segs[i].Locked || u.Locked
-			segs[i].Block, segs[i].MaxLength, segs[i].Notes, segs[i].File = fromFile.Block, fromFile.MaxLength, fromFile.Notes, fromFile.File
+			for _, k := range got.Segments {
+				sg := &segs[k]
+				switch {
+				case sg.Split != nil:
+					if !formats.Document(f.Format) || u.Locked || fromFile.File != nil {
+						return problemf("Segment %d of %s is sent in parts, but its file keeps it whole.", i+1, f.Name)
+					}
+					sg.Block, sg.MaxLength, sg.Notes, sg.File = fromFile.Block, fromFile.MaxLength, fromFile.Notes, nil
+				case len(sg.Joined) > 0:
+					if !formats.Document(f.Format) || u.Locked || fromFile.File != nil || u.Block != ex.Units[i-indexIn(sg.Joined, u.ID)].Block {
+						return problemf("Segment %d of %s is sent joined to another, but its file keeps them apart.", i+1, f.Name)
+					}
+					for j := range sg.Joined {
+						if sg.Joined[j].ID == u.ID {
+							sg.Joined[j].Source = u.Source
+						}
+					}
+					sg.Source = project.JoinedSource(sg.Joined)
+					sg.Block, sg.File = fromFile.Block, nil
+				default:
+					sg.Source = u.Source
+					sg.Locked = sg.Locked || u.Locked
+					sg.Block, sg.MaxLength, sg.Notes, sg.File = fromFile.Block, fromFile.MaxLength, fromFile.Notes, fromFile.File
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// indexIn is the place of a unit among the units of a joined segment.
+func indexIn(units []project.JoinedUnit, id string) int {
+	for i, u := range units {
+		if u.ID == id {
+			return i
+		}
+	}
+	return 0
 }
 
 func unitSegments(units []filter.Unit) []project.Segment {
@@ -271,11 +306,12 @@ func unitSegment(u filter.Unit) project.Segment {
 // matches reports whether segments are a reading of the file.
 func matches(ex *filter.Extraction, segs map[string][]project.Segment) bool {
 	for _, ss := range segs {
-		if len(ss) != len(ex.Units) {
+		units := project.Units(ss)
+		if len(units) != len(ex.Units) {
 			return false
 		}
-		for i := range ss {
-			if ss[i].ID != ex.Units[i].ID || plainKey(ss[i].Source.Plain()) != plainKey(ex.Units[i].Source.Plain()) {
+		for i := range units {
+			if units[i].ID != ex.Units[i].ID || plainKey(units[i].Source.Plain()) != plainKey(ex.Units[i].Source.Plain()) {
 				return false
 			}
 		}
@@ -423,13 +459,7 @@ func fileStateOf(s project.Segment) filter.State {
 // Segments without a translation keep their source text.
 func translatedFile(format string, data []byte, sourceLang, targetLang string, segs []project.Segment) ([]byte, error) {
 	if formats.Document(format) {
-		tr := filter.Translations{}
-		for _, s := range segs {
-			if strings.TrimSpace(s.Target.Plain()) != "" {
-				tr[s.ID] = s.Target
-			}
-		}
-		return formats.Merge(format, data, sourceLang, targetLang, tr)
+		return formats.Merge(format, data, sourceLang, targetLang, project.Translations(segs))
 	}
 	switch format {
 	case "xliff", formats.MemoQArchive:

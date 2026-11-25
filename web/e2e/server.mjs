@@ -320,6 +320,42 @@ export default () =>
         check(r.status === 404, "a comment that is not there is not found");
       }
 
+      // Splitting and joining happen on the server: Ben's is there for
+      // everyone, and Anna's shows here without reloading.
+      {
+        const onServer = () => api("GET", `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}`, admin);
+        const button = (label) => `[...document.querySelectorAll('.tool-row button')].find(b => b.textContent.includes(${JSON.stringify(label)}))`;
+        const before = await onServer();
+        const shown = await evaluate("document.querySelectorAll('.seg').length");
+        const openId = before[(await evaluate("[...document.querySelectorAll('.seg')].findIndex(s => s.classList.contains('is-active'))"))].id;
+        await evaluate(`${button("Split")}.click()`);
+        check(await waitFor("!!document.querySelector('.split-source')", 5000), "Ben opens the split dialog");
+        await evaluate("(() => { const el = document.querySelector('.split-source'); const n = [...el.childNodes].find(n => n.nodeType === 3 && /\\p{L} \\p{L}/u.test(n.textContent)); const r = document.createRange(); r.setStart(n, n.textContent.search(/(?<=\\p{L}) (?=\\p{L})/u) + 1); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()");
+        await waitFor("![...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').disabled", 3000);
+        await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').click()");
+        check(await waitFor(`document.querySelectorAll('.seg').length === ${shown + 1} && !document.querySelector('.split-source')`, 10000), "split, Ben has one segment more: " + (await evaluate("document.querySelector('dialog[open] .error')?.innerText ?? ''")));
+        let now = await onServer();
+        check(now.length === before.length + 1 && now.some((x) => x.id === openId + "#1" && x.changedBy === "ben") && now.some((x) => x.id === openId + "#2" && x.split?.unit === openId), "the server has the two parts, as Ben's change: " + openId + " / " + JSON.stringify(now.filter((x) => x.split).map((x) => [x.id, x.changedBy])));
+        await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+        await key("j", "KeyJ", 74, 9);
+        check(await waitFor(`document.querySelectorAll('.seg').length === ${shown}`, 10000), "Alt+Shift+J joins the parts again");
+        now = await onServer();
+        check(now.length === before.length && now.some((x) => x.id === openId && !x.split), "and on the server the segment is whole again");
+        // Anna splits another segment.
+        const other = now.findLast((x) => x.id !== openId && !x.locked && x.source.length === 1 && /\p{L} \p{L}/u.test(x.source[0].text ?? ""));
+        const cutAt = other.source[0].text.search(/(?<=\p{L}) (?=\p{L})/u);
+        const r = await fetch(`${base}/api/projects/${p.id}/segments/split?file=${encodeURIComponent(file)}&lang=${lang}&segment=${encodeURIComponent(other.id)}&version=${other.version}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${admin}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ before: [{ text: other.source[0].text.slice(0, cutAt) }] }),
+        });
+        check(r.status === 200, "Anna splits a segment on the server: " + r.status);
+        check(await waitFor(`document.querySelectorAll('.seg').length === ${shown + 1}`, 10000), "her split shows in Ben's editor without reloading");
+        const r2 = await fetch(`${base}/api/projects/${p.id}/segments/join?file=${encodeURIComponent(file)}&lang=${lang}&segment=${encodeURIComponent(other.id + "#1")}&version=${other.version + 1}`, { method: "POST", headers: { Authorization: `Bearer ${admin}` } });
+        check(r2.status === 200 && (await waitFor(`document.querySelectorAll('.seg').length === ${shown}`, 10000)), "and so does her joining it again");
+      }
+
       // The memory search asks the server: Ben's confirmed translation was
       // not in what the browser loaded, but is found.
       await key("k", "KeyK", 75, 2);

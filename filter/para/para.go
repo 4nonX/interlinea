@@ -119,19 +119,57 @@ func (p *Para) Translated(ex *filter.Extraction, tr filter.Translations) bool {
 func (p *Para) Build(ex *filter.Extraction, tr filter.Translations) content.Content {
 	out := append(content.Content{}, p.Prefix...)
 	n := 0
-	for _, pc := range p.Pieces {
+	for i := 0; i < len(p.Pieces); i++ {
+		pc := p.Pieces[i]
 		if !pc.Unit {
 			out = append(out, pc.Content...)
 			continue
 		}
 		target, ok := tr[ex.Units[p.First+n].ID]
 		n++
-		if !ok || len(target) == 0 {
-			target = pc.Content
+		if !ok || len(target) == 0 || filter.IsJoined(target) {
+			out = append(out, nest(pc.Content, pc)...)
+			continue
+		}
+		// The units joined to this one are translated with it: their
+		// tags count on from its own, and the tags that stood between
+		// them follow the translation.
+		var between content.Content
+		for {
+			k := i + 1
+			var gap content.Content
+			for k < len(p.Pieces) && !p.Pieces[k].Unit {
+				gap = append(gap, p.Pieces[k].Content...)
+				k++
+			}
+			if k >= len(p.Pieces) || !filter.IsJoined(tr[ex.Units[p.First+n].ID]) {
+				break
+			}
+			pc = joinPieces(pc, p.Pieces[k])
+			for _, r := range gap {
+				if r.IsTag() {
+					between = between.AppendTag(*r.Tag)
+				}
+			}
+			i, n = k, n+1
 		}
 		out = append(out, nest(target, pc)...)
+		out = append(out, between...)
 	}
 	return append(out, p.Suffix...)
+}
+
+// joinPieces is the unit a and the unit b joined to it, as one.
+func joinPieces(a, b Piece) Piece {
+	more, back := filter.JoinTags(a.Content, b.Content)
+	out := Piece{Unit: true, Content: append(a.Content.Clone(), more...), IDs: map[string]string{}}
+	for id, para := range a.IDs {
+		out.IDs[id] = para
+	}
+	for id, own := range back {
+		out.IDs[id] = b.IDs[own]
+	}
+	return out
 }
 
 // nest maps a translation's tags to the unit's own and makes pairs nest.

@@ -625,3 +625,136 @@ func TestDictionaries(t *testing.T) {
 		t.Fatalf("deleted twice: %v", err)
 	}
 }
+
+func TestResegment(t *testing.T) {
+	db, _ := openTemp(t)
+	fs := files()
+	lease := []project.Segment{
+		{ID: "p1/s1", Block: "p1", Source: content.Text("Der Mieter zahlt die Miete und die Kaution."), Target: content.Text("The tenant pays."), Status: project.StatusConfirmed},
+		{ID: "p1/s2", Block: "p1", Source: content.Text("Sie ist fällig."), Target: content.Text("It is due."), Status: project.StatusDraft},
+		{ID: "p2/s1", Block: "p2", Source: content.Text("Schluss."), Status: project.StatusNew},
+	}
+	fs[0].Segments = map[string][]project.Segment{"en-GB": lease, "fr-FR": lease}
+	p, err := db.Create(ctx, settings("Umschnitt"), fs, cat, "anna")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const file = "Mietvertrag.docx"
+	if _, err := db.Assign(ctx, Assignment{ProjectID: p.ID, File: file, TargetLang: "en-GB", FromSegment: "p1/s1", ToSegment: "p1/s2", UserID: 7, UserName: "ben", Task: TaskTranslate}, "anna"); err != nil {
+		t.Fatal(err)
+	}
+	ids := func(ss []StoredSegment) string {
+		var out []string
+		for _, s := range ss {
+			out = append(out, s.ID)
+		}
+		return strings.Join(out, " ")
+	}
+	// A stale copy is refused, and so is what the segments do not allow.
+	if _, err := db.Resegment(ctx, p.ID, file, "en-gb", "p1/s1", ResegmentSplit, content.Text("Der Mieter zahlt die Miete"), 9, "ben"); !errors.Is(err, ErrConflict) {
+		t.Errorf("stale: %v", err)
+	}
+	var no *project.ErrResegment
+	if _, err := db.Resegment(ctx, p.ID, file, "en-GB", "p1/s2", ResegmentJoin, nil, 1, "ben"); !errors.As(err, &no) {
+		t.Errorf("across paragraphs: %v", err)
+	}
+	if _, err := db.Resegment(ctx, p.ID, file, "en-GB", "nope", ResegmentJoin, nil, 1, "ben"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown: %v", err)
+	}
+	// Split: two parts where one was, the rest moves on.
+	got, err := db.Resegment(ctx, p.ID, file, "en-gb", "p1/s1", ResegmentSplit, content.Text("Der Mieter zahlt die Miete"), 1, "ben")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids(got) != "p1/s1#1 p1/s1#2 p1/s2 p2/s1" || got[0].Version != 2 || got[1].Version != 2 || got[2].Version != 1 || got[0].ChangedBy != "ben" || got[1].Split == nil || got[1].Split.Space != " " {
+		t.Fatalf("split: %s %+v", ids(got), got[1])
+	}
+	if again, _ := db.Segments(ctx, p.ID, file, "en-GB"); ids(again) != ids(got) || again[1].Source.Plain() != "und die Kaution." || again[0].Target.Plain() != "The tenant pays." || again[0].Status != project.StatusDraft {
+		t.Errorf("read again: %s %+v", ids(again), again)
+	}
+	// The other language keeps its segments.
+	if fr, _ := db.Segments(ctx, p.ID, file, "fr-FR"); ids(fr) != "p1/s1 p1/s2 p2/s1" {
+		t.Errorf("fr: %s", ids(fr))
+	}
+	// The work given out begins at the first part now.
+	as, _ := db.Assignments(ctx, p.ID)
+	if len(as) != 1 || as[0].FromSegment != "p1/s1#1" || as[0].ToSegment != "p1/s2" {
+		t.Errorf("assignment after the split: %+v", as)
+	}
+	for _, id := range []string{"p1/s1#1", "p1/s1#2", "p1/s2"} {
+		if mine, err := db.AssignedTo(ctx, p.ID, 7, file, "en-GB", id, TaskTranslate); err != nil || !mine {
+			t.Errorf("%s is ben's: %v %v", id, mine, err)
+		}
+	}
+	if mine, _ := db.AssignedTo(ctx, p.ID, 7, file, "en-GB", "p2/s1", TaskTranslate); mine {
+		t.Error("the last segment is not ben's")
+	}
+	// The parts are saved like any segment, then joined back.
+	if _, err := db.SaveSegment(ctx, p.ID, file, "en-GB", "p1/s1#2", content.Text("and the deposit."), project.StatusConfirmed, 2, "ben"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1#1", ResegmentJoin, nil, 2, "ben")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids(got) != "p1/s1 p1/s2 p2/s1" || got[0].Target.Plain() != "The tenant pays. and the deposit." || got[0].Status != project.StatusDraft || got[0].Version != 3 || got[0].Split != nil {
+		t.Fatalf("joined back: %s %+v", ids(got), got[0])
+	}
+	// Two sentences of a paragraph are joined, and the work ends at what they are now.
+	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1", ResegmentJoin, nil, 3, "ben")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids(got) != "p1/s1 p2/s1" || len(got[0].Joined) != 2 || got[0].Source.Plain() != "Der Mieter zahlt die Miete und die Kaution. Sie ist fällig." {
+		t.Fatalf("joined: %s %+v", ids(got), got[0])
+	}
+	if as, _ := db.Assignments(ctx, p.ID); as[0].FromSegment != "p1/s1" || as[0].ToSegment != "p1/s1" {
+		t.Errorf("assignment after the join: %+v", as[0])
+	}
+	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1", ResegmentSeparate, nil, 4, "ben")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids(got) != "p1/s1 p1/s2 p2/s1" || got[1].Status != project.StatusNew || got[1].Version != 5 {
+		t.Fatalf("separated: %s", ids(got))
+	}
+	if as, _ := db.Assignments(ctx, p.ID); as[0].FromSegment != "p1/s1" || as[0].ToSegment != "p1/s2" {
+		t.Errorf("assignment after separating: %+v", as[0])
+	}
+	// Each is in the change log.
+	changes, _, err := db.Changes(ctx, ChangeQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, c := range changes {
+		if c.Kind == ChangeResegmented {
+			n++
+		}
+	}
+	if n != 4 {
+		t.Errorf("%d changes logged, want 4", n)
+	}
+	// A range given out for every language at once is given out for each, to the same person.
+	if _, err := db.Assign(ctx, Assignment{ProjectID: p.ID, File: "Anlage/Hausordnung.docx", FromSegment: "s1", ToSegment: "s1", UserID: 8, UserName: "cem", Task: TaskTranslate, Due: "2026-12-01T10:00:00Z"}, "anna"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Resegment(ctx, p.ID, "Anlage/Hausordnung.docx", "en-GB", "s1", ResegmentSplit, content.Text("Haus"), 1, "cem"); err != nil {
+		t.Fatal(err)
+	}
+	as, _ = db.Assignments(ctx, p.ID)
+	found := map[string]string{}
+	for _, a := range as {
+		if a.UserID == 8 {
+			found[a.TargetLang] = a.FromSegment + " " + a.ToSegment + " " + a.Due
+		}
+	}
+	if len(found) != 2 || found["en-GB"] != "s1#1 s1#2 2026-12-01T10:00:00Z" || found["fr-FR"] != "s1 s1 2026-12-01T10:00:00Z" {
+		t.Errorf("given out per language: %+v", found)
+	}
+	for lang, id := range map[string]string{"en-GB": "s1#2", "fr-FR": "s1"} {
+		if mine, err := db.AssignedTo(ctx, p.ID, 8, "Anlage/Hausordnung.docx", lang, id, TaskTranslate); err != nil || !mine {
+			t.Errorf("%s in %s is cem's: %v %v", id, lang, mine, err)
+		}
+	}
+}
