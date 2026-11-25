@@ -1,18 +1,33 @@
 # Interlinea
 
-An open-source translation workspace: CAT editor, terminology, translation
-memory and project workflow in one tool, translation first.
+An open-source translation workspace: CAT editor, terminology, translation memory and project workflow in one tool, as a desktop app, a browser client and a team server.
+
+[![Version](https://img.shields.io/github/v/release/4nonX/interlinea?style=flat-square)](https://github.com/4nonX/interlinea/releases/latest)
+[![License](https://img.shields.io/badge/license-AGPLv3-blue?style=flat-square)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square&logo=go&logoColor=white)](go.mod)
+[![Qt](https://img.shields.io/badge/Qt-6-41CD52?style=flat-square&logo=qt&logoColor=white)](docs/desktop.md)
+[![CI](https://github.com/4nonX/interlinea/actions/workflows/ci.yml/badge.svg)](https://github.com/4nonX/interlinea/actions/workflows/ci.yml)
+
+![The translation editor](docs/screenshots/editor.png)
+
+The editor, the same in the desktop app and in the browser: source and
+target side by side, tags as numbered markers, terms from the termbase
+underlined in the source with their translation in the results, memory
+matches, checks and review for the segment, and the shortcuts from Trados
+Studio and memoQ.
+
+---
+
+| For | What |
+|---|---|
+| Translators | An editor with translation memory, concordance, terminology, quality checks, spelling, grammar checking, and suggestions from a translation service of your own |
+| Terminologists | Termbases with one concept per entry, review of what projects add and change, and exchange as TBX, MultiTerm, CSV and Excel |
+| Project managers | Projects from documents, bilingual files and packages, analysis, pre-translation, work given to translators and reviewers, scored review |
+| Teams | A team server that keeps terminology, memories and projects in one place, with accounts, roles and sign-in through a provider |
+| Files | DOCX, PPTX, XLSX, ODT, ODS, ODP, HTML, IDML, XML, Markdown, PDF, software strings, subtitles, text, XLIFF, SDLXLIFF, MQXLIFF, Trados and memoQ packages |
 
 This repository holds the Go core, the team server, the native desktop app
-(Qt 6) and a browser client.
-
-![The translation editor in the browser client](docs/screenshots/editor.png)
-
-The editor in the browser client: source and target side by side, tags as
-numbered markers, terms from the termbase underlined in the source with
-their translation in the results, checks for the segment, and the
-shortcuts from Trados Studio and memoQ. The desktop app gets the same
-editor in its next stage.
+(Qt 6) and the browser client.
 
 ![The desktop app's project list](docs/screenshots/projects.png)
 
@@ -39,8 +54,7 @@ release brought.
   ```
 
   Then open http://localhost:8080. For PostgreSQL, take
-  [compose.yaml](compose.yaml). While the repository is private, so is
-  the image: sign in first with `docker login ghcr.io`.
+  [compose.yaml](compose.yaml).
 - **Team server, without Docker.** Unpack
   `interlinea-server-<version>-<system>-<processor>` and start
   `interlinea-server -web web`. The command line tool `interlinea` is in

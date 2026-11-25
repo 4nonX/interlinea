@@ -41,9 +41,8 @@ docker run -d --name interlinea -p 8080:8080 -v interlinea:/data \
   ghcr.io/4nonx/interlinea-server:latest
 ```
 
-While the repository is private, so is the image: `docker login ghcr.io`
-first, with a GitHub token that may read packages. `docker build -t
-interlinea-server .` builds the same image from the source.
+`docker build -t interlinea-server .` builds the same image from the
+source.
 
 `compose.yaml` runs it with PostgreSQL:
 

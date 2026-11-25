@@ -7,8 +7,10 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
-What the first release will hold: the core, the team server, the web
-client and the desktop app, with installers and a server image.
+## [0.1.0] - 2026-11-25
+
+The first release: the core, the team server, the web client and the
+desktop app, with installers and a server image.
 
 Interlinea is free software under the GNU Affero General Public License,
 version 3.
@@ -182,4 +184,5 @@ version 3.
   a test, and the steps of each store's schema can no longer be changed
   once recorded.
 
-[Unreleased]: https://github.com/4nonX/interlinea/commits/main
+[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/4nonX/interlinea/releases/tag/v0.1.0
