@@ -31,7 +31,8 @@ QJsonArray withValue(QJsonArray fields, const QString &field, const QString &val
 QString head(const QJsonObject &entry, const QString &lang, QString *in = nullptr);
 // "approved" as "Approved".
 QString statusLabel(const QString &status);
-// Whether the text is one of the terms, case aside.
+// Whether the text is one of the terms, space aside (case counts: a
+// spelling that differs in case is a term of its own).
 bool hasTerm(const QJsonArray &terms, const QString &text, int except = -1);
 // All terms of all languages, and every entry field, in one lower-case
 // text to search.

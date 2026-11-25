@@ -141,6 +141,15 @@ func Key(s string) string {
 	return strings.ToLower(strings.Join(strings.FieldsFunc(s, unicode.IsSpace), " "))
 }
 
+// SameKey normalizes a term for telling the terms of one entry apart:
+// surrounding space and inner runs of space do not count, case does.
+// Termbases keep spellings that differ only in case as terms of their own,
+// a preferred "MistJet" beside a forbidden "Mistjet", so an entry may hold
+// both; finding a term in text (Key) still ignores case.
+func SameKey(s string) string {
+	return strings.Join(strings.FieldsFunc(s, unicode.IsSpace), " ")
+}
+
 // NormalizeLang returns a canonical BCP 47 tag, or the input trimmed when it
 // is not one.
 func NormalizeLang(s string) string {
@@ -186,10 +195,10 @@ func (e *Entry) Clean() bool {
 		terms := l.Terms[:0]
 		for _, t := range l.Terms {
 			t.Text = strings.TrimSpace(t.Text)
-			if t.Text == "" || seen[Key(t.Text)] {
+			if t.Text == "" || seen[SameKey(t.Text)] {
 				continue
 			}
-			seen[Key(t.Text)] = true
+			seen[SameKey(t.Text)] = true
 			t.Status = NormalizeStatus(t.Status)
 			t.Fields = cleanValues(t.Fields)
 			terms = append(terms, t)
@@ -220,11 +229,11 @@ func mergeSameLanguage(langs []Language) []Language {
 		}
 		seen := map[string]bool{}
 		for _, t := range out[i].Terms {
-			seen[Key(t.Text)] = true
+			seen[SameKey(t.Text)] = true
 		}
 		for _, t := range l.Terms {
-			if !seen[Key(t.Text)] {
-				seen[Key(t.Text)] = true
+			if !seen[SameKey(t.Text)] {
+				seen[SameKey(t.Text)] = true
 				out[i].Terms = append(out[i].Terms, t)
 			}
 		}
@@ -250,9 +259,11 @@ func NormalizeStatus(s string) string {
 	switch k := strings.ToLower(strings.TrimSpace(s)); k {
 	case "":
 		return ""
-	case "approved", "preferred", "preferredterm-admn-sts", "preferredterm", "preferred term", "freigegeben", "bevorzugt", "standardized", "normativeauthorization", "1", "yes", "ja":
+	case "approved", "preferred", "preferredterm-admn-sts", "preferredterm", "preferred term", "freigegeben", "bevorzugt", "standardized", "normativeauthorization", "1", "yes", "ja",
+		"allowed", "erlaubt", "zulässig", "autorisé", "approuvé", "préféré", "aprobado", "preferido", "approvato", "preferito":
 		return StatusApproved
-	case "forbidden", "deprecated", "deprecatedterm-admn-sts", "deprecatedterm", "supersededterm-admn-sts", "superseded", "obsolete", "verboten", "nicht verwenden", "do not use", "rejected", "abgelehnt", "0", "no", "nein":
+	case "forbidden", "deprecated", "deprecatedterm-admn-sts", "deprecatedterm", "supersededterm-admn-sts", "superseded", "obsolete", "verboten", "nicht verwenden", "do not use", "rejected", "abgelehnt", "0", "no", "nein",
+		"not allowed", "not permitted", "prohibited", "avoid", "forbidden term", "nicht erlaubt", "nicht zulässig", "unzulässig", "vermeiden", "interdit", "non autorisé", "à éviter", "prohibido", "no usar", "vietato", "da evitare":
 		return StatusForbidden
 	case "proposed", "admitted", "admittedterm-admn-sts", "admittedterm", "new", "draft", "vorgeschlagen", "zugelassen", "neu", "pending", "none":
 		return StatusProposed

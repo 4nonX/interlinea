@@ -168,7 +168,7 @@ func unionTerms(ls ...Language) []string {
 	seen := map[string]bool{}
 	for _, l := range []Language{ls[2], ls[1], ls[0]} {
 		for _, t := range l.Terms {
-			k := Key(t.Text)
+			k := SameKey(t.Text)
 			if !seen[k] {
 				seen[k] = true
 				out = append(out, k)
@@ -180,7 +180,7 @@ func unionTerms(ls ...Language) []string {
 
 func termOf(l Language, key string) *Term {
 	for i := range l.Terms {
-		if Key(l.Terms[i].Text) == key {
+		if SameKey(l.Terms[i].Text) == key {
 			return &l.Terms[i]
 		}
 	}

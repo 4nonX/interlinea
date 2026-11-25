@@ -7,6 +7,26 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Fixed
+
+- A termbase keeps spellings that differ only in case as terms of their
+  own, as MultiTerm does: a forbidden "Mistjet" beside the preferred
+  "MistJet" is no longer dropped on import, may be added by hand, and the
+  term check reports it only where it is written so.
+- Terms marked "not allowed", as in Trados's own sample termbase, and the
+  other usual words for it in English, German, French, Spanish and Italian,
+  are read as forbidden instead of proposed.
+- A Trados segment from a memory or machine translation that is changed
+  keeps where it came from in an `sdl:prev-origin`, as Trados writes it.
+
+### Tests
+
+- Files written by Trados Studio, MultiTerm and memoQ, from public
+  repositories, are read, translated and written back in the tests: nine
+  SDLXLIFF files, two MultiTerm termbases, four memoQ XLIFF files and a
+  memoQ archive. Where each comes from is in
+  `internal/realworld/testdata/README.md`.
+
 ## [0.2.0] - 2026-11-25
 
 Termbases made from scratch, with fields of every kind; glossaries to

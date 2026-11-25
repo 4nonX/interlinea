@@ -151,3 +151,52 @@ func TestCheck(t *testing.T) {
 		t.Fatalf("inflected target: %+v", issues)
 	}
 }
+
+// Spellings that differ only in case are terms of their own: a forbidden
+// "Mistjet" beside the preferred "MistJet" (as in a MultiTerm termbase of
+// RWS's samples) is reported where it is written so, and the preferred
+// spelling is not mistaken for it.
+func TestCheckCaseVariants(t *testing.T) {
+	x := NewIndex()
+	e := entry("24", lang("de", ok("MistJet")), lang("en", ok("MistJet"), bad("Mistjet")))
+	if !e.Clean() || len(e.Languages[1].Terms) != 2 {
+		t.Fatalf("Clean dropped a spelling: %+v", e.Languages)
+	}
+	x.Add("master", []Entry{e})
+	hits := x.Recognize("Der MistJet druckt.", "de", "en")
+	if len(hits) != 1 {
+		t.Fatalf("hits: %+v", hits)
+	}
+	if issues := x.Check(hits, "The MistJet prints.", "en"); len(issues) != 0 {
+		t.Fatalf("preferred spelling reported: %+v", issues)
+	}
+	issues := x.Check(hits, "The Mistjet prints.", "en")
+	if len(issues) != 1 || issues[0].Kind != "forbidden" || issues[0].Found != "Mistjet" {
+		t.Fatalf("forbidden spelling: %+v", issues)
+	}
+	// Inflected, the case of the letters both have still decides.
+	if issues := x.Check(hits, "Two Mistjets print.", "en"); len(issues) != 1 || issues[0].Found != "Mistjets" {
+		t.Fatalf("inflected forbidden spelling: %+v", issues)
+	}
+	if issues := x.Check(hits, "Two MistJets print.", "en"); len(issues) != 0 {
+		t.Fatalf("inflected preferred spelling: %+v", issues)
+	}
+	// With no source term found, the entry's own preferred spelling still
+	// keeps its forbidden one strict.
+	if issues := x.Check(nil, "The MistJet prints.", "en"); len(issues) != 0 {
+		t.Fatalf("unrecognized entry: %+v", issues)
+	}
+	if issues := x.Check(nil, "The Mistjet prints.", "en"); len(issues) != 1 {
+		t.Fatalf("unrecognized entry, forbidden spelling: %+v", issues)
+	}
+}
+
+func TestSameKey(t *testing.T) {
+	if SameKey("  Mist  Jet ") != "Mist Jet" || SameKey("MistJet") == SameKey("Mistjet") || Key("MistJet") != Key("Mistjet") {
+		t.Fatal("SameKey")
+	}
+	langs := mergeSameLanguage([]Language{lang("en", ok("MistJet")), lang("en", bad("Mistjet"), ok("MistJet"))})
+	if len(langs) != 1 || len(langs[0].Terms) != 2 || langs[0].Terms[1].Text != "Mistjet" {
+		t.Fatalf("mergeSameLanguage: %+v", langs)
+	}
+}

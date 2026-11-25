@@ -166,7 +166,10 @@ private slots:
         QString in;
         QCOMPARE(TermData::head(e, QStringLiteral("fr-FR"), &in), QStringLiteral("Kaution"));
         QCOMPARE(in, QStringLiteral("de-DE"));
-        QVERIFY(TermData::hasTerm(TermData::terms(e, QStringLiteral("en-GB")), QStringLiteral(" Deposit ")));
+        QVERIFY(TermData::hasTerm(TermData::terms(e, QStringLiteral("en-GB")), QStringLiteral(" deposit ")));
+        QVERIFY(TermData::hasTerm(TermData::terms(e, QStringLiteral("en-GB")), QStringLiteral("security  deposit")));
+        // A spelling that differs in case is a term of its own.
+        QVERIFY(!TermData::hasTerm(TermData::terms(e, QStringLiteral("en-GB")), QStringLiteral("Deposit")));
         QVERIFY(!TermData::hasTerm(TermData::terms(e, QStringLiteral("en-GB")), QStringLiteral("deposit"), 0));
         QVERIFY(TermData::hasStatus(e, QStringLiteral("proposed")));
         QVERIFY(TermData::hasStatus(e, QStringLiteral("forbidden")));
@@ -387,9 +390,12 @@ private slots:
         QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("addTerm:en-GB")));
         byName<QPushButton>(&page, QStringLiteral("addTerm:en-GB"))->click();
         QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB")));
-        byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->setText(QStringLiteral("Deposit"));
-        QTRY_VERIFY(label(&page, QStringLiteral("This entry already has “Deposit”.")));
+        byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->setText(QStringLiteral("security  deposit"));
+        QTRY_VERIFY(label(&page, QStringLiteral("This entry already has “security  deposit”.")));
         QVERIFY(!button(byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->parentWidget(), QStringLiteral("Add"))->isEnabled());
+        // A spelling that differs in case is a term of its own.
+        byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->setText(QStringLiteral("Deposit"));
+        QTRY_VERIFY(button(byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->parentWidget(), QStringLiteral("Add"))->isEnabled());
         button(byName<QLineEdit>(&page, QStringLiteral("newTerm:en-GB"))->parentWidget(), QStringLiteral("Cancel"))->click();
         QCOMPARE(list->model()->index(0, 0).data().toString(), QStringLiteral("German (Germany): Kaution; English (United Kingdom): deposit, security deposit"));
 

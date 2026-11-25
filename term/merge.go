@@ -201,7 +201,7 @@ func MergeEntries(a, b Entry) (Entry, bool) {
 			found := false
 			for i := range al.Terms {
 				at := &al.Terms[i]
-				if Key(at.Text) != Key(bt.Text) {
+				if SameKey(at.Text) != SameKey(bt.Text) {
 					continue
 				}
 				found = true

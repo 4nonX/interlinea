@@ -202,6 +202,51 @@ func TestSDLXLIFF(t *testing.T) {
 	}
 }
 
+// A segment from a memory or machine translation that the translator
+// changes keeps its earlier origin in an sdl:prev-origin, as Trados writes
+// it. The shapes are those of segments in files Trados Studio wrote.
+func TestSDLPrevOrigin(t *testing.T) {
+	src := `<?xml version="1.0"?><xliff xmlns:sdl="http://sdl.com/FileTypes/SdlXliff/1.0" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2"><file source-language="en-US" target-language="fr-FR"><body>` +
+		`<trans-unit id="a"><source>One.</source><seg-source><mrk mtype="seg" mid="1">One.</mrk></seg-source><target><mrk mtype="seg" mid="1">Un.</mrk></target><sdl:seg-defs><sdl:seg id="1" conf="Translated" origin="tm" origin-system="Projet 1_Software English-French" percent="99" struct-match="true" text-match="SourceAndTarget"><sdl:prev-origin origin="tm" origin-system="General" percent="99"><sdl:prev-origin /><sdl:value key="SDL:OriginalTranslationHash">-68820888</sdl:value></sdl:prev-origin><sdl:value key="SDL:OriginalTranslationHash">417978756</sdl:value></sdl:seg></sdl:seg-defs></trans-unit>` +
+		`<trans-unit id="b"><source>Two.</source><seg-source><mrk mtype="seg" mid="2">Two.</mrk></seg-source><target><mrk mtype="seg" mid="2">Deux.</mrk></target><sdl:seg-defs><sdl:seg id="2" conf="Draft" origin="mt" origin-system="SDL Machine Translation"/></sdl:seg-defs></trans-unit>` +
+		`<trans-unit id="c"><source>Three.</source><seg-source><mrk mtype="seg" mid="3">Three.</mrk></seg-source><target><mrk mtype="seg" mid="3">Trois.</mrk></target><sdl:seg-defs><sdl:seg id="3" conf="Translated" origin="source"> <sdl:rep id="xfta"/> <sdl:value key="SegmentIdentityHash">xfta</sdl:value></sdl:seg></sdl:seg-defs></trans-unit>` +
+		`<trans-unit id="d"><source>Four.</source><seg-source><mrk mtype="seg" mid="4">Four.</mrk></seg-source><target><mrk mtype="seg" mid="4">Quatre.</mrk></target><sdl:seg-defs><sdl:seg id="4" conf="Translated" origin="tm" percent="100"/></sdl:seg-defs></trans-unit>` +
+		`</body></file></xliff>`
+	out, err := Merge([]byte(src), map[string]Update{
+		"1/a/1": {Target: parse("Une."), State: filter.StateTranslated},
+		"1/b/2": {Target: parse("Deux !"), State: filter.StateTranslated},
+		"1/c/3": {Target: parse("Trois !"), State: filter.StateTranslated},
+		// Only confirmed: the translation is the memory's, so its origin stays.
+		"1/d/4": {State: filter.StateReviewed},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+	for _, want := range []string{
+		`<sdl:seg id="1" conf="Translated" origin="interactive" percent="99"><sdl:prev-origin origin="tm" origin-system="Projet 1_Software English-French" percent="99" struct-match="true" text-match="SourceAndTarget"><sdl:prev-origin origin="tm" origin-system="General" percent="99"><sdl:prev-origin /><sdl:value key="SDL:OriginalTranslationHash">-68820888</sdl:value></sdl:prev-origin><sdl:value key="SDL:OriginalTranslationHash">417978756</sdl:value></sdl:prev-origin></sdl:seg>`,
+		`<sdl:seg id="2" conf="Translated" origin="interactive"><sdl:prev-origin origin="mt" origin-system="SDL Machine Translation"><sdl:prev-origin/></sdl:prev-origin></sdl:seg>`,
+		`<sdl:seg id="3" conf="Translated" origin="interactive"><sdl:rep id="xfta"/><sdl:prev-origin origin="source"><sdl:prev-origin/> <sdl:rep id="xfta"/> <sdl:value key="SegmentIdentityHash">xfta</sdl:value></sdl:prev-origin></sdl:seg>`,
+		`<sdl:seg id="4" conf="ApprovedTranslation" origin="tm" percent="100"/>`,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %s in\n%s", want, s)
+		}
+	}
+	_, m := units(t, out)
+	if u := m["1/a/1"]; u.Origin != "interactive" || show(u.Target) != "Une." || u.State != filter.StateTranslated {
+		t.Fatalf("after merge: %+v", u)
+	}
+	// Changing it again leaves the history as it is.
+	again, err := Merge(out, map[string]Update{"1/a/1": {Target: parse("Une seule."), State: filter.StateTranslated}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(again), "<sdl:prev-origin") != strings.Count(s, "<sdl:prev-origin") {
+		t.Fatalf("a second change added history:\n%s", again)
+	}
+}
+
 func TestSDLMissingTargetMarker(t *testing.T) {
 	src := `<?xml version="1.0"?><xliff xmlns:sdl="http://sdl.com/FileTypes/SdlXliff/1.0" xmlns="urn:oasis:names:tc:xliff:document:1.2" version="1.2"><file source-language="de" target-language="en"><body><trans-unit id="u"><source>A. B.</source><seg-source><mrk mtype="seg" mid="1">A.</mrk> <mrk mtype="seg" mid="2">B.</mrk></seg-source><target><mrk mtype="seg" mid="1">A.</mrk></target><sdl:seg-defs><sdl:seg id="1" conf="Translated"/><sdl:seg id="2"/></sdl:seg-defs></trans-unit></body></file></xliff>`
 	out, err := Merge([]byte(src), map[string]Update{"1/u/2": {Target: parse("Bee."), State: filter.StateTranslated}})

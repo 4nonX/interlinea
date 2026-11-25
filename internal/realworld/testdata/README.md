@@ -1,0 +1,35 @@
+# Files written by Trados Studio, MultiTerm and memoQ
+
+The tests in `internal/realworld` read these files, write a translation into
+every segment that can take one, and read the result again. The files were
+written by the tools themselves, not by Interlinea, and come from public
+repositories whose licences allow them to be copied. Each file is unchanged;
+only its name is new.
+
+| File | Written by | Source | Licence |
+|---|---|---|---|
+| `trados/disfr-change-tracking.sdlxliff` | Trados Studio, with tracked changes | [AlissaSabre/disfr](https://github.com/AlissaSabre/disfr) `UnitTestDisfrDoc/Samples/ChangeTracking_Trados_1.sdlxliff` | BSD, `licenses/disfr.txt` |
+| `trados/disfr-spelling-checker.doc.sdlxliff` | Trados Studio, from Word | disfr `Configuring_Spelling_Checker.doc.sdlxliff` | BSD |
+| `trados/disfr-language-support.doc.sdlxliff` | Trados Studio, from Word | disfr `Language_Support.doc.sdlxliff` | BSD |
+| `trados/disfr-new-features.ppt.sdlxliff` | Trados Studio, from PowerPoint | disfr `New_features.ppt.sdlxliff` | BSD |
+| `trados/rws-quotes.docx.sdlxliff` | Trados Studio, locked and signed-off segments | [RWS/Sdl-Community](https://github.com/RWS/Sdl-Community) `XLIFF Manager for Trados Studio/XLIFF.Manager.UnitTests/TestFiles/Sdlxliff/QuotesSample.docx.sdlxliff` | Apache 2.0, `licenses/rws-sdl-community.txt` |
+| `trados/rws-tts.docx.sdlxliff` | Trados Studio, untranslated | RWS/Sdl-Community `SDLTM Import Plus/SDLTMImportUnitTests/TestingFiles/TTSExample.docx.sdlxliff` | Apache 2.0 |
+| `trados/rws-quickplace.docx.sdlxliff` | Trados Studio | RWS/Sdl-Community `SDLTM Import Plus/SDLTMImportUnitTests/TestingFiles/#1 - quickplace.docx.sdlxliff` | Apache 2.0 |
+| `trados/rws-photo-printer.doc.sdlxliff` | Trados Studio, one memory match | [RWS/trados-studio-api-samples](https://github.com/RWS/trados-studio-api-samples) `LanguagePlatform/TMAutomation/SamplePhotoPrinter.doc.sdlxliff` | Apache 2.0, `licenses/rws-trados-studio-api-samples.txt` |
+| `trados/rws-perfect-match.docx.sdlxliff` | Trados Studio | [RWS/Sdl-studio-powershell-toolkit](https://github.com/RWS/Sdl-studio-powershell-toolkit) `Samples/ForPerfectMatch/de-DE/Translatable/sample1_word.docx.sdlxliff` | Apache 2.0, `licenses/rws-sdl-studio-powershell-toolkit.txt` |
+| `trados/rws-sample.sdltb` | MultiTerm | RWS/trados-studio-api-samples `ProjectAutomation/Sdl.SDK.ProjectAutomation.Samples.Examples/SampleFiles/Sample.sdltb` | Apache 2.0 |
+| `trados/rws-printer.sdltb` | MultiTerm | RWS/trados-studio-api-samples `.../SampleFiles/Termbase/Software.sdltb` | Apache 2.0 |
+| `memoq/disfr-change-tracking.mqxliff` | memoQ, with tracked changes | disfr `ChangeTracking_memoQ_1.mqxliff` | BSD |
+| `memoq/disfr-git.html.mqxlz` | memoQ, archive of an HTML document | disfr `git.html_jpn.mqxlz` | BSD |
+| `memoq/xliffkit-ph.mqxliff` | memoQ | [ikuehirata/xliffkit](https://github.com/ikuehirata/xliffkit) `examples/01_fix_ph_to_bpt_ept/input.mqxliff` | MIT, `licenses/xliffkit.txt` |
+| `memoq/xliffkit-split.mqxliff` | memoQ | xliffkit `examples/02_split/output.mqxliff` | MIT |
+| `memoq/xliffkit-translated.mqxliff` | memoQ, translated | xliffkit `examples/03_merge/input.mqxliff` | MIT |
+
+The repositories were read at these commits: disfr `7f47558`, xliffkit
+`a1db2b7`, trados-studio-api-samples `4cf88a2`, Sdl-Community `70229c4`,
+Sdl-studio-powershell-toolkit `4f45d9a`.
+
+These files are older than Trados Studio 2024 and memoQ 11, and none is a
+project package (.sdlppx, .sdlrpx) or a memoQ handoff package. Files from
+current versions, and a return package opened in Trados and memoQ, are
+still to be tested.

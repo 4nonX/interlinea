@@ -160,9 +160,11 @@ QString statusLabel(const QString &status)
 
 bool hasTerm(const QJsonArray &terms, const QString &text, int except)
 {
-    const QString want = text.trimmed().toLower();
+    // Space aside, but not case: spellings that differ in case are terms of
+    // their own, as in the core (a forbidden "Mistjet" beside "MistJet").
+    const QString want = text.simplified();
     for (int i = 0; i < terms.size(); i++) {
-        if (i != except && terms[i].toObject().value(QLatin1String("text")).toString().toLower() == want)
+        if (i != except && terms[i].toObject().value(QLatin1String("text")).toString().simplified() == want)
             return true;
     }
     return false;

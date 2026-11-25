@@ -878,10 +878,10 @@ func mergeSameLang(ls []term.Language) []term.Language {
 			out[i].Fields = append(out[i].Fields, l.Fields...)
 			seen := map[string]bool{}
 			for _, t := range out[i].Terms {
-				seen[term.Key(t.Text)] = true
+				seen[term.SameKey(t.Text)] = true
 			}
 			for _, t := range l.Terms {
-				if !seen[term.Key(t.Text)] {
+				if !seen[term.SameKey(t.Text)] {
 					out[i].Terms = append(out[i].Terms, t)
 				}
 			}

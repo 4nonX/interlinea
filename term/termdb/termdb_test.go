@@ -134,10 +134,29 @@ func TestTermbases(t *testing.T) {
 	}
 }
 
+// Spellings that differ only in case are terms of their own, as MultiTerm
+// keeps them (a forbidden "Mistjet" beside a preferred "MistJet"), and an
+// entry is found by either.
+func TestCaseVariants(t *testing.T) {
+	db, _ := open(t)
+	tb := create(t, db)
+	s, err := tb.Add(ctx, ent("", lng("de", approved("MistJet")), lng("en", approved("MistJet"), term.Term{Text: "Mistjet", Status: term.StatusForbidden})), "Dan", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := terms(s.Entry, "en-GB"); !reflect.DeepEqual(got, []string{"MistJet", "Mistjet"}) {
+		t.Fatalf("terms: %v", got)
+	}
+	found, err := tb.Lookup(ctx, "mistjet", "en")
+	if err != nil || len(found) != 1 || found[0].ID != s.ID {
+		t.Fatalf("lookup: %v %+v", err, found)
+	}
+}
+
 func TestEntriesAndHistory(t *testing.T) {
 	db, _ := open(t)
 	tb := create(t, db)
-	s, err := tb.Add(ctx, ent("", lng("de", approved(" Kaution "), approved("kaution")), lng("en", approved("deposit"))), "Dan", "")
+	s, err := tb.Add(ctx, ent("", lng("de", approved(" Kaution "), approved("Kaution")), lng("en", approved("deposit"))), "Dan", "")
 	if err != nil {
 		t.Fatal(err)
 	}

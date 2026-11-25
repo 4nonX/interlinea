@@ -612,3 +612,14 @@ export function recognizeTerms(
     unwrap(rc(c).termRecognize(name, text, src, tgt)),
   ) as CoreHit[];
 }
+
+/**
+ * Whether two terms of one entry are the same term: space around and
+ * inside them aside, but not case. Termbases keep spellings that differ in
+ * case as terms of their own (a forbidden "Mistjet" beside a preferred
+ * "MistJet"), as the core does.
+ */
+export function sameTerm(a: string, b: string): boolean {
+  const norm = (s: string) => s.trim().split(/\s+/u).join(" ");
+  return norm(a) === norm(b);
+}

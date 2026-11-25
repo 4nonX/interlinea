@@ -45,7 +45,7 @@ import {
   SettingsDialog,
   useCore,
 } from "./TermbaseDialogs";
-import { fromCoreEntry, LEVEL_TO_CORE, term, toCoreEntry } from "../termio";
+import { fromCoreEntry, LEVEL_TO_CORE, sameTerm, term, toCoreEntry } from "../termio";
 import { AddFieldForm, FieldValue } from "./TermbaseFields";
 import { LocalDeleted, LocalHistory, LocalMasterDetail, LocalMasterList, useLocalMasters } from "./LocalTermbase";
 import { errorText, useRemote } from "../remote";
@@ -1093,9 +1093,7 @@ function TermItem({
   useEffect(() => {
     if (editing) ref.current?.select();
   }, [editing]);
-  const dup = others.some(
-    (o) => o.toLocaleLowerCase() === draft.trim().toLocaleLowerCase(),
-  );
+  const dup = others.some((o) => sameTerm(o, draft));
   return (
     <li className="term">
       {editing ? (
@@ -1209,9 +1207,7 @@ function AddTerm({
   useEffect(() => {
     if (open) ref.current?.focus();
   }, [open]);
-  const dup = existing.some(
-    (o) => o.toLocaleLowerCase() === text.trim().toLocaleLowerCase(),
-  );
+  const dup = existing.some((o) => sameTerm(o, text));
   if (!open)
     return (
       <button

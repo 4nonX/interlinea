@@ -373,3 +373,17 @@ func TestTBXUniqueIDs(t *testing.T) {
 		t.Fatalf("ids: %v", ids)
 	}
 }
+
+// The status words of real termbases: Trados's sample termbase marks its
+// forbidden terms "not allowed".
+func TestNormalizeStatusWords(t *testing.T) {
+	for in, want := range map[string]string{
+		"not allowed": StatusForbidden, "Not Allowed": StatusForbidden, "nicht erlaubt": StatusForbidden, "à éviter": StatusForbidden,
+		"Forbidden": StatusForbidden, "Preferred": StatusApproved, "allowed": StatusApproved, "Approved": StatusApproved,
+		"admitted": StatusProposed, "": "",
+	} {
+		if got := NormalizeStatus(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
+	}
+}

@@ -45,6 +45,58 @@ func qualified(prefix, local string) string {
 	return prefix + ":" + local
 }
 
+// originAttrs are the attributes of an sdl:seg that say where its
+// translation came from.
+var originAttrs = []string{"origin", "origin-system", "percent", "struct-match", "text-match"}
+
+// retranslated marks an sdl:seg as translated by hand, as Trados does when
+// a translator changes a segment that came from a memory, machine
+// translation or the source: the segment's origin becomes interactive,
+// and its earlier origin, with everything recorded under it, moves into an
+// sdl:prev-origin. The match percentage stays on the segment, the
+// repetition marker (sdl:rep) on both. A chain of earlier origins ends in
+// an empty sdl:prev-origin.
+func (w *writer) retranslated(seg *xmlraw.Node) {
+	prev := qualified(w.s.sdl, "prev-origin")
+	var attrs []byte
+	for _, a := range originAttrs {
+		if v, ok := seg.Attr(a); ok {
+			attrs = append(attrs, ` `+a+`="`+xmlraw.EscapeAttr(v)+`"`...)
+		}
+	}
+	w.setAttr(seg, "origin", "interactive")
+	for _, a := range []string{"origin-system", "struct-match", "text-match"} {
+		w.removeAttr(seg, a)
+	}
+	if len(attrs) == 0 {
+		return
+	}
+	var reps, inner []byte
+	chained := false
+	if !seg.SelfClosing() {
+		inner = seg.InnerRaw()
+		for _, el := range seg.Elements() {
+			switch el.Local {
+			case "rep":
+				reps = append(reps, el.Raw...)
+			case "prev-origin":
+				chained = true
+			}
+		}
+	}
+	if !chained {
+		inner = append([]byte("<"+prev+"/>"), inner...)
+	}
+	out := append([]byte(openTagOf(w.start(seg))), reps...)
+	out = append(out, "<"+prev...)
+	out = append(out, attrs...)
+	out = append(out, '>')
+	out = append(out, inner...)
+	out = append(out, "</"+prev+"></"+seg.Name()+">"...)
+	w.replaced[seg] = true
+	w.edits = append(w.edits, xmlraw.Edit{Span: seg.Whole(), With: out})
+}
+
 // fill writes new content into an element: its inner bytes, or, for an
 // element written as <x/>, the whole element.
 func (w *writer) fill(n *xmlraw.Node, inner string) {
@@ -359,7 +411,7 @@ func (w *writer) segmented(tu *xmlraw.Node, segs []*segment, updates map[string]
 			w.setAttr(sg.sdlSeg, "conf", conf)
 		}
 		if c.changed && sg.sdlSeg.Get("origin") != "interactive" {
-			w.setAttr(sg.sdlSeg, "origin", "interactive")
+			w.retranslated(sg.sdlSeg)
 		}
 	}
 	if len(created) > 0 {

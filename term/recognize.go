@@ -167,18 +167,33 @@ func (x *Index) Check(hits []Hit, target, tgtLang string) []Issue {
 	toks := m.tokens(target)
 	var out []Issue
 	reported := map[[2]int]bool{}
-	allowed := map[string]bool{}
+	// allowed holds the target terms the recognized entries allow, by Key
+	// (case aside) and by SameKey (as spelled).
+	allowed, allowedAs := map[string]bool{}, map[string]bool{}
 	for _, h := range hits {
 		for _, t := range h.Targets {
 			if t.Status != StatusForbidden {
 				allowed[Key(t.Text)] = true
+				allowedAs[SameKey(t.Text)] = true
 			}
 		}
 	}
-	forbidden := func(term, entryID string, t Term) {
+	// A forbidden term that an allowed term spells the same, case aside
+	// (a forbidden "Mistjet" beside a preferred "MistJet"), is found only
+	// as it is written; otherwise the allowed spelling would count as it.
+	forbidden := func(term, entryID string, t Term, siblings []Term) {
+		strict := allowed[Key(t.Text)]
+		for _, o := range siblings {
+			if o.Status != StatusForbidden && Key(o.Text) == Key(t.Text) {
+				strict = true
+			}
+		}
 		for _, sp := range m.find(t.Text, target, toks) {
 			k := [2]int{sp.start, sp.end}
 			if reported[k] {
+				continue
+			}
+			if strict && !sameCase(target[sp.start:sp.end], t.Text) {
 				continue
 			}
 			reported[k] = true
@@ -208,14 +223,15 @@ func (x *Index) Check(hits []Hit, target, tgtLang string) []Issue {
 		seenEntry[key] = true
 		for _, t := range h.Targets {
 			if t.Status == StatusForbidden {
-				forbidden(h.Term.Text, h.EntryID, t)
+				forbidden(h.Term.Text, h.EntryID, t, h.Targets)
 			}
 		}
 	}
 	for _, ie := range x.entries {
-		for _, t := range termsIn(ie.entry, tgtLang) {
-			if t.Status == StatusForbidden && !allowed[Key(t.Text)] {
-				forbidden("", ie.entry.ID, t)
+		terms := termsIn(ie.entry, tgtLang)
+		for _, t := range terms {
+			if t.Status == StatusForbidden && !allowedAs[SameKey(t.Text)] {
+				forbidden("", ie.entry.ID, t, terms)
 			}
 		}
 	}
@@ -226,6 +242,24 @@ func (x *Index) Check(hits []Hit, target, tgtLang string) []Issue {
 		return out[i].Start < out[j].Start
 	})
 	return out
+}
+
+// sameCase reports whether found, a match of term in text, has the case
+// term has: letter by letter from the start, as far as the two spell the
+// same letters (an inflected ending may differ). Space is not compared.
+func sameCase(found, term string) bool {
+	a := []rune(strings.Join(strings.Fields(found), " "))
+	b := []rune(strings.Join(strings.Fields(term), " "))
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] == b[i] {
+			continue
+		}
+		if unicode.ToLower(a[i]) != unicode.ToLower(b[i]) {
+			return true
+		}
+		return false
+	}
+	return true
 }
 
 // matcher holds the language rules for finding terms in text.
