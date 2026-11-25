@@ -582,8 +582,18 @@ private slots:
         page.select(ben);
         Web::ConfirmButton *del = nullptr;
         QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && (del = byName<Web::ConfirmButton>(&page, QStringLiteral("deleteAccount"))), 10000);
-        del->button()->click();
-        QVERIFY(label(&page, QStringLiteral("Delete ben.review? Their work stays signed with their name; their roles and sign-ins go.")));
+        // The panel may be built again once the account is read: the
+        // question is asked by the button that is there then.
+        const QString question = QStringLiteral("Delete ben.review? Their work stays signed with their name; their roles and sign-ins go.");
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            if (label(&page, question))
+                return true;
+            if ((del = byName<Web::ConfirmButton>(&page, QStringLiteral("deleteAccount"))) && del->button()->isVisible())
+                del->button()->click();
+            return label(&page, question) != nullptr;
+        }(), 10000);
+        del = byName<Web::ConfirmButton>(&page, QStringLiteral("deleteAccount"));
+        QVERIFY(del);
         del->yes()->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Deleted the account ben.review"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(!page.busy() && !byName<Web::Clickable>(&page, QStringLiteral("account:ben.review")), 10000);
