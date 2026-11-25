@@ -115,6 +115,7 @@ QString documentFormatText(const QString &format)
         {QStringLiteral("srt"), {QT_TRANSLATE_NOOP("NewProjectPage", "SRT subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times kept")}},
         {QStringLiteral("vtt"), {QT_TRANSLATE_NOOP("NewProjectPage", "WebVTT subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times kept")}},
         {QStringLiteral("txt"), {QT_TRANSLATE_NOOP("NewProjectPage", "Text file"), QT_TRANSLATE_NOOP("NewProjectPage", "line breaks kept")}},
+        {QStringLiteral("pdf"), {QT_TRANSLATE_NOOP("NewProjectPage", "PDF document"), QT_TRANSLATE_NOOP("NewProjectPage", "text only, saved as a DOCX document")}},
     };
     const auto it = names.constFind(format);
     if (it == names.constEnd())
@@ -864,7 +865,7 @@ void NewProjectPage::fillFiles()
     auto *icon = new QLabel(zone);
     icon->setPixmap(Icons::get(QStringLiteral("upload"), Theme::color("text2")).pixmap(18, 18));
     zh->addWidget(icon, 0, Qt::AlignVCenter);
-    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."),
+    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."),
                             "secondary", zone),
                   1);
     auto *addFilesButton = Web::button(tr("Add files"), Web::Small, zone, QStringLiteral("file-text"));

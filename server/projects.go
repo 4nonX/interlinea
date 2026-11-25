@@ -818,7 +818,9 @@ func (s *Server) removeProjectFile(w http.ResponseWriter, r *http.Request, me se
 // projectTranslatedFile sends a file of the project (?name=) with the
 // translations of a target language (?lang=): a document (Word,
 // PowerPoint, Excel, a web page, InDesign IDML) in the target language, a
-// bilingual file with its translations and states, or a text. Segments not translated yet keep their source text.
+// bilingual file with its translations and states, or a text. The
+// translation of a PDF is the Word document its text was read into.
+// Segments not translated yet keep their source text.
 //
 // Access: read on the project, or work in it.
 func (s *Server) projectTranslatedFile(w http.ResponseWriter, r *http.Request, me session) {
@@ -861,6 +863,9 @@ func (s *Server) projectTranslatedFile(w http.ResponseWriter, r *http.Request, m
 		return
 	}
 	ct := contentTypes[format]
+	if ext := formats.TranslatedExt(format); ext != "" {
+		ct = contentTypes[strings.TrimPrefix(ext, ".")]
+	}
 	if format == "txt" && (bytes.HasPrefix(data, []byte{0xFF, 0xFE}) || bytes.HasPrefix(data, []byte{0xFE, 0xFF})) {
 		ct = "text/plain; charset=utf-16"
 	}

@@ -187,13 +187,16 @@ private slots:
         terminology.insert("termbase", "Formate terms");
         settings.insert("terminology", terminology);
         QJsonArray files;
-        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml"};
+        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml", "Vertrag.pdf"};
         for (const QString &n : names) {
             const QByteArray data = fixture(n);
             QVERIFY2(!data.isEmpty(), qPrintable(n));
             // What the server says of the file before a project is made of it.
             const ApiResult in = wait(api->upload("POST", QStringLiteral("/api/files/inspect"), data, QStringLiteral("application/octet-stream"), QUrlQuery{{"name", n}}));
             QVERIFY2(in.ok() && in.object().value("translatable").toBool() && in.object().value("segments").toInt() > 0, qPrintable(n + ": " + in.error.message));
+            // A PDF says what becomes of it.
+            if (n.endsWith(".pdf"))
+                QVERIFY(in.object().value("warnings").toArray().at(0).toString().contains(QStringLiteral("saved as that DOCX document")));
             files << QJsonObject{{"name", n}, {"role", "translatable"}, {"data", QString::fromLatin1(data.toBase64())}};
         }
         const ApiResult made = wait(api->post(QStringLiteral("/api/projects"),
@@ -201,7 +204,7 @@ private slots:
         QVERIFY2(made.ok(), qPrintable(made.error.message));
         const qint64 id = made.object().value("id").toInteger();
         Theme::apply(*qApp);
-        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}};
+        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}, {"Vertrag.pdf", 21}};
         for (const QString &n : names) {
             EditorPage ed(m.local(), id, n, QStringLiteral("en-GB"));
             ed.resize(1280, 820);
@@ -223,6 +226,11 @@ private slots:
         QVERIFY(page.ok());
         QCOMPARE(page.fileName(), QStringLiteral("Seite (en-GB).html"));
         QVERIFY(page.body.contains("<html lang=\"en-GB\">"));
+        // The translation of a PDF is the Word document its text was read into.
+        const ApiResult word = wait(api->get(base + "/files/translated", {{"name", "Vertrag.pdf"}, {"lang", "en-GB"}}));
+        QVERIFY(word.ok());
+        QCOMPARE(word.fileName(), QStringLiteral("Vertrag (en-GB).docx"));
+        QVERIFY(word.body.startsWith("PK"));
 
         // A memoQ handoff package: its document is a bilingual file of
         // the project, saved back as the package's return.

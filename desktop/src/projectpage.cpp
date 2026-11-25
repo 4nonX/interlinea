@@ -498,7 +498,7 @@ void ProjectPage::fillFiles()
     icon->setPixmap(Icons::get(QStringLiteral("upload"), Theme::color("text2")).pixmap(18, 18));
     zh->addWidget(icon, 0, Qt::AlignVCenter);
     zh->addWidget(Web::text(m_busy.isEmpty()
-                                ? tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf) keep their translations and states.")
+                                ? tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf) keep their translations and states.")
                                 : m_busy,
                             "secondary", zone),
                   1);

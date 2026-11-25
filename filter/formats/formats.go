@@ -12,6 +12,7 @@ import (
 	"github.com/4nonX/interlinea/filter/html"
 	"github.com/4nonX/interlinea/filter/idml"
 	"github.com/4nonX/interlinea/filter/markdown"
+	"github.com/4nonX/interlinea/filter/pdf"
 	"github.com/4nonX/interlinea/filter/plaintext"
 	"github.com/4nonX/interlinea/filter/pptx"
 	"github.com/4nonX/interlinea/filter/textfmt"
@@ -49,6 +50,9 @@ const (
 	MemoQPackage  = "mqout"
 	// Text is plain text.
 	Text = "txt"
+	// PDF is a PDF whose text is read into a Word document. The
+	// translation is that Word document: see TranslatedExt.
+	PDF = "pdf"
 )
 
 var byExtension = map[string]string{
@@ -73,6 +77,7 @@ var byExtension = map[string]string{
 	".mqxlz":  MemoQArchive,
 	".sdlppx": TradosPackage,
 	".mqout":  MemoQPackage,
+	".pdf":    PDF,
 }
 
 // Of is the format of a file by its name; Text for any other name.
@@ -95,11 +100,11 @@ func TextName(name string) bool {
 
 // Document reports whether the format is a document in one language that
 // a filter cuts into units: Word, PowerPoint, Excel, a web page, InDesign,
-// OpenDocument, XML, Markdown, plain text, and the strings of software and
-// subtitles.
+// OpenDocument, XML, Markdown, plain text, PDF, and the strings of software
+// and subtitles.
 func Document(format string) bool {
 	switch format {
-	case Word, PowerPoint, Excel, HTML, InDesign, Markdown, Text:
+	case Word, PowerPoint, Excel, HTML, InDesign, Markdown, Text, PDF:
 		return true
 	}
 	return textfmt.Is(format) || xmlfmt.Is(format)
@@ -155,8 +160,24 @@ func Name(format string) string {
 		return "handoff package"
 	case Text:
 		return "text file"
+	case PDF:
+		return "PDF document"
 	}
 	return format
+}
+
+// PDFNote says what becomes of a PDF, with every PDF that is read.
+// It is shown in the apps, which name formats by their file endings.
+const PDFNote = "The text of a PDF is read into a DOCX document: its paragraphs in reading order, without the layout of the pages, and without pictures. The translation is saved as that DOCX document."
+
+// TranslatedExt is the ending of a file's translation, where it is not
+// the file's own: a PDF's text is read into a Word document, and that is
+// what is written. Empty for every other format.
+func TranslatedExt(format string) string {
+	if format == PDF {
+		return ".docx"
+	}
+	return ""
 }
 
 // Extract returns the translatable units of a document. lang is the
@@ -177,6 +198,16 @@ func Extract(format string, data []byte, lang string) (*filter.Extraction, error
 		return markdown.Extract(data, lang)
 	case Text:
 		return plaintext.Extract(data, lang)
+	case PDF:
+		word, err := pdf.ToWord(data)
+		if err != nil {
+			return nil, err
+		}
+		ex, err := docx.Extract(word, lang, docx.Options{})
+		if err == nil {
+			ex.Warnings = append(ex.Warnings, PDFNote)
+		}
+		return ex, err
 	}
 	switch {
 	case textfmt.Is(format):
@@ -205,6 +236,14 @@ func Merge(format string, data []byte, lang, targetLang string, tr filter.Transl
 		return markdown.Merge(data, lang, targetLang, tr)
 	case Text:
 		return plaintext.Merge(data, lang, tr)
+	case PDF:
+		// The translation of a PDF is the Word document its text was
+		// read into.
+		word, err := pdf.ToWord(data)
+		if err != nil {
+			return nil, err
+		}
+		return docx.Merge(word, lang, targetLang, tr, docx.Options{})
 	}
 	switch {
 	case textfmt.Is(format):

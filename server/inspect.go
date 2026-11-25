@@ -23,8 +23,9 @@ const detectionLimit = 20000
 // made from it.
 type inspection struct {
 	Name string `json:"name"`
-	// Format is docx, xliff, package (a Trados project package), txt, or
-	// other for a file that is not translated (a reference file).
+	// Format is docx, pdf, xliff, package (a Trados project package), txt
+	// and so on, or other for a file that is not translated (a reference
+	// file).
 	Format string `json:"format"`
 	// Translatable is false for other files and files that can't be read.
 	Translatable bool `json:"translatable"`

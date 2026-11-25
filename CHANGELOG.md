@@ -20,6 +20,11 @@ client and the desktop app, with installers and a server image.
   memoQ handoff packages, with the translated files and return packages
   written back. In software strings a placeholder is a tag and the
   string's key is shown with it.
+- PDF files: their text is read without any other program, with lines,
+  columns and paragraphs found from where the text stands on the pages,
+  and translated into a Word document. A protected PDF, a scan without
+  text and a PDF whose fonts do not name their characters say why they
+  are not read.
 - An editor with translation memory matches, concordance search, found
   terms, formatting tags, spelling, quality checks, own rules and length
   limits. The best memory match goes into an empty segment, and a

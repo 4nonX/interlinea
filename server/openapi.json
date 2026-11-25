@@ -439,7 +439,7 @@
             "description": "Detection guesses the source language from the text."
           },
           "format": {
-            "description": "Format is docx, xliff, package (a Trados project package), txt, or other for a file that is not translated (a reference file).",
+            "description": "Format is docx, pdf, xliff, package (a Trados project package), txt and so on, or other for a file that is not translated (a reference file).",
             "type": "string"
           },
           "name": {
@@ -7653,7 +7653,7 @@
     },
     "/api/projects/{id}/files/translated": {
       "get": {
-        "description": "Segments not translated yet keep their source text.\n\nAccess: read on the project, or work in it.",
+        "description": "The translation of a PDF is the Word document its text was read into. Segments not translated yet keep their source text.\n\nAccess: read on the project, or work in it.",
         "operationId": "projectTranslatedFile",
         "parameters": [
           {

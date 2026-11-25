@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,9 +74,34 @@ func TestExtractAndMergeOtherFormats(t *testing.T) {
 	if got, _ := os.ReadFile(dst); string(got) != `<p>The deposit is <b>due</b>.</p>` {
 		t.Errorf("merged page: %s", got)
 	}
-	other := filepath.Join(dir, "Plan.pdf")
-	os.WriteFile(other, []byte("%PDF"), 0o644)
+	other := filepath.Join(dir, "Plan.png")
+	os.WriteFile(other, []byte("\x89PNG"), 0o644)
 	if code, _, errOut = exec(t, "", "extract", other); code == 0 || !strings.Contains(errOut, "is not a document of a format Interlinea reads") {
-		t.Errorf("extract pdf: %d %q", code, errOut)
+		t.Errorf("extract a picture: %d %q", code, errOut)
+	}
+	// A PDF's text is read; its translation is a Word document.
+	manual := filepath.Join("..", "..", "filter", "pdf", "testdata", "manual.pdf")
+	code, out, errOut = exec(t, "", "extract", "-lang", "en-GB", manual)
+	if code != 0 || !strings.HasPrefix(out, "document/p1/s1\tOperating manual\n") {
+		t.Fatalf("extract pdf: %d %q %q", code, out[:min(len(out), 200)], errOut)
+	}
+	os.WriteFile(trFile, []byte(`{"document/p1/s1":[{"text":"Betriebsanleitung"}]}`), 0o644)
+	word := filepath.Join(dir, "manual.docx")
+	if code, out, errOut = exec(t, "", "merge", "-lang", "en-GB", "-target", "de-DE", "-o", word, manual, trFile); code != 0 {
+		t.Fatalf("merge pdf: %d %q %q", code, out, errOut)
+	}
+	written := ""
+	if zr, err := zip.OpenReader(word); err == nil {
+		for _, f := range zr.File {
+			if f.Name == "word/document.xml" {
+				r, _ := f.Open()
+				raw, _ := io.ReadAll(r)
+				written = string(raw)
+			}
+		}
+		zr.Close()
+	}
+	if !strings.Contains(written, ">Betriebsanleitung</w:t>") || !strings.Contains(written, ">1 Safety</w:t>") {
+		t.Errorf("the translation of a PDF is no Word document with the translation: %s", written[:min(len(written), 300)])
 	}
 }

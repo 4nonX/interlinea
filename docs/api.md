@@ -592,7 +592,7 @@ Access: read on the project, or work in it.
 
 Sends a file of the project (?name=) with the translations of a target language (?lang=): a document (Word, PowerPoint, Excel, a web page, InDesign IDML) in the target language, a bilingual file with its translations and states, or a text.
 
-Segments not translated yet keep their source text.
+The translation of a PDF is the Word document its text was read into. Segments not translated yet keep their source text.
 
 Access: read on the project, or work in it.
 
@@ -1928,7 +1928,7 @@ inspection is what the server finds in a document before a project is made from 
 |---|---|---|
 | `bilingual` | [BilingualInfo](#bilingualinfo) | Bilingual is set for an XLIFF file: its variant and languages. |
 | `detection` | [langdetect.Detection](#langdetectdetection) | Detection guesses the source language from the text. |
-| `format` | string | Format is docx, xliff, package (a Trados project package), txt, or other for a file that is not translated (a reference file). |
+| `format` | string | Format is docx, pdf, xliff, package (a Trados project package), txt and so on, or other for a file that is not translated (a reference file). |
 | `name` | string |  |
 | `package` | [PackageInfo](#packageinfo) | Package describes a Trados project package and its files. |
 | `problem` | string | Problem says why a file that looks translatable can't be read. |

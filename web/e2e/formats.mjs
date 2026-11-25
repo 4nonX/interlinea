@@ -73,17 +73,28 @@ export default () =>
       await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
       await click("button", "Continue to files and languages");
       await sleep(300);
-      await setFiles([`${docs}/Folien.pptx`, `${docs}/Tabelle.xlsx`, `${docs}/Seite.html`, `${docs}/Layout.idml`]);
-      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 4", 15000), "the four files are listed");
+      await setFiles([`${docs}/Folien.pptx`, `${docs}/Tabelle.xlsx`, `${docs}/Seite.html`, `${docs}/Layout.idml`, `${docs}/Vertrag.pdf`]);
+      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 5", 15000), "the five files are listed");
       check(
         await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable' && !r.textContent.includes('reference file'))"),
-        "a presentation, a workbook, a web page and an InDesign document are files to translate",
+        "a presentation, a workbook, a web page, an InDesign document and a PDF are files to translate",
       );
+      {
+        const row = await evaluate("[...document.querySelectorAll('.file-table tbody tr')].find(r => r.textContent.includes('Vertrag.pdf')).innerText");
+        check(row.includes("PDF document, text only, saved as a DOCX document"), "the PDF says what is kept of it: " + row.replace(/\s+/g, " ").slice(0, 200));
+        check(row.includes("The text of a PDF is read into a DOCX document"), "and what becomes of it");
+        if (process.env.INTERLINEA_SHOTS) {
+          await evaluate("[...document.querySelectorAll('.file-table tbody tr')].find(r => r.textContent.includes('Vertrag.pdf')).scrollIntoView({ block: 'center' })");
+          await sleep(200);
+          const shot = await send("Page.captureScreenshot", { format: "png" });
+          writeFileSync(`${process.env.INTERLINEA_SHOTS}/pdf-files.png`, Buffer.from(shot.data, "base64"));
+        }
+      }
       check((await text()).includes("Detected German"), "the language is read from their text");
       await setValue("#pname", "Vier Formate");
       await sleep(200);
       await through();
-      check((await text()).includes("4 files to translate"), "the review counts them");
+      check((await text()).includes("5 files to translate"), "the review counts them");
       await click("button", "Create project");
       check(await waitFor("!!document.querySelector('#ed-file')"), "the editor offers the files");
 
@@ -126,6 +137,18 @@ export default () =>
         Object.keys(z)[0] === "mimetype" && z["Stories/Story_u1.xml"].toString().includes("<Content>The lease has the details.</Content>"),
         "the story has the translation and the package its type first",
       );
+      // A PDF: its text in paragraphs, the two columns one after the other,
+      // and its translation a Word document.
+      check(await translate("Vertrag.pdf", "Die Kaution beträgt drei Monatsmieten.", "The deposit is three months' rent."), "a paragraph of the PDF is a segment");
+      {
+        const sources = await evaluate("[...document.querySelectorAll('.seg .seg-source')].map(s => s.innerText.replace(/\\s+/g, ' ').trim())");
+        const at = (t) => sources.findIndex((x) => x.includes(t));
+        check(sources[0] === "Mietvertrag über Wohnraum" && at("Ruhestörender Lärm ist zu vermeiden") > 0 && at("Ruhestörender Lärm ist zu vermeiden") < at("Haustiere dürfen nur mit vorheriger Zustimmung"), "the lines of a column are joined to sentences, the left column before the right: " + sources.length);
+        check(await save("Save translated document", "Vertrag_en-GB.docx"), "the translation of the PDF is saved as a Word document");
+        const doc = unzip(readFileSync(`${downloads}/Vertrag_en-GB.docx`))["word/document.xml"].toString();
+        check(doc.includes(">The deposit is three months' rent.</w:t>") && doc.includes("Mietvertrag über Wohnraum"), "it has the translation, and the other text as it was");
+      }
+
       // The preview shows the workbook's sheet as a table.
       await setValue("#ed-file", await evaluate("[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes('Tabelle.xlsx')).value"));
       await sleep(500);
@@ -296,8 +319,8 @@ export default () =>
         check((await evaluate("document.querySelector('.split-source').innerText")) === "Der Vermieter haftet nicht.", "the source is not changed by typing");
         await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').click()");
         check(await waitFor("document.querySelectorAll('.seg').length === 4 && !document.querySelector('.split-source')", 5000), "split, there is one segment more");
-        check((await activeSource()) === "Der Vermieter" && (await text()).includes("A part of a segment of the file that was split."), "the first part is the open one: " + (await activeSource()));
         await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        check((await activeSource()) === "Der Vermieter" && (await text()).includes("A part of a segment of the file that was split."), "the first part is the open one: " + (await activeSource()));
         check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable.", "and keeps the translation the segment had");
         await pick("haftet nicht.");
         await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");

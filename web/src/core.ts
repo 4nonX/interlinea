@@ -306,7 +306,8 @@ export type DocumentFormat =
   | "resx"
   | "srt"
   | "vtt"
-  | "txt";
+  | "txt"
+  | "pdf";
 
 const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.(docx|docm)$/i, "docx"],
@@ -327,6 +328,7 @@ const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.srt$/i, "srt"],
   [/\.vtt$/i, "vtt"],
   [/\.(txt|csv|tsv)$/i, "txt"],
+  [/\.pdf$/i, "pdf"],
 ];
 
 /** The format of a document one of the core's filters reads; null for any other file. */
@@ -354,7 +356,20 @@ export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
   srt: "SRT subtitles",
   vtt: "WebVTT subtitles",
   txt: "Text file",
+  pdf: "PDF document",
 };
+
+/**
+ * The name a document's translation is saved under: the file's own with
+ * the language in it. A PDF's translation is the DOCX document its text
+ * was read into.
+ */
+export function translatedName(name: string, target: string): string {
+  const own = name.split("/").pop() ?? name;
+  const dot = own.lastIndexOf(".");
+  const ext = documentFormat(own) === "pdf" ? ".docx" : own.slice(dot);
+  return `${own.slice(0, dot)}_${target}${ext}`;
+}
 
 /** What a document format keeps of the file besides its text. */
 export const DOCUMENT_FORMAT_KEEPS: Record<DocumentFormat, string> = {
@@ -376,6 +391,7 @@ export const DOCUMENT_FORMAT_KEEPS: Record<DocumentFormat, string> = {
   srt: "times kept",
   vtt: "times kept",
   txt: "line breaks kept",
+  pdf: "text only, saved as a DOCX document",
 };
 
 /** The type a translated document is offered for download as. */
@@ -398,6 +414,7 @@ export const DOCUMENT_TYPE: Record<DocumentFormat, string> = {
   srt: "application/x-subrip",
   vtt: "text/vtt",
   txt: "text/plain",
+  pdf: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 
 /**

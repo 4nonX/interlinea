@@ -1,6 +1,7 @@
 package server
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -49,9 +50,26 @@ func TestInspect(t *testing.T) {
 	if got.Translatable || !strings.Contains(got.Problem, "not valid JSON") {
 		t.Errorf("broken JSON: %+v", got)
 	}
-	te.call("POST", "/api/files/inspect?name=Plan.pdf", te.ben, []byte("%PDF-1.7"), 200, &got, "Content-Type", "application/octet-stream")
+	te.call("POST", "/api/files/inspect?name=Plan.png", te.ben, []byte("\x89PNG"), 200, &got, "Content-Type", "application/octet-stream")
 	if got.Format != "other" || got.Translatable {
 		t.Fatalf("reference file: %+v", got)
+	}
+	// A PDF with text is translated, and says what becomes of it; one
+	// without is a reference file, and says why.
+	manual, err := os.ReadFile("../filter/pdf/testdata/manual.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read inspection
+	te.call("POST", "/api/files/inspect?name=Manual.pdf", te.ben, manual, 200, &read, "Content-Type", "application/octet-stream")
+	if read.Format != "pdf" || !read.Translatable || read.Segments != 58 || read.Problem != "" || len(read.Warnings) != 1 || !strings.Contains(read.Warnings[0], "saved as that DOCX document") || read.Detection == nil || read.Detection.Lang != "en-GB" {
+		t.Fatalf("a PDF: %+v %+v", read, read.Detection)
+	}
+	picture, _ := os.ReadFile("../filter/pdf/testdata/picture.pdf")
+	var scan inspection
+	te.call("POST", "/api/files/inspect?name=Scan.pdf", te.ben, picture, 200, &scan, "Content-Type", "application/octet-stream")
+	if scan.Format != "pdf" || scan.Translatable || scan.Problem != "The file could not be read: it has no text, only pictures of its pages: run it through text recognition (OCR) first" {
+		t.Fatalf("a scanned PDF: %+v", scan)
 	}
 	te.call("POST", "/api/files/inspect?name=Kaputt.docx", te.ben, []byte("not a zip"), 200, &got, "Content-Type", "application/octet-stream")
 	if got.Translatable || !strings.Contains(got.Problem, "could not be read") {

@@ -362,12 +362,17 @@ func translatedFile(format string, data []byte, sourceLang, targetLang string, s
 
 // translatedName is the name a translated file is delivered under:
 // "Vertrag.docx" in en-GB becomes "Vertrag (en-GB).docx"; bilingual
-// files keep their name.
+// files keep their name. A PDF's translation is the Word document its
+// text was read into: "Vertrag.pdf" becomes "Vertrag (en-GB).docx".
 func translatedName(name, format, lang string) string {
 	base := path.Base(name)
 	if format == "xliff" || format == formats.MemoQArchive {
 		return base
 	}
 	ext := path.Ext(base)
-	return strings.TrimSuffix(base, ext) + " (" + lang + ")" + ext
+	as := ext
+	if other := formats.TranslatedExt(format); other != "" {
+		as = other
+	}
+	return strings.TrimSuffix(base, ext) + " (" + lang + ")" + as
 }

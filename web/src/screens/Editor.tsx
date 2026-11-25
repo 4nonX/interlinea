@@ -93,6 +93,7 @@ import {
   download,
   loadCore,
   documentFormat,
+  translatedName,
   DOCUMENT_TYPE,
   mergeDocx,
   mergeXliff,
@@ -885,9 +886,7 @@ export function Editor({
         segments,
         file.name,
       );
-      const own = file.name.split("/").pop() ?? file.name;
-      const dot = own.lastIndexOf(".");
-      const name = `${own.slice(0, dot)}_${target}${own.slice(dot)}`;
+      const name = translatedName(file.name, target);
       download(out, name, DOCUMENT_TYPE[documentFormat(file.name) ?? "docx"]);
       const empty = segments.filter((s) => !plain(s.target).trim()).length;
       notify(

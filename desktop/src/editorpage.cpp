@@ -225,7 +225,7 @@ static QJsonArray trimmedContent(QJsonArray c, bool end)
 static bool isDocument(const QString &name)
 {
     return hasSuffix(name, {".docx", ".docm", ".pptx", ".pptm", ".ppsx", ".xlsx", ".xlsm", ".html", ".htm", ".xhtml", ".idml", ".odt", ".ods", ".odp", ".xml",
-                            ".md", ".markdown", ".properties", ".json", ".yaml", ".yml", ".po", ".pot", ".resx", ".srt", ".vtt", ".txt", ".csv", ".tsv"});
+                            ".md", ".markdown", ".properties", ".json", ".yaml", ".yml", ".po", ".pot", ".resx", ".srt", ".vtt", ".txt", ".csv", ".tsv", ".pdf"});
 }
 
 static bool isBilingual(const QString &name)

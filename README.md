@@ -57,7 +57,8 @@ sign-in through a provider, backups.
   ODS, ODP), web pages (HTML), InDesign (IDML), XML, Markdown, software
   strings (properties, JSON, YAML, PO, RESX), subtitles (SRT, WebVTT),
   XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF (also as .mqxlz), Trados packages,
-  memoQ handoff packages and plain text; alignment of documents done
+  memoQ handoff packages, plain text, and the text of PDF files; alignment
+  of documents done
   before; translation memories; termbases with
   TBX, MultiTerm, CSV and Excel exchange; QA, spelling, analysis and
   pre-translation. Done and tested.
@@ -100,6 +101,7 @@ The Go packages:
 | `filter/xmlfmt` | Any XML (an element that holds text is a paragraph, the elements in it are tags, translate="no" is left alone) and OpenDocument text, spreadsheets and presentations (paragraphs and headings with footnotes and text boxes read as paragraphs of their own; cells of numbers and formulas left alone) |
 | `filter/markdown` | Markdown: headings, paragraphs, list items, quotes and table cells, with emphasis, links, images, code in a line and HTML as tags; code blocks, front matter and link definitions left alone |
 | `filter/idml` | InDesign IDML filter: stories in page order, paragraphs with character formats and links as tags, tables and footnotes after the paragraph that holds them |
+| `filter/pdf` | Reads the text of PDF files, without any other program: the objects of the file (also packed in streams, also with a broken table of objects), fonts with their maps to text, encodings and glyph names, and the text shown on each page with where it stands. Lines, columns and paragraphs are found from the places, a word divided at the end of a line is whole again, and the text is handed on as a Word document, which is what the translation is saved as |
 | `filter/para` | What the document filters share: a paragraph's content cut into sentence units, and translations put back with their tags matched and nested |
 | `filter/formats` | The formats by file name, and one way to extract and merge any document |
 | `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
@@ -476,6 +478,19 @@ that match by primary language only (`de-AT` for `de-DE`).
   Hebrew the paragraph direction is set, and the World-Ready composer has
   to be chosen in InDesign. Only IDML is read: save an .indd as IDML in
   InDesign first.
+- PDF: only the text is read. A PDF says where each piece of text stands
+  on a page and nothing of paragraphs, so those are found from the
+  places: lines from baselines, columns and table columns from the white
+  that runs between them, paragraphs from spacing, short lines, indents
+  and list marks. Columns are read one after the other; of a table each
+  cell is a paragraph, column by column. Running heads and page numbers
+  are text like any other. A paragraph is in the size of its font, and
+  bold or italic where all of it is; formatting within a paragraph,
+  pictures and the layout of the pages are not kept. The translation is
+  saved as a Word document, since a page cannot be rebuilt around text
+  of another length. A PDF that is protected, one that is pictures of
+  its pages (a scan without text recognition), and one whose fonts do not
+  say which characters they draw are not read, and say so.
 - Termbases: an entry is one concept with its terms per language, as in
   MultiTerm, memoQ and TBX. Statuses map to TBX `administrativeStatus`
   (approved = preferredTerm, proposed = admittedTerm, forbidden =

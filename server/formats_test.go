@@ -95,11 +95,16 @@ func TestDocumentFormats(t *testing.T) {
 	delete(req.Settings.Memories, "fr-FR")
 	req.Memories = req.Memories[:1]
 	page := `<html lang="de"><head><title>Fristen</title></head><body><p>Die Kaution ist <b>fällig</b>.</p></body></html>`
+	manual, err := os.ReadFile("../filter/pdf/testdata/manual.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
 	req.Files = []fileUpload{
 		{Name: "Folien.pptx", Role: project.Translatable, Data: docxtest.Deck()},
 		{Name: "Tabelle.xlsx", Role: project.Translatable, Data: workbookFile(t)},
 		{Name: "Seite.html", Role: project.Translatable, Data: []byte(page)},
 		{Name: "Layout.idml", Role: project.Translatable, Data: indesignFile(t)},
+		{Name: "Manual.pdf", Role: project.Translatable, Data: manual},
 	}
 	var p projectView
 	te.call("POST", "/api/projects", te.pm, req, 201, &p)
@@ -123,6 +128,11 @@ func TestDocumentFormats(t *testing.T) {
 		{"Layout.idml", "idml", "Story_u1/p2/s1", 2, content.Text("The deposit is due."), func(out []byte) bool {
 			return strings.Contains(unzip(t, out, "Stories/Story_u1.xml"), `<Content>Mietvertrag</Content><Br/><Content>The deposit is due.</Content></CharacterStyleRange>`)
 		}},
+		// The translation of a PDF is the Word document its text was read into.
+		{"Manual.pdf", "pdf", "document/p3/s1", 58, content.Text("1 Sicherheit"), func(out []byte) bool {
+			doc := unzip(t, out, "word/document.xml")
+			return strings.Contains(doc, `>1 Sicherheit</w:t>`) && strings.Contains(doc, `>Operating manual</w:t>`) && strings.Contains(doc, `<w:b/>`)
+		}},
 	} {
 		var segs []projectdb.StoredSegment
 		te.call("GET", base+"/segments?file="+url.QueryEscape(c.file)+"&lang=en-GB", te.pm, nil, 200, &segs)
@@ -143,7 +153,14 @@ func TestDocumentFormats(t *testing.T) {
 		if !c.check(r.body) {
 			t.Errorf("%s: the translated file lacks the translation", c.file)
 		}
-		want := strings.TrimSuffix(c.file, filepath.Ext(c.file)) + " (en-GB)" + filepath.Ext(c.file)
+		ext := filepath.Ext(c.file)
+		if c.format == "pdf" {
+			ext = ".docx"
+			if ct := r.header.Get("Content-Type"); !strings.Contains(ct, "wordprocessingml") {
+				t.Errorf("the translation of %s is sent as %s", c.file, ct)
+			}
+		}
+		want := strings.TrimSuffix(c.file, filepath.Ext(c.file)) + " (en-GB)" + ext
 		if !strings.Contains(r.header.Get("Content-Disposition"), want) {
 			t.Errorf("%s is sent as %q", c.file, r.header.Get("Content-Disposition"))
 		}
