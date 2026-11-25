@@ -96,7 +96,7 @@ export interface CoreApi {
   // Termbase functions: see termio.ts.
   xliffDetect(bytes: Uint8Array): Res<string>;
   xliffExtract(bytes: Uint8Array): Res<string>;
-  xliffMerge(bytes: Uint8Array, updates: string): Res<Uint8Array>;
+  xliffMerge(bytes: Uint8Array, updates: string, targetLang?: string): Res<Uint8Array>;
   archiveRead(bytes: Uint8Array): Res<Uint8Array>;
   archiveWrite(bytes: Uint8Array, document: Uint8Array): Res<Uint8Array>;
   packageOpen(bytes: Uint8Array, name: string): Res<string>;
@@ -686,7 +686,7 @@ export async function mergeDocx(
 }
 
 /** File names the XLIFF filter reads: XLIFF 1.2 and 2, Trados SDLXLIFF, memoQ MQXLIFF, also in its archive. */
-export const XLIFF_FILE = /\.(xlf|xliff|sdlxliff|mqxliff|mqxlz)$/i;
+export const XLIFF_FILE = /\.(xlf|xliff|sdlxliff|mqxliff|mxliff|txlf|txml|ttx|mqxlz)$/i;
 
 /** Whether the bytes are a ZIP file: a memoQ XLIFF in its archive (.mqxlz). */
 function archived(bytes: Uint8Array): boolean {
@@ -696,7 +696,7 @@ export const XLIFF_TYPE = "application/xliff+xml";
 
 /** What a bilingual file holds besides its segments. */
 export interface Bilingual extends Extracted {
-  /** The variant: "xliff-1.2", "sdlxliff", "mqxliff" or "xliff-2". */
+  /** The variant: "xliff-1.2", "sdlxliff", "mqxliff", "mxliff" (Phrase), "txml" (Wordfast Pro), "ttx" (TagEditor) or "xliff-2". */
   format: string;
   sourceLang: string;
   targetLang: string;
@@ -707,6 +707,9 @@ export const XLIFF_FORMAT_NAME: Record<string, string> = {
   "xliff-2": "XLIFF 2",
   sdlxliff: "SDLXLIFF",
   mqxliff: "MQXLIFF",
+  mxliff: "Phrase XLIFF",
+  txml: "Wordfast TXML",
+  ttx: "TagEditor TTX",
 };
 
 // A segment's state in the file becomes the editor's: confirmed for
@@ -727,6 +730,9 @@ function editorStatus(
       return plain(target).trim() ? "draft" : "new";
   }
 }
+
+/** Bilingual formats whose program keeps its own record of every segment. */
+const FIXED_FORMATS = new Set(["sdlxliff", "mqxliff", "mxliff", "txml", "ttx"]);
 
 /** Reads a bilingual XLIFF file with its translations and states. */
 export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
@@ -751,7 +757,7 @@ export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
         notes: u.notes,
         maxLength: u.maxLength || undefined,
         file: {
-          fixed: ex.format === "sdlxliff" || ex.format === "mqxliff" || undefined,
+          fixed: FIXED_FORMATS.has(ex.format ?? "") || undefined,
           state: u.state ?? "new",
           target: JSON.stringify(u.target ?? []),
           match: u.match || undefined,
@@ -782,29 +788,31 @@ function fileState(s: Segment): FileState {
 
 /**
  * Whether a bilingual file comes from a program that keeps its own record
- * of every segment (Trados, memoQ), so its segments are not split or joined.
+ * of every segment (Trados, memoQ, Phrase, Wordfast, TagEditor), so its segments are not split or joined.
  */
 export async function keepsItsSegments(bytes: Uint8Array): Promise<boolean> {
   const core = await loadCore();
   const doc = archived(bytes) ? unwrap(core.archiveRead(bytes)) : bytes;
   const r = core.xliffDetect(doc);
-  return !r.ok || r.value === "sdlxliff" || r.value === "mqxliff";
+  return !r.ok || FIXED_FORMATS.has(r.value);
 }
 
 /** Writes translations and states into the original XLIFF file. Locked segments stay as they are. */
 export async function mergeXliff(
   bytes: Uint8Array,
   segments: Segment[],
+  /** The language a file that names none (an unsegmented TagEditor file) is translated into. */
+  targetLang?: string,
 ): Promise<Uint8Array> {
   const core = await loadCore();
   // Each segment with its state in the file; the core writes segments
   // that were split or joined as the file has them.
   const updates = segments.map((s) => ({ ...coreSegment(s), target: runsToCore(s.target), locked: !!s.locked, file: undefined, state: fileState(s) }));
   if (!archived(bytes))
-    return unwrap(core.xliffMerge(bytes, JSON.stringify(updates)));
+    return unwrap(core.xliffMerge(bytes, JSON.stringify(updates), targetLang ?? ""));
   // A memoQ XLIFF in its archive goes back into it.
   const merged = unwrap(
-    core.xliffMerge(unwrap(core.archiveRead(bytes)), JSON.stringify(updates)),
+    core.xliffMerge(unwrap(core.archiveRead(bytes)), JSON.stringify(updates), targetLang ?? ""),
   );
   return unwrap(core.archiveWrite(bytes, merged));
 }

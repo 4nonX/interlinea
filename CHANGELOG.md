@@ -21,6 +21,20 @@ takes its notes from its section here.
   other way round; one of other languages stores nothing, and the import
   says why.
 
+### Bilingual files
+
+- Phrase (Memsource) files (.mxliff) open with their translations, states,
+  locks and match values; Phrase's codes in the text are tags, and a file
+  for review counts confirming as the reviewer's.
+- Wordfast Pro files (.txml) open with their translations and drafts, and
+  are written back as Wordfast writes them. Wordfast Pro 5 files (.txlf)
+  are XLIFF.
+- Trados TagEditor files (.ttx) open with their segments; text TagEditor
+  had not segmented is cut into sentences and written back as segments of
+  their own. A file that names no target language is for the project's
+  first.
+- Bilingual files of these programs keep their segments as made.
+
 ### Fixed
 
 - A termbase keeps spellings that differ only in case as terms of their

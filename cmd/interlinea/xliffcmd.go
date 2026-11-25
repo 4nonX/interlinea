@@ -210,11 +210,12 @@ func parseUpdates(b []byte) (map[string]xliff.Update, error) {
 func runXLIFFMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlags("xliff merge", "file updates.json", stderr)
 	outName := fs.String("o", "", "output file (required; may be the input file)")
+	tgt := fs.String("tgt", "", "target language, for a file that names none (an unsegmented TagEditor file)")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 2 {
-		return usageErr("expected an XLIFF file and an updates file")
+		return usageErr("expected a bilingual file and an updates file")
 	}
 	if *outName == "" {
 		return usageErr("-o is required")
@@ -231,7 +232,7 @@ func runXLIFFMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", fs.Arg(1), err)
 	}
-	out, err := xliff.Merge(data, up)
+	out, err := xliff.MergeTo(data, up, *tgt)
 	if err != nil {
 		return err
 	}

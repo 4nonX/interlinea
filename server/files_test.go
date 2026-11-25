@@ -180,3 +180,26 @@ func TestForgedFileRefused(t *testing.T) {
 func checkFile(f fileUpload, sourceLang string) error {
 	return prepareFile(&f, sourceLang, []string{"en-GB"})
 }
+
+// A TagEditor file never segmented names no target language: it is the
+// project's first, its sentences are the segments, and the delivered file
+// names the language and holds each translated sentence as a <Tu>.
+func TestUnsegmentedTagEditorFile(t *testing.T) {
+	data := []byte(`<?xml version='1.0'?><TRADOStag Version="2.0"><FrontMatter><UserSettings SourceLanguage="DE-DE" TargetLanguage=""/></FrontMatter><Body><Raw><ut Type="start" Style="external">&lt;p&gt;</ut>Der Mieter zahlt. Die Miete ist f&#228;llig.<ut Type="end" Style="external">&lt;/p&gt;</ut></Raw></Body></TRADOStag>`)
+	f := fileUpload{Name: "Vertrag.html.ttx", Role: project.Translatable, Format: "xliff", Data: data}
+	if err := prepareFile(&f, "de-DE", []string{"en-GB", "fr-FR"}); err != nil {
+		t.Fatal(err)
+	}
+	segs := f.Segments["en-GB"]
+	if f.TargetLang != "en-GB" || len(segs) != 2 || segs[1].Source.Plain() != "Die Miete ist fällig." || segs[0].File == nil || !segs[0].File.Fixed {
+		t.Fatalf("file %+v", f)
+	}
+	segs[0].Target, segs[0].Status = content.Text("The tenant pays."), project.StatusConfirmed
+	out, err := translatedFile("xliff", data, "de-DE", "en-GB", segs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), `TargetLanguage="EN-GB"`) || !strings.Contains(string(out), `<Tu Origin="manual" MatchPercent="0"><Tuv Lang="DE-DE">Der Mieter zahlt.</Tuv><Tuv Lang="EN-GB">The tenant pays.</Tuv></Tu> Die Miete ist f&#228;llig.`) {
+		t.Fatalf("delivered:\n%s", out)
+	}
+}

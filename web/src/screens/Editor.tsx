@@ -865,6 +865,7 @@ export function Editor({
             translated[f.packagePath] = await mergeXliff(
               await bytesOf(f),
               segs,
+              f.targetLang,
             );
           }
           const rpx = await returnSdlPackage(pkg.bytes, pkg.name, translated);
@@ -876,7 +877,7 @@ export function Editor({
           return;
         }
         // A bilingual file goes back under its own name, for the tool it came from.
-        const out = await mergeXliff(await bytesOf(file), segments);
+        const out = await mergeXliff(await bytesOf(file), segments, file.targetLang);
         const name = file.name.split("/").pop() ?? file.name;
         download(out, name, XLIFF_TYPE);
         notify(`Saved ${name}.${pending}`);

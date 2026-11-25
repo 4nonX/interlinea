@@ -193,7 +193,7 @@ private slots:
                     "</body></tmx>\n");
         }
         memories->importFile(team->id(), QStringLiteral("Kanzlei Weber DE-EN"), tmxFile);
-        QTRY_COMPARE_WITH_TIMEOUT(memories->message(), QStringLiteral("Read 2 units from Weber.tmx; 2 stored"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(memories->message(), QStringLiteral("Imported 2 units from Weber.tmx into Kanzlei Weber DE-EN"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT((listed = named<QTableWidget>(memories, QStringLiteral("Memories on %1").arg(host))) &&
                                      listed->item(0, 2)->data(Qt::AccessibleTextRole).toString() == QStringLiteral("2"),
                                  10000);

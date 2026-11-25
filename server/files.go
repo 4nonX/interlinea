@@ -188,6 +188,11 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 		if f.TargetLang == "" {
 			f.TargetLang = ex.TargetLang
 		}
+		if f.TargetLang == "" && len(targets) > 0 {
+			// A file that names no target language yet (a TagEditor file
+			// never segmented) is for the project's first.
+			f.TargetLang = targets[0]
+		}
 		lang, ok := projectTarget(f.TargetLang, targets)
 		if !ok {
 			return problemf("%s is a bilingual file for %s, which is not a target language of the project.", f.Name, f.TargetLang)
@@ -211,8 +216,9 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 // fill gives a file the extraction's segments for each language, or checks
 // and completes the ones the app sent.
 func fill(f *fileUpload, ex *filter.Extraction, langs []string) error {
-	// Trados and memoQ keep their own record of every segment.
-	fixed := ex.Format == xliff.FormatSDL || ex.Format == xliff.FormatMQ
+	// Trados, memoQ, Phrase, Wordfast and TagEditor keep their own record
+	// of every segment.
+	fixed := ex.Format == xliff.FormatSDL || ex.Format == xliff.FormatMQ || ex.Format == xliff.FormatPhrase || ex.Format == xliff.FormatTXML || ex.Format == xliff.FormatTTX
 	if len(f.Segments) == 0 {
 		if len(ex.Units) == 0 {
 			return problemf("%s has no text to translate.", f.Name)
@@ -349,13 +355,13 @@ func translatedFile(format string, data []byte, sourceLang, targetLang string, s
 			if err != nil {
 				return nil, err
 			}
-			merged, err := xliff.Merge(doc, up)
+			merged, err := xliff.MergeTo(doc, up, targetLang)
 			if err != nil {
 				return nil, err
 			}
 			return mqpackage.WriteArchive(data, merged)
 		}
-		return xliff.Merge(data, up)
+		return xliff.MergeTo(data, up, targetLang)
 	}
 	return nil, fmt.Errorf("%s files can't be written back", format)
 }

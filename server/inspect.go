@@ -43,7 +43,8 @@ type inspection struct {
 }
 
 type bilingualInfo struct {
-	// Format is xliff-1.2, xliff-2, sdlxliff or mqxliff.
+	// Format is xliff-1.2, xliff-2, sdlxliff, mqxliff, mxliff (Phrase),
+	// txml (Wordfast Pro) or ttx (Trados TagEditor).
 	Format     string `json:"format"`
 	SourceLang string `json:"sourceLang"`
 	TargetLang string `json:"targetLang"`

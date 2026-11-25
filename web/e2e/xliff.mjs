@@ -1,6 +1,7 @@
 // A Trados SDLXLIFF file opens with its translations, states and locks,
 // and is saved back with only the changed segments and states.
 import { readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { run } from "./harness.mjs";
 
@@ -326,6 +327,41 @@ export default () =>
       check(await evaluate(`!${cutButton("Join with next")}.disabled`), "the parts can be joined again");
       await evaluate(`${cutButton("Join with next")}.click()`);
       check(await waitFor("document.querySelectorAll('.seg').length === 2", 5000), "joined, the unit is one segment again");
+
+      // A TagEditor file never segmented: it names no target language, so
+      // it is for the project's; its sentences are the segments, and each
+      // one translated is written back as a segment of its own.
+      await open("/new", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFile("input[type=file]", resolve(fixtures, "../../../internal/realworld/testdata/tageditor/okapi-issue-164.doc.ttx"));
+      check(await waitFor("document.body.innerText.includes('TagEditor TTX')", 15000), "file read as a TagEditor file");
+      await evaluate("[...document.querySelectorAll('.target-list input')].forEach(i => { const want = i.closest('label').textContent.includes('German (Germany)'); if (i.checked !== want) i.click(); })");
+      await sleep(300);
+      await setValue("#pname", "TagEditor");
+      for (const b of ["Continue to memories", "Continue to terminology", "Continue to review"]) {
+        await click("button", b);
+        await sleep(300);
+      }
+      await waitFor("!!document.querySelector('.analysis')");
+      await click("button", "Create project");
+      check(await waitFor("document.querySelectorAll('.seg').length === 12", 15000), "the file's 12 sentences are the segments");
+      await evaluate("(document.querySelector('.seg .seg-target-view') ?? document.querySelector('.seg .target-editor')).click()");
+      await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+      await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+      await send("Input.insertText", { text: "Erster Satz." });
+      await key("Enter", "Enter", 13, 2);
+      await sleep(400);
+      await click("button", "Save XLIFF");
+      check(await waitFor("document.body.innerText.includes('Saved okapi-issue-164.doc.ttx')"), "the TagEditor file is saved under its own name");
+      await sleep(500);
+      const ttx = readFileSync(`${downloads}/okapi-issue-164.doc.ttx`);
+      const ttxText = ttx.subarray(2).toString("utf16le");
+      check(
+        ttx[0] === 0xff && ttx[1] === 0xfe && ttxText.includes('TargetLanguage="DE-DE"') && /<Tu Origin="manual" MatchPercent="0"><Tuv Lang="EN-US">[^<]+<\/Tuv><Tuv Lang="DE-DE">Erster Satz\.<\/Tuv><\/Tu>/.test(ttxText),
+        "written in UTF-16 as TagEditor writes, naming the language, the sentence a segment: " + (ttxText.match(/<Tu .{0,200}/)?.[0] ?? ttxText.slice(0, 300)),
+      );
     },
   );
 

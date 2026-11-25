@@ -232,7 +232,7 @@ static bool isDocument(const QString &name)
 
 static bool isBilingual(const QString &name)
 {
-    return hasSuffix(name, {".xlf", ".xliff", ".sdlxliff", ".mqxliff", ".mqxlz"});
+    return hasSuffix(name, {".xlf", ".xliff", ".sdlxliff", ".mqxliff", ".mxliff", ".txlf", ".txml", ".ttx", ".mqxlz"});
 }
 
 EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &file, const QString &lang,
@@ -3127,9 +3127,9 @@ void EditorPage::updateCut()
     const QJsonObject s = m_model->segment(row);
     const QJsonObject next = row >= 0 && row + 1 < m_model->rowCount() ? m_model->segment(row + 1) : QJsonObject();
     const auto locked = [this](int r) { return m_model->index(r, 0).data(SegmentModel::LockedRole).toBool(); };
-    // Trados and memoQ keep their own record of every segment of their files.
+    // Trados, memoQ, Phrase, Wordfast and TagEditor keep their own record of every segment of their files.
     const auto kept = [](const QJsonObject &seg) { return seg.value(QLatin1String("file")).toObject().value(QLatin1String("fixed")).toBool(); };
-    const bool fixed = kept(s) || hasSuffix(m_file, {".sdlxliff", ".mqxliff", ".mqxlz"});
+    const bool fixed = kept(s) || hasSuffix(m_file, {".sdlxliff", ".mqxliff", ".mxliff", ".txml", ".ttx", ".mqxlz"});
     const bool cuts = row >= 0 && !locked(row) && !fixed;
     const int joinedFrom = int(s.value(QLatin1String("joined")).toArray().size());
     const QString part = s.value(QLatin1String("split")).toObject().value(QLatin1String("unit")).toString();

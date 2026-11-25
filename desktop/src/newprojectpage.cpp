@@ -145,6 +145,12 @@ QString bilingualName(const QString &format)
         return QStringLiteral("SDLXLIFF");
     if (format == QLatin1String("mqxliff"))
         return QStringLiteral("MQXLIFF");
+    if (format == QLatin1String("mxliff"))
+        return QStringLiteral("Phrase XLIFF");
+    if (format == QLatin1String("txml"))
+        return QStringLiteral("Wordfast TXML");
+    if (format == QLatin1String("ttx"))
+        return QStringLiteral("TagEditor TTX");
     if (format == QLatin1String("xliff-2"))
         return QStringLiteral("XLIFF 2");
     if (format == QLatin1String("xliff-1.2"))
@@ -813,9 +819,7 @@ void NewProjectPage::fillFiles()
             if (d.read && !canTranslate(d)) {
                 const QString problem = in.value(QLatin1String("problem")).toString();
                 const QString why = !problem.isEmpty() ? tr("It could not be read: %1").arg(problem)
-                    : !in.value(QLatin1String("bilingual")).toObject().isEmpty()
-                        ? tr("The file names no target language, so it can't be translated here.")
-                        : tr("Interlinea can't read text from this file (for example a scan, or a format it has no filter for). It can travel with the project for reference.");
+                    : tr("Interlinea can't read text from this file (for example a scan, or a format it has no filter for). It can travel with the project for reference.");
                 cell->layout()->addWidget(Web::note(tr("%1 It is added as a reference file.").arg(why), QStringLiteral("warn"), cell));
             }
             auto *use = new QComboBox(table);
@@ -865,7 +869,7 @@ void NewProjectPage::fillFiles()
     auto *icon = new QLabel(zone);
     icon->setPixmap(Icons::get(QStringLiteral("upload"), Theme::color("text2")).pixmap(18, 18));
     zh->addWidget(icon, 0, Qt::AlignVCenter);
-    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."),
+    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."),
                             "secondary", zone),
                   1);
     auto *addFilesButton = Web::button(tr("Add files"), Web::Small, zone, QStringLiteral("file-text"));

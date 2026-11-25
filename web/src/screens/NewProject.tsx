@@ -1570,7 +1570,7 @@ export function FilesField({
         <p className="dropzone-text">
           {reading
             ? "Reading the files…"
-            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."}
+            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."}
         </p>
         <div className="row">
           <button
@@ -1653,8 +1653,6 @@ function describe(doc: PendingDoc): string {
 
 function whyNot(doc: PendingDoc): string {
   if (doc.error) return `It could not be read: ${doc.error}`;
-  if (doc.bilingual && !doc.bilingual.targetLang)
-    return "The file names no target language, so it can't be translated here.";
   return "Interlinea can't read text from this file (for example a scan, or a format it has no filter for). It can travel with the project for reference.";
 }
 

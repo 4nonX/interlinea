@@ -52,13 +52,18 @@ func xliffExtract(args []js.Value) (any, error) {
 	return jsonOut(ex)
 }
 
-// xliffMerge(bytes, segments): writes the segments' translations and
-// states into an XLIFF file. Each segment comes as the editor has it,
-// with "state", its state in the file; segments that were split or joined
-// are written as the file has its segments.
+// xliffMerge(bytes, segments, targetLang?): writes the segments'
+// translations and states into a bilingual file. Each segment comes as
+// the editor has it, with "state", its state in the file; segments that
+// were split or joined are written as the file has its segments.
+// targetLang is the language a file that names none is translated into.
 func xliffMerge(args []js.Value) (any, error) {
-	if len(args) != 2 {
-		return nil, fmt.Errorf("xliffMerge(bytes, segments)")
+	if len(args) != 2 && len(args) != 3 {
+		return nil, fmt.Errorf("xliffMerge(bytes, segments, targetLang?)")
+	}
+	targetLang := ""
+	if len(args) == 3 && args[2].Type() == js.TypeString {
+		targetLang = args[2].String()
 	}
 	data, err := bytesArg(args[0])
 	if err != nil {
@@ -78,7 +83,7 @@ func xliffMerge(args []js.Value) (any, error) {
 		states[x.ID] = x.State
 	}
 	up := project.XLIFFUpdatesBy(segs, func(s project.Segment) filter.State { return states[s.ID] })
-	out, err := xliff.Merge(data, up)
+	out, err := xliff.MergeTo(data, up, targetLang)
 	if err != nil {
 		return nil, err
 	}

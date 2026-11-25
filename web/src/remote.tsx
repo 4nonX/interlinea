@@ -354,7 +354,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
             ? "none"
             : documentFormat(f.name)
               ? "docx"
-              : /^(xlf|xliff|sdlxliff|mqxliff|mqxlz)$/.test(ext(f.name))
+              : /^(xlf|xliff|sdlxliff|mqxliff|mxliff|txlf|txml|ttx|mqxlz)$/.test(ext(f.name))
                 ? "xliff"
                 : "text";
         const bytes = before?.bytes ?? (await api.fileBytes(p.id, f.name));

@@ -77,19 +77,29 @@ type segment struct {
 }
 
 type scan struct {
-	doc      *xmlraw.Document
-	format   string
-	sdl, mq  string // namespace prefixes
-	segments []*segment
-	byID     map[string]*segment
-	ext      filter.Extraction
+	doc     *xmlraw.Document
+	format  string
+	sdl, mq string // namespace prefixes
+	phrase  string // prefix of Phrase's namespace
+	// phraseLevel is the workflow step a Phrase file is for (1 translation).
+	phraseLevel int
+	segments    []*segment
+	byID        map[string]*segment
+	ext         filter.Extraction
 }
 
-// Detect reports whether data is XLIFF and which variant.
+// Detect reports whether data is a bilingual file this package reads and
+// which: an XLIFF variant, Wordfast Pro (txml) or Trados TagEditor (ttx).
 func Detect(data []byte) (string, bool) {
 	doc, err := xmlraw.Read(data)
 	if err != nil {
 		return "", false
+	}
+	switch doc.Root.Local {
+	case "txml":
+		return FormatTXML, true
+	case "TRADOStag":
+		return FormatTTX, true
 	}
 	return format(doc.Root)
 }
@@ -107,6 +117,8 @@ func format(root *xmlraw.Node) (string, bool) {
 		return FormatSDL, true
 	case hasNS(ns, nsMQ):
 		return FormatMQ, true
+	case hasNS(ns, nsPhrase):
+		return FormatPhrase, true
 	case v == "1.2" || v == "1.1" || v == "1.0" || hasNS(ns, nsXLIFF12):
 		return FormatXLIFF12, true
 	}
@@ -128,7 +140,10 @@ func read(data []byte) (*scan, error) {
 		return nil, ErrNotXLIFF
 	}
 	ns := doc.Root.Namespaces()
-	s := &scan{doc: doc, format: f, sdl: ns[nsSDL], mq: ns[nsMQ], byID: map[string]*segment{}}
+	s := &scan{doc: doc, format: f, sdl: ns[nsSDL], mq: ns[nsMQ], phrase: ns[nsPhrase], byID: map[string]*segment{}}
+	if f == FormatPhrase {
+		s.phraseLevel, _ = strconv.Atoi(attrNS(doc.Root, s.phrase, "level"))
+	}
 	if s.sdl == "" && f == FormatSDL {
 		s.sdl = "sdl"
 	}
@@ -284,7 +299,7 @@ func (s *scan) unit1(fi int, file, tu *xmlraw.Node, defs map[string]tagDef) erro
 	mqPercent, _ := tu.AttrNS(s.mq, "percent")
 
 	segSrc := tu.Child("seg-source")
-	if segSrc == nil || s.format == FormatMQ {
+	if segSrc == nil || s.format == FormatMQ || s.format == FormatPhrase {
 		r := &reader{defs: defs}
 		sg := &segment{tu: tu, srcNode: src, tgtEl: tgt, tgtNode: tgt, tags: tagTable{}}
 		sg.unit = base
@@ -292,6 +307,11 @@ func (s *scan) unit1(fi int, file, tu *xmlraw.Node, defs map[string]tagDef) erro
 		sg.unit.Source = r.read(src.Kids)
 		if tgt != nil {
 			sg.unit.Target = r.read(tgt.Kids)
+		}
+		if s.format == FormatPhrase {
+			marks := phraseMarks(tu)
+			sg.unit.Source = phraseContent(sg.unit.Source, marks)
+			sg.unit.Target = phraseContent(sg.unit.Target, marks)
 		}
 		sg.tags.add(sg.unit.Source)
 		sg.tags.add(sg.unit.Target)
@@ -302,6 +322,8 @@ func (s *scan) unit1(fi int, file, tu *xmlraw.Node, defs map[string]tagDef) erro
 			sg.unit.State = fromMQ(mqStatus, hasText)
 			sg.unit.Locked = mqLocked == "locked"
 			sg.unit.Match, _ = strconv.Atoi(mqPercent)
+		case FormatPhrase:
+			s.phraseUnit(&sg.unit, tu, hasText)
 		default:
 			st := ""
 			if tgt != nil {
@@ -488,8 +510,25 @@ func (s *scan) unit2(fi int, file, u *xmlraw.Node) error {
 	return nil
 }
 
-// Extract lists the segments of an XLIFF file.
+// Extract lists the segments of a bilingual file: XLIFF in any of its
+// variants, Wordfast Pro (.txml) or Trados TagEditor (.ttx).
 func Extract(data []byte) (*filter.Extraction, error) {
+	if doc, err := xmlraw.Read(data); err == nil {
+		switch doc.Root.Local {
+		case "txml":
+			f, err := readTXML(doc)
+			if err != nil {
+				return nil, err
+			}
+			return &f.ext, nil
+		case "TRADOStag":
+			f, err := readTTX(doc)
+			if err != nil {
+				return nil, err
+			}
+			return &f.ext, nil
+		}
+	}
 	s, err := read(data)
 	if err != nil {
 		return nil, err

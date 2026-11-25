@@ -124,6 +124,29 @@ func openTagOf(start []byte) string {
 // Merge writes translations and states into an XLIFF file. Segments are
 // named by the unit IDs Extract returns. A locked segment cannot change.
 func Merge(data []byte, updates map[string]Update) ([]byte, error) {
+	return MergeTo(data, updates, "")
+}
+
+// MergeTo is Merge for a file that may not name its target language yet,
+// as a TagEditor file that was never segmented: targetLang is the one it
+// is translated into.
+func MergeTo(data []byte, updates map[string]Update, targetLang string) ([]byte, error) {
+	if doc, err := xmlraw.Read(data); err == nil {
+		switch doc.Root.Local {
+		case "txml":
+			f, err := readTXML(doc)
+			if err != nil {
+				return nil, err
+			}
+			return f.merge(updates)
+		case "TRADOStag":
+			f, err := readTTX(doc)
+			if err != nil {
+				return nil, err
+			}
+			return f.merge(updates, targetLang)
+		}
+	}
 	s, err := read(data)
 	if err != nil {
 		return nil, err
@@ -246,7 +269,8 @@ func (w *writer) single(sg *segment, u Update) error {
 	st := w.newState(sg, u)
 	restate := st != sg.unit.State
 	v2 := w.s.format == FormatXLIFF2
-	mq := w.s.format == FormatMQ
+	// memoQ and Phrase keep the state on the trans-unit, not the target.
+	mq := w.s.format == FormatMQ || w.s.format == FormatPhrase
 
 	switch {
 	case changed && sg.tgtEl != nil:
@@ -274,6 +298,10 @@ func (w *writer) single(sg *segment, u Update) error {
 			} else if _, has := sg.seg2.Attr("subState"); has && restate {
 				w.removeAttr(sg.seg2, "subState")
 			}
+		}
+	case w.s.format == FormatPhrase:
+		if restate || changed {
+			w.phraseState(sg.tu, st)
 		}
 	case mq:
 		if restate || changed {

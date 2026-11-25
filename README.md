@@ -24,7 +24,7 @@ Studio and memoQ.
 | Terminologists | Termbases with one concept per entry, review of what projects add and change, and exchange as TBX, MultiTerm, CSV and Excel |
 | Project managers | Projects from documents, bilingual files and packages, analysis, pre-translation, work given to translators and reviewers, scored review |
 | Teams | A team server that keeps terminology, memories and projects in one place, with accounts, roles and sign-in through a provider |
-| Files | DOCX, PPTX, XLSX, ODT, ODS, ODP, HTML, IDML, XML, Markdown, PDF, software strings, subtitles, text, XLIFF, SDLXLIFF, MQXLIFF, Trados and memoQ packages |
+| Files | DOCX, PPTX, XLSX, ODT, ODS, ODP, HTML, IDML, XML, Markdown, PDF, software strings, subtitles, text, XLIFF, SDLXLIFF, MQXLIFF, Phrase MXLIFF, Wordfast TXML, TagEditor TTX, Trados and memoQ packages; memories from TMX, Trados Studio (.sdltm) and Wordfast |
 
 This repository holds the Go core, the team server, the native desktop app
 (Qt 6) and the browser client.
@@ -70,7 +70,8 @@ sign-in through a provider, backups.
 - **Core:** file filters for Word, PowerPoint, Excel, OpenDocument (ODT,
   ODS, ODP), web pages (HTML), InDesign (IDML), XML, Markdown, software
   strings (properties, JSON, YAML, PO, RESX), subtitles (SRT, WebVTT),
-  XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF (also as .mqxlz), Trados packages,
+  XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF (also as .mqxlz), Phrase (.mxliff),
+  Wordfast Pro (.txml, .txlf), Trados TagEditor (.ttx), Trados packages,
   memoQ handoff packages, plain text, and the text of PDF files; alignment
   of documents done
   before; translation memories; termbases with
@@ -119,7 +120,7 @@ The Go packages:
 | `filter/pdf` | Reads the text of PDF files, without any other program: the objects of the file (also packed in streams, also with a broken table of objects), fonts with their maps to text, encodings and glyph names, and the text shown on each page with where it stands. Lines, columns and paragraphs are found from the places, a word divided at the end of a line is whole again, and the text is handed on as a Word document, which is what the translation is saved as |
 | `filter/para` | What the document filters share: a paragraph's content cut into sentence units, and translations put back with their tags matched and nested |
 | `filter/formats` | The formats by file name, and one way to extract and merge any document |
-| `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, XLIFF 2.0 to 2.2; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
+| `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, Phrase MXLIFF, XLIFF 2.0 to 2.2, Wordfast Pro TXML and Trados TagEditor TTX; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
 | `filter/sdlpackage` | Trados project packages (.sdlppx): languages and bilingual files; return packages (.sdlrpx) with the translated files |
 | `filter/mqpackage` | memoQ handoff packages (.mqout) and memoQ XLIFF archives (.mqxlz): the documents as memoQ XLIFF; delivery packages (.mqback) |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel, and reads MultiTerm termbase files (.sdltb); import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
@@ -530,6 +531,27 @@ language only (`de-AT` for `de-DE`).
   them in with memoQ's import of bilingual files, which is documented.
   A memoQ XLIFF archive on its own is a bilingual file and is saved back
   as the archive it was.
+- Phrase (Memsource) files (.mxliff): Phrase's codes in the text (`{1}`,
+  `{1>` and `<1}`, `{b>` and the like) are tags, with what each stands for
+  as Phrase describes it; a segment is confirmed (`m:confirmed`) once
+  translated. In a file for review (`m:level` 2 and on) confirming is the
+  reviewer's: a translation not yet confirmed there is a translation, a
+  confirmed one reviewed. Locks and match values come from the file.
+- Wordfast Pro files (.txml): the codes (`<ut>`) are tags; a segment is a
+  draft while `unconfirmed="true"`, and from machine translation when
+  `gtmt="true"`. Wordfast Pro 5 files (.txlf) are XLIFF and read as such.
+- Trados TagEditor files (.ttx), from Trados 2007 and earlier: each `<Tu>`
+  is a segment. Text not yet segmented in TagEditor is cut into sentences
+  as Interlinea cuts documents, and each sentence translated is written
+  back as a `<Tu>` of its own, as TagEditor writes it, with the codes that
+  close a paragraph in its last sentence. A sentence is not cut through
+  formatting TagEditor shows (`<df>`): where such formatting holds a
+  paragraph break, the sentence ends at it, where TagEditor would split the
+  formatting instead. A file that was never segmented names no target
+  language: it is the project's first target language, and the file
+  delivered names it.
+- Bilingual files of these programs keep their segments as the program
+  made them: they are not split or joined.
 - PowerPoint: slides in the order of the show, each followed by its
   charts, SmartArt and speaker notes; tables cell by cell. Slide masters
   and layouts are not read (their prompts do not show in a show), comments

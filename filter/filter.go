@@ -152,7 +152,7 @@ type Extraction struct {
 	// translate (tracked changes that will be accepted, for example).
 	Warnings []string `json:"warnings,omitempty"`
 	// Format names the file format and its variant ("docx", "xliff-1.2",
-	// "sdlxliff", "mqxliff", "xliff-2.0"); SourceLang and TargetLang are
+	// "sdlxliff", "mqxliff", "mxliff", "txml", "ttx", "xliff-2.0"); SourceLang and TargetLang are
 	// the languages a bilingual file declares.
 	Format     string `json:"format,omitempty"`
 	SourceLang string `json:"sourceLang,omitempty"`

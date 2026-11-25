@@ -5,10 +5,15 @@ package realworld
 
 import (
 	"context"
+	"encoding/xml"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/mqpackage"
@@ -48,6 +53,7 @@ var bilingual = map[string]translatable{
 	"memoq/xliffkit-ph.mqxliff":                  {"mqxliff", "en", "ja", 3, 0},
 	"memoq/xliffkit-split.mqxliff":               {"mqxliff", "en", "ja", 33, 0},
 	"memoq/xliffkit-translated.mqxliff":          {"mqxliff", "en", "ja", 33, 0},
+	"phrase/xlfql-ja-en.mxliff":                  {"mxliff", "ja-jp", "en-us", 3, 0},
 }
 
 // outside masks what a translation may change in an XLIFF file: targets,
@@ -295,4 +301,192 @@ func TestMemoryFiles(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestOtherBilingualFiles reads Wordfast Pro and TagEditor files, writes a
+// translation into every segment and reads the result. Wordfast Pro gets
+// its targets and segment flags, nothing else changes. TagEditor gets its
+// targets, and the sentences it had not segmented each become a <Tu> of
+// their own: with those unwrapped again, the file reads as it was.
+func TestOtherBilingualFiles(t *testing.T) {
+	type want struct {
+		translatable
+		tags, translated int
+	}
+	for name, w := range map[string]want{
+		"wordfast/okapi-test01.docx.txml":             {translatable{"txml", "en", "fr", 10, 0}, 14, 3},
+		"wordfast/okapi-test02.html.txml":             {translatable{"txml", "en", "fr", 10, 0}, 7, 4},
+		"wordfast/okapi-test03.mif.txml":              {translatable{"txml", "en", "fr", 235, 0}, 53, 0},
+		"tageditor/okapi-test01.html.ttx":             {translatable{"ttx", "en-US", "fr-FR", 7, 0}, 15, 6},
+		"tageditor/okapi-test02-segmented.html.ttx":   {translatable{"ttx", "en-US", "fr-FR", 76, 0}, 92, 76},
+		"tageditor/okapi-test02-unsegmented.html.ttx": {translatable{"ttx", "en-US", "", 76, 0}, 89, 0},
+		"tageditor/okapi-issue-164.doc.ttx":           {translatable{"ttx", "en-US", "", 12, 0}, 0, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			doc := read(t, name)
+			ex, err := xliff.Extract(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tags, translated := 0, 0
+			for _, u := range ex.Units {
+				tags += len(u.Source.Tags())
+				if u.State != filter.StateNew {
+					translated++
+				}
+			}
+			got := want{translatable{ex.Format, ex.SourceLang, ex.TargetLang, len(ex.Units), 0}, tags, translated}
+			if got != w {
+				t.Fatalf("read %+v, want %+v", got, w)
+			}
+			up := map[string]xliff.Update{}
+			for _, u := range ex.Units {
+				up[u.ID] = xliff.Update{Target: u.Source.Clone().Append(" (übersetzt)"), State: filter.StateTranslated}
+			}
+			out, err := xliff.MergeTo(doc, up, "de-DE")
+			if err != nil {
+				t.Fatal(err)
+			}
+			again, err := xliff.Extract(out)
+			if err != nil {
+				t.Fatalf("the written file does not read: %v", err)
+			}
+			if len(again.Units) != len(ex.Units) {
+				t.Fatalf("%d segments after writing, %d before", len(again.Units), len(ex.Units))
+			}
+			for i, u := range again.Units {
+				if u.ID != ex.Units[i].ID || !u.Source.Normalize().Equal(ex.Units[i].Source.Normalize()) {
+					t.Fatalf("segment %s changed its source: %q, was %q", u.ID, u.Source.String(), ex.Units[i].Source.String())
+				}
+				if !u.Target.Normalize().Equal(up[u.ID].Target.Normalize()) || u.State != filter.StateTranslated {
+					t.Fatalf("segment %s: %q (%s)", u.ID, u.Target.String(), u.State)
+				}
+			}
+			if ex.TargetLang == "" && again.TargetLang != "de-DE" {
+				t.Fatalf("the file names %q as its target language", again.TargetLang)
+			}
+			switch ex.Format {
+			case "txml":
+				mask := regexp.MustCompile(`(?s)<target\b.*?</target>|<segment\b[^>]*>`)
+				if string(mask.ReplaceAll(doc, nil)) != string(mask.ReplaceAll(out, nil)) {
+					t.Fatal("writing changed the file outside its targets")
+				}
+			case "ttx":
+				if a, b := ttxWithoutTargets(t, doc), ttxWithoutTargets(t, out); a != b {
+					t.Fatalf("writing changed the file outside its targets:\n%s\n%s", a[:min(len(a), 600)], b[:min(len(b), 600)])
+				}
+			}
+		})
+	}
+}
+
+// ttxWithoutTargets reads a TagEditor file as a sequence of XML tokens with
+// the target Tuvs left out, the <Tu> and source <Tuv> that Interlinea
+// wraps around a sentence unwrapped, and the target language left out.
+func ttxWithoutTargets(t *testing.T, data []byte) string {
+	t.Helper()
+	text, err := decodeUTF16(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dec := xml.NewDecoder(strings.NewReader(text))
+	var b strings.Builder
+	depth := 0     // inside a target Tuv
+	var tus []bool // for each open Tu: whether Interlinea made it
+	var tuvs []bool
+	pending := ""
+	flush := func() {
+		b.WriteString(pending)
+		pending = ""
+	}
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		switch x := tok.(type) {
+		case xml.StartElement:
+			attrs := map[string]string{}
+			for _, a := range x.Attr {
+				attrs[a.Name.Local] = a.Value
+			}
+			switch {
+			case depth > 0:
+				depth++
+				continue
+			case x.Name.Local == "Tuv" && attrs["Lang"] != "EN-US":
+				depth = 1
+				continue
+			case x.Name.Local == "Tu":
+				ours := attrs["Origin"] == "manual" && attrs["MatchPercent"] == "0" && len(tus) == 0 && wrapped(text, dec.InputOffset())
+				tus = append(tus, ours)
+				if ours {
+					continue
+				}
+			case x.Name.Local == "Tuv":
+				ours := len(tus) > 0 && tus[len(tus)-1]
+				tuvs = append(tuvs, ours)
+				if ours {
+					continue
+				}
+			case x.Name.Local == "UserSettings":
+				delete(attrs, "TargetLanguage")
+			}
+			flush()
+			fmt.Fprintf(&b, "<%s", x.Name.Local)
+			keys := make([]string, 0, len(attrs))
+			for k := range attrs {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Fprintf(&b, " %s=%q", k, attrs[k])
+			}
+			b.WriteString(">")
+		case xml.EndElement:
+			if depth > 0 {
+				depth--
+				continue
+			}
+			switch x.Name.Local {
+			case "Tu":
+				ours := tus[len(tus)-1]
+				tus = tus[:len(tus)-1]
+				if ours {
+					continue
+				}
+			case "Tuv":
+				ours := tuvs[len(tuvs)-1]
+				tuvs = tuvs[:len(tuvs)-1]
+				if ours {
+					continue
+				}
+			}
+			flush()
+			fmt.Fprintf(&b, "</%s>", x.Name.Local)
+		case xml.CharData:
+			if depth == 0 {
+				pending += string(x)
+			}
+		}
+	}
+	flush()
+	return b.String()
+}
+
+// wrapped reports whether the <Tu> just read is one Interlinea wrote: its
+// source <Tuv> follows at once.
+func wrapped(text string, at int64) bool {
+	return strings.HasPrefix(text[at:], `<Tuv Lang="EN-US">`)
+}
+
+func decodeUTF16(b []byte) (string, error) {
+	if len(b) < 2 || b[0] != 0xff || b[1] != 0xfe {
+		return string(b), nil
+	}
+	u := make([]uint16, (len(b)-2)/2)
+	for i := range u {
+		u[i] = uint16(b[2+2*i]) | uint16(b[3+2*i])<<8
+	}
+	return string(utf16.Decode(u)), nil
 }

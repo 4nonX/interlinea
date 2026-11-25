@@ -1,4 +1,4 @@
-# Files written by Trados Studio, MultiTerm, memoQ and Wordfast
+# Files written by Trados Studio, TagEditor, MultiTerm, memoQ, Phrase and Wordfast
 
 The tests in `internal/realworld` read these files, write a translation into
 every segment that can take one, and read the result again; memories are
@@ -26,6 +26,14 @@ only its name is new.
 | `trados/rws-general-en-de.sdltm` | Trados Studio, a memory with a list field | RWS/trados-studio-api-samples `.../SampleFiles/General En-De.sdltm` | Apache 2.0 |
 | `wordfast/txt-tm-importer-pt-en.txt` | Wordfast, a memory in UTF-16 | [diasks2/txt_tm_importer](https://github.com/diasks2/txt_tm_importer) `spec/sample_files/wordfast_1.txt` | MIT, `licenses/txt-tm-importer.txt` |
 | `wordfast/txt-tm-importer-en-es.txt` | Wordfast, a memory of a later version | txt_tm_importer `spec/sample_files/wordfast_2.txt` | MIT |
+| `phrase/xlfql-ja-en.mxliff` | Phrase, from Word, with codes | [capybara-translation/xlfql](https://github.com/capybara-translation/xlfql) `data/sample.mxliff` | MIT, `licenses/xlfql.txt` |
+| `wordfast/okapi-test01.docx.txml` | Wordfast Pro, from Word | the Okapi Framework's test files, as kept in [patois-labs/bilingua](https://github.com/patois-labs/bilingua) `bilingua-wordfast/tests/data/Test01.docx.txml` | Apache 2.0, `licenses/okapi-via-bilingua-apache-2.0.txt` |
+| `wordfast/okapi-test02.html.txml` | Wordfast Pro, from HTML | Okapi, bilingua `bilingua-wordfast/tests/data/Test02.html.txml` | Apache 2.0 |
+| `wordfast/okapi-test03.mif.txml` | Wordfast Pro, from FrameMaker | Okapi, bilingua `bilingua-wordfast/tests/data/Test03.mif.txml` | Apache 2.0 |
+| `tageditor/okapi-test01.html.ttx` | TagEditor 8.2, from HTML | Okapi, bilingua `bilingua-ttx/tests/data/okapi_test01.ttx` | Apache 2.0 |
+| `tageditor/okapi-test02-segmented.html.ttx` | TagEditor 8.2, segmented | Okapi, bilingua `bilingua-ttx/tests/data/okapi_test02_allseg.ttx` | Apache 2.0 |
+| `tageditor/okapi-test02-unsegmented.html.ttx` | TagEditor 8.2, the same document never segmented | Okapi, bilingua `bilingua-ttx/tests/data/okapi_test02_noseg.ttx` | Apache 2.0 |
+| `tageditor/okapi-issue-164.doc.ttx` | TagEditor 8.3, from Word, never segmented | Okapi, bilingua `bilingua-ttx/tests/data/okapi_issue_164.ttx` | Apache 2.0 |
 | `memoq/disfr-change-tracking.mqxliff` | memoQ, with tracked changes | disfr `ChangeTracking_memoQ_1.mqxliff` | BSD |
 | `memoq/disfr-git.html.mqxlz` | memoQ, archive of an HTML document | disfr `git.html_jpn.mqxlz` | BSD |
 | `memoq/xliffkit-ph.mqxliff` | memoQ | [ikuehirata/xliffkit](https://github.com/ikuehirata/xliffkit) `examples/01_fix_ph_to_bpt_ept/input.mqxliff` | MIT, `licenses/xliffkit.txt` |
@@ -35,7 +43,7 @@ only its name is new.
 The repositories were read at these commits: disfr `7f47558`, xliffkit
 `a1db2b7`, trados-studio-api-samples `4cf88a2`, Sdl-Community `70229c4`,
 Sdl-studio-powershell-toolkit `4f45d9a`, sdltm_importer `8b2df47`,
-txt_tm_importer `f6b8fd9`.
+txt_tm_importer `f6b8fd9`, xlfql `119f1d6`, bilingua `e5e0e5d`.
 
 These files are older than Trados Studio 2024 and memoQ 11, and none is a
 project package (.sdlppx, .sdlrpx) or a memoQ handoff package. Files from

@@ -43,7 +43,9 @@ export function kindOf(doc: PendingDoc): FileKind {
 /** Whether the document can be translated here. */
 export function readable(doc: PendingDoc): boolean {
   if (doc.error) return false;
-  if (doc.bilingual) return !!doc.bilingual.targetLang;
+  // A bilingual file that names no target language (a TagEditor file
+  // never segmented) is for the project's first.
+  if (doc.bilingual) return true;
   return kindOf(doc) !== "none";
 }
 
@@ -119,7 +121,8 @@ export function buildFiles(
       continue;
     }
     if (d.doc.bilingual) {
-      const t = knownLang(d.doc.bilingual.targetLang!);
+      const t = d.doc.bilingual.targetLang ? knownLang(d.doc.bilingual.targetLang) : targets[0];
+      if (!t) return null;
       out.push({
         ...base,
         kind: "xliff",
