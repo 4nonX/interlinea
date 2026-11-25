@@ -625,8 +625,8 @@ export function client(conn: Connection) {
       send<{ translations: { id: string; target: CoreRun[]; tagsLost?: boolean }[] }>("POST", `/api/providers/${encodeURIComponent(name)}/translate`, { sourceLang, targetLang, segments }),
     /** Makes an access token for a program; the token itself is in the answer once. */
     createToken: (name: string, days: number) => send<{ token: string; id: number; name: string; expiresAt: string }>("POST", "/api/me/tokens", { name, days }),
-    /** Splits a segment where before ends, joins it with the next or separates what was joined; answers the file's segments. */
-    resegment: (id: number, file: string, lang: string, segment: string, how: "split" | "join" | "separate", before: CoreRun[], version: number) =>
+    /** Splits a segment where before ends or joins it with the next; answers the file's segments. */
+    resegment: (id: number, file: string, lang: string, segment: string, how: "split" | "join", before: CoreRun[], version: number) =>
       send<StoredSegment[]>("POST", `${p(id)}/segments/${how}?${q({ file, lang, segment })}`, how === "split" ? { before } : undefined, version),
     /** Puts a comment on a segment; its translation and version stay. */
     addComment: (id: number, file: string, lang: string, segment: string, text: string) =>

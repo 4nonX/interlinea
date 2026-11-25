@@ -303,7 +303,8 @@ export type DocumentFormat =
   | "po"
   | "resx"
   | "srt"
-  | "vtt";
+  | "vtt"
+  | "txt";
 
 const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.(docx|docm)$/i, "docx"],
@@ -323,6 +324,7 @@ const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.resx$/i, "resx"],
   [/\.srt$/i, "srt"],
   [/\.vtt$/i, "vtt"],
+  [/\.(txt|csv|tsv)$/i, "txt"],
 ];
 
 /** The format of a document one of the core's filters reads; null for any other file. */
@@ -349,6 +351,7 @@ export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
   resx: "RESX file",
   srt: "SRT subtitles",
   vtt: "WebVTT subtitles",
+  txt: "Text file",
 };
 
 /** What a document format keeps of the file besides its text. */
@@ -370,6 +373,7 @@ export const DOCUMENT_FORMAT_KEEPS: Record<DocumentFormat, string> = {
   resx: "keys and placeholders kept",
   srt: "times kept",
   vtt: "times kept",
+  txt: "line breaks kept",
 };
 
 /** The type a translated document is offered for download as. */
@@ -391,6 +395,7 @@ export const DOCUMENT_TYPE: Record<DocumentFormat, string> = {
   resx: "application/xml",
   srt: "application/x-subrip",
   vtt: "text/vtt",
+  txt: "text/plain",
 };
 
 /**
@@ -486,26 +491,49 @@ export async function applySegmentation(segments: Segment[], rules: { break: boo
 }
 
 /** How a file's segments are cut differently. */
-export type Resegment = "split" | "join" | "separate";
+export type Resegment = "split" | "join";
+
+/** What a segment is, to tell which segments an operation left alone. */
+function cutKey(id: string, source: string, split: Segment["split"], joined: { id: string }[] | undefined): string {
+  return JSON.stringify([id, source, split?.unit ?? "", split?.space ?? "", (joined ?? []).map((j) => j.id)]);
+}
 
 /**
- * Splits segment index where before, the start of its source, ends, joins
- * it with the one after it, or separates what was joined. The answer is
- * the file's segments as they are then: those the change left alone are
- * the same objects. What the segments do not allow is thrown, as the
- * sentence to show.
+ * Splits segment index where before, the start of its source, ends, or
+ * joins it with the one after it. The answer is the file's segments as
+ * they are then: those the change left alone are the same objects. Other
+ * parts of the same stretch of the file may be named anew. What the
+ * segments do not allow is thrown, as the sentence to show.
  */
 export async function resegment(how: Resegment, segments: Segment[], index: number, before: Run[] = []): Promise<Segment[]> {
   const core = await loadCore();
   const r = core.resegment(how, JSON.stringify(segments.map(coreSegment)), index, JSON.stringify(runsToCoreWhole(before)));
   if (!r.ok) throw new Error(r.error);
   const out = JSON.parse(r.value) as CoreCut[];
-  const gone = how === "join" ? 2 : 1;
-  const come = out.length - segments.length + gone;
+  const was = segments.map((x) => cutKey(x.id, plain(x.source), x.split, x.joined) + JSON.stringify(plain(x.target)));
+  const is = out.map((x) => cutKey(x.id, plain(coreToRuns(x.source)), x.split ?? undefined, x.joined) + JSON.stringify(plain(coreToRuns(x.target ?? []))));
+  let lo = 0;
+  while (lo < was.length && lo < is.length && was[lo] === is[lo]) lo++;
+  let hiOld = was.length;
+  let hiNew = is.length;
+  while (hiOld > lo && hiNew > lo && was[hiOld - 1] === is[hiNew - 1]) {
+    hiOld--;
+    hiNew--;
+  }
+  const gone = segments.slice(lo, hiOld);
   // Counted on, so an open editor shows what the segment is now.
-  const rev = Math.max(0, ...segments.slice(index, index + gone).map((x) => x.rev ?? 0)) + 1;
-  const fresh = out.slice(index, index + come).map((x) => segmentOfCut(x, rev));
-  return [...segments.slice(0, index), ...fresh, ...segments.slice(index + gone)];
+  const rev = Math.max(0, ...gone.map((x) => x.rev ?? 0)) + 1;
+  const fresh = out.slice(lo, hiNew).map((x) => {
+    const seg = segmentOfCut(x, rev);
+    // A segment that only got another name keeps where its translation came from.
+    const same = gone.find((g) => plain(g.source) === plain(seg.source) && plain(g.target) === plain(seg.target));
+    if (same) {
+      seg.origin = same.origin;
+      seg.warnings = same.warnings;
+    }
+    return seg;
+  });
+  return [...segments.slice(0, lo), ...fresh, ...segments.slice(hiOld)];
 }
 
 /**
@@ -597,6 +625,7 @@ export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
         notes: u.notes,
         maxLength: u.maxLength || undefined,
         file: {
+          fixed: ex.format === "sdlxliff" || ex.format === "mqxliff" || undefined,
           state: u.state ?? "new",
           target: JSON.stringify(u.target ?? []),
           match: u.match || undefined,
@@ -625,17 +654,26 @@ function fileState(s: Segment): FileState {
   return plain(s.target).trim() ? "draft" : "new";
 }
 
+/**
+ * Whether a bilingual file comes from a program that keeps its own record
+ * of every segment (Trados, memoQ), so its segments are not split or joined.
+ */
+export async function keepsItsSegments(bytes: Uint8Array): Promise<boolean> {
+  const core = await loadCore();
+  const doc = archived(bytes) ? unwrap(core.archiveRead(bytes)) : bytes;
+  const r = core.xliffDetect(doc);
+  return !r.ok || r.value === "sdlxliff" || r.value === "mqxliff";
+}
+
 /** Writes translations and states into the original XLIFF file. Locked segments stay as they are. */
 export async function mergeXliff(
   bytes: Uint8Array,
   segments: Segment[],
 ): Promise<Uint8Array> {
   const core = await loadCore();
-  const updates: Record<string, { target: CoreRun[]; state: FileState }> = {};
-  for (const s of segments) {
-    if (!s.locked)
-      updates[s.id] = { target: runsToCore(s.target), state: fileState(s) };
-  }
+  // Each segment with its state in the file; the core writes segments
+  // that were split or joined as the file has them.
+  const updates = segments.map((s) => ({ ...coreSegment(s), target: runsToCore(s.target), locked: !!s.locked, file: undefined, state: fileState(s) }));
   if (!archived(bytes))
     return unwrap(core.xliffMerge(bytes, JSON.stringify(updates)));
   // A memoQ XLIFF in its archive goes back into it.

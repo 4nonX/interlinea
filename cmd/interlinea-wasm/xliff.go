@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"syscall/js"
 
+	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/xliff"
+	"github.com/4nonX/interlinea/project"
 )
 
 // Bilingual XLIFF files (XLIFF 1.2, SDLXLIFF, MQXLIFF, XLIFF 2):
@@ -50,18 +52,32 @@ func xliffExtract(args []js.Value) (any, error) {
 	return jsonOut(ex)
 }
 
+// xliffMerge(bytes, segments): writes the segments' translations and
+// states into an XLIFF file. Each segment comes as the editor has it,
+// with "state", its state in the file; segments that were split or joined
+// are written as the file has its segments.
 func xliffMerge(args []js.Value) (any, error) {
 	if len(args) != 2 {
-		return nil, fmt.Errorf("xliffMerge(bytes, updates)")
+		return nil, fmt.Errorf("xliffMerge(bytes, segments)")
 	}
 	data, err := bytesArg(args[0])
 	if err != nil {
 		return nil, err
 	}
-	var up map[string]xliff.Update
-	if err := json.Unmarshal([]byte(args[1].String()), &up); err != nil {
-		return nil, fmt.Errorf("updates: %w", err)
+	var in []struct {
+		project.Segment
+		State filter.State `json:"state"`
 	}
+	if err := json.Unmarshal([]byte(args[1].String()), &in); err != nil {
+		return nil, fmt.Errorf("segments: %w", err)
+	}
+	segs := make([]project.Segment, len(in))
+	states := map[string]filter.State{}
+	for i, x := range in {
+		segs[i] = x.Segment
+		states[x.ID] = x.State
+	}
+	up := project.XLIFFUpdatesBy(segs, func(s project.Segment) filter.State { return states[s.ID] })
 	out, err := xliff.Merge(data, up)
 	if err != nil {
 		return nil, err

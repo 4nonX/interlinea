@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/internal/sqlstore"
@@ -18,13 +19,12 @@ const (
 	ResegmentSplit = "split"
 	// ResegmentJoin makes one segment of a segment and the one after it.
 	ResegmentJoin = "join"
-	// ResegmentSeparate undoes a joining.
-	ResegmentSeparate = "separate"
 )
 
 // Resegment splits a segment where before, the start of its source, ends,
-// joins it with the segment after it, or separates what was joined, in
-// one target language of a file and as seen at version. What the
+// or joins it with the segment after it, in one target language of a
+// file and as seen at version. Other segments of the same stretch of the
+// file may get another name with it. What the
 // segments do not allow comes back as a *project.ErrResegment. It
 // returns the file's segments as they are afterwards. Assignments that
 // began or ended at a segment that is gone begin or end at what took its
@@ -60,33 +60,57 @@ func (d *DB) Resegment(ctx context.Context, projectID int64, file, target, segID
 			return ErrConflict
 		}
 		var changed []project.Segment
-		gone := 1
 		switch how {
 		case ResegmentSplit:
 			changed, err = project.Split(segs, at, before)
 		case ResegmentJoin:
 			changed, err = project.Join(segs, at)
-			gone = 2
-		case ResegmentSeparate:
-			changed, err = project.Separate(segs, at)
 		default:
 			return fmt.Errorf("projectdb: unknown way to resegment %q", how)
 		}
 		if err != nil {
 			return err
 		}
-		come := len(changed) - len(segs) + gone
-		pos, err := position(ctx, tx, fid, target, segID)
-		if err != nil {
-			return err
+		// What is different: segs[lo:hiOld] became changed[lo:hiNew].
+		same := func(a, b project.Segment) bool {
+			x, _ := json.Marshal(a)
+			y, _ := json.Marshal(b)
+			return string(x) == string(y)
 		}
-		for _, s := range stored[at : at+gone] {
+		lo := 0
+		for lo < len(segs) && lo < len(changed) && same(segs[lo], changed[lo]) {
+			lo++
+		}
+		hiOld, hiNew := len(segs), len(changed)
+		for hiOld > lo && hiNew > lo && same(segs[hiOld-1], changed[hiNew-1]) {
+			hiOld--
+			hiNew--
+		}
+		if lo == hiOld && lo == hiNew {
+			out = stored
+			return nil
+		}
+		gone, come := stored[lo:hiOld], changed[lo:hiNew]
+		next := version
+		for _, s := range gone {
+			if s.Version > next {
+				next = s.Version
+			}
+		}
+		next++
+		pos := 0
+		if lo < len(stored) {
+			if pos, err = position(ctx, tx, fid, target, stored[lo].ID); err != nil {
+				return err
+			}
+		}
+		for _, s := range gone {
 			if _, err := tx.ExecContext(ctx, `DELETE FROM segments WHERE file_id = ? AND target_lang = ? AND seg_id = ?`, fid, target, s.ID); err != nil {
 				return err
 			}
 		}
-		if come != gone {
-			if _, err := tx.ExecContext(ctx, `UPDATE segments SET position = position + ? WHERE file_id = ? AND target_lang = ? AND position > ?`, come-gone, fid, target, pos); err != nil {
+		if len(come) != len(gone) {
+			if _, err := tx.ExecContext(ctx, `UPDATE segments SET position = position + ? WHERE file_id = ? AND target_lang = ? AND position > ?`, len(come)-len(gone), fid, target, pos); err != nil {
 				return err
 			}
 		}
@@ -96,7 +120,7 @@ func (d *DB) Resegment(ctx context.Context, projectID int64, file, target, segID
 			return err
 		}
 		defer st.Close()
-		for k, sg := range changed[at : at+come] {
+		for k, sg := range come {
 			src, err := json.Marshal(sg.Source)
 			if err != nil {
 				return err
@@ -109,17 +133,51 @@ func (d *DB) Resegment(ctx context.Context, projectID int64, file, target, segID
 			if err != nil {
 				return err
 			}
-			if _, err := st.ExecContext(ctx, fid, target, pos+k, sg.ID, noNUL(string(src)), noNUL(string(tgt)), string(sg.Status), boolInt(sg.Locked), version+1, now.Format(timeLayout), noNUL(by), extra); err != nil {
+			if _, err := st.ExecContext(ctx, fid, target, pos+k, sg.ID, noNUL(string(src)), noNUL(string(tgt)), string(sg.Status), boolInt(sg.Locked), next, now.Format(timeLayout), noNUL(by), extra); err != nil {
 				return fmt.Errorf("projectdb: segment %s: %w", sg.ID, err)
 			}
 		}
-		// Work given out from or up to a segment that is gone is given
-		// out from or up to what stands there now. A range given out for
-		// every language at once is given out for each language first,
-		// to the same person, as its ends are no longer the same in all.
-		first, last := changed[at].ID, changed[at+come-1].ID
-		for _, s := range stored[at : at+gone] {
-			if err := perLanguage(ctx, tx, cur, projectID, file, s.ID, first, last, by, now); err != nil {
+		// Work given out from or up to a segment that is another one now
+		// is given out from the segment that has its first words, or up
+		// to the one that has its last. A
+		// range given out for every language at once is given out for
+		// each language first, to the same person, as its ends are no
+		// longer the same in all.
+		letters := func(c content.Content) int {
+			n := 0
+			for _, r := range c.Plain() {
+				if !unicode.IsSpace(r) {
+					n++
+				}
+			}
+			return n
+		}
+		ends := make([]int, len(come))
+		total := 0
+		for k, sg := range come {
+			total += letters(sg.Source)
+			ends[k] = total
+		}
+		holder := func(at int) string {
+			for k := range come {
+				if at < ends[k] {
+					return come[k].ID
+				}
+			}
+			return come[len(come)-1].ID
+		}
+		off := 0
+		for _, s := range gone {
+			start := off
+			off += letters(s.Source)
+			if len(come) == 0 {
+				continue
+			}
+			first, last := holder(start), holder(off-1)
+			if first == s.ID && last == s.ID {
+				continue
+			}
+			if err := perLanguage(ctx, tx, cur, projectID, file, s.ID, by, now); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `UPDATE assignments SET from_seg = ? WHERE project_id = ? AND lower(file) = lower(?) AND target_lang = ? AND from_seg = ?`, first, projectID, file, target, s.ID); err != nil {
@@ -132,7 +190,7 @@ func (d *DB) Resegment(ctx context.Context, projectID int64, file, target, segID
 		if _, err := tx.ExecContext(ctx, `DELETE FROM presence WHERE project_id = ? AND lower(file) = lower(?) AND target_lang = ? AND seg_id NOT IN (SELECT seg_id FROM segments WHERE file_id = ? AND target_lang = ?)`, projectID, file, target, fid, target); err != nil {
 			return err
 		}
-		if err := logChange(ctx, tx, change{projectID: projectID, project: cur.Settings.Name, kind: ChangeResegmented, file: file, target: target, segment: first, version: version + 1}, by, now); err != nil {
+		if err := logChange(ctx, tx, change{projectID: projectID, project: cur.Settings.Name, kind: ChangeResegmented, file: file, target: target, segment: come[0].ID, version: next}, by, now); err != nil {
 			return err
 		}
 		out, err = querySegments(ctx, tx, fid, target)
@@ -142,12 +200,11 @@ func (d *DB) Resegment(ctx context.Context, projectID int64, file, target, segID
 }
 
 // perLanguage gives out for each language the ranges of a file that are
-// given out for every language at once and begin or end at a segment
-// whose place first and last take.
-func perLanguage(ctx context.Context, tx *sqlstore.Tx, p Project, projectID int64, file, segID, first, last, by string, now time.Time) error {
+// given out for every language at once and begin or end at a segment.
+func perLanguage(ctx context.Context, tx *sqlstore.Tx, p Project, projectID int64, file, segID, by string, now time.Time) error {
 	rows, err := tx.QueryContext(ctx, `SELECT id, from_seg, to_seg, user_id, user_name, task, due, done FROM assignments
-		WHERE project_id = ? AND lower(file) = lower(?) AND target_lang = '' AND ((from_seg = ? AND from_seg <> ?) OR (to_seg = ? AND to_seg <> ?))`,
-		projectID, file, segID, first, segID, last)
+		WHERE project_id = ? AND lower(file) = lower(?) AND target_lang = '' AND (from_seg = ? OR to_seg = ?)`,
+		projectID, file, segID, segID)
 	if err != nil {
 		return err
 	}

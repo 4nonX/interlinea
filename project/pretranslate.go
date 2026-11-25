@@ -80,6 +80,10 @@ type FileState struct {
 	Target string `json:"target"`
 	// Match is the match percentage the file records.
 	Match int `json:"match,omitempty"`
+	// Fixed: the program the file comes from keeps its own record of
+	// each segment (its ID, state and history), so the segment cannot
+	// be split or joined.
+	Fixed bool `json:"fixed,omitempty"`
 }
 
 // Origin is where a translation came from.

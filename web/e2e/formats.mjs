@@ -235,7 +235,7 @@ export default () =>
         check(await waitFor("document.querySelectorAll('.seg').length === 2", 5000), "two sentences of a paragraph are joined");
         check((await activeSource()).endsWith("zahlt die Miete. Der Vermieter haftet nicht.") && (await evaluate("!!document.querySelector('.seg.is-active .target-editor')")), "the joined segment is the open one, with both sentences: " + (await activeSource()));
         await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
-        check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable." && (await text()).includes("Joined from 2 segments of the document."), "it has the translation there was, and says what it is");
+        check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable." && (await text()).includes("Joined from 2 segments of the file."), "it has the translation there was, and says what it is");
         await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
         await key("a", "KeyA", 65, 2);
         await send("Input.insertText", { text: "The landlord is not liable, and the tenant pays." });
@@ -246,9 +246,40 @@ export default () =>
           const shot = await send("Page.captureScreenshot", { format: "png" });
           writeFileSync(`${process.env.INTERLINEA_SHOTS}/joined-segment.png`, Buffer.from(shot.data, "base64"));
         }
-        check(await evaluate(`!!${button("Separate")} && !${button("Split")}`), "a joined segment is separated, not split");
-        await evaluate(`${button("Separate")}.click()`);
-        check(await waitFor("document.querySelectorAll('.seg').length === 3", 5000), "separated, the sentences stand apart again");
+        // What was joined is split anywhere: inside the second sentence, the parts stand for both.
+        const caretAt = (words) => evaluate(`(() => { const el = document.querySelector('.split-source'); const n = [...el.childNodes].find(n => n.nodeType === 3 && n.textContent.includes(${JSON.stringify(words)})); const r = document.createRange(); r.setStart(n, n.textContent.indexOf(${JSON.stringify(words)})); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()`);
+        const splitHere = async (words) => {
+          await evaluate(`${button("Split")}.click()`);
+          await waitFor("!!document.querySelector('.split-source')", 5000);
+          await caretAt(words);
+          await waitFor("![...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').disabled", 3000);
+          await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').click()");
+          await waitFor("!document.querySelector('.split-source')", 5000);
+          await sleep(300);
+        };
+        check(await evaluate(`!${button("Split")}.disabled`), "a joined segment can be split");
+        await splitHere("haftet nicht");
+        check((await count()) === 3 && (await activeSource()).endsWith("zahlt die Miete. Der Vermieter") && (await text()).includes("A part of 2 segments of the file that were joined."), "split inside its second sentence, the parts say what they are: " + (await activeSource()));
+        await pick("haftet nicht.");
+        await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+        await send("Input.insertText", { text: "No liability." });
+        await sleep(300);
+        check(await save("Save translated document", "LIESMICH_en-GB.md"), "the file is saved with a joined stretch in parts");
+        check(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8").includes("\n\nThe landlord is not liable, and the tenant pays. No liability.\n\n"), "the parts stand one after the other where the two sentences stood: " + JSON.stringify(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8")));
+        // Joined again and split where the sentences met, they stand apart as the file has them.
+        await pick("zahlt die Miete");
+        await evaluate(`${button("Join with next")}.click()`);
+        check(await waitFor("document.querySelectorAll('.seg').length === 2", 5000), "the parts are joined again");
+        await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        await splitHere("Der Vermieter haftet");
+        check((await count()) === 3 && (await activeSource()).endsWith("zahlt die Miete.") && !(await text()).includes("segments of the file"), "split where they met, the two sentences are the file's again: " + (await activeSource()));
+        // A sentence cleared for the next step.
+        await pick("Der Vermieter haftet nicht.");
+        await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+        await key("a", "KeyA", 65, 2);
+        await send("Input.insertText", { text: "The landlord is not liable." });
+        await sleep(300);
         // Split: the caret in the source is the place.
         await pick("Der Vermieter haftet nicht.");
         await evaluate(`${button("Split")}.click()`);
@@ -265,7 +296,7 @@ export default () =>
         check((await evaluate("document.querySelector('.split-source').innerText")) === "Der Vermieter haftet nicht.", "the source is not changed by typing");
         await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').click()");
         check(await waitFor("document.querySelectorAll('.seg').length === 4 && !document.querySelector('.split-source')", 5000), "split, there is one segment more");
-        check((await activeSource()) === "Der Vermieter" && (await text()).includes("A part of a segment of the document that was split."), "the first part is the open one: " + (await activeSource()));
+        check((await activeSource()) === "Der Vermieter" && (await text()).includes("A part of a segment of the file that was split."), "the first part is the open one: " + (await activeSource()));
         await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
         check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable.", "and keeps the translation the segment had");
         await pick("haftet nicht.");
@@ -273,7 +304,7 @@ export default () =>
         await send("Input.insertText", { text: "is not liable." });
         await sleep(300);
         check(await save("Save translated document", "LIESMICH_en-GB.md"), "the file is saved with the split segment");
-        check(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8").includes("the tenant pays. The landlord is not liable. is not liable.\n"), "the parts' translations stand one after the other: " + JSON.stringify(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8")));
+        check(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8").includes("No liability. The landlord is not liable. is not liable.\n"), "the parts' translations stand one after the other: " + JSON.stringify(readFileSync(`${downloads}/LIESMICH_en-GB.md`, "utf8")));
         await pick("Der Vermieter");
         await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
         await key("j", "KeyJ", 74, 9);

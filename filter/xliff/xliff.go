@@ -48,9 +48,15 @@ var (
 
 // Update is the new translation and state of a segment. A nil Target
 // leaves the translation as it is; an empty State leaves the state.
+//
+// Joined names the segments after this one, in the same unit of the file,
+// that are translated with it as one: Target may then use their tags,
+// with the IDs filter.JoinTags gives them, one segment after the other.
+// Those segments get an Update of their own with an empty Target.
 type Update struct {
 	Target content.Content `json:"target,omitempty"`
 	State  filter.State    `json:"state,omitempty"`
+	Joined []string        `json:"joined,omitempty"`
 }
 
 // segment is one unit of the file with the nodes Merge needs.

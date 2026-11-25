@@ -697,11 +697,11 @@ func TestResegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ids(got) != "p1/s1 p1/s2 p2/s1" || got[0].Target.Plain() != "The tenant pays. and the deposit." || got[0].Status != project.StatusDraft || got[0].Version != 3 || got[0].Split != nil {
+	if ids(got) != "p1/s1 p1/s2 p2/s1" || got[0].Target.Plain() != "The tenant pays. and the deposit." || got[0].Status != project.StatusDraft || got[0].Version != 4 || got[0].Split != nil {
 		t.Fatalf("joined back: %s %+v", ids(got), got[0])
 	}
 	// Two sentences of a paragraph are joined, and the work ends at what they are now.
-	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1", ResegmentJoin, nil, 3, "ben")
+	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1", ResegmentJoin, nil, 4, "ben")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -711,15 +711,33 @@ func TestResegment(t *testing.T) {
 	if as, _ := db.Assignments(ctx, p.ID); as[0].FromSegment != "p1/s1" || as[0].ToSegment != "p1/s1" {
 		t.Errorf("assignment after the join: %+v", as[0])
 	}
-	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1", ResegmentSeparate, nil, 4, "ben")
+	// Split where it was joined, the two stand apart again; then a part is joined to the next sentence.
+	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1", ResegmentSplit, content.Text("Der Mieter zahlt die Miete und die Kaution."), 5, "ben")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ids(got) != "p1/s1 p1/s2 p2/s1" || got[1].Status != project.StatusNew || got[1].Version != 5 {
+	if ids(got) != "p1/s1 p1/s2 p2/s1" || got[1].Status != project.StatusNew || got[1].Version != 6 {
 		t.Fatalf("separated: %s", ids(got))
 	}
 	if as, _ := db.Assignments(ctx, p.ID); as[0].FromSegment != "p1/s1" || as[0].ToSegment != "p1/s2" {
 		t.Errorf("assignment after separating: %+v", as[0])
+	}
+	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1", ResegmentSplit, content.Text("Der Mieter"), 6, "ben")
+	if err != nil || ids(got) != "p1/s1#1 p1/s1#2 p1/s2 p2/s1" {
+		t.Fatalf("split again: %v %s", err, ids(got))
+	}
+	got, err = db.Resegment(ctx, p.ID, file, "en-GB", "p1/s1#2", ResegmentJoin, nil, 7, "ben")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids(got) != "p1/s1#1 p1/s1#2 p2/s1" || len(got[0].Joined) != 2 || len(got[1].Joined) != 2 || got[1].Source.Plain() != "zahlt die Miete und die Kaution. Sie ist fällig." || got[1].Version != 8 {
+		t.Fatalf("a part joined with the next sentence: %s %+v", ids(got), got)
+	}
+	if as, _ := db.Assignments(ctx, p.ID); as[0].FromSegment != "p1/s1#1" || as[0].ToSegment != "p1/s1#2" {
+		t.Errorf("assignment after that: %+v", as[0])
+	}
+	if again, _ := db.Segments(ctx, p.ID, file, "en-GB"); ids(again) != ids(got) || project.CheckRuns(storedOf(again)) != -1 {
+		t.Errorf("read again: %s", ids(again))
 	}
 	// Each is in the change log.
 	changes, _, err := db.Changes(ctx, ChangeQuery{})
@@ -732,8 +750,8 @@ func TestResegment(t *testing.T) {
 			n++
 		}
 	}
-	if n != 4 {
-		t.Errorf("%d changes logged, want 4", n)
+	if n != 6 {
+		t.Errorf("%d changes logged, want 6", n)
 	}
 	// A range given out for every language at once is given out for each, to the same person.
 	if _, err := db.Assign(ctx, Assignment{ProjectID: p.ID, File: "Anlage/Hausordnung.docx", FromSegment: "s1", ToSegment: "s1", UserID: 8, UserName: "cem", Task: TaskTranslate, Due: "2026-12-01T10:00:00Z"}, "anna"); err != nil {
@@ -757,4 +775,12 @@ func TestResegment(t *testing.T) {
 			t.Errorf("%s in %s is cem's: %v %v", id, lang, mine, err)
 		}
 	}
+}
+
+func storedOf(ss []StoredSegment) []project.Segment {
+	out := make([]project.Segment, len(ss))
+	for i, s := range ss {
+		out[i] = s.Segment
+	}
+	return out
 }

@@ -1,14 +1,11 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"path"
 	"strings"
 	"unicode"
-	"unicode/utf16"
-	"unicode/utf8"
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
@@ -19,7 +16,6 @@ import (
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/project"
-	"github.com/4nonX/interlinea/segment"
 )
 
 // The server reads the files of a project itself. An app may send a
@@ -198,8 +194,6 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 		}
 		f.TargetLang = lang
 		return fill(f, ex, []string{lang})
-	case "txt":
-		return fillText(f, sourceLang, targets)
 	}
 	ex, err := formats.Extract(f.Format, f.Data, sourceLang)
 	if err != nil {
@@ -217,13 +211,15 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 // fill gives a file the extraction's segments for each language, or checks
 // and completes the ones the app sent.
 func fill(f *fileUpload, ex *filter.Extraction, langs []string) error {
+	// Trados and memoQ keep their own record of every segment.
+	fixed := ex.Format == xliff.FormatSDL || ex.Format == xliff.FormatMQ
 	if len(f.Segments) == 0 {
 		if len(ex.Units) == 0 {
 			return problemf("%s has no text to translate.", f.Name)
 		}
 		f.Segments = map[string][]project.Segment{}
 		for _, l := range langs {
-			f.Segments[l] = unitSegments(ex.Units)
+			f.Segments[l] = unitSegments(ex.Units, fixed)
 		}
 		return nil
 	}
@@ -234,70 +230,72 @@ func fill(f *fileUpload, ex *filter.Extraction, langs []string) error {
 		if len(units) != len(ex.Units) {
 			return problemf("%s has %d segments, not %d as sent for %s.", f.Name, len(ex.Units), len(units), lang)
 		}
+		first := 0 // the first unit of the stretch the unit is in
 		for i, got := range units {
 			u := ex.Units[i]
-			if got.ID != u.ID || plainKey(got.Source.Plain()) != plainKey(u.Source.Plain()) {
-				return problemf("Segment %d of %s is not the file's: the file has %q.", i+1, f.Name, u.Source.Plain())
+			if got.ID != u.ID {
+				return problemf("Segment %d of %s (%s) is not the file's: the file has %q.", i+1, f.Name, lang, u.Source.Plain())
 			}
-			fromFile := unitSegment(u)
+			fromFile := unitSegment(u, fixed)
+			if i == 0 || got.Segments[0] != units[i-1].Segments[0] {
+				first = i
+			}
+			if sg := &segs[got.Segments[0]]; len(got.Segments) == 1 && sg.Split == nil && len(sg.Joined) == 0 {
+				if plainKey(got.Source.Plain()) != plainKey(u.Source.Plain()) {
+					return problemf("Segment %d of %s (%s) is not the file's: the file has %q.", i+1, f.Name, lang, u.Source.Plain())
+				}
+				sg.Source = u.Source
+				sg.Locked = sg.Locked || u.Locked
+				sg.Block, sg.MaxLength, sg.Notes, sg.File = fromFile.Block, fromFile.MaxLength, fromFile.Notes, fromFile.File
+				continue
+			}
+			if fixed || u.Locked || u.Block != ex.Units[first].Block {
+				return problemf("Segment %d of %s is sent split or joined, but its file keeps it as it is.", i+1, f.Name)
+			}
 			for _, k := range got.Segments {
 				sg := &segs[k]
-				switch {
-				case sg.Split != nil:
-					if !formats.Document(f.Format) || u.Locked || fromFile.File != nil {
-						return problemf("Segment %d of %s is sent in parts, but its file keeps it whole.", i+1, f.Name)
+				for j := range sg.Joined {
+					if sg.Joined[j].ID == u.ID {
+						sg.Joined[j].Source = u.Source
 					}
-					sg.Block, sg.MaxLength, sg.Notes, sg.File = fromFile.Block, fromFile.MaxLength, fromFile.Notes, nil
-				case len(sg.Joined) > 0:
-					if !formats.Document(f.Format) || u.Locked || fromFile.File != nil || u.Block != ex.Units[i-indexIn(sg.Joined, u.ID)].Block {
-						return problemf("Segment %d of %s is sent joined to another, but its file keeps them apart.", i+1, f.Name)
-					}
-					for j := range sg.Joined {
-						if sg.Joined[j].ID == u.ID {
-							sg.Joined[j].Source = u.Source
-						}
-					}
-					sg.Source = project.JoinedSource(sg.Joined)
-					sg.Block, sg.File = fromFile.Block, nil
-				default:
-					sg.Source = u.Source
-					sg.Locked = sg.Locked || u.Locked
-					sg.Block, sg.MaxLength, sg.Notes, sg.File = fromFile.Block, fromFile.MaxLength, fromFile.Notes, fromFile.File
 				}
+				if len(sg.Joined) == 0 && plainKey(got.Source.Plain()) != plainKey(u.Source.Plain()) {
+					return problemf("Segment %d of %s (%s) is not the file's: the file has %q.", i+1, f.Name, lang, u.Source.Plain())
+				}
+				sg.Block, sg.File, sg.Locked = fromFile.Block, nil, false
+			}
+		}
+		if bad := project.CheckRuns(segs); bad >= 0 {
+			return problemf("Segment %d of %s (%s) does not read as the file's text.", bad+1, f.Name, lang)
+		}
+		for k := range segs {
+			if segs[k].Split == nil && len(segs[k].Joined) > 0 {
+				segs[k].Source = project.JoinedSource(segs[k].Joined)
 			}
 		}
 	}
 	return nil
 }
 
-// indexIn is the place of a unit among the units of a joined segment.
-func indexIn(units []project.JoinedUnit, id string) int {
-	for i, u := range units {
-		if u.ID == id {
-			return i
-		}
-	}
-	return 0
-}
-
-func unitSegments(units []filter.Unit) []project.Segment {
+func unitSegments(units []filter.Unit, fixed bool) []project.Segment {
 	out := make([]project.Segment, len(units))
 	for i, u := range units {
-		out[i] = unitSegment(u)
+		out[i] = unitSegment(u, fixed)
 	}
 	return out
 }
 
 // unitSegment is a unit as a segment: a bilingual file's translation and
-// state become the segment's.
-func unitSegment(u filter.Unit) project.Segment {
+// state become the segment's. fixed says the file's program keeps its
+// own record of each segment, so they cannot be split or joined.
+func unitSegment(u filter.Unit, fixed bool) project.Segment {
 	s := project.Segment{ID: u.ID, Source: u.Source, Target: u.Target, Locked: u.Locked, Block: u.Block, MaxLength: u.MaxLength, Notes: u.Notes, Status: project.StatusNew}
 	if s.Target == nil {
 		s.Target = content.Content{}
 	}
 	if u.State != "" {
 		js, _ := json.Marshal(s.Target)
-		s.File = &project.FileState{State: string(u.State), Target: string(js), Match: u.Match}
+		s.File = &project.FileState{State: string(u.State), Target: string(js), Match: u.Match, Fixed: fixed}
 	}
 	switch u.State {
 	case filter.StateTranslated, filter.StateReviewed, filter.StateFinal:
@@ -328,139 +326,12 @@ func matches(ex *filter.Extraction, segs map[string][]project.Segment) bool {
 	return true
 }
 
-// decodeText reads a text file: UTF-8, or UTF-16 with a byte order mark.
-// bom is the mark the file started with, to write it back.
-func decodeText(data []byte) (text string, bom []byte, err error) {
-	switch {
-	case bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}):
-		bom, data = data[:3], data[3:]
-	case bytes.HasPrefix(data, []byte{0xFF, 0xFE}), bytes.HasPrefix(data, []byte{0xFE, 0xFF}):
-		le := data[0] == 0xFF
-		body := data[2:]
-		if len(body)%2 != 0 {
-			return "", nil, fmt.Errorf("the UTF-16 text has an odd number of bytes")
-		}
-		u := make([]uint16, len(body)/2)
-		for i := range u {
-			if le {
-				u[i] = uint16(body[2*i]) | uint16(body[2*i+1])<<8
-			} else {
-				u[i] = uint16(body[2*i])<<8 | uint16(body[2*i+1])
-			}
-		}
-		return string(utf16.Decode(u)), data[:2], nil
-	}
-	if !utf8.Valid(data) {
-		return "", nil, fmt.Errorf("the text is not UTF-8 or UTF-16")
-	}
-	return string(data), bom, nil
-}
-
-// encodeText writes text as the file was: UTF-8, or UTF-16 with its mark.
-func encodeText(text string, bom []byte) []byte {
-	if bytes.Equal(bom, []byte{0xFF, 0xFE}) || bytes.Equal(bom, []byte{0xFE, 0xFF}) {
-		out := append([]byte{}, bom...)
-		for _, c := range utf16.Encode([]rune(text)) {
-			if bom[0] == 0xFF {
-				out = append(out, byte(c), byte(c>>8))
-			} else {
-				out = append(out, byte(c>>8), byte(c))
-			}
-		}
-		return out
-	}
-	return append(append([]byte{}, bom...), text...)
-}
-
-// textSegments splits a text into segments: paragraphs (separated by
-// line breaks) split into sentences by the source language's rules.
-func textSegments(text, lang string) []project.Segment {
-	seg := segment.New(nil, lang)
-	var out []project.Segment
-	para := 0
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		para++
-		for _, sp := range seg.Split(line) {
-			out = append(out, project.Segment{
-				ID:     fmt.Sprintf("s%d", len(out)+1),
-				Block:  fmt.Sprintf("p%d", para),
-				Source: content.Text(line[sp.Start:sp.End]),
-				Target: content.Content{},
-				Status: project.StatusNew,
-			})
-		}
-	}
-	return out
-}
-
-// fillText makes a text file's segments, or checks that the app's are the
-// file's text, in order.
-func fillText(f *fileUpload, sourceLang string, langs []string) error {
-	text, _, err := decodeText(f.Data)
-	if err != nil {
-		return problemf("%s could not be read: %v", f.Name, err)
-	}
-	if len(f.Segments) == 0 {
-		segs := textSegments(text, sourceLang)
-		if len(segs) == 0 {
-			return problemf("%s has no text to translate.", f.Name)
-		}
-		f.Segments = map[string][]project.Segment{}
-		for _, l := range langs {
-			f.Segments[l] = append([]project.Segment(nil), segs...)
-		}
-		return nil
-	}
-	key := plainKey(text)
-	for lang, segs := range f.Segments {
-		at := 0
-		for i, s := range segs {
-			src := plainKey(s.Source.Plain())
-			if src == "" {
-				continue
-			}
-			j := strings.Index(key[at:], src)
-			if j < 0 {
-				return problemf("Segment %d of %s (%s) is not in the file's text.", i+1, f.Name, lang)
-			}
-			at += j + len(src)
-		}
-	}
-	return nil
-}
-
 // Delivery: a file with the translations of a target language.
 
 // fileStateOf is the state a segment gets in its bilingual file: a
 // reviewer's approval or rejection stays while the translation is the
 // file's.
-func fileStateOf(s project.Segment) filter.State {
-	unchanged := false
-	if s.File != nil {
-		js, _ := json.Marshal(s.Target)
-		unchanged = string(js) == s.File.Target
-	}
-	switch s.Status {
-	case project.StatusConfirmed:
-		if unchanged && (s.File.State == string(filter.StateReviewed) || s.File.State == string(filter.StateFinal)) {
-			return filter.State(s.File.State)
-		}
-		return filter.StateTranslated
-	case project.StatusDraft:
-		if unchanged && s.File.State == string(filter.StateRejected) {
-			return filter.StateRejected
-		}
-		return filter.StateDraft
-	}
-	if strings.TrimSpace(s.Target.Plain()) != "" {
-		return filter.StateDraft
-	}
-	return filter.StateNew
-}
+func fileStateOf(s project.Segment) filter.State { return project.FileStateOf(s) }
 
 // translatedFile writes a file with its segments' translations: a
 // document in the target language, a bilingual file with translations and
@@ -472,12 +343,7 @@ func translatedFile(format string, data []byte, sourceLang, targetLang string, s
 	}
 	switch format {
 	case "xliff", formats.MemoQArchive:
-		up := map[string]xliff.Update{}
-		for _, s := range segs {
-			if !s.Locked {
-				up[s.ID] = xliff.Update{Target: s.Target, State: fileStateOf(s)}
-			}
-		}
+		up := project.XLIFFUpdates(segs)
 		if format == formats.MemoQArchive {
 			doc, err := mqpackage.ReadArchive(data)
 			if err != nil {
@@ -490,32 +356,6 @@ func translatedFile(format string, data []byte, sourceLang, targetLang string, s
 			return mqpackage.WriteArchive(data, merged)
 		}
 		return xliff.Merge(data, up)
-	case "txt":
-		text, bom, err := decodeText(data)
-		if err != nil {
-			return nil, err
-		}
-		var b strings.Builder
-		at := 0
-		for _, s := range segs {
-			src := s.Source.Plain()
-			if src == "" {
-				continue
-			}
-			j := strings.Index(text[at:], src)
-			if j < 0 {
-				return nil, fmt.Errorf("segment %s is not in the file's text", s.ID)
-			}
-			b.WriteString(text[at : at+j])
-			if t := s.Target.Plain(); strings.TrimSpace(t) != "" {
-				b.WriteString(t)
-			} else {
-				b.WriteString(src)
-			}
-			at += j + len(src)
-		}
-		b.WriteString(text[at:])
-		return encodeText(b.String(), bom), nil
 	}
 	return nil, fmt.Errorf("%s files can't be written back", format)
 }

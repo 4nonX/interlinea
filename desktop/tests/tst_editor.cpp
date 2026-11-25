@@ -269,6 +269,9 @@ private slots:
         QFile f(QStringLiteral(INTERLINEA_FIXTURES "/documents/LIESMICH.md"));
         QVERIFY(f.open(QIODevice::ReadOnly));
         const QByteArray data = f.readAll();
+        QFile tf(QStringLiteral(INTERLINEA_FIXTURES "/Mietvertrag.docx.sdlxliff"));
+        QVERIFY(tf.open(QIODevice::ReadOnly));
+        const QByteArray trados = tf.readAll();
         QJsonObject settings = wait(api->get(QStringLiteral("/api/projects/defaults"))).object();
         settings.insert("name", "Umschnitt");
         settings.insert("sourceLang", "de-DE");
@@ -280,7 +283,9 @@ private slots:
         settings.insert("terminology", terminology);
         const ApiResult made = wait(api->post(QStringLiteral("/api/projects"),
                                               QJsonObject{{"settings", settings},
-                                                          {"files", QJsonArray{QJsonObject{{"name", "LIESMICH.md"}, {"role", "translatable"}, {"data", QString::fromLatin1(data.toBase64())}}}},
+                                                          {"files", QJsonArray{QJsonObject{{"name", "LIESMICH.md"}, {"role", "translatable"}, {"data", QString::fromLatin1(data.toBase64())}},
+                                                                               QJsonObject{{"name", "Hinweise.txt"}, {"role", "translatable"}, {"data", QString::fromLatin1(QByteArray("Der Schlüssel liegt beim Hausmeister. Die Heizung läuft.\n").toBase64())}},
+                                                                               QJsonObject{{"name", "Mietvertrag.docx.sdlxliff"}, {"role", "translatable"}, {"data", QString::fromLatin1(trados.toBase64())}}}},
                                                           {"termbase", QJsonObject{{"name", "Umschnitt terms"}, {"languages", QJsonArray{"de-DE", "en-GB"}}}}}));
         QVERIFY2(made.ok(), qPrintable(made.error.message));
         const qint64 id = made.object().value("id").toInteger();
@@ -292,15 +297,14 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(ed.model()->rowCount(), 3, 10000);
         QTRY_COMPARE_WITH_TIMEOUT(ed.activeRow(), 0, 10000);
         auto *split = ed.findChild<QPushButton *>("splitSegment");
-        auto *separate = ed.findChild<QPushButton *>("separateSegment");
         auto *join = ed.findChild<QPushButton *>("joinSegment");
         auto *note = ed.findChild<QLabel *>("cutNote");
-        QVERIFY(split && separate && join && note);
+        QVERIFY(split && join && note);
         auto source = [&ed](int row) { return SegmentContent::plainText(ed.model()->segment(row).value("source").toArray()); };
         auto idOf = [&ed](int row) { return ed.model()->segment(row).value("id").toString(); };
         QSignalSpy cut(&ed, &EditorPage::resegmented);
         // A heading is not joined with the paragraph after it.
-        QVERIFY(split->isVisible() && split->isEnabled() && !separate->isVisible() && !join->isEnabled() && !note->isVisible());
+        QVERIFY(split->isVisible() && split->isEnabled() && !join->isEnabled() && !note->isVisible());
 
         // Two sentences of a paragraph are joined; what was typed is joined with them.
         ed.goToSegment(idOf(1));
@@ -316,8 +320,9 @@ private slots:
         QCOMPARE(source(1), QStringLiteral("Der Mieter zahlt die Miete. Der Vermieter haftet nicht."));
         QTRY_VERIFY(ed.target());
         QCOMPARE(ed.target()->toPlainText(), QStringLiteral("The tenant pays."));
-        QVERIFY(separate->isVisible() && !split->isVisible() && !join->isEnabled());
-        QCOMPARE(note->text(), QStringLiteral("Joined from 2 segments of the document."));
+        // A joined segment is split like any other; nothing follows it in its paragraph to join.
+        QVERIFY(split->isEnabled() && !join->isEnabled());
+        QCOMPARE(note->text(), QStringLiteral("Joined from 2 segments of the file. Split it where they met to have them apart again."));
         ed.target()->selectAll();
         QTest::keyClicks(ed.target(), QStringLiteral("The landlord is not liable, and the tenant pays."));
         QSignalSpy saved(&ed, &EditorPage::saved);
@@ -327,15 +332,44 @@ private slots:
         QVERIFY(out.ok());
         QCOMPARE(QString::fromUtf8(out.body), QStringLiteral("# Mietvertrag\n\nThe landlord is not liable, and the tenant pays.\n\n```\nnicht übersetzen\n```\n"));
 
-        // Separated, the sentences stand apart again, the translation with the first.
+        // Splits the open segment at a place in its source, through the dialog.
+        const auto splitAt = [&](int place) {
+            Web::Dialog *d = ed.showSplitDialog();
+            QVERIFY(d);
+            auto *box = d->findChild<TargetEditor *>("splitSource");
+            auto *go = d->findChild<QPushButton *>("save");
+            QVERIFY(box && go);
+            QTextCursor c = box->textCursor();
+            c.setPosition(place);
+            box->setTextCursor(c);
+            QVERIFY(go->isEnabled());
+            const int before = cut.size();
+            go->click();
+            QTRY_COMPARE_WITH_TIMEOUT(cut.size(), before + 1, 10000);
+            QVERIFY(cut.last().at(1).toBool());
+            ed.activateWindow();
+        };
+        // Inside its second sentence: the parts stand for both sentences, and are written one after the other.
         ed.goToSegment(idOf(1));
-        QTRY_VERIFY(separate->isVisible());
-        QTest::keySequence(&ed, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_S));
-        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 2, 10000);
-        QCOMPARE(cut.at(1).at(0).toString(), QStringLiteral("separate"));
+        QTRY_COMPARE(ed.activeRow(), 1);
+        const QString joinedText = source(1);
+        splitAt(int(joinedText.indexOf(QStringLiteral("haftet"))) + 2); // two tags stand before it, one place each
+        QCOMPARE(ed.model()->rowCount(), 3);
+        QVERIFY2(source(1).endsWith(QStringLiteral("zahlt die Miete. Der Vermieter")) && source(2) == QStringLiteral("haftet nicht."), qPrintable(source(1) + '|' + source(2)));
+        QCOMPARE(note->text(), QStringLiteral("A part of 2 segments of the file that were joined."));
+        QVERIFY(join->isEnabled());
+        out = wait(api->get(base + "/files/translated", {{"name", "LIESMICH.md"}, {"lang", "en-GB"}}));
+        QVERIFY2(out.body.contains("\n\nThe landlord is not liable, and the tenant pays. haftet nicht.\n\n"), out.body.constData());
+        // Joined again and split where the sentences met, they are the file's two again.
+        join->click();
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 3, 10000);
+        QCOMPARE(ed.model()->rowCount(), 2);
+        splitAt(int(source(1).indexOf(QStringLiteral("Der Vermieter"))) + 2);
         QCOMPARE(ed.model()->rowCount(), 3);
         QCOMPARE(source(2), QStringLiteral("Der Vermieter haftet nicht."));
-        QVERIFY(split->isVisible() && !note->isVisible());
+        QVERIFY(ed.model()->segment(1).value("joined").toArray().isEmpty() && !ed.model()->segment(2).contains("split"));
+        QTRY_VERIFY(!note->isVisible());
+        const int sofar = cut.size();
 
         // Split: the caret in the source is the place.
         ed.goToSegment(idOf(2));
@@ -367,15 +401,15 @@ private slots:
         }
         QPointer<Web::Dialog> open(d);
         go->click();
-        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 3, 10000);
-        QVERIFY(cut.at(2).at(1).toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), sofar + 1, 10000);
+        QVERIFY(cut.at(sofar).at(1).toBool());
         QTRY_VERIFY(!open || !open->isVisible());
         QCOMPARE(ed.model()->rowCount(), 4);
         QCOMPARE(idOf(2), whole + QStringLiteral("#1"));
         QCOMPARE(source(2), QStringLiteral("Der Vermieter"));
         QCOMPARE(source(3), QStringLiteral("haftet nicht."));
         QCOMPARE(ed.activeRow(), 2);
-        QCOMPARE(note->text(), QStringLiteral("A part of a segment of the document that was split."));
+        QCOMPARE(note->text(), QStringLiteral("A part of a segment of the file that was split."));
         QVERIFY(join->isEnabled());
         ed.goToSegment(idOf(3));
         QTRY_COMPARE(ed.activeRow(), 3);
@@ -391,7 +425,7 @@ private slots:
         ed.activateWindow();
         QTRY_VERIFY(ed.isActiveWindow());
         QTest::keySequence(&ed, QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_J));
-        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 4, 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), sofar + 2, 10000);
         QCOMPARE(ed.model()->rowCount(), 3);
         QCOMPARE(idOf(2), whole);
         QCOMPARE(source(2), QStringLiteral("Der Vermieter haftet nicht."));
@@ -407,10 +441,56 @@ private slots:
         // What the segments do not allow is said, and nothing changes.
         ed.goToSegment(idOf(0));
         ed.resegment(QStringLiteral("join"));
-        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), 5, 10000);
-        QVERIFY(!cut.at(4).at(1).toBool());
+        QTRY_COMPARE_WITH_TIMEOUT(cut.size(), sofar + 3, 10000);
+        QVERIFY(!cut.at(sofar + 2).at(1).toBool());
         QVERIFY2(ed.message().contains(QStringLiteral("different paragraphs")), qPrintable(ed.message()));
         QCOMPARE(ed.model()->rowCount(), 4);
+
+        // A text file is cut like any document, and saved from the editor.
+        {
+            EditorPage text(m.local(), id, QStringLiteral("Hinweise.txt"), QStringLiteral("en-GB"));
+            text.resize(1280, 820);
+            text.show();
+            QTRY_COMPARE_WITH_TIMEOUT(text.model()->rowCount(), 2, 10000);
+            QTRY_COMPARE_WITH_TIMEOUT(text.activeRow(), 0, 10000);
+            auto *tSplit = text.findChild<QPushButton *>("splitSegment");
+            auto *tJoin = text.findChild<QPushButton *>("joinSegment");
+            QVERIFY(tSplit->isVisible() && tSplit->isEnabled() && tJoin->isEnabled());
+            QSignalSpy tCut(&text, &EditorPage::resegmented);
+            tJoin->click();
+            QTRY_COMPARE_WITH_TIMEOUT(tCut.size(), 1, 10000);
+            QCOMPARE(text.model()->rowCount(), 1);
+            QTRY_VERIFY(text.target());
+            QTest::keyClicks(text.target(), QStringLiteral("The heating is on; the key is with the caretaker."));
+            QSignalSpy tSaved(&text, &EditorPage::saved);
+            QTest::keySequence(text.target(), QKeySequence(Qt::CTRL | Qt::Key_Return));
+            QTRY_VERIFY_WITH_TIMEOUT(tSaved.size() >= 1, 10000);
+            const ApiResult got = wait(api->get(base + "/files/translated", {{"name", "Hinweise.txt"}, {"lang", "en-GB"}}));
+            QCOMPARE(QString::fromUtf8(got.body), QStringLiteral("The heating is on; the key is with the caretaker.\n"));
+            bool save = false;
+            for (QPushButton *b : text.findChildren<QPushButton *>())
+                save = save || (b->isVisible() && b->text() == QStringLiteral("Save translated document"));
+            QVERIFY(save);
+        }
+        // A Trados file keeps its segments, and the editor says why.
+        {
+            EditorPage sdl(m.local(), id, QStringLiteral("Mietvertrag.docx.sdlxliff"), QStringLiteral("en-GB"));
+            sdl.resize(1280, 820);
+            sdl.show();
+            QTRY_VERIFY_WITH_TIMEOUT(sdl.model()->rowCount() > 1, 10000);
+            QTRY_VERIFY_WITH_TIMEOUT(sdl.activeRow() >= 0, 10000);
+            auto *sSplit = sdl.findChild<QPushButton *>("splitSegment");
+            auto *sJoin = sdl.findChild<QPushButton *>("joinSegment");
+            auto *sNote = sdl.findChild<QLabel *>("cutNote");
+            QVERIFY(sSplit->isVisible() && !sSplit->isEnabled() && !sJoin->isEnabled());
+            QVERIFY2(sNote->isVisible() && sNote->text().contains(QStringLiteral("keeps its own record of every segment")), qPrintable(sNote->text()));
+            QVERIFY(sdl.model()->segment(0).value("file").toObject().value("fixed").toBool());
+            sdl.resegment(QStringLiteral("join"));
+            QSignalSpy refused(&sdl, &EditorPage::resegmented);
+            QTRY_COMPARE_WITH_TIMEOUT(refused.size(), 1, 10000);
+            QVERIFY(!refused.at(0).at(1).toBool());
+            QVERIFY2(sdl.message().contains(QStringLiteral("keeps its own record")), qPrintable(sdl.message()));
+        }
     }
 
     void translateAFile()

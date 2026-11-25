@@ -14,6 +14,7 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter/docx"
 	"github.com/4nonX/interlinea/filter/docx/docxtest"
+	"github.com/4nonX/interlinea/filter/plaintext"
 	"github.com/4nonX/interlinea/filter/sdlpackage"
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/project"
@@ -138,7 +139,7 @@ func TestServerReadsAndWritesFiles(t *testing.T) {
 	}
 
 	r = te.download(base+"/files/translated?name=Hinweise.txt&lang=en-GB", te.pm)
-	got, bom, err := decodeText(r.body)
+	got, bom, err := plaintext.Decode(r.body)
 	if err != nil || len(bom) != 2 || r.header.Get("Content-Type") != "text/plain; charset=utf-16" {
 		t.Fatalf("text: %v %x %s", err, bom, r.header.Get("Content-Type"))
 	}

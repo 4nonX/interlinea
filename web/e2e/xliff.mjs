@@ -121,6 +121,15 @@ export default () =>
         "no layout preview for XLIFF",
       );
 
+      // Trados keeps its own record of each segment: they are not split or joined.
+      await evaluate("(document.querySelector('.seg .seg-target-view') ?? document.querySelector('.seg .target-editor')).click()");
+      await sleep(400);
+      check(
+        await evaluate("[...document.querySelectorAll('.tool-row button')].filter(b => /Split|Join with next/.test(b.textContent)).length === 2 && [...document.querySelectorAll('.tool-row button')].filter(b => /Split|Join with next/.test(b.textContent)).every(b => b.disabled)") &&
+          (await text()).includes("keeps its own record of every segment"),
+        "a Trados file's segments cannot be split or joined, and the editor says why",
+      );
+
       await click("button", "Save XLIFF");
       check(
         await waitFor(
@@ -272,6 +281,51 @@ export default () =>
         ) && !zip["en-GB/Anlage.docx.sdlxliff"].includes("The deposit"),
         "only the translated file changed",
       );
+
+      // A plain XLIFF file is cut like a document: split anywhere, joined
+      // within a unit of the file, and written as the file has its units.
+      await open("/new", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFile("input[type=file]", `${fixtures}/Hinweise.xlf`);
+      await waitFor("document.body.innerText.includes('XLIFF 1.2')", 15000);
+      await setValue("#pname", "Freie Segmente");
+      for (const b of ["Continue to memories", "Continue to terminology", "Continue to review"]) {
+        await click("button", b);
+        await sleep(300);
+      }
+      await waitFor("!!document.querySelector('.analysis')");
+      await click("button", "Create project");
+      await waitFor("document.querySelectorAll('.seg').length === 2", 15000);
+      await evaluate("(document.querySelector('.seg .seg-target-view') ?? document.querySelector('.seg .target-editor')).click()");
+      await sleep(400);
+      const cutButton = (label) => `[...document.querySelectorAll('.tool-row button')].find(b => b.textContent.includes(${JSON.stringify(label)}))`;
+      check(await evaluate(`!${cutButton("Split")}.disabled && ${cutButton("Join with next")}.disabled`) && !(await text()).includes("keeps its own record"), "a plain XLIFF segment can be split; the next one is another unit of the file");
+      await evaluate(`${cutButton("Split")}.click()`);
+      await waitFor("!!document.querySelector('.split-source')", 5000);
+      await evaluate("(() => { const el = document.querySelector('.split-source'); const n = el.firstChild; const r = document.createRange(); r.setStart(n, n.textContent.indexOf('monatlich')); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); })()");
+      await waitFor("![...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').disabled", 3000);
+      await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent.trim() === 'Split').click()");
+      check(await waitFor("document.querySelectorAll('.seg').length === 3", 5000), "split in two parts");
+      await sleep(300);
+      await evaluate("[...document.querySelectorAll('.seg')][1].querySelector('.seg-target-view, .target-editor').click()");
+      await waitFor("document.querySelectorAll('.seg')[1].classList.contains('is-active') && !!document.querySelector('.seg.is-active .target-editor')", 5000);
+      await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+      await send("Input.insertText", { text: "every month." });
+      await key("Enter", "Enter", 13, 2);
+      await sleep(400);
+      await click("button", "Save XLIFF");
+      check(await waitFor("document.body.innerText.includes('Saved Hinweise.xlf')"), "the XLIFF file is saved");
+      await sleep(500);
+      const cutOut = readFileSync(`${downloads}/Hinweise.xlf`, "utf8");
+      check(/<target state="[^"]*">The tenant pays monthly\. every month\.<\/target>/.test(cutOut) && cutOut.includes("<source>Der Mieter zahlt monatlich.</source>"), "the unit has the parts' translations one after the other, its source as it was: " + (cutOut.match(/<target[^>]*>[^<]*<\/target>/)?.[0] ?? cutOut));
+      await evaluate("[...document.querySelectorAll('.seg')][0].querySelector('.seg-target-view, .target-editor').click()");
+      await waitFor("document.querySelectorAll('.seg')[0].classList.contains('is-active')", 5000);
+      await sleep(300);
+      check(await evaluate(`!${cutButton("Join with next")}.disabled`), "the parts can be joined again");
+      await evaluate(`${cutButton("Join with next")}.click()`);
+      check(await waitFor("document.querySelectorAll('.seg').length === 2", 5000), "joined, the unit is one segment again");
     },
   );
 

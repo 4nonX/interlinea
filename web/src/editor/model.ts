@@ -165,7 +165,7 @@ export interface Segment {
    * Bilingual files: the segment's state in the file and the translation it
    * had, so saving keeps a reviewer's approval when nothing changed.
    */
-  file?: { state: FileState; target: string; match?: number };
+  file?: { state: FileState; target: string; match?: number; /** The file's program keeps its own record of each segment, so it is not split or joined. */ fixed?: boolean };
   /** Bilingual files: comments on the segment. */
   notes?: string[];
   /** A part of a segment of the file that was split: the file's segment, and the space before the part. */
@@ -234,41 +234,6 @@ export function normalize(runs: Run[]): Run[] {
 
 export function wordCount(runs: Run[]): number {
   return plain(runs).match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
-}
-
-const ABBREVIATIONS =
-  /(?:^|\s)(?:z\.\s?B|d\.\s?h|u\.\s?a|bzw|ca|Nr|Abs|Art|vgl|ggf|inkl|Dr|Prof|Str|e\.g|i\.e|Mr|Mrs|Ms|No|etc)\.$/;
-
-const MONTHS =
-  /^\s+(?:Januar|Jänner|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\b/;
-
-/**
- * Splits text into sentences for new projects. The real product uses the
- * SRX segmenter in the Go core; this keeps the common cases right.
- */
-export function segmentText(text: string): string[] {
-  const out: string[] = [];
-  let start = 0;
-  const re = /[.!?。！？]+["“”»«)]*(?=\s+[\p{Lu}\p{N}"„“«(\p{Lo}]|\s*$)/gu;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    const end = m.index + m[0].length;
-    const candidate = text.slice(start, end);
-    const next = text.slice(end);
-    if (ABBREVIATIONS.test(candidate)) continue;
-    // Ordinals: "am 1. Januar", "im 2. Obergeschoss".
-    if (
-      /\b\d{1,3}\.$/.test(candidate) &&
-      (/^\s+\p{Ll}/u.test(next) || MONTHS.test(next))
-    )
-      continue;
-    const s = candidate.trim();
-    if (s) out.push(s);
-    start = end;
-  }
-  const rest = text.slice(start).trim();
-  if (rest) out.push(rest);
-  return out;
 }
 
 // The sample lease is a real Word document (samples), bundled into

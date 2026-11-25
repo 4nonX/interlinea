@@ -71,7 +71,7 @@ func TestCheckDocx(t *testing.T) {
 	// Text the file doesn't have is refused.
 	forged := segmentsOf(ex)
 	forged[2].Source = content.Text("Der Vermieter haftet für alles.")
-	wantProblem(t, checkFile(up(forged), "de-DE"), "Segment 3 of Mietvertrag.docx is not the file's")
+	wantProblem(t, checkFile(up(forged), "de-DE"), "Segment 3 of Mietvertrag.docx (en-GB) is not the file's")
 
 	// So are missing, extra and renamed segments.
 	wantProblem(t, checkFile(up(segmentsOf(ex)[:2]), "de-DE"), "has 3 segments, not 2")
@@ -146,11 +146,13 @@ func TestCheckText(t *testing.T) {
 	up := func(texts ...string) fileUpload {
 		return fileUpload{Name: "Hinweise.txt", Role: project.Translatable, Format: "txt", Data: data, Segments: map[string][]project.Segment{"en-GB": segs(texts...)}}
 	}
-	if err := checkFile(up("Der Schlüssel liegt beim Hausmeister.", "Die Heizung wird im Oktober eingeschaltet."), "de-DE"); err != nil {
+	// A line is a paragraph: the file has three segments, and the app's must be those.
+	if err := checkFile(up("Der Schlüssel liegt beim Hausmeister.", "Die Heizung wird im Oktober", "eingeschaltet."), "de-DE"); err != nil {
 		t.Fatal(err)
 	}
-	wantProblem(t, checkFile(up("Die Heizung wird im Oktober eingeschaltet.", "Der Schlüssel liegt beim Hausmeister."), "de-DE"), "Segment 2 of Hinweise.txt")
-	wantProblem(t, checkFile(up("Der Schlüssel liegt beim Nachbarn."), "de-DE"), "Segment 1")
+	wantProblem(t, checkFile(up("Die Heizung wird im Oktober", "Der Schlüssel liegt beim Hausmeister.", "eingeschaltet."), "de-DE"), "Segment 1 of Hinweise.txt")
+	wantProblem(t, checkFile(up("Der Schlüssel liegt beim Nachbarn.", "Die Heizung wird im Oktober", "eingeschaltet."), "de-DE"), "Segment 1")
+	wantProblem(t, checkFile(up("Der Schlüssel liegt beim Hausmeister.", "Die Heizung wird im Oktober eingeschaltet."), "de-DE"), "has 3 segments, not 2")
 	// Reference files are not segmented, so nothing is checked.
 	ref := fileUpload{Name: "Plan.pdf", Role: project.Reference, Format: "pdf", Data: []byte("%PDF")}
 	if err := checkFile(ref, "de-DE"); err != nil {

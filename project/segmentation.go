@@ -36,9 +36,8 @@ func (r SegmentationRule) Check() error {
 // by joining and splitting the ones its filter read: where a rule says a
 // sentence does not end, the two segments of the paragraph are joined,
 // and where it says one ends inside a segment, the segment is split.
-// A sentence that is joined to another is not also split. Segments that
-// are locked, come from a bilingual file, or were split or joined
-// already stay as they are.
+// Segments that are locked, whose file keeps its own record of them, or
+// that were split or joined already stay as they are.
 func ApplySegmentation(segs []Segment, rules []SegmentationRule, lang string) []Segment {
 	var own []segment.Rule
 	for _, r := range rules {
@@ -53,7 +52,7 @@ func ApplySegmentation(segs []Segment, rules []SegmentationRule, lang string) []
 	seg := segment.FromRules(append(own, usual...))
 	without := segment.FromRules(usual)
 	plain := func(s Segment) bool {
-		return s.Block != "" && !s.Locked && s.File == nil && s.Split == nil && len(s.Joined) == 0
+		return s.Block != "" && !s.Locked && !fixed(s) && s.Split == nil && len(s.Joined) == 0
 	}
 	var out []Segment
 	for i := 0; i < len(segs); {
@@ -124,28 +123,30 @@ func recut(group []Segment, seg, without *segment.Segmenter) []Segment {
 		for n+1 < len(group) && !kept[n] {
 			n++
 		}
-		if n > k {
-			chain := append([]Segment{}, group[k:n+1]...)
-			for len(chain) > 1 {
-				joined, err := Join(chain, 0)
-				if err != nil {
-					break
-				}
-				chain = joined
+		parts := append([]Segment{}, group[k:n+1]...)
+		for len(parts) > 1 {
+			joined, err := Join(parts, 0)
+			if err != nil {
+				break
 			}
-			out = append(out, chain...)
-			k = n + 1
-			continue
+			parts = joined
 		}
-		parts := []Segment{group[k]}
-		for c := len(inside[k]) - 1; c >= 0; c-- {
-			before := parts[0].Source.Slice(0, inside[k][c])
-			if cutUp, err := Split(parts, 0, before); err == nil {
-				parts = cutUp
+		if len(parts) == 1 {
+			// Cut from the end, so the places before stay where they are.
+			var places []int
+			for m := k; m <= n; m++ {
+				for _, at := range inside[m] {
+					places = append(places, starts[m]+at-starts[k])
+				}
+			}
+			for c := len(places) - 1; c >= 0; c-- {
+				if cutUp, err := Split(parts, 0, parts[0].Source.Slice(0, places[c])); err == nil {
+					parts = cutUp
+				}
 			}
 		}
 		out = append(out, parts...)
-		k++
+		k = n + 1
 	}
 	return out
 }

@@ -1646,8 +1646,6 @@ function describe(doc: PendingDoc): string {
   switch (kindOf(doc)) {
     case "docx":
       return `${DOCUMENT_FORMAT_NAME[documentFormat(doc.file) ?? "docx"]}, ${DOCUMENT_FORMAT_KEEPS[documentFormat(doc.file) ?? "docx"]}`;
-    case "text":
-      return "Read as plain text";
     default:
       return "No text Interlinea can read";
   }

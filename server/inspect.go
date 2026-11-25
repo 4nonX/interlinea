@@ -16,11 +16,6 @@ import (
 	"github.com/4nonX/interlinea/langdetect"
 )
 
-// textExtensions are the plain text formats translated as text.
-var textExtensions = map[string]bool{
-	".txt": true, ".csv": true, ".tsv": true,
-}
-
 // detectionLimit is how much text the language guess reads.
 const detectionLimit = 20000
 
@@ -95,7 +90,7 @@ func (s *Server) inspectFile(w http.ResponseWriter, r *http.Request, me session)
 
 func inspect(name string, data []byte) inspection {
 	out := inspection{Name: name, Format: formatOf(name), Warnings: []string{}}
-	if out.Format == "txt" && !textExtensions[strings.ToLower(path.Ext(name))] {
+	if out.Format == formats.Text && !formats.TextName(name) {
 		out.Format = "other"
 		return out
 	}
@@ -180,21 +175,6 @@ func inspect(name string, data []byte) inspection {
 		}
 		out.Bilingual, out.Translatable, out.Warnings = b, true, append(out.Warnings, ex.Warnings...)
 		out.Detection = detect(text.String())
-	case "txt":
-		text, _, err := decodeText(data)
-		if err != nil {
-			out.Problem = "The file could not be read: " + err.Error()
-			return out
-		}
-		segs := textSegments(text, "en")
-		for _, sg := range segs {
-			out.Words += analysis.Count(sg.Source).Words
-		}
-		out.Segments, out.Translatable = len(segs), len(segs) > 0
-		if !out.Translatable {
-			out.Problem = "The file has no text to translate."
-		}
-		out.Detection = detect(text)
 	default:
 		if formats.Document(out.Format) {
 			// Sentence rules barely matter here; the file is read again with
@@ -206,7 +186,10 @@ func inspect(name string, data []byte) inspection {
 			}
 			var text strings.Builder
 			out.Words, out.Segments = count(ex.Units, &text)
-			out.Translatable, out.Warnings = true, append(out.Warnings, ex.Warnings...)
+			out.Translatable, out.Warnings = out.Segments > 0, append(out.Warnings, ex.Warnings...)
+			if !out.Translatable {
+				out.Problem = "The file has no text to translate."
+			}
 			out.Detection = detect(text.String())
 		}
 	}

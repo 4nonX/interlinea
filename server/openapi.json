@@ -1891,6 +1891,10 @@
       "project.FileState": {
         "description": "FileState is a segment's state in its bilingual file.",
         "properties": {
+          "fixed": {
+            "description": "Fixed: the program the file comes from keeps its own record of each segment (its ID, state and history), so the segment cannot be split or joined.",
+            "type": "boolean"
+          },
           "match": {
             "description": "Match is the match percentage the file records.",
             "type": "integer"
@@ -1907,7 +1911,7 @@
         "type": "object"
       },
       "project.JoinedUnit": {
-        "description": "JoinedUnit is one of the units a joined segment was made of.",
+        "description": "JoinedUnit is one of the units of the file a stretch of several was joined from. Every part of such a stretch lists them.",
         "properties": {
           "id": {
             "type": "string"
@@ -2237,14 +2241,14 @@
         "type": "object"
       },
       "project.SplitPart": {
-        "description": "SplitPart says that a segment is a part of a unit that was split.",
+        "description": "SplitPart says that a segment is a part of a stretch that was split.",
         "properties": {
           "space": {
-            "description": "Space is the whitespace that stood before the part where the unit was cut; the first part has none.",
+            "description": "Space is the whitespace that stood before the part where the stretch was cut; the first part has none.",
             "type": "string"
           },
           "unit": {
-            "description": "Unit is the ID of the unit the part belongs to.",
+            "description": "Unit is the ID of the first unit of the stretch the part belongs to.",
             "type": "string"
           }
         },
@@ -8397,7 +8401,7 @@
     },
     "/api/projects/{id}/segments/join": {
       "post": {
-        "description": "Their translations are put together, and the document is written with the joined translation where the two stood. The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the assignee of both segments.",
+        "description": "Their translations are put together, and the file is written with one translation where they stood. The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the assignee of both segments.",
         "operationId": "joinProjectSegments",
         "parameters": [
           {
@@ -8483,101 +8487,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it: two segments of the same paragraph, or two parts of a segment that was split.",
-        "tags": [
-          "Projects"
-        ]
-      }
-    },
-    "/api/projects/{id}/segments/separate": {
-      "post": {
-        "description": "The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the segment's assignee.",
-        "operationId": "separateProjectSegments",
-        "parameters": [
-          {
-            "description": "The number of the account, sign-in, project or merge request.",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "file",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "lang",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "segment",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The version the change was made from (or send ?version=).",
-            "in": "header",
-            "name": "If-Match",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The version the change was made from, when If-Match is not sent.",
-            "in": "query",
-            "name": "version",
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/projectdb.StoredSegment"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "$ref": "#/components/responses/401"
-          },
-          "403": {
-            "$ref": "#/components/responses/403"
-          },
-          "404": {
-            "$ref": "#/components/responses/404"
-          },
-          "409": {
-            "$ref": "#/components/responses/409"
-          },
-          "422": {
-            "$ref": "#/components/responses/422"
-          },
-          "428": {
-            "$ref": "#/components/responses/428"
-          },
-          "default": {
-            "$ref": "#/components/responses/error"
-          }
-        },
-        "summary": "Undoes the joining of a segment (?file=, ?lang=, ?segment=): the segments it was joined from stand apart again, the translation staying with the first.",
+        "summary": "Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it in the same paragraph (in XLIFF, the same unit of the file), whether they are whole sentences or parts of ones that were split.",
         "tags": [
           "Projects"
         ]
@@ -8585,7 +8495,7 @@
     },
     "/api/projects/{id}/segments/split": {
       "post": {
-        "description": "The translation stays with the first part. The document is written with the parts' translations one after the other where the segment stood. Only that language of the file is cut differently. The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the segment's assignee.",
+        "description": "The translation stays with the first part. Any segment of a document or of a plain XLIFF file can be split, also one that was joined: split where it was joined, the two stand apart as the file had them. The file is written with the parts' translations one after the other. Only that language of the file is cut differently. Files of Trados and memoQ keep their segments. The answer is the file's segments as they are now.\n\nAccess: edit on the project, or the segment's assignee.",
         "operationId": "splitProjectSegment",
         "parameters": [
           {

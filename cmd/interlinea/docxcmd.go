@@ -15,14 +15,14 @@ import (
 )
 
 // document names the formats extract and merge read.
-const documentKinds = "a Word, PowerPoint, Excel, HTML or InDesign IDML file"
+const documentKinds = "a document of a format Interlinea reads"
 
 // extractDocument reads a document by the format its name says.
 func extractDocument(name string, data []byte, lang string, opts docx.Options) (*filter.Extraction, error) {
 	switch f := formats.Of(name); {
 	case f == formats.Word:
 		return docx.Extract(data, lang, opts)
-	case formats.Document(f):
+	case formats.Document(f) && (f != formats.Text || formats.TextName(name)):
 		return formats.Extract(f, data, lang)
 	}
 	return nil, usageErr("%s is not %s", name, documentKinds)
@@ -107,7 +107,7 @@ func runMerge(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	switch f := formats.Of(fs.Arg(0)); {
 	case f == formats.Word:
 		out, err = docx.Merge(data, *lang, *target, tr, opts)
-	case formats.Document(f):
+	case formats.Document(f) && (f != formats.Text || formats.TextName(fs.Arg(0))):
 		out, err = formats.Merge(f, data, *lang, *target, tr)
 	default:
 		return usageErr("%s is not %s", fs.Arg(0), documentKinds)

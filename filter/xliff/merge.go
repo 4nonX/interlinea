@@ -143,7 +143,34 @@ func (w *writer) target(sg *segment, u Update) (string, bool, error) {
 	if u.Target == nil || sameContent(u.Target, sg.unit.Target) {
 		return "", false, nil
 	}
-	inner, err := render(u.Target, sg.tags)
+	tags := sg.tags
+	if len(u.Joined) > 0 {
+		// The tags of the segments translated with this one, numbered on.
+		tags = tagTable{}
+		for k, v := range sg.tags {
+			tags[k] = v
+		}
+		src := sg.unit.Source
+		for _, id := range u.Joined {
+			other, ok := w.s.byID[id]
+			if !ok {
+				return "", false, fmt.Errorf("%w: %q", ErrNoSegment, id)
+			}
+			if other.tu != sg.tu {
+				return "", false, fmt.Errorf("xliff: segments %q and %q are not in the same unit and cannot be joined", sg.unit.ID, id)
+			}
+			more, back := filter.JoinTags(src, other.unit.Source)
+			for now, own := range back {
+				for _, kind := range []content.TagKind{content.TagOpen, content.TagClose, content.TagStandalone} {
+					if native, ok := other.tags[tagKey{kind, own}]; ok {
+						tags[tagKey{kind, now}] = native
+					}
+				}
+			}
+			src = append(src.Clone(), more...)
+		}
+	}
+	inner, err := render(u.Target, tags)
 	if err != nil {
 		return "", false, fmt.Errorf("segment %q: %w", sg.unit.ID, err)
 	}

@@ -160,8 +160,8 @@ interface Remote {
   /** Subscribes to the live feed; returns the function that unsubscribes. */
   listen(on: (e: FeedEvent) => void): () => void;
   /**
-   * In a server project: splits a segment where before ends, joins it with
-   * the next, or separates what was joined. What the segments do not allow
+   * In a server project: splits a segment where before ends, or joins it
+   * with the next. What the segments do not allow
    * is thrown, as the sentence to show.
    */
   resegment(project: Project, fileId: string, lang: LangCode, segId: string, how: Resegment, before: Run[]): Promise<void>;
@@ -670,10 +670,13 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       const file = project.remote.files[fileId]!;
       // What was typed in the segments is saved first, so it is what gets split or joined.
       const list = () => latest.current.projects.find((p) => p.id === project.id)?.files.find((f) => f.id === fileId)?.segments[lang] ?? [];
-      const at = list().findIndex((x) => x.id === segId);
-      for (const x of list().slice(at, at + (how === "join" ? 2 : 1))) {
-        clearTimeout(pending.current.get(vkey(n, file, lang, x.id)));
-        pending.current.delete(vkey(n, file, lang, x.id));
+      // Other segments of the same stretch of the file may be named anew, so
+      // nothing typed in this file waits while that happens.
+      for (const x of list()) {
+        const k = vkey(n, file, lang, x.id);
+        if (x.id !== segId && !pending.current.has(k)) continue;
+        clearTimeout(pending.current.get(k));
+        pending.current.delete(k);
         await push(project, fileId, lang, x.id);
       }
       const fresh = await api.resegment(n, file, lang, segId, how, runsToCoreWhole(before), versions.current.get(vkey(n, file, lang, segId)) ?? 1);

@@ -74,7 +74,7 @@ func TestExtractAndMergeOtherFormats(t *testing.T) {
 	}
 	other := filepath.Join(dir, "Plan.pdf")
 	os.WriteFile(other, []byte("%PDF"), 0o644)
-	if code, _, errOut = exec(t, "", "extract", other); code == 0 || !strings.Contains(errOut, "is not a Word, PowerPoint, Excel, HTML or InDesign IDML file") {
+	if code, _, errOut = exec(t, "", "extract", other); code == 0 || !strings.Contains(errOut, "is not a document of a format Interlinea reads") {
 		t.Errorf("extract pdf: %d %q", code, errOut)
 	}
 }

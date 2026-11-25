@@ -754,23 +754,11 @@ Access: edit on the project, or the segment's assignee.
 
 ### `POST /api/projects/{id}/segments/join`
 
-Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it: two segments of the same paragraph, or two parts of a segment that was split.
+Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it in the same paragraph (in XLIFF, the same unit of the file), whether they are whole sentences or parts of ones that were split.
 
-Their translations are put together, and the document is written with the joined translation where the two stood. The answer is the file's segments as they are now.
+Their translations are put together, and the file is written with one translation where they stood. The answer is the file's segments as they are now.
 
 Access: edit on the project, or the assignee of both segments.
-
-- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `If-Match` or `?version=`
-- Answer: 200 OK: list of [projectdb.StoredSegment](#projectdbstoredsegment)
-- Errors: 401, 403, 404, 409, 428, 422 (see [Error](#error))
-
-### `POST /api/projects/{id}/segments/separate`
-
-Undoes the joining of a segment (?file=, ?lang=, ?segment=): the segments it was joined from stand apart again, the translation staying with the first.
-
-The answer is the file's segments as they are now.
-
-Access: edit on the project, or the segment's assignee.
 
 - Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `If-Match` or `?version=`
 - Answer: 200 OK: list of [projectdb.StoredSegment](#projectdbstoredsegment)
@@ -780,7 +768,7 @@ Access: edit on the project, or the segment's assignee.
 
 Cuts a segment (?file=, ?lang=, ?segment=) in two where the body's "before", the start of its source, ends.
 
-The translation stays with the first part. The document is written with the parts' translations one after the other where the segment stood. Only that language of the file is cut differently. The answer is the file's segments as they are now.
+The translation stays with the first part. Any segment of a document or of a plain XLIFF file can be split, also one that was joined: split where it was joined, the two stand apart as the file had them. The file is written with the parts' translations one after the other. Only that language of the file is cut differently. Files of Trados and memoQ keep their segments. The answer is the file's segments as they are now.
 
 Access: edit on the project, or the segment's assignee.
 
@@ -2539,13 +2527,14 @@ FileState is a segment's state in its bilingual file.
 
 | Field | Type | Description |
 |---|---|---|
+| `fixed` | boolean | Fixed: the program the file comes from keeps its own record of each segment (its ID, state and history), so the segment cannot be split or joined. |
 | `match` | integer | Match is the match percentage the file records. |
 | `state` | string | State is "new", "draft", "translated", "reviewed", "final" or "rejected". |
 | `target` | string | Target is the translation in the file, as content JSON. |
 
 ### project.JoinedUnit
 
-JoinedUnit is one of the units a joined segment was made of.
+JoinedUnit is one of the units of the file a stretch of several was joined from. Every part of such a stretch lists them.
 
 | Field | Type | Description |
 |---|---|---|
@@ -2677,12 +2666,12 @@ Settings is a project as it is set up.
 
 ### project.SplitPart
 
-SplitPart says that a segment is a part of a unit that was split.
+SplitPart says that a segment is a part of a stretch that was split.
 
 | Field | Type | Description |
 |---|---|---|
-| `space` | string | Space is the whitespace that stood before the part where the unit was cut; the first part has none. |
-| `unit` | string | Unit is the ID of the unit the part belongs to. |
+| `space` | string | Space is the whitespace that stood before the part where the stretch was cut; the first part has none. |
+| `unit` | string | Unit is the ID of the first unit of the stretch the part belongs to. |
 
 ### project.Status
 

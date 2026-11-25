@@ -59,9 +59,10 @@ client and the desktop app, with installers and a server image.
 
 ### Segments
 
-- A segment of a document can be split in two, and two segments of a paragraph joined into one, in the editor (Alt+Shift+S, Alt+Shift+J). A joined segment can be separated again. The translated document has the parts one after the other where the segment stood, and one translation where joined sentences stood, with the formatting of both. Only the language at hand is cut differently. Files that bring their own segments (XLIFF and packages) and plain text keep them.
-
-- A project can have segmentation rules of its own: regular expressions for the text before and after a place, where a sentence ends or does not. They come before the rules for the language and cut the documents added to the project; templates carry them.
+- Any segment can be split at any place, and any two segments of a paragraph joined, as often as wanted: a joined segment is split again, a part of one sentence is joined with the next sentence (Alt+Shift+S, Alt+Shift+J). Split where two segments were joined, they stand apart as the file has them. The translated file has the translations of the parts one after the other where the sentences stood, with the formatting of all of them. Only the language at hand is cut differently.
+- This holds for documents, plain text and plain XLIFF files (in XLIFF within a unit of the file). Files of Trados and memoQ, and their packages, keep their segments: those programs keep their own record of every segment, and the editor says so.
+- Plain text files are read by the same core as every other document, in the browser as on the desktop: a line is a paragraph, cut by the rules of the source language, and the translated text can be saved from the editor.
+- A project can have segmentation rules of its own: regular expressions for the text before and after a place, where a sentence ends or does not. They come before the rules for the language and cut the documents and text files added to the project; templates carry them.
 
 ### Typing
 

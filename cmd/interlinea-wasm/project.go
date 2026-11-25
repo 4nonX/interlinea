@@ -145,8 +145,7 @@ func pretranslate(args []js.Value) (any, error) {
 
 // resegment(how, segments, index, before): cuts a file's segments
 // differently. how is "split" (where before, the start of the segment's
-// source, ends), "join" (with the segment after it) or "separate" (what
-// was joined). It returns the file's segments as they are afterwards;
+// source, ends) or "join" (with the segment after it). It returns the file's segments as they are afterwards;
 // what the segments do not allow is the error's text.
 func resegment(args []js.Value) (any, error) {
 	if len(args) != 4 {
@@ -168,8 +167,6 @@ func resegment(args []js.Value) (any, error) {
 		out, err = project.Split(segs, i, before)
 	case "join":
 		out, err = project.Join(segs, i)
-	case "separate":
-		out, err = project.Separate(segs, i)
 	default:
 		return nil, fmt.Errorf("resegment: unknown way %q", args[0].String())
 	}

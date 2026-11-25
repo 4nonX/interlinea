@@ -13,7 +13,7 @@ import {
 } from "./data";
 import type { SegmentationRule } from "./data";
 import { documentFormat, applySegmentation, extractDocx, type Extracted } from "./core";
-import { segmentText, type Segment } from "./editor/model";
+import type { Segment } from "./editor/model";
 import type { PendingDoc } from "./draft";
 
 /** A document chosen for a project, with what it is used for. */
@@ -37,7 +37,7 @@ export function draftDocs(docs: PendingDoc[]): DraftDoc[] {
 export function kindOf(doc: PendingDoc): FileKind {
   if (doc.bilingual) return "xliff";
   if (doc.bytes && documentFormat(doc.file)) return "docx";
-  return doc.text ? "text" : "none";
+  return "none";
 }
 
 /** Whether the document can be translated here. */
@@ -138,12 +138,8 @@ export function buildFiles(
       segs = ex.segments;
       blocks = ex.blocks;
     } else {
-      segs = segmentText(d.doc.text ?? "").map((t, j) => ({
-        id: `s${j + 1}`,
-        source: [t],
-        target: [],
-        status: "new" as const,
-      }));
+      // Only documents the core reads are translated.
+      continue;
     }
     out.push({
       ...base,

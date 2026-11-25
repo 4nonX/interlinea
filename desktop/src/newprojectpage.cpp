@@ -114,6 +114,7 @@ QString documentFormatText(const QString &format)
         {QStringLiteral("resx"), {QT_TRANSLATE_NOOP("NewProjectPage", "RESX file"), QT_TRANSLATE_NOOP("NewProjectPage", "keys and placeholders kept")}},
         {QStringLiteral("srt"), {QT_TRANSLATE_NOOP("NewProjectPage", "SRT subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times kept")}},
         {QStringLiteral("vtt"), {QT_TRANSLATE_NOOP("NewProjectPage", "WebVTT subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times kept")}},
+        {QStringLiteral("txt"), {QT_TRANSLATE_NOOP("NewProjectPage", "Text file"), QT_TRANSLATE_NOOP("NewProjectPage", "line breaks kept")}},
     };
     const auto it = names.constFind(format);
     if (it == names.constEnd())
@@ -801,8 +802,6 @@ void NewProjectPage::fillFiles()
                                                        plural(in.value(QLatin1String("segments")).toInt(), tr("1 segment"), tr("%1 segments")));
             } else if (const QString doc = documentFormatText(format); !doc.isEmpty()) {
                 sub = doc;
-            } else if (format == QLatin1String("txt")) {
-                sub = tr("Read as plain text");
             } else {
                 sub = tr("No text Interlinea can read");
             }

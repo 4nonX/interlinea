@@ -13,28 +13,30 @@ import (
 )
 
 // A file's segments start as the units its filter read. A translator may
-// split one in two where the filter saw one sentence, and join two of a
-// paragraph where it saw two. The file itself is never read differently:
-// a split segment's parts go back into their unit one after the other,
-// and joined segments are written as one translation where their units
-// stood. Translations turns segments into what the filter takes.
+// split any of them, and join any two of a paragraph, as often as wanted:
+// a stretch of one or more units of the file is then translated as one
+// segment or as parts cut wherever the translator chose. The file itself
+// is never read differently: the translations of a stretch's parts go
+// back one after the other where its units stood. Translations turns
+// segments into what the filter takes.
 
-// SplitPart says that a segment is a part of a unit that was split.
+// SplitPart says that a segment is a part of a stretch that was split.
 type SplitPart struct {
-	// Unit is the ID of the unit the part belongs to.
+	// Unit is the ID of the first unit of the stretch the part belongs to.
 	Unit string `json:"unit"`
-	// Space is the whitespace that stood before the part where the unit
-	// was cut; the first part has none.
+	// Space is the whitespace that stood before the part where the
+	// stretch was cut; the first part has none.
 	Space string `json:"space,omitempty"`
 }
 
-// JoinedUnit is one of the units a joined segment was made of.
+// JoinedUnit is one of the units of the file a stretch of several was
+// joined from. Every part of such a stretch lists them.
 type JoinedUnit struct {
 	ID     string          `json:"id"`
 	Source content.Content `json:"source"`
 }
 
-// ErrResegment is what Split, Join and Separate return when the segments
+// ErrResegment is what Split and Join return when the segments
 // do not allow it; its text says why, for the person asking.
 type ErrResegment struct{ Message string }
 
@@ -153,10 +155,8 @@ func Split(segs []Segment, i int, before content.Content) ([]Segment, error) {
 	switch {
 	case s.Locked:
 		return nil, refuse("The segment is locked.")
-	case len(s.Joined) > 0:
-		return nil, refuse("The segment was joined from %d: separate it instead.", len(s.Joined))
-	case s.File != nil:
-		return nil, refuse("The file brings its own segments, which stay as they are.")
+	case fixed(s):
+		return nil, refuse("%s", FixedMessage)
 	}
 	left, right, ok := cut(s.Source, before)
 	if !ok {
@@ -196,47 +196,227 @@ func Split(segs []Segment, i int, before content.Content) ([]Segment, error) {
 	}
 	right = append(reopened, right...)
 
-	unit := s.ID
-	if s.Split != nil {
-		unit = s.Split.Unit
-	}
+	r := runAt(segs, i)
 	a, b := s, s
 	a.Source, b.Source = left, right
 	a.Target = s.Target.Clone()
 	b.Target = content.Content{}
 	a.Status, b.Status = statusOf(a.Target), StatusNew
-	a.Origin, a.Warnings, a.Ignored = nil, nil, nil
-	b.Origin, b.Warnings, b.Ignored, b.Comments = nil, nil, nil, nil
+	a.Origin, a.Warnings, a.Ignored, a.File = nil, nil, nil, nil
+	b.Origin, b.Warnings, b.Ignored, b.Comments, b.File = nil, nil, nil, nil, nil
 	if s.Split == nil {
-		a.ID = unit + "#1"
-		a.Split = &SplitPart{Unit: unit}
+		a.ID = r.key + "#1"
+		a.Split = &SplitPart{Unit: r.key}
 	} else {
 		part := *s.Split
 		a.Split = &part
 	}
-	taken := map[string]bool{a.ID: true}
-	for _, o := range segs {
-		taken[o.ID] = true
-	}
-	for n := 2; ; n++ {
-		if id := unit + "#" + strconv.Itoa(n); !taken[id] {
-			b.ID = id
-			break
-		}
-	}
-	b.Split = &SplitPart{Unit: unit, Space: trail + lead}
+	b.ID = freshID(segs, r.key, a.ID)
+	b.Split = &SplitPart{Unit: r.key, Space: trail + lead}
 	out := make([]Segment, 0, len(segs)+1)
 	out = append(out, segs[:i]...)
 	out = append(out, a, b)
-	return append(out, segs[i+1:]...), nil
+	out = append(out, segs[i+1:]...)
+	return settle(out, i), nil
 }
 
-// unitsOf lists the units a segment that is no part stands for.
-func unitsOf(s Segment) []JoinedUnit {
-	if len(s.Joined) > 0 {
-		return s.Joined
+// FixedMessage says why a segment of a file whose tool keeps its own
+// record of each segment is not cut differently.
+const FixedMessage = "The program this file comes from keeps its own record of every segment, so its segments stay as they are."
+
+// fixed reports whether the segment's file keeps a record of it that
+// another cut would break.
+func fixed(s Segment) bool { return s.File != nil && s.File.Fixed }
+
+// freshID is a name for a new part of the run key that no segment has.
+func freshID(segs []Segment, key string, also ...string) string {
+	taken := map[string]bool{}
+	for _, o := range segs {
+		taken[o.ID] = true
 	}
-	return []JoinedUnit{{ID: s.ID, Source: s.Source}}
+	for _, id := range also {
+		taken[id] = true
+	}
+	for n := 1; ; n++ {
+		if id := key + "#" + strconv.Itoa(n); !taken[id] {
+			return id
+		}
+	}
+}
+
+// A run is the segments that stand for one stretch of the file: one unit
+// or several joined ones, as one segment or cut into parts.
+type run struct {
+	// key names the run: the ID of its first unit.
+	key string
+	// units are the file's units the run stands for.
+	units []JoinedUnit
+	// The run is segs[lo:hi].
+	lo, hi int
+}
+
+// pieces puts the sources of parts together as their run reads.
+func pieces(parts []Segment) content.Content {
+	out := content.Content{}
+	for k, p := range parts {
+		if k == 0 {
+			out = p.Source.Clone()
+			continue
+		}
+		space := ""
+		if p.Split != nil {
+			space = p.Split.Space
+		}
+		a, b := heal(out, p.Source.Clone())
+		out = append(a.Append(space), b...).Normalize()
+	}
+	return out
+}
+
+// runAt finds the run segment i belongs to.
+func runAt(segs []Segment, i int) run {
+	s := segs[i]
+	if s.Split == nil {
+		r := run{key: s.ID, lo: i, hi: i + 1, units: s.Joined}
+		if len(r.units) == 0 {
+			r.units = []JoinedUnit{{ID: s.ID, Source: s.Source}}
+		} else {
+			r.key = s.Joined[0].ID
+		}
+		return r
+	}
+	r := run{key: s.Split.Unit, lo: i, hi: i + 1}
+	for r.lo > 0 && segs[r.lo-1].Split != nil && segs[r.lo-1].Split.Unit == r.key {
+		r.lo--
+	}
+	for r.hi < len(segs) && segs[r.hi].Split != nil && segs[r.hi].Split.Unit == r.key {
+		r.hi++
+	}
+	if r.units = segs[r.lo].Joined; len(r.units) == 0 {
+		r.units = []JoinedUnit{{ID: r.key, Source: pieces(segs[r.lo:r.hi])}}
+	}
+	return r
+}
+
+// retag gives the tags of c the IDs the map has for them.
+func retag(c content.Content, ids map[string]string) content.Content {
+	out := c.Clone()
+	for k := range out {
+		if out[k].IsTag() {
+			if id, ok := ids[out[k].Tag.ID]; ok {
+				out[k].Tag.ID = id
+			}
+		}
+	}
+	return out
+}
+
+// shape gives the segments of a run, segs[lo:hi], the names and marks of
+// what they are now: the run of units, as one segment or as its parts.
+func shape(segs []Segment, lo, hi int, units []JoinedUnit) {
+	key := units[0].ID
+	var joined []JoinedUnit
+	if len(units) > 1 {
+		joined = units
+	}
+	if hi-lo == 1 {
+		s := &segs[lo]
+		s.ID, s.Split, s.Joined = key, nil, joined
+		if joined != nil {
+			s.Source = JoinedSource(units)
+		} else {
+			s.Source = units[0].Source.Clone()
+		}
+		return
+	}
+	// Parts keep their names where they are parts of this run already.
+	keep := map[string]bool{}
+	for k := lo; k < hi; k++ {
+		if strings.HasPrefix(segs[k].ID, key+"#") && !keep[segs[k].ID] {
+			keep[segs[k].ID] = true
+		} else {
+			segs[k].ID = ""
+		}
+	}
+	var given []string
+	for k := lo; k < hi; k++ {
+		s := &segs[k]
+		space := ""
+		if s.Split != nil && k > lo {
+			space = s.Split.Space
+		}
+		if s.ID == "" {
+			s.ID = freshID(segs, key, given...)
+			given = append(given, s.ID)
+		}
+		s.Split, s.Joined = &SplitPart{Unit: key, Space: space}, joined
+	}
+}
+
+// settle takes a run of several units apart again where its parts end
+// where its units do: each side is a run of its own then, and a unit
+// that is one part again is the segment the file had. This is how what
+// was joined comes apart: by splitting it where it was joined.
+func settle(segs []Segment, i int) []Segment {
+	r := runAt(segs, i)
+	if len(r.units) < 2 || r.hi-r.lo < 2 {
+		return segs
+	}
+	// Where the units and the parts start and end in the run's text.
+	starts, ends := make([]int, len(r.units)), make([]int, len(r.units))
+	for k := range r.units {
+		whole, _ := fold(r.units[:k+1])
+		ends[k] = len(whole.Plain())
+		starts[k] = ends[k] - len(r.units[k].Source.Plain())
+	}
+	pStart, pEnd := make([]int, r.hi-r.lo), make([]int, r.hi-r.lo)
+	at := 0
+	for j := r.lo; j < r.hi; j++ {
+		if j > r.lo {
+			at += len(segs[j].Split.Space)
+		}
+		pStart[j-r.lo] = at
+		at += len(segs[j].Source.Plain())
+		pEnd[j-r.lo] = at
+	}
+	// cutAfter[k]: the part that ends where unit k ends, with the next
+	// part starting where the next unit does.
+	type group struct{ u0, u1, p0, p1 int }
+	var groups []group
+	u0, p0 := 0, 0
+	for k := 0; k+1 < len(r.units); k++ {
+		for j := p0; j+1 < len(pEnd); j++ {
+			if pEnd[j] == ends[k] && pStart[j+1] == starts[k+1] {
+				groups = append(groups, group{u0, k + 1, p0, j + 1})
+				u0, p0 = k+1, j+1
+				break
+			}
+		}
+	}
+	if len(groups) == 0 {
+		return segs
+	}
+	groups = append(groups, group{u0, len(r.units), p0, len(pEnd)})
+	_, whole := fold(r.units)
+	out := append([]Segment{}, segs...)
+	for _, g := range groups {
+		units := append([]JoinedUnit{}, r.units[g.u0:g.u1]...)
+		// The tags take the IDs they have in the smaller run.
+		_, own := fold(units)
+		ids := map[string]string{}
+		for k := range units {
+			for id, was := range whole[g.u0+k] {
+				ids[was] = own[k][id]
+			}
+		}
+		for j := r.lo + g.p0; j < r.lo+g.p1; j++ {
+			out[j].Source = retag(out[j].Source, ids)
+			out[j].Target = retag(out[j].Target, ids)
+			out[j].Joined = nil
+		}
+		shape(out, r.lo+g.p0, r.lo+g.p1, units)
+	}
+	return out
 }
 
 // separator is what stands between two joined sentences: a space, or
@@ -346,10 +526,11 @@ func mergeNotes(a, b []string) []string {
 	return out
 }
 
-// Join makes one segment of segment i and the one after it: two parts of
-// a split segment, or two segments of the same paragraph. Their
-// translations are put together. It returns the file's segments with the
-// one in place of the two.
+// Join makes one segment of segment i and the one after it, which must
+// be of the same paragraph. Their translations are put together. Two
+// parts of what was split become one part; otherwise the two stretches
+// of the file they belong to become one, with all their parts. It
+// returns the file's segments as they are then.
 func Join(segs []Segment, i int) ([]Segment, error) {
 	if i < 0 || i+1 >= len(segs) {
 		return nil, refuse("There is no segment after this one to join it with.")
@@ -358,16 +539,13 @@ func Join(segs []Segment, i int) ([]Segment, error) {
 	switch {
 	case x.Locked || y.Locked:
 		return nil, refuse("One of the two segments is locked.")
-	case x.File != nil || y.File != nil:
-		return nil, refuse("The file brings its own segments, which stay as they are.")
+	case fixed(x) || fixed(y):
+		return nil, refuse("%s", FixedMessage)
 	}
-	z := x
-	z.Origin, z.Warnings, z.Ignored = nil, nil, nil
-	z.Comments = append(append([]Comment{}, x.Comments...), y.Comments...)
-	if len(z.Comments) == 0 {
-		z.Comments = nil
+	rx, ry := runAt(segs, i), runAt(segs, i+1)
+	if rx.lo != ry.lo && (x.Block == "" || x.Block != y.Block) {
+		return nil, refuse("The two segments are in different paragraphs, which the file keeps apart.")
 	}
-	z.Notes = mergeNotes(x.Notes, y.Notes)
 	glue := func(a, b content.Content, space string) content.Content {
 		switch {
 		case blank(a):
@@ -376,96 +554,62 @@ func Join(segs []Segment, i int) ([]Segment, error) {
 			return a.Clone()
 		}
 		out := a.Clone().Append(space)
-		return append(out, b.Clone()...).Normalize()
+		return onePair(append(out, b.Clone()...).Normalize())
 	}
-	switch {
-	case x.Split != nil && y.Split != nil && x.Split.Unit == y.Split.Unit:
-		a, b := heal(x.Source.Clone(), y.Source.Clone())
-		z.Source = append(a.Append(y.Split.Space), b...).Normalize()
-		z.Target = onePair(glue(x.Target, y.Target, y.Split.Space))
-		others := 0
-		for k, o := range segs {
-			if k != i && k != i+1 && o.Split != nil && o.Split.Unit == x.Split.Unit {
-				others++
-			}
-		}
-		if others == 0 && x.Split.Space == "" {
-			z.ID, z.Split = x.Split.Unit, nil
-		}
-	case x.Split != nil || y.Split != nil:
-		return nil, refuse("A split segment is joined with its own parts first.")
-	case x.Block == "" || x.Block != y.Block:
-		return nil, refuse("The two segments are in different paragraphs, which the document keeps apart.")
-	default:
-		ux, uy := unitsOf(x), unitsOf(y)
-		all := append(append([]JoinedUnit{}, ux...), uy...)
-		src, ids := fold(all)
-		// The second translation's tags take the IDs they have now.
-		_, was := fold(uy)
-		now := map[string]string{}
-		for k := range uy {
+	out := append([]Segment{}, segs...)
+	units := rx.units
+	space := separator(x.Source, y.Source)
+	if rx.lo == ry.lo {
+		space = y.Split.Space
+	} else {
+		// The second stretch's tags count on from the first's.
+		units = append(append([]JoinedUnit{}, rx.units...), ry.units...)
+		_, now := fold(units)
+		_, was := fold(ry.units)
+		ids := map[string]string{}
+		for k := range ry.units {
 			for own, id := range was[k] {
-				now[id] = ids[len(ux)+k][own]
+				ids[id] = now[len(rx.units)+k][own]
 			}
 		}
-		moved := y.Target.Clone()
-		for k := range moved {
-			if moved[k].IsTag() {
-				if id, ok := now[moved[k].Tag.ID]; ok {
-					moved[k].Tag.ID = id
-				}
-			}
+		for j := ry.lo; j < ry.hi; j++ {
+			out[j].Source = retag(out[j].Source, ids)
+			out[j].Target = retag(out[j].Target, ids)
 		}
-		z.Source, z.Joined = src, all
-		z.Target = glue(x.Target, moved, separator(x.Target, moved))
-		if x.MaxLength > 0 && y.MaxLength > 0 {
-			z.MaxLength = x.MaxLength + y.MaxLength
-		} else {
-			z.MaxLength = 0
-		}
+		y = out[i+1]
 	}
+	z := x
+	a, b := heal(x.Source.Clone(), y.Source.Clone())
+	z.Source = append(a.Append(space), b...).Normalize()
+	z.Target = glue(x.Target, y.Target, space)
 	z.Status = statusOf(z.Target)
-	out := make([]Segment, 0, len(segs)-1)
-	out = append(out, segs[:i]...)
-	out = append(out, z)
-	return append(out, segs[i+2:]...), nil
-}
-
-// Separate undoes the joining of segment i: its units are segments of
-// their own again. The translation stays with the first.
-func Separate(segs []Segment, i int) ([]Segment, error) {
-	if i < 0 || i >= len(segs) {
-		return nil, errors.New("project: no such segment")
+	z.Origin, z.Warnings, z.Ignored, z.File = nil, nil, nil, nil
+	z.Comments = append(append([]Comment{}, x.Comments...), y.Comments...)
+	if len(z.Comments) == 0 {
+		z.Comments = nil
 	}
-	s := segs[i]
-	switch {
-	case s.Locked:
-		return nil, refuse("The segment is locked.")
-	case len(s.Joined) < 2:
-		return nil, refuse("The segment was not joined.")
+	z.Notes = mergeNotes(x.Notes, y.Notes)
+	if x.MaxLength > 0 && y.MaxLength > 0 {
+		z.MaxLength = x.MaxLength + y.MaxLength
+	} else {
+		z.MaxLength = 0
 	}
-	out := make([]Segment, 0, len(segs)+len(s.Joined)-1)
-	out = append(out, segs[:i]...)
-	for k, u := range s.Joined {
-		p := Segment{ID: u.ID, Source: u.Source.Clone(), Target: content.Content{}, Status: StatusNew, Block: s.Block}
-		if k == 0 {
-			p.Target, p.Status = s.Target.Clone(), statusOf(s.Target)
-			p.Comments, p.Notes = s.Comments, s.Notes
-		}
-		out = append(out, p)
-	}
-	return append(out, segs[i+1:]...), nil
+	out[i] = z
+	out = append(out[:i+1], out[i+2:]...)
+	lo, hi := rx.lo, ry.hi-1
+	// Parts of the second stretch are named after the first.
+	shape(out, lo, hi, units)
+	return out, nil
 }
 
 // Unit is a unit of the file as its segments stand for it.
 type Unit struct {
 	ID string
-	// Source is the unit's source put together from its segments: a
-	// split unit's parts in a row, a joined segment's unit as it was.
+	// Source is the unit's source: as the file has it for joined units,
+	// put together from its parts for a unit that was only split.
 	Source content.Content
-	// Segments are the positions of the segments that stand for it: the
-	// parts of a split unit, or the one segment, which a joined segment
-	// shares with the units joined in it.
+	// Segments are the positions of the segments that stand for it,
+	// which joined units share.
 	Segments []int
 }
 
@@ -473,67 +617,126 @@ type Unit struct {
 // so the segments can be checked against the file.
 func Units(segs []Segment) []Unit {
 	var out []Unit
-	for i := 0; i < len(segs); i++ {
-		s := segs[i]
-		switch {
-		case s.Split != nil:
-			u := Unit{ID: s.Split.Unit, Source: s.Source.Clone(), Segments: []int{i}}
-			for i+1 < len(segs) && segs[i+1].Split != nil && segs[i+1].Split.Unit == s.Split.Unit {
-				i++
-				a, b := heal(u.Source, segs[i].Source.Clone())
-				u.Source = append(a.Append(segs[i].Split.Space), b...).Normalize()
-				u.Segments = append(u.Segments, i)
-			}
-			out = append(out, u)
-		case len(s.Joined) > 0:
-			for _, j := range s.Joined {
-				out = append(out, Unit{ID: j.ID, Source: j.Source, Segments: []int{i}})
-			}
-		default:
-			out = append(out, Unit{ID: s.ID, Source: s.Source, Segments: []int{i}})
+	for i := 0; i < len(segs); {
+		r := runAt(segs, i)
+		var at []int
+		for j := r.lo; j < r.hi; j++ {
+			at = append(at, j)
 		}
+		for _, u := range r.units {
+			out = append(out, Unit{ID: u.ID, Source: u.Source, Segments: at})
+		}
+		i = r.hi
 	}
 	return out
 }
 
+// squeeze is text without its whitespace, to compare what parts and
+// units read.
+func squeeze(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// CheckRuns reports the first segment whose stretch of the file is not
+// what its parts read: segments sent by an app must stand for their
+// units, cut however they are. It returns -1 when all do.
+func CheckRuns(segs []Segment) int {
+	for i := 0; i < len(segs); {
+		r := runAt(segs, i)
+		if r.hi-r.lo > 1 || len(segs[i].Joined) > 0 {
+			if squeeze(pieces(segs[r.lo:r.hi]).Plain()) != squeeze(JoinedSource(r.units).Plain()) {
+				return i
+			}
+			seen := map[string]bool{}
+			for j := r.lo; j < r.hi; j++ {
+				if seen[segs[j].ID] || (j > r.lo && len(segs[j].Joined) != len(segs[r.lo].Joined)) {
+					return j
+				}
+				seen[segs[j].ID] = true
+			}
+		}
+		i = r.hi
+	}
+	return -1
+}
+
+// A Stretch is what stands for one stretch of the file when it is
+// written: the units, and the segments that translate them.
+type Stretch struct {
+	// Units are the IDs of the file's units, in order.
+	Units []string
+	// Segments are the segments that stand for them: one, or the parts.
+	Segments []Segment
+}
+
+// Stretches lists the file's stretches in order.
+func Stretches(segs []Segment) []Stretch {
+	var out []Stretch
+	for i := 0; i < len(segs); {
+		r := runAt(segs, i)
+		st := Stretch{Segments: segs[r.lo:r.hi]}
+		for _, u := range r.units {
+			st.Units = append(st.Units, u.ID)
+		}
+		out = append(out, st)
+		i = r.hi
+	}
+	return out
+}
+
+// Translated reports whether any of the stretch is translated.
+func (st Stretch) Translated() bool {
+	for _, s := range st.Segments {
+		if !blank(s.Target) {
+			return true
+		}
+	}
+	return false
+}
+
+// Target is the stretch's translation: its segments' translations one
+// after the other. A part without one stands as its source when
+// sourceForBlank is set, and is left out otherwise.
+func (st Stretch) Target(sourceForBlank bool) content.Content {
+	if len(st.Segments) == 1 {
+		return st.Segments[0].Target
+	}
+	whole := content.Content{}
+	for k, s := range st.Segments {
+		part := s.Target
+		if blank(part) {
+			if !sourceForBlank {
+				continue
+			}
+			part = s.Source
+		}
+		if k > 0 && len(whole) > 0 && s.Split != nil {
+			whole = whole.Append(s.Split.Space)
+		}
+		whole = append(whole, part.Clone()...)
+	}
+	return whole.Normalize()
+}
+
 // Translations is what a document's filter takes for the segments: each
-// unit's translation under its ID. A split unit's parts are put together
-// in order, a part without a translation keeping its source; a joined
-// segment's translation stands under its first unit, the others marked
-// as joined to it. Segments without a translation are left out, so the
-// document keeps their source.
+// stretch's translation under its first unit, the other units marked as
+// joined to it. Parts are put together in order, a part without a
+// translation keeping its source. Stretches without any translation are
+// left out, so the document keeps their source.
 func Translations(segs []Segment) filter.Translations {
 	tr := filter.Translations{}
-	for i := 0; i < len(segs); i++ {
-		s := segs[i]
-		switch {
-		case s.Split != nil:
-			var whole content.Content
-			any := false
-			for k := i; k < len(segs) && segs[k].Split != nil && segs[k].Split.Unit == s.Split.Unit; k++ {
-				part := segs[k].Target
-				if blank(part) {
-					part = segs[k].Source
-				} else {
-					any = true
-				}
-				if k > i {
-					whole = whole.Append(segs[k].Split.Space)
-				}
-				whole = append(whole, part.Clone()...)
-				i = k
-			}
-			if any {
-				tr[s.Split.Unit] = whole.Normalize()
-			}
-		case blank(s.Target):
-		case len(s.Joined) > 0:
-			tr[s.Joined[0].ID] = s.Target
-			for _, j := range s.Joined[1:] {
-				tr[j.ID] = filter.Joined()
-			}
-		default:
-			tr[s.ID] = s.Target
+	for _, st := range Stretches(segs) {
+		if !st.Translated() {
+			continue
+		}
+		tr[st.Units[0]] = st.Target(true)
+		for _, id := range st.Units[1:] {
+			tr[id] = filter.Joined()
 		}
 	}
 	return tr

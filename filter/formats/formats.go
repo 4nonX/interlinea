@@ -12,6 +12,7 @@ import (
 	"github.com/4nonX/interlinea/filter/html"
 	"github.com/4nonX/interlinea/filter/idml"
 	"github.com/4nonX/interlinea/filter/markdown"
+	"github.com/4nonX/interlinea/filter/plaintext"
 	"github.com/4nonX/interlinea/filter/pptx"
 	"github.com/4nonX/interlinea/filter/textfmt"
 	"github.com/4nonX/interlinea/filter/xlsx"
@@ -82,12 +83,23 @@ func Of(name string) string {
 	return Text
 }
 
+// textNames are the endings of files read as plain text.
+var textNames = map[string]bool{".txt": true, ".csv": true, ".tsv": true}
+
+// TextName reports whether a file is plain text by its name. Of says
+// Text for any name it does not know; this tells a text file from a file
+// of some other kind.
+func TextName(name string) bool {
+	return textNames[strings.ToLower(path.Ext(name))]
+}
+
 // Document reports whether the format is a document in one language that
 // a filter cuts into units: Word, PowerPoint, Excel, a web page, InDesign,
-// OpenDocument, XML, Markdown, and the strings of software and subtitles.
+// OpenDocument, XML, Markdown, plain text, and the strings of software and
+// subtitles.
 func Document(format string) bool {
 	switch format {
-	case Word, PowerPoint, Excel, HTML, InDesign, Markdown:
+	case Word, PowerPoint, Excel, HTML, InDesign, Markdown, Text:
 		return true
 	}
 	return textfmt.Is(format) || xmlfmt.Is(format)
@@ -163,6 +175,8 @@ func Extract(format string, data []byte, lang string) (*filter.Extraction, error
 		return idml.Extract(data, lang)
 	case Markdown:
 		return markdown.Extract(data, lang)
+	case Text:
+		return plaintext.Extract(data, lang)
 	}
 	switch {
 	case textfmt.Is(format):
@@ -189,6 +203,8 @@ func Merge(format string, data []byte, lang, targetLang string, tr filter.Transl
 		return idml.Merge(data, lang, targetLang, tr)
 	case Markdown:
 		return markdown.Merge(data, lang, targetLang, tr)
+	case Text:
+		return plaintext.Merge(data, lang, tr)
 	}
 	switch {
 	case textfmt.Is(format):

@@ -209,7 +209,7 @@ static QJsonArray trimmedContent(QJsonArray c, bool end)
 static bool isDocument(const QString &name)
 {
     return hasSuffix(name, {".docx", ".docm", ".pptx", ".pptm", ".ppsx", ".xlsx", ".xlsm", ".html", ".htm", ".xhtml", ".idml", ".odt", ".ods", ".odp", ".xml",
-                            ".md", ".markdown", ".properties", ".json", ".yaml", ".yml", ".po", ".pot", ".resx", ".srt", ".vtt"});
+                            ".md", ".markdown", ".properties", ".json", ".yaml", ".yml", ".po", ".pot", ".resx", ".srt", ".vtt", ".txt", ".csv", ".tsv"});
 }
 
 static bool isBilingual(const QString &name)
@@ -328,9 +328,7 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
     };
     bind(QKeySequence(Qt::CTRL | Qt::Key_H), [this] { showReplaceDialog(); });
     bind(QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_S), [this] {
-        if (m_separate && m_separate->isVisibleTo(m_cutBox) && m_separate->isEnabled() && m_cutBox->isVisibleTo(this))
-            resegment(QStringLiteral("separate"));
-        else if (m_split && m_split->isEnabled() && m_cutBox->isVisibleTo(this))
+        if (m_split && m_split->isEnabled() && m_cutBox->isVisibleTo(this))
             showSplitDialog();
     });
     bind(QKeySequence(Qt::ALT | Qt::SHIFT | Qt::Key_J), [this] {
@@ -878,7 +876,7 @@ QWidget *EditorPage::buildPanel()
     tools->addWidget(confirmButton);
     v->addWidget(toolsBox);
 
-    // Split, separate, join: in files whose segments are Interlinea's own.
+    // Split and join: in documents and in plain XLIFF files.
     m_cutBox = new QWidget(body);
     auto *cutV = new QVBoxLayout(m_cutBox);
     cutV->setContentsMargins(0, 0, 0, 0);
@@ -886,23 +884,19 @@ QWidget *EditorPage::buildPanel()
     auto *cutRow = new QWidget(m_cutBox);
     auto *cuts = new FlowLayout(cutRow, S2);
     m_split = Theme::keyButton(tr("Split"), QStringLiteral("Alt+Shift+S"), QStringLiteral("scissors"), body);
-    m_separate = Theme::keyButton(tr("Separate"), QStringLiteral("Alt+Shift+S"), QStringLiteral("scissors"), body);
     m_join = Theme::keyButton(tr("Join with next"), QStringLiteral("Alt+Shift+J"), QStringLiteral("combine"), body);
     m_split->setObjectName(QStringLiteral("splitSegment"));
-    m_separate->setObjectName(QStringLiteral("separateSegment"));
     m_join->setObjectName(QStringLiteral("joinSegment"));
     connect(m_split, &QPushButton::clicked, this, [this] { showSplitDialog(); });
-    connect(m_separate, &QPushButton::clicked, this, [this] { resegment(QStringLiteral("separate")); });
     connect(m_join, &QPushButton::clicked, this, [this] { resegment(QStringLiteral("join")); });
     cuts->addWidget(m_split);
-    cuts->addWidget(m_separate);
     cuts->addWidget(m_join);
     cutV->addWidget(cutRow);
     m_cutNote = label(QString(), "help", m_cutBox);
     m_cutNote->setObjectName(QStringLiteral("cutNote"));
     m_cutNote->setWordWrap(true);
     cutV->addWidget(m_cutNote);
-    m_cutBox->setVisible(isDocument(m_file));
+    m_cutBox->setVisible(isDocument(m_file) || isBilingual(m_file));
     v->addWidget(m_cutBox);
 
     // Keyboard shortcuts, folded (.shortcuts).
@@ -926,7 +920,7 @@ QWidget *EditorPage::buildPanel()
         {"F9", QT_TR_NOOP("Insert the next missing tag")},
         {"Ctrl+E", QT_TR_NOOP("Add a term from the selections")},
         {"Ctrl+H", QT_TR_NOOP("Find and replace in the translations")},
-        {"Alt+Shift+S, Alt+Shift+J", QT_TR_NOOP("Split the segment, join it with the next one of its paragraph")},
+        {"Alt+Shift+S, Alt+Shift+J", QT_TR_NOOP("Split the segment at any place, join it with the next one of its paragraph")},
         {"Ctrl+K or F3", QT_TR_NOOP("Search the memory for the selection")},
     };
     int r = 0;
@@ -1060,9 +1054,8 @@ void EditorPage::loadProject()
         }
         m_langChoice->setVisible(targets.size() > 1);
         m_targetChip->setVisible(targets.size() <= 1);
-        // Saved as the file came: a document (Word, PowerPoint, Excel, a
-        // web page, InDesign), a bilingual file, or a return package for
-        // a package's file. Plain text is saved from the project page.
+        // Saved as the file came: a document, a bilingual file, or a
+        // return package for a package's file.
         const bool document = isDocument(m_file);
         const bool xliff = !document && isBilingual(m_file);
         m_save->setVisible(document || xliff);
@@ -2503,20 +2496,22 @@ void EditorPage::updateCut()
     const QJsonObject s = m_model->segment(row);
     const QJsonObject next = row >= 0 && row + 1 < m_model->rowCount() ? m_model->segment(row + 1) : QJsonObject();
     const auto locked = [this](int r) { return m_model->index(r, 0).data(SegmentModel::LockedRole).toBool(); };
-    const bool cuts = row >= 0 && !locked(row) && !s.contains(QLatin1String("file"));
+    // Trados and memoQ keep their own record of every segment of their files.
+    const auto kept = [](const QJsonObject &seg) { return seg.value(QLatin1String("file")).toObject().value(QLatin1String("fixed")).toBool(); };
+    const bool fixed = kept(s) || hasSuffix(m_file, {".sdlxliff", ".mqxliff", ".mqxlz"});
+    const bool cuts = row >= 0 && !locked(row) && !fixed;
     const int joinedFrom = int(s.value(QLatin1String("joined")).toArray().size());
     const QString part = s.value(QLatin1String("split")).toObject().value(QLatin1String("unit")).toString();
     const QString nextPart = next.value(QLatin1String("split")).toObject().value(QLatin1String("unit")).toString();
     const QString block = s.value(QLatin1String("block")).toString();
-    const bool joins = cuts && !next.isEmpty() && !locked(row + 1)
-        && (!part.isEmpty() || !nextPart.isEmpty() ? part == nextPart : !block.isEmpty() && block == next.value(QLatin1String("block")).toString());
-    m_split->setVisible(joinedFrom == 0);
-    m_separate->setVisible(joinedFrom > 0);
+    const bool joins = cuts && !next.isEmpty() && !locked(row + 1) && !kept(next)
+        && ((!part.isEmpty() && part == nextPart) || (!block.isEmpty() && block == next.value(QLatin1String("block")).toString()));
     m_split->setEnabled(cuts);
-    m_separate->setEnabled(cuts);
     m_join->setEnabled(joins);
-    m_cutNote->setText(joinedFrom > 0 ? tr("Joined from %1 segments of the document.").arg(joinedFrom)
-                       : !part.isEmpty() ? tr("A part of a segment of the document that was split.")
+    m_cutNote->setText(fixed ? tr("The program this file comes from keeps its own record of every segment, so its segments stay as they are.")
+                       : !part.isEmpty() && joinedFrom > 0 ? tr("A part of %1 segments of the file that were joined.").arg(joinedFrom)
+                       : joinedFrom > 0 ? tr("Joined from %1 segments of the file. Split it where they met to have them apart again.").arg(joinedFrom)
+                       : !part.isEmpty() ? tr("A part of a segment of the file that was split.")
                                          : QString());
     m_cutNote->setVisible(!m_cutNote->text().isEmpty());
 }
@@ -2567,9 +2562,7 @@ void EditorPage::resegment(const QString &how, const QJsonArray &before, std::fu
                 return;
             }
             takeSegments(r.array(), row);
-            notify(how == QLatin1String("split")  ? tr("Split in two segments")
-                   : how == QLatin1String("join") ? tr("Joined with the next segment")
-                                                  : tr("The segments stand apart again"));
+            notify(how == QLatin1String("split") ? tr("Split in two segments") : tr("Joined with the next segment"));
             emit resegmented(how, true);
         });
     };
@@ -2598,7 +2591,10 @@ Web::Dialog *EditorPage::showSplitDialog()
     auto *d = new Web::Dialog(tr("Split the segment"), window());
     d->setObjectName(QStringLiteral("splitDialog"));
     d->setAttribute(Qt::WA_DeleteOnClose);
-    auto *help = Web::text(tr("Click where the second part begins, or go there with the arrow keys. The translation stays with the first part."), "help", d);
+    QString how = tr("Click where the second part begins, or go there with the arrow keys. The translation stays with the first part.");
+    if (!m_model->segment(row).value(QLatin1String("joined")).toArray().isEmpty())
+        how += QLatin1Char(' ') + tr("Split where two joined segments met, they stand apart again.");
+    auto *help = Web::text(how, "help", d);
     help->setWordWrap(true);
     // The source with a caret in it, which nothing can be typed at.
     auto *box = new TargetEditor(d);

@@ -19,6 +19,7 @@ import (
 	"github.com/4nonX/interlinea/filter/formats"
 	"github.com/4nonX/interlinea/filter/mqpackage"
 	"github.com/4nonX/interlinea/filter/sdlpackage"
+	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/term"
@@ -47,7 +48,6 @@ func (s *Server) projectRoutes() {
 	s.handle("PUT /api/projects/{id}/segments", s.signedIn(s.saveProjectSegment))
 	s.handle("POST /api/projects/{id}/segments/split", s.signedIn(s.splitProjectSegment))
 	s.handle("POST /api/projects/{id}/segments/join", s.signedIn(s.joinProjectSegments))
-	s.handle("POST /api/projects/{id}/segments/separate", s.signedIn(s.separateProjectSegments))
 	s.handle("POST /api/projects/{id}/comments", s.signedIn(s.addSegmentComment))
 	s.handle("DELETE /api/projects/{id}/comments", s.signedIn(s.deleteSegmentComment))
 	s.handle("POST /api/projects/{id}/pretranslate", s.signedIn(s.pretranslateProject))
@@ -1135,10 +1135,12 @@ func (s *Server) saveProjectSegment(w http.ResponseWriter, r *http.Request, me s
 
 // splitProjectSegment cuts a segment (?file=, ?lang=, ?segment=) in two
 // where the body's "before", the start of its source, ends. The
-// translation stays with the first part. The document is written with the
-// parts' translations one after the other where the segment stood. Only
-// that language of the file is cut differently. The answer is the file's
-// segments as they are now.
+// translation stays with the first part. Any segment of a document or of
+// a plain XLIFF file can be split, also one that was joined: split where
+// it was joined, the two stand apart as the file had them. The file is
+// written with the parts' translations one after the other. Only that
+// language of the file is cut differently. Files of Trados and memoQ
+// keep their segments. The answer is the file's segments as they are now.
 //
 // Access: edit on the project, or the segment's assignee.
 func (s *Server) splitProjectSegment(w http.ResponseWriter, r *http.Request, me session) {
@@ -1152,24 +1154,15 @@ func (s *Server) splitProjectSegment(w http.ResponseWriter, r *http.Request, me 
 }
 
 // joinProjectSegments makes one segment of a segment (?file=, ?lang=,
-// ?segment=) and the one after it: two segments of the same paragraph, or
-// two parts of a segment that was split. Their translations are put
-// together, and the document is written with the joined translation where
-// the two stood. The answer is the file's segments as they are now.
+// ?segment=) and the one after it in the same paragraph (in XLIFF, the
+// same unit of the file), whether they are whole sentences or parts of
+// ones that were split. Their translations are put together, and the
+// file is written with one translation where they stood. The answer is
+// the file's segments as they are now.
 //
 // Access: edit on the project, or the assignee of both segments.
 func (s *Server) joinProjectSegments(w http.ResponseWriter, r *http.Request, me session) {
 	s.resegment(w, r, me, projectdb.ResegmentJoin, nil)
-}
-
-// separateProjectSegments undoes the joining of a segment (?file=,
-// ?lang=, ?segment=): the segments it was joined from stand apart again,
-// the translation staying with the first. The answer is the file's
-// segments as they are now.
-//
-// Access: edit on the project, or the segment's assignee.
-func (s *Server) separateProjectSegments(w http.ResponseWriter, r *http.Request, me session) {
-	s.resegment(w, r, me, projectdb.ResegmentSeparate, nil)
 }
 
 func (s *Server) resegment(w http.ResponseWriter, r *http.Request, me session, how string, before content.Content) {
@@ -1193,8 +1186,15 @@ func (s *Server) resegment(w http.ResponseWriter, r *http.Request, me session, h
 	if format == "" {
 		format = formatOf(f.Name)
 	}
-	if !formats.Document(format) {
-		writeError(w, http.StatusUnprocessableEntity, "notHere", "This file brings its own segments, which stay as they are.")
+	// Documents and plain XLIFF are cut as the translator likes. Trados
+	// and memoQ keep their own record of every segment of their files.
+	free := formats.Document(format)
+	if format == "xliff" {
+		variant, is := xliff.Detect(f.Data)
+		free = is && (variant == xliff.FormatXLIFF12 || variant == xliff.FormatXLIFF2)
+	}
+	if !free {
+		writeError(w, http.StatusUnprocessableEntity, "notHere", project.FixedMessage)
 		return
 	}
 	if !a.edit() {

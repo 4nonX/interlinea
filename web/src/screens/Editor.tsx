@@ -90,6 +90,7 @@ import {
   DOCUMENT_TYPE,
   mergeDocx,
   mergeXliff,
+  keepsItsSegments,
   returnPackageName,
   returnSdlPackage,
   SDL_RETURN_TYPE,
@@ -305,26 +306,40 @@ export function Editor({
   // On a team server: who else has which segment open.
   const present = usePresence(project, file?.id ?? "", target, activeId);
   const commenting = useSegmentComments(project, file?.id ?? "", target);
-  // Splitting and joining, in files whose segments are Interlinea's own.
+  // Splitting and joining: in documents and in plain XLIFF files. Files of
+  // Trados and memoQ keep their segments, as those programs keep their
+  // own record of each.
   const cut = useResegment(project, file?.id ?? "", target);
   const [splitting, setSplitting] = useState(false);
+  const [kept, setKept] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setKept(false);
+    if (file?.kind !== "xliff") return;
+    if (file.packagePath) setKept(true);
+    else if (file.bytes) void keepsItsSegments(file.bytes).then((yes) => live && setKept(yes));
+    return () => {
+      live = false;
+    };
+  }, [file?.id, file?.kind, file?.bytes, file?.packagePath]);
   const after = segments[index + 1];
-  const cuts = file?.kind === "docx" && !!active && !active.locked && !active.file;
+  const cuttable = file?.kind === "docx" || file?.kind === "xliff";
+  const fixed = kept || !!active?.file?.fixed;
+  const cuts = cuttable && !fixed && !!active && !active.locked;
   const joins =
-    cuts && !!after && !after.locked &&
-    (active.split || after.split ? active.split?.unit === after.split?.unit : !!active.block && active.block === after.block);
+    cuts && !!after && !after.locked && !after.file?.fixed &&
+    ((!!active.split && active.split.unit === after.split?.unit) || (!!active.block && active.block === after.block));
   // A segment that was split or joined has another name: the one in its place is the open one.
   const place = useRef(0);
   useEffect(() => {
     if (index >= 0) place.current = index;
     else if (activeId && segments.length) setActiveId(segments[Math.min(place.current, segments.length - 1)]!.id);
   }, [index, activeId, segments]);
-  async function recut(how: "join" | "separate") {
+  async function join() {
     if (!active) return;
-    const no = await cut(how, active.id);
-    const said = no ?? (how === "join" ? "Joined with the next segment" : "The segments stand apart again");
+    const no = await cut("join", active.id);
     if (no) notify(no);
-    setAnnouncement(said);
+    setAnnouncement(no ?? "Joined with the next segment");
     editor.current?.focus();
   }
   const services = useTranslationServices(project, target);
@@ -879,11 +894,10 @@ export function Editor({
       e.preventDefault();
       insertNextTag();    } else if (e.altKey && e.shiftKey && e.code === "KeyS" && cuts) {
       e.preventDefault();
-      if (active?.joined) void recut("separate");
-      else setSplitting(true);
+      setSplitting(true);
     } else if (e.altKey && e.shiftKey && e.code === "KeyJ" && joins) {
       e.preventDefault();
-      void recut("join");
+      void join();
     }
   }
 
@@ -1756,31 +1770,27 @@ export function Editor({
                   </button>
                 </div>
 
-                {file?.kind === "docx" && !active.file && (
+                {cuttable && (
                   <div className="tool-row">
-                    {active.joined ? (
-                      <button type="button" className="btn btn-small" onClick={() => void recut("separate")} disabled={!cuts}>
-                        <Scissors size={14} aria-hidden="true" />
-                        Separate
-                        <kbd>Alt+Shift+S</kbd>
-                      </button>
-                    ) : (
-                      <button type="button" className="btn btn-small" onClick={() => setSplitting(true)} disabled={!cuts}>
-                        <Scissors size={14} aria-hidden="true" />
-                        Split
-                        <kbd>Alt+Shift+S</kbd>
-                      </button>
-                    )}
-                    <button type="button" className="btn btn-small" onClick={() => void recut("join")} disabled={!joins}>
+                    <button type="button" className="btn btn-small" onClick={() => setSplitting(true)} disabled={!cuts}>
+                      <Scissors size={14} aria-hidden="true" />
+                      Split
+                      <kbd>Alt+Shift+S</kbd>
+                    </button>
+                    <button type="button" className="btn btn-small" onClick={() => void join()} disabled={!joins}>
                       <Combine size={14} aria-hidden="true" />
                       Join with next
                       <kbd>Alt+Shift+J</kbd>
                     </button>
-                    {(active.joined || active.split) && (
+                    {(fixed || active.joined || active.split) && (
                       <p className="help cut-note">
-                        {active.joined
-                          ? `Joined from ${active.joined.length} segments of the document.`
-                          : "A part of a segment of the document that was split."}
+                        {fixed
+                          ? "The program this file comes from keeps its own record of every segment, so its segments stay as they are."
+                          : active.split && active.joined
+                            ? `A part of ${active.joined.length} segments of the file that were joined.`
+                            : active.joined
+                              ? `Joined from ${active.joined.length} segments of the file. Split it where they met to have them apart again.`
+                              : "A part of a segment of the file that was split."}
                       </p>
                     )}
                   </div>
@@ -1817,8 +1827,8 @@ export function Editor({
                     <dd>Find and replace in the translations</dd>
                     <dt>Alt+Shift+S, Alt+Shift+J</dt>
                     <dd>
-                      Split the segment, join it with the next one of its
-                      paragraph
+                      Split the segment at any place, join it with the next one
+                      of its paragraph
                     </dd>
                     <dt>Ctrl+K or F3</dt>
                     <dd>Search the memory for the selection</dd>
@@ -2548,6 +2558,7 @@ function SplitDialog({
       >
         <p className="help" id="split-help">
           Click where the second part begins, or go there with the arrow keys. The translation stays with the first part.
+          {segment.joined ? " Split where two joined segments met, they stand apart again." : ""}
         </p>
         <div
           ref={box}
