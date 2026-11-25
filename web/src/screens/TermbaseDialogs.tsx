@@ -19,6 +19,7 @@ import {
   type ReviewRules,
 } from "../data";
 import { useLocalStore, type ImportInput } from "../store";
+import { AddFieldForm, KindSelect, ValuesEditor } from "./TermbaseFields";
 import { plural } from "../format";
 import { LangChip } from "../components/ui";
 import { go } from "../App";
@@ -594,8 +595,7 @@ export function SettingsDialog({
         </h3>
         {tb.infoTypes.length === 0 ? (
           <p className="help">
-            No fields yet. Add them from an entry, or import a file that has
-            them.
+            No fields yet: entries hold their terms and each term's status.
           </p>
         ) : (
           <table className="table settings-fields">
@@ -633,6 +633,24 @@ export function SettingsDialog({
             </tbody>
           </table>
         )}
+        <AddFieldForm
+          termbase={tb.name}
+          taken={tb.infoTypes.map((i) => i.name)}
+          onAdd={(f) => {
+            dispatch({
+              type: "addInfoType",
+              termbaseId: tb.id,
+              infoType: {
+                id: `it-${Date.now().toString(36)}`,
+                name: f.name,
+                level: f.level,
+                kind: f.kind,
+                ...(f.kind === "picklist" ? { values: f.values } : {}),
+              },
+            });
+            notify(`Added field “${f.name}” to ${tb.name}`);
+          }}
+        />
       </section>
 
       {tb.kind === "master" && <ReviewRulesSection tb={tb} />}
@@ -707,7 +725,6 @@ function FieldSettingsRow({
   onRemove: () => void;
 }) {
   const [name, setName] = useState(it.name);
-  const [vals, setVals] = useState((it.values ?? []).join("; "));
   const id = useId();
   return (
     <tr>
@@ -729,48 +746,23 @@ function FieldSettingsRow({
       <td>{LEVEL_LABEL[it.level]}</td>
       <td>
         <div className="settings-kind">
-          <label htmlFor={`${id}-k`} className="sr-only">
-            Values of {it.name}
-          </label>
-          <select
+          <KindSelect
             id={`${id}-k`}
+            label={`Values of ${it.name}`}
             value={it.kind}
-            onChange={(e) =>
+            onChange={(kind) =>
               onChange({
-                kind: e.target.value as InfoType["kind"],
-                values:
-                  e.target.value === "picklist" ? (it.values ?? []) : undefined,
+                kind,
+                values: kind === "picklist" ? (it.values ?? []) : undefined,
               })
             }
-          >
-            <option value="text">Free text</option>
-            <option value="picklist">Pick from a list</option>
-          </select>
+          />
           {it.kind === "picklist" && (
-            <>
-              <label htmlFor={`${id}-v`} className="sr-only">
-                List values, separated by semicolons
-              </label>
-              <input
-                id={`${id}-v`}
-                className="settings-values"
-                value={vals}
-                placeholder="Values, separated by ;"
-                onChange={(e) => setVals(e.target.value)}
-                onBlur={() =>
-                  onChange({
-                    values: [
-                      ...new Set(
-                        vals
-                          .split(";")
-                          .map((v) => v.trim())
-                          .filter(Boolean),
-                      ),
-                    ],
-                  })
-                }
-              />
-            </>
+            <ValuesEditor
+              label={`The values of ${it.name}, one a line`}
+              values={it.values ?? []}
+              onChange={(values) => onChange({ values })}
+            />
           )}
         </div>
       </td>

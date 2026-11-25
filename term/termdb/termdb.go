@@ -292,12 +292,22 @@ type Deletion struct {
 	Entry   term.Entry `json:"entry"`
 }
 
+// InvalidError is a definition that cannot be saved as it is: Field names
+// the part (name, fields) and Message says why, for the person who wrote
+// it.
+type InvalidError struct {
+	Field   string
+	Message string
+}
+
+func (e *InvalidError) Error() string { return "termdb: " + e.Message }
+
 // cleanDefinition normalizes language tags and drops duplicate languages
 // and fields (by name, case-insensitively).
 func cleanDefinition(def term.Definition) (term.Definition, error) {
 	def.Name = strings.TrimSpace(def.Name)
 	if def.Name == "" {
-		return def, errors.New("termdb: a termbase needs a name")
+		return def, &InvalidError{Field: "name", Message: "Give the termbase a name."}
 	}
 	var langs []string
 	seen := map[string]bool{}
@@ -322,10 +332,15 @@ func cleanDefinition(def term.Definition) (term.Definition, error) {
 		switch f.Level {
 		case term.LevelEntry, term.LevelLanguage, term.LevelTerm:
 		default:
-			return def, fmt.Errorf("termdb: field %q has no valid level", f.Name)
+			return def, &InvalidError{Field: "fields", Message: fmt.Sprintf("Say where the field %s belongs: to the entry, a language or a term.", f.Name)}
 		}
 		if f.Kind == "" {
 			f.Kind = term.KindText
+		}
+		switch f.Kind {
+		case term.KindText, term.KindPicklist, term.KindDate, term.KindNumber, term.KindBoolean:
+		default:
+			return def, &InvalidError{Field: "fields", Message: fmt.Sprintf("The field %s takes values of a kind that is not known (%s): text, picklist, date, number or boolean.", f.Name, f.Kind)}
 		}
 		if f.Kind != term.KindPicklist {
 			f.Values = nil
@@ -865,14 +880,28 @@ func cloneEntry(e term.Entry) term.Entry {
 }
 
 // addDefinitionFor adds the entry's languages and fields that the
-// definition lacks. It reports whether the definition changed.
-func addDefinitionFor(def *term.Definition, e term.Entry) bool {
+// definition lacks. It reports whether the definition changed. A field
+// the entry brings from another termbase (from: a project termbase whose
+// entry is merged, a master an entry is copied from) is added as that
+// termbase defines it, with its kind and list of values; one no
+// definition knows is text.
+func addDefinitionFor(def *term.Definition, e term.Entry, from ...term.Definition) bool {
 	changed := false
 	addField := func(name string, level term.Level) {
-		if !hasField(def.Fields, name) {
-			def.Fields = append(def.Fields, term.Field{Name: name, Level: level, Kind: term.KindText})
-			changed = true
+		if hasField(def.Fields, name) {
+			return
 		}
+		f := term.Field{Name: name, Level: level, Kind: term.KindText}
+		for _, d := range from {
+			for _, g := range d.Fields {
+				if strings.EqualFold(g.Name, name) && g.Level == level {
+					f.Kind = g.Kind
+					f.Values = append([]string(nil), g.Values...)
+				}
+			}
+		}
+		def.Fields = append(def.Fields, f)
+		changed = true
 	}
 	for _, v := range e.Fields {
 		addField(v.Field, term.LevelEntry)

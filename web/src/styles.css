@@ -3670,9 +3670,13 @@ g:hover > .align-line {
 }
 
 .settings-kind {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  justify-items: start;
   gap: var(--s1);
+}
+
+.settings-kind .values-editor {
+  justify-self: stretch;
 }
 
 .settings-fields select {
@@ -4516,4 +4520,164 @@ input.mono {
 
 .changes-covered > .tb-group-title {
   padding-inline: 0;
+}
+
+/* Making a termbase */
+.lang-pick {
+  display: grid;
+  gap: var(--s2);
+}
+
+.lang-pick .lang-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--text-3);
+}
+
+.search-field:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.search-field input:not([type="checkbox"]):not([type="radio"]),
+.search-field input:not([type="checkbox"]):not([type="radio"]):hover,
+.search-field input:not([type="checkbox"]):not([type="radio"]):focus-visible {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.lang-pick-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--s1) var(--s3);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+
+.lang-pick-list .check span,
+.field .check span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.values-editor {
+  width: 100%;
+  min-width: 160px;
+  min-height: 4.5em;
+  resize: vertical;
+  font: inherit;
+}
+
+.field-table {
+  display: grid;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.field-table .table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.field-table td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.field-table input,
+.field-table select {
+  width: 100%;
+  min-width: 0;
+}
+
+.field-kind {
+  display: grid;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.field-problem {
+  margin: var(--s1) 0 0;
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.review-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s2) var(--s4);
+  margin: 0;
+}
+
+.review-list dt {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.review-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.plain-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-select {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.check-select select {
+  width: auto;
+  max-width: 100%;
+}
+
+.row-end,
+.dialog .row.row-end {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.field-table th:nth-child(1) {
+  width: 32%;
+}
+
+.field-table th:nth-child(2) {
+  width: 22%;
+}
+
+.field-table th:last-child {
+  width: 48px;
+}
+
+.field-number {
+  display: grid;
+  gap: var(--s1);
+}
+
+.lang-pick-list .muted {
+  white-space: nowrap;
 }

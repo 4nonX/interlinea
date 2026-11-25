@@ -284,6 +284,10 @@ func (t *Termbase) Override(ctx context.Context, master, entryID, by string) (St
 	if err != nil {
 		return Stored{}, err
 	}
+	mdef, err := m.definition(ctx, tx)
+	if err != nil {
+		return Stored{}, err
+	}
 	def, err := t.definition(ctx, tx)
 	if err != nil {
 		return Stored{}, err
@@ -291,7 +295,7 @@ func (t *Termbase) Override(ctx context.Context, master, entryID, by string) (St
 	e := src.Entry
 	e.ID = ""
 	e.CreatedAt, e.CreatedBy = time.Time{}, ""
-	if addDefinitionFor(&def, e) {
+	if addDefinitionFor(&def, e, mdef) {
 		if err := writeDefinition(ctx, tx, t.id, def); err != nil {
 			return Stored{}, err
 		}

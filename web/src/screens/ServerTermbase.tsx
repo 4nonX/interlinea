@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { AddFieldForm, KindSelect, ValuesEditor } from "./TermbaseFields";
+import { LEVEL_TO_CORE } from "../termio";
 import { GitBranch, Pencil } from "lucide-react";
 import { lang, LANGUAGES, type Entry, type Termbase } from "../data";
 import { useStore } from "../store";
@@ -451,66 +453,6 @@ export function ServerMasterDetail({
   );
 }
 
-/** A project termbase on the team server, made by hand over masters there. */
-export function NewServerProjectTermbase({ onDone }: { onDone: () => void }) {
-  const { notify } = useStore();
-  const r = useRemote();
-  const [name, setName] = useState("");
-  const [masters, setMasters] = useState<string[] | null>(null);
-  const [chosen, setChosen] = useState<string[]>([]);
-  useEffect(() => {
-    r.api?.termbases().then(
-      (list) => setMasters(list.filter((t) => t.kind === "master").map((t) => t.name)),
-      () => setMasters([]),
-    );
-  }, [r.api]);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const n = name.trim();
-    if (!n || !chosen.length) return;
-    try {
-      await r.api!.createTermbase({ name: n }, chosen);
-      notify(`Created project termbase “${n}”`);
-      const id = await r.openTermbase(n);
-      onDone();
-      window.location.hash = `#/terminology/${id}`;
-    } catch (err) {
-      notify(errorText(err));
-    }
-  }
-
-  return (
-    <form className="tb-create" onSubmit={submit} aria-label="New project termbase">
-      <h2 className="tb-group-title">New project termbase</h2>
-      <label htmlFor="new-ptb">Name</label>
-      <input id="new-ptb" value={name} autoFocus placeholder="For example a case or an order" onChange={(e) => setName(e.target.value)} />
-      <span className="field-label">Based on</span>
-      {masters === null ? (
-        <p className="muted">Loading…</p>
-      ) : masters.length === 0 ? (
-        <p className="help">There is no master here yet. Make one first.</p>
-      ) : (
-        masters.map((m) => (
-          <label key={m} className="check">
-            <input type="checkbox" checked={chosen.includes(m)} onChange={(e) => setChosen((c) => (e.target.checked ? [...c, m] : c.filter((x) => x !== m)))} />
-            {m}
-          </label>
-        ))
-      )}
-      <p className="help">It has the masters' languages and fields. A project's own termbase is made with the project.</p>
-      <div className="row">
-        <button type="submit" className="btn btn-primary btn-small" disabled={!name.trim() || !chosen.length} aria-label="Create project termbase">
-          Create
-        </button>
-        <button type="button" className="btn btn-quiet btn-small" onClick={onDone}>
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
 /**
  * The settings of a termbase on the team server, for those who manage it:
  * its name, languages and fields, the masters a project termbase is based
@@ -682,7 +624,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
           Fields
         </h3>
         {fields.length === 0 ? (
-          <p className="help">No fields yet. Add them from an entry, or import a file that has them.</p>
+          <p className="help">No fields yet: entries hold their terms and each term's status.</p>
         ) : (
           <table className="table">
             <thead>
@@ -710,6 +652,20 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
             </tbody>
           </table>
         )}
+        <AddFieldForm
+          termbase={current}
+          taken={fields.map((f) => f.name)}
+          onAdd={(f) =>
+            void step(
+              () =>
+                api.setDefinition(current, {
+                  ...def,
+                  fields: [...fields, { name: f.name, level: LEVEL_TO_CORE[f.level], kind: f.kind, ...(f.kind === "picklist" ? { values: f.values } : {}) }],
+                }),
+              `Added field “${f.name}” to ${current}`,
+            )
+          }
+        />
       </section>
 
       {detail.kind === "project" ? (
@@ -924,17 +880,12 @@ const LEVELS: Record<string, string> = { entry: "Entry", language: "Language", t
 /** A field of a server termbase: its name, what kind of value it takes, and removing it. */
 function ServerField({ field, onRename, onChange, onRemove }: { field: FieldDef; onRename: (to: string) => void; onChange: (f: FieldDef) => void; onRemove: () => void }) {
   const [name, setName] = useState(field.name);
-  const [values, setValues] = useState((field.values ?? []).join("; "));
-  const pick = field.kind === "picklist";
   const rename = () => {
     const to = name.trim();
     if (to && to !== field.name) onRename(to);
     else setName(field.name);
   };
-  const saveValues = () => {
-    const now = [...new Set(values.split(";").map((v) => v.trim()).filter(Boolean))];
-    if (now.join("\n") !== (field.values ?? []).join("\n")) onChange({ ...field, values: now });
-  };
+  const kind = (["text", "picklist", "number", "date", "boolean"] as const).find((k) => k === field.kind) ?? "text";
   return (
     <tr>
       <td>
@@ -942,26 +893,22 @@ function ServerField({ field, onRename, onChange, onRemove }: { field: FieldDef;
       </td>
       <td>{LEVELS[field.level] ?? field.level}</td>
       <td>
-        <span className="row-start">
-          <select
-            value={pick ? "picklist" : "text"}
-            aria-label={`Values of ${field.name}`}
-            onChange={(e) => onChange(e.target.value === "picklist" ? { ...field, kind: "picklist", values: field.values ?? [] } : { ...field, kind: "text", values: undefined })}
-          >
-            <option value="text">Free text</option>
-            <option value="picklist">A list of values</option>
-          </select>
-          {pick && (
-            <input
-              value={values}
-              placeholder="Values, separated by ;"
-              aria-label="List values, separated by semicolons"
-              onChange={(e) => setValues(e.target.value)}
-              onBlur={saveValues}
-              onKeyDown={(e) => e.key === "Enter" && saveValues()}
+        <div className="settings-kind">
+          <KindSelect
+            label={`Values of ${field.name}`}
+            value={kind}
+            onChange={(k) => onChange(k === "picklist" ? { ...field, kind: k, values: field.values ?? [] } : { ...field, kind: k, values: undefined })}
+          />
+          {kind === "picklist" && (
+            <ValuesEditor
+              label={`The values of ${field.name}, one a line`}
+              values={field.values ?? []}
+              onChange={(values) => {
+                if (values.join("\n") !== (field.values ?? []).join("\n")) onChange({ ...field, values });
+              }}
             />
           )}
-        </span>
+        </div>
       </td>
       <td className="cell-action">
         <ConfirmButton label={<span aria-label={`Remove ${field.name}`}>Remove</span>} confirm={`Remove “${field.name}” and its values?`} onConfirm={onRemove} />

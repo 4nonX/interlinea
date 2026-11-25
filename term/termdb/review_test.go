@@ -608,3 +608,82 @@ func TestRebind(t *testing.T) {
 		t.Fatal(cond, arg)
 	}
 }
+
+// A field a project termbase defines reaches its master with its kind and
+// values when an entry that uses it is merged, and comes from the master
+// as the master defines it when an entry is copied from there.
+func TestFieldsTravelWithEntries(t *testing.T) {
+	_, m, p, kaution := setup(t)
+	def, err := p.Definition(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def.Fields = append(def.Fields,
+		term.Field{Name: "Register", Level: term.LevelTerm, Kind: term.KindPicklist, Values: []string{"formal", "informal"}},
+		term.Field{Name: "Checked", Level: term.LevelEntry, Kind: term.KindDate})
+	if err := p.SetDefinition(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	e := ent("", lng("de-DE", approved("Vermieterin")), lng("en-GB", approved("landlady")))
+	e.Languages[1].Terms[0].Fields = []term.Value{{Field: "Register", Value: "formal"}}
+	e.Fields = []term.Value{{Field: "Checked", Value: "2026-11-25"}}
+	if _, err := p.Add(ctx, e, "eva", ""); err != nil {
+		t.Fatal(err)
+	}
+	mr := open1(t, p)
+	if _, err := mr.Decide(ctx, Filter{}, Decision{State: StateApproved}, "rita"); err != nil {
+		t.Fatal(err)
+	}
+	mdef, _ := m.Definition(ctx)
+	got := map[string]term.Field{}
+	for _, f := range mdef.Fields {
+		got[f.Name] = f
+	}
+	if r := got["Register"]; r.Kind != term.KindPicklist || r.Level != term.LevelTerm || strings.Join(r.Values, ",") != "formal,informal" {
+		t.Fatalf("Register in the master: %+v", r)
+	}
+	if c := got["Checked"]; c.Kind != term.KindDate || c.Level != term.LevelEntry {
+		t.Fatalf("Checked in the master: %+v", c)
+	}
+	// The other way: a master field the project does not have yet comes
+	// with an entry copied from the master.
+	mdef.Fields = append(mdef.Fields, term.Field{Name: "Approved by client", Level: term.LevelEntry, Kind: term.KindBoolean})
+	if err := m.SetDefinition(ctx, mdef); err != nil {
+		t.Fatal(err)
+	}
+	cur, _ := m.Get(ctx, kaution.ID)
+	cur.Fields = append(cur.Fields, term.Value{Field: "Approved by client", Value: "true"})
+	if _, err := m.Update(ctx, cur.Entry, cur.Version, "rita", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Override(ctx, "Mietrecht", kaution.ID, "eva"); err != nil {
+		t.Fatal(err)
+	}
+	pdef, _ := p.Definition(ctx)
+	for _, f := range pdef.Fields {
+		if f.Name == "Approved by client" && f.Kind != term.KindBoolean {
+			t.Fatalf("copied field: %+v", f)
+		}
+	}
+}
+
+// A definition with a field of a kind the core does not know, or without
+// a level, is refused with a message for the person who wrote it.
+func TestDefinitionKinds(t *testing.T) {
+	db, _ := open(t)
+	m := master(t, db, "Kinds")
+	def, _ := m.Definition(ctx)
+	def.Fields = []term.Field{{Name: "Count", Level: term.LevelTerm, Kind: term.KindNumber}, {Name: "Flag", Level: term.LevelEntry, Kind: term.KindBoolean}}
+	if err := m.SetDefinition(ctx, def); err != nil {
+		t.Fatal(err)
+	}
+	def.Fields = append(def.Fields, term.Field{Name: "Picture", Level: term.LevelEntry, Kind: "multimedia"})
+	var inv *InvalidError
+	if err := m.SetDefinition(ctx, def); !errors.As(err, &inv) || inv.Field != "fields" || !strings.Contains(inv.Message, "Picture") {
+		t.Fatalf("an unknown kind: %v", err)
+	}
+	def.Fields = []term.Field{{Name: "Nowhere", Kind: term.KindText}}
+	if err := m.SetDefinition(ctx, def); !errors.As(err, &inv) || !strings.Contains(inv.Message, "Nowhere") {
+		t.Fatalf("no level: %v", err)
+	}
+}

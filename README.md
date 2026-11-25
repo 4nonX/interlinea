@@ -188,6 +188,33 @@ The build puts `interlinea-core` next to the app, where the app starts it.
 `INTERLINEA_CORE` and `INTERLINEA_DATA` point the app at another core or
 data folder.
 
+## Termbases
+
+A termbase is made in a few steps, in the browser client and in the
+desktop app alike:
+
+1. **Name and kind.** A *master* is a termbase of its own, kept across
+   projects for a client, a subject or a company. A *project termbase*
+   is based on one or more masters, as a branch is on what it branches
+   from: it shows their entries, has their languages and fields, and
+   submits its new and changed entries to them for review.
+2. **Languages** (masters only), chosen from the list of languages with
+   a search by name or code. A termbase has languages, not a source and
+   a target.
+3. **Fields.** A master starts from a ready-made structure (terms only;
+   terms with definitions and notes; terminology with grammar) or from
+   the fields of another master, and every field can be changed. A field
+   belongs to the entry, to each language or to each term, and takes
+   text, a value from a list, a number, a date, or yes or no. A project
+   termbase can add fields of its own; such a field reaches a master
+   with the first entry that uses it, once a reviewer approves the entry.
+4. **Review** of what will be made, before it is made.
+
+Fields are added, renamed, given another kind or taken out later in the
+termbase's settings, and added from any entry. Each kind of field has its
+own control in an entry: a list to choose from, yes or no, a date, a
+number that is checked, or text.
+
 ## Team server
 
 `interlinea-server` is first of all where a team shares its terminology:

@@ -3,6 +3,7 @@
 // its own core: sign in, keep a memory on the server, make a project on
 // each from a document, translate on the server, and get the translated
 // document back. Skipped without a team server.
+#include "newtermbasedialog.h"
 #include "termbasedialogs.h"
 #include "accesspanel.h"
 #include "apiclient.h"
@@ -620,27 +621,40 @@ private slots:
         }
         QVERIFY(create);
         create->click();
-        QTRY_VERIFY(byName<QLineEdit>(page, QStringLiteral("newMasterName")));
-        auto *place = byName<Web::Segmented>(page, QStringLiteral("newMasterPlace"));
-        QVERIFY(place);
-        QCOMPARE(place->segment(0)->text(), QStringLiteral("Local"));
-        QCOMPARE(place->segment(1)->text(), QStringLiteral("Server"));
-        place->segment(1)->click();
-        byName<QLineEdit>(page, QStringLiteral("newMasterName"))->setText(QStringLiteral("E2E Recht"));
-        pick(byName<QComboBox>(page, QStringLiteral("newMasterLanguage")), QStringLiteral("de-DE"));
-        QTRY_VERIFY(byName<QComboBox>(page, QStringLiteral("newMasterLanguage")));
-        pick(byName<QComboBox>(page, QStringLiteral("newMasterLanguage")), QStringLiteral("en-GB"));
-        QPushButton *make = nullptr;
+        NewTermbaseDialog *nd = nullptr;
         QTRY_VERIFY([&] {
-            for (QPushButton *b : page->findChildren<QPushButton *>()) {
-                if (b->text() == QStringLiteral("Create master") && b->isEnabled() && !(b->isHidden() && b->testAttribute(Qt::WA_WState_ExplicitShowHide)))
-                    make = b;
+            for (NewTermbaseDialog *d : page->window()->findChildren<NewTermbaseDialog *>()) {
+                if (d->isVisible())
+                    nd = d;
             }
-            return make != nullptr;
+            return nd != nullptr;
         }());
-        make->click();
+        // Kept on this computer or on the team server.
+        QVERIFY(byName<QRadioButton>(nd, QStringLiteral("newTermbasePlace:0"))->isChecked());
+        QCOMPARE(byName<QRadioButton>(nd, QStringLiteral("newTermbasePlace:1"))->accessibleName(), QStringLiteral("On the team server, for everyone working with it"));
+        byName<QRadioButton>(nd, QStringLiteral("newTermbasePlace:1"))->click();
+        QTRY_VERIFY(byName<QLineEdit>(nd, QStringLiteral("newTermbaseName")));
+        byName<QLineEdit>(nd, QStringLiteral("newTermbaseName"))->setText(QStringLiteral("E2E Recht"));
+        QTRY_VERIFY(nd->nextButton()->isEnabled());
+        nd->nextButton()->click();
+        nd->setLanguages({QStringLiteral("de-DE"), QStringLiteral("en-GB")});
+        QVERIFY(byName<QCheckBox>(nd, QStringLiteral("language:en-GB"))->isChecked());
+        nd->nextButton()->click();
+        QCOMPARE(nd->step(), NewTermbaseDialog::Fields);
+        // Fields of each kind go to the server with the master.
+        byName<QRadioButton>(nd, QStringLiteral("newTermbaseStart:terminology"))->click();
+        QTRY_COMPARE(nd->fields().size(), 10);
+        nd->nextButton()->click();
+        QTRY_VERIFY(label(nd, QStringLiteral("On the team server")));
+        nd->nextButton()->click();
         QTRY_VERIFY_WITH_TIMEOUT(page->termbase() == QStringLiteral("E2E Recht") && page->connectionId() == team->id(), 10000);
         QTRY_VERIFY(byName<Web::Clickable>(page, QStringLiteral("tb:%1:E2E Recht").arg(team->id())));
+        {
+            const QJsonArray fs = wait(api->get(QStringLiteral("/api/termbases/E2E%20Recht"))).object().value("definition").toObject().value("fields").toArray();
+            QCOMPARE(fs.size(), 10);
+            QCOMPARE(fs[2].toObject().value("kind").toString(), QStringLiteral("date"));
+            QCOMPARE(fs[6].toObject().value("values").toArray().size(), 4);
+        }
         // A termbase on the server is read again on demand; who manages
         // it has its settings, with who may use it.
         QVERIFY(button(page, QStringLiteral("Reload")));

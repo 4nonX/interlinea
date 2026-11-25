@@ -8,13 +8,17 @@
 #include "icons.h"
 #include "languages.h"
 #include "reviewpage.h"
+#include "newtermbasedialog.h"
 #include "termbasedialogs.h"
+#include "termfields.h"
 #include "roles.h"
 #include "termdata.h"
 #include "theme.h"
 #include "words.h"
 
 #include <QAbstractListModel>
+#include <QCalendarWidget>
+#include <QDateEdit>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
@@ -505,7 +509,7 @@ TerminologyPage::TerminologyPage(ConnectionManager *manager, QWidget *parent)
         }
         m_reload.start();
     });
-    showCreateForm(false);
+    showCreateForm();
     showNewEntry(false);
     reload();
 }
@@ -661,8 +665,7 @@ void TerminologyPage::loadLists()
             pickDefault();
             showLists();
             // What can be made depends on the masters there are.
-            if (!m_createOpen)
-                showCreateForm(false);
+            showCreateForm();
             loadTermbase();
         });
     }
@@ -814,246 +817,51 @@ void TerminologyPage::showLists()
     }
 }
 
-void TerminologyPage::showCreateForm(bool open)
+void TerminologyPage::showCreateForm()
 {
-    m_createOpen = open;
     clear(m_createHolder);
     QWidget *host = m_createHolder->parentWidget();
-    if (!open) {
-        // .tb-actions
-        auto *w = new QWidget(host);
-        auto *v = new QVBoxLayout(w);
-        v->setContentsMargins(0, 0, 0, 0);
-        v->setSpacing(0);
-        auto *create = Web::button(tr("New master"), Web::Quiet | Web::Small, w, QStringLiteral("plus"));
-        create->setObjectName(QStringLiteral("newMaster"));
-        auto *project = Web::button(tr("New project termbase"), Web::Quiet | Web::Small, w, QStringLiteral("git-branch"));
-        project->setObjectName(QStringLiteral("newProjectTermbase"));
-        auto *import = Web::button(tr("Import termbase"), Web::Quiet | Web::Small, w, QStringLiteral("upload"));
-        v->addWidget(create, 0, Qt::AlignLeft);
-        // A project termbase needs a master to be based on.
-        bool anyMaster = false;
-        for (auto it = m_lists.constBegin(); it != m_lists.constEnd(); ++it) {
-            for (const QJsonValue &tb : it.value())
-                anyMaster = anyMaster || str(tb.toObject(), "kind") == QLatin1String("master");
-        }
-        if (anyMaster)
-            v->addWidget(project, 0, Qt::AlignLeft);
-        else
-            project->hide();
-        v->addWidget(import, 0, Qt::AlignLeft);
-        connect(create, &QPushButton::clicked, this, [this] {
-            m_newProject = false;
-            showCreateForm(true);
-        });
-        connect(project, &QPushButton::clicked, this, [this] {
-            m_newProject = true;
-            m_newUpstreams.clear();
-            showCreateForm(true);
-        });
-        connect(import, &QPushButton::clicked, this, [this] { importDialog(true); });
-        m_createHolder->addWidget(w);
-        return;
+    // .tb-actions
+    auto *w = new QWidget(host);
+    auto *v = new QVBoxLayout(w);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(0);
+    auto *create = Web::button(tr("New master"), Web::Quiet | Web::Small, w, QStringLiteral("plus"));
+    create->setObjectName(QStringLiteral("newMaster"));
+    auto *project = Web::button(tr("New project termbase"), Web::Quiet | Web::Small, w, QStringLiteral("git-branch"));
+    project->setObjectName(QStringLiteral("newProjectTermbase"));
+    auto *import = Web::button(tr("Import termbase"), Web::Quiet | Web::Small, w, QStringLiteral("upload"));
+    v->addWidget(create, 0, Qt::AlignLeft);
+    // A project termbase needs a master to be based on.
+    bool anyMaster = false;
+    for (auto it = m_lists.constBegin(); it != m_lists.constEnd(); ++it) {
+        for (const QJsonValue &tb : it.value())
+            anyMaster = anyMaster || str(tb.toObject(), "kind") == QLatin1String("master");
     }
-    // .tb-create
-    auto *form = new QFrame(host);
-    Theme::role(form, "formTop");
-    form->setAccessibleName(m_newProject ? tr("New project termbase") : tr("New master"));
-    auto *v = new QVBoxLayout(form);
-    v->setContentsMargins(S2, S3, S2, S3);
-    v->setSpacing(S2);
-    if (m_newProject)
-        v->addWidget(Web::text(tr("New project termbase"), "groupTitle", form));
-    auto *nameLabel = new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Name")), form);
-    auto *name = new QLineEdit(m_newMasterName, form);
-    name->setObjectName(QStringLiteral("newMasterName"));
-    name->setPlaceholderText(m_newProject ? tr("For example a case or an order") : tr("For example a client"));
-    name->setAccessibleName(tr("Name"));
-    nameLabel->setBuddy(name);
-    v->addWidget(nameLabel);
-    v->addWidget(name);
+    if (anyMaster)
+        v->addWidget(project, 0, Qt::AlignLeft);
+    else
+        project->hide();
+    v->addWidget(import, 0, Qt::AlignLeft);
+    connect(create, &QPushButton::clicked, this, [this] { newTermbaseDialog(false); });
+    connect(project, &QPushButton::clicked, this, [this] { newTermbaseDialog(true); });
+    connect(import, &QPushButton::clicked, this, [this] { importDialog(true); });
+    m_createHolder->addWidget(w);
+}
 
-    // Where it is kept: this computer, or a team server signed in to.
-    QList<Connection *> places;
-    if (m_manager->local() && m_manager->local()->isReady())
-        places << m_manager->local();
-    for (Connection *c : m_manager->teams()) {
-        if (c->isReady())
-            places << c;
-    }
-    QStringList placeNames;
-    for (Connection *c : places)
-        placeNames << (c->isLocal() ? tr("Local") : places.size() > 2 ? c->displayName() : tr("Server"));
-    m_newMasterPlace = qBound(0, m_newMasterPlace, qMax(0, int(places.size()) - 1));
-    if (places.size() > 1) {
-        auto *where = new Web::Segmented(tr("Store on"), placeNames, form);
-        where->setObjectName(QStringLiteral("newMasterPlace"));
-        where->setCurrent(m_newMasterPlace);
-        connect(where, &Web::Segmented::changed, this, [this, name](int i) {
-            m_newMasterPlace = i;
-            // The masters to choose from are those of the place.
-            if (m_newProject) {
-                m_newMasterName = name->text();
-                m_newUpstreams.clear();
-                showCreateForm(true);
-            }
-        });
-        v->addWidget(where);
-    }
-
-    if (m_newProject) {
-        // The masters it is based on: it shows their entries, and its own
-        // new and changed ones go back to them through review.
-        Connection *place = places.value(m_newMasterPlace);
-        auto *label = new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Based on")), form);
-        v->addWidget(label);
-        auto *create = Web::button(tr("Create"), Web::Primary | Web::Small, form);
-        create->setObjectName(QStringLiteral("createProjectTermbase"));
-        create->setAccessibleName(tr("Create project termbase"));
-        const auto ready = [this, name, create] { create->setEnabled(!name->text().trimmed().isEmpty() && !m_newUpstreams.isEmpty()); };
-        int masters = 0;
-        for (const QJsonValue &tb : place ? m_lists.value(place->id()) : QJsonArray()) {
-            if (str(tb.toObject(), "kind") != QLatin1String("master"))
-                continue;
-            masters++;
-            const QString master = str(tb.toObject(), "name");
-            auto *box = new QCheckBox(master, form);
-            box->setObjectName(QStringLiteral("basedOn:%1").arg(master));
-            box->setChecked(m_newUpstreams.contains(master));
-            connect(box, &QCheckBox::toggled, this, [this, master, ready](bool on) {
-                m_newUpstreams.removeAll(master);
-                if (on)
-                    m_newUpstreams << master;
-                ready();
-            });
-            v->addWidget(box);
-        }
-        if (masters == 0) {
-            auto *none = Web::text(tr("There is no master here yet. Make one first."), "help", form);
-            none->setWordWrap(true);
-            v->addWidget(none);
-        }
-        auto *help = Web::text(tr("It has the masters' languages and fields. A project's own termbase is made with the project."), "help", form);
-        help->setWordWrap(true);
-        v->addWidget(help);
-        auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
-        ready();
-        connect(name, &QLineEdit::textChanged, create, ready);
-        v->addWidget(Web::row({create, cancel}, form));
-        const auto reset = [this] {
-            m_newMasterName.clear();
-            m_newUpstreams.clear();
-            m_newProject = false;
-            showCreateForm(false);
-        };
-        connect(cancel, &QPushButton::clicked, this, reset);
-        const auto submit = [this, name, place, reset] {
-            const QString n = name->text().trimmed();
-            if (n.isEmpty() || !place || m_newUpstreams.isEmpty())
-                return;
-            const QJsonObject body{{QLatin1String("definition"), QJsonObject{{QLatin1String("name"), n}}}, {QLatin1String("upstreams"), QJsonArray::fromStringList(m_newUpstreams)}};
-            const QString connId = place->id();
-            onResult(place->api()->post(QStringLiteral("/api/termbases"), body), this, [this, connId, n, reset](const ApiResult &r) {
-                if (!r.ok()) {
-                    notify(r.error.message);
-                    return;
-                }
-                notify(tr("Created project termbase “%1”").arg(n));
-                reset();
-                m_conn = connId;
-                m_name = str(r.object(), "name");
-                m_selected.clear();
-                reload();
-            });
-        };
-        connect(create, &QPushButton::clicked, this, submit);
-        connect(name, &QLineEdit::returnPressed, this, submit);
-        m_createHolder->addWidget(form);
-        name->setFocus();
-        return;
-    }
-
-    auto *langLabel = new QLabel(QStringLiteral("%1 <span style=\"color:%2\">%3</span>").arg(tr("Languages"), Theme::color("text3").name(), tr("optional")), form);
-    auto *langs = new QComboBox(form);
-    langs->setObjectName(QStringLiteral("newMasterLanguage"));
-    langs->setAccessibleName(tr("Languages"));
-    langs->addItem(tr("Add a language…"), QString());
-    for (const QString &l : Languages::common()) {
-        if (!m_newMasterLangs.contains(l))
-            langs->addItem(Languages::name(l), l);
-    }
-    langLabel->setBuddy(langs);
-    v->addWidget(langLabel);
-    v->addWidget(langs);
-    connect(langs, &QComboBox::activated, this, [this, langs, name](int i) {
-        const QString l = langs->itemData(i).toString();
-        if (l.isEmpty())
-            return;
-        m_newMasterName = name->text();
-        m_newMasterLangs << l;
-        showCreateForm(true);
+NewTermbaseDialog *TerminologyPage::newTermbaseDialog(bool project)
+{
+    auto *d = new NewTermbaseDialog(m_manager, m_lists, project ? NewTermbaseDialog::Project : NewTermbaseDialog::Master, window());
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    connect(d, &NewTermbaseDialog::created, this, [this](const QString &connId, const QString &name, const QString &message) {
+        notify(message);
+        m_conn = connId;
+        m_name = name;
+        m_selected.clear();
+        reload();
     });
-    if (!m_newMasterLangs.isEmpty()) {
-        QList<QWidget *> chips;
-        for (const QString &l : m_newMasterLangs) {
-            auto *b = new QPushButton(QStringLiteral("%1 ×").arg(Languages::name(l)), form);
-            b->setProperty("chipButton", true);
-            b->setCursor(Qt::PointingHandCursor);
-            b->setAccessibleName(tr("Remove %1").arg(Languages::name(l)));
-            connect(b, &QPushButton::clicked, this, [this, l, name] {
-                m_newMasterName = name->text();
-                m_newMasterLangs.removeAll(l);
-                showCreateForm(true);
-            });
-            chips << b;
-        }
-        auto *chosen = new QWidget(form);
-        chosen->setAccessibleName(tr("Chosen languages"));
-        auto *flow = new QVBoxLayout(chosen);
-        flow->setContentsMargins(0, 0, 0, 0);
-        flow->setSpacing(S1);
-        for (QWidget *c : chips)
-            flow->addWidget(c, 0, Qt::AlignLeft);
-        v->addWidget(chosen);
-    }
-    auto *help = Web::text(tr("Languages and fields are also added as you use it."), "help", form);
-    help->setWordWrap(true);
-    v->addWidget(help);
-    auto *create = Web::button(tr("Create master"), Web::Primary | Web::Small, form);
-    auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
-    create->setEnabled(!m_newMasterName.trimmed().isEmpty());
-    connect(name, &QLineEdit::textChanged, create, [create](const QString &t) { create->setEnabled(!t.trimmed().isEmpty()); });
-    v->addWidget(Web::row({create, cancel}, form));
-    const auto reset = [this] {
-        m_newMasterName.clear();
-        m_newMasterLangs.clear();
-        showCreateForm(false);
-    };
-    connect(cancel, &QPushButton::clicked, this, reset);
-    const auto submit = [this, name, places, reset] {
-        const QString n = name->text().trimmed();
-        Connection *c = places.value(m_newMasterPlace);
-        if (n.isEmpty() || !c)
-            return;
-        const QJsonObject body{{QLatin1String("definition"), QJsonObject{{QLatin1String("name"), n}, {QLatin1String("languages"), QJsonArray::fromStringList(m_newMasterLangs)}}}};
-        const QString connId = c->id();
-        onResult(c->api()->post(QStringLiteral("/api/termbases"), body), this, [this, connId, n, reset](const ApiResult &r) {
-            if (!r.ok()) {
-                notify(r.error.message);
-                return;
-            }
-            notify(tr("Created master “%1”").arg(n));
-            reset();
-            m_conn = connId;
-            m_name = str(r.object(), "name");
-            m_selected.clear();
-            reload();
-        });
-    };
-    connect(create, &QPushButton::clicked, this, submit);
-    connect(name, &QLineEdit::returnPressed, this, submit);
-    m_createHolder->addWidget(form);
-    name->setFocus();
+    d->open();
+    return d;
 }
 
 void TerminologyPage::loadTermbase()
@@ -2025,16 +1833,90 @@ QWidget *TerminologyPage::fieldRow(const QJsonObject &field, const QString &valu
     label->setWordWrap(true);
     label->setContentsMargins(0, small ? 4 : 7, 0, 0);
     h->addWidget(label, 0, Qt::AlignTop);
-    if (str(field, "kind") == QLatin1String("picklist")) {
+    // The control the field's kind asks for, as the web's FieldValue: a
+    // list, yes or no, a date, a number or text. A value that does not fit
+    // its kind (from an import, or set before the kind changed) is shown as
+    // it is and can be corrected as text.
+    const QString kind = str(field, "kind");
+    static const QRegularExpression isoDate(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}"));
+    static const QRegularExpression number(QStringLiteral("^[-+]?(\\d+([.,]\\d*)?|[.,]\\d+)$"));
+    if (kind == QLatin1String("date") && (value.isEmpty() || isoDate.match(value).hasMatch())) {
+        auto *d = new QDateEdit(row);
+        if (small)
+            d->setProperty("small", true);
+        d->setAccessibleName(name);
+        d->setCalendarPopup(true);
+        d->setDisplayFormat(QStringLiteral("yyyy-MM-dd"));
+        // The earliest date stands for none.
+        const QDate none(1752, 9, 14);
+        d->setMinimumDate(none);
+        d->setSpecialValueText(tr("Not set"));
+        const QDate was = value.isEmpty() ? none : QDate::fromString(value.left(10), Qt::ISODate);
+        d->setDate(was.isValid() ? was : none);
+        label->setBuddy(d);
+        auto *last = new QString(value.left(10));
+        connect(d, &QObject::destroyed, this, [last] { delete last; });
+        const auto store = [d, save, last, none] {
+            const QString now = d->date() == none ? QString() : d->date().toString(Qt::ISODate);
+            if (now != *last) {
+                *last = now;
+                save(now);
+            }
+        };
+        connect(d, &QDateEdit::editingFinished, this, store);
+        if (QCalendarWidget *cal = d->calendarWidget())
+            connect(cal, &QCalendarWidget::clicked, this, store);
+        h->addWidget(d, 1);
+    } else if (kind == QLatin1String("number")) {
+        auto *box = new QWidget(row);
+        auto *bv = new QVBoxLayout(box);
+        bv->setContentsMargins(0, 0, 0, 0);
+        bv->setSpacing(S1);
+        auto *t = new QLineEdit(value, box);
+        if (small)
+            t->setProperty("small", true);
+        t->setAccessibleName(name);
+        t->setPlaceholderText(tr("Not set"));
+        t->setInputMethodHints(Qt::ImhFormattedNumbersOnly);
+        auto *problem = Web::text(tr("Type a number, such as 12 or 0.5."), "error", box);
+        problem->setWordWrap(true);
+        problem->hide();
+        bv->addWidget(t);
+        bv->addWidget(problem);
+        label->setBuddy(t);
+        auto *last = new QString(value);
+        connect(t, &QObject::destroyed, this, [last] { delete last; });
+        connect(t, &QLineEdit::textEdited, problem, &QWidget::hide);
+        connect(t, &QLineEdit::editingFinished, this, [t, save, last, problem] {
+            const QString v = t->text().trimmed();
+            if (!v.isEmpty() && !number.match(v).hasMatch()) {
+                problem->show();
+                return;
+            }
+            problem->hide();
+            if (v != *last) {
+                *last = v;
+                save(v);
+            }
+        });
+        h->addWidget(box, 1);
+    } else if (kind == QLatin1String("picklist") || kind == QLatin1String("boolean")) {
         auto *c = new QComboBox(row);
         if (small)
             c->setProperty("small", true);
         c->setAccessibleName(name);
         c->addItem(tr("Not set"), QString());
         bool known = value.isEmpty();
-        for (const QJsonValue &v : field.value(QLatin1String("values")).toArray()) {
-            c->addItem(v.toString(), v.toString());
-            known = known || v.toString() == value;
+        QList<std::pair<QString, QString>> options;
+        if (kind == QLatin1String("boolean")) {
+            options = {{QStringLiteral("true"), tr("Yes")}, {QStringLiteral("false"), tr("No")}};
+        } else {
+            for (const QJsonValue &v : field.value(QLatin1String("values")).toArray())
+                options.append({v.toString(), v.toString()});
+        }
+        for (const auto &[stored, shown] : options) {
+            c->addItem(shown, stored);
+            known = known || stored == value;
         }
         if (!known)
             c->addItem(value, value);
@@ -2310,105 +2192,22 @@ QWidget *TerminologyPage::addTerm(const QString &lang, QWidget *parent)
 
 QWidget *TerminologyPage::addField(QWidget *parent)
 {
-    auto *stack = new Web::Switcher(parent);
-    auto *closed = new QWidget(stack);
-    auto *cl = new QHBoxLayout(closed);
-    cl->setContentsMargins(0, 0, 0, 0);
-    auto *open = Web::button(tr("Add a field"), Web::Quiet | Web::Small, closed, QStringLiteral("plus"));
-    open->setObjectName(QStringLiteral("addField"));
-    cl->addWidget(open);
-    cl->addStretch();
-    stack->add(closed);
-
-    // .add-field
-    auto *form = new QFrame(stack);
-    Theme::role(form, "box");
-    form->setAccessibleName(tr("Add a field"));
-    auto *v = new QVBoxLayout(form);
-    v->setContentsMargins(S3, S3, S3, S3);
-    v->setSpacing(S2);
-    auto *label = new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Field name")), form);
-    auto *name = new QLineEdit(form);
-    name->setObjectName(QStringLiteral("newFieldName"));
-    name->setAccessibleName(tr("Field name"));
-    name->setPlaceholderText(tr("For example Source, Region, Register"));
-    label->setBuddy(name);
-    v->addWidget(label);
-    v->addWidget(name);
-    const QString plain = tr("Every entry in this termbase gets the field. Nothing else changes.");
-    auto *hint = Web::text(plain, "help", form);
-    hint->setObjectName(QStringLiteral("newFieldHint"));
-    hint->setWordWrap(true);
-    v->addWidget(hint);
-    v->addWidget(new QLabel(QStringLiteral("<b>%1</b>").arg(tr("Where does the value belong?")), form));
-    auto *group = new QButtonGroup(form);
-    const std::pair<const char *, QString> scopes[] = {
-        {"entry", tr("The whole entry, the same in every language")},
-        {"language", tr("Each language, for example a definition per language")},
-        {"term", tr("Each term, for example grammar or usage")},
-    };
-    int n = 0;
-    for (const auto &[level, text] : scopes) {
-        auto *r = new QRadioButton(text, form);
-        r->setProperty("level", QString::fromLatin1(level));
-        r->setChecked(n == 0);
-        group->addButton(r, n++);
-        v->addWidget(r);
-    }
-    auto *add = Web::button(tr("Add field"), Web::Primary | Web::Small, form);
-    auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
-    add->setEnabled(false);
-    v->addWidget(Web::row({add, cancel}, form));
-    stack->add(form);
-    connect(stack, &Web::Switcher::changed, parent, [stack, parent](int i) {
+    QStringList taken;
+    for (const QJsonValue &f : fields())
+        taken << str(f.toObject(), "name");
+    auto *form = new TermFields::AddFieldForm(m_name, taken, parent);
+    connect(form, &Web::Switcher::changed, parent, [form, parent](int i) {
         if (auto *l = qobject_cast<QBoxLayout *>(parent->layout()))
-            l->setAlignment(stack, i == 1 ? Qt::Alignment() : Qt::AlignLeft);
+            l->setAlignment(form, i == 1 ? Qt::Alignment() : Qt::AlignLeft);
     });
-
-    const QJsonArray have = fields();
-    const auto existing = [have](const QString &typed) {
-        for (const QJsonValue &f : have) {
-            if (str(f.toObject(), "name").compare(typed.trimmed(), Qt::CaseInsensitive) == 0)
-                return str(f.toObject(), "name");
-        }
-        return QString();
-    };
-    connect(open, &QPushButton::clicked, this, [stack, name] {
-        stack->setCurrent(1);
-        name->setFocus();
-    });
-    connect(cancel, &QPushButton::clicked, this, [stack, name] {
-        name->clear();
-        stack->setCurrent(0);
-    });
-    connect(name, &QLineEdit::textChanged, this, [this, name, add, hint, have, existing, plain] {
-        const QString typed = name->text().trimmed();
-        const QString same = existing(typed);
-        QString similar;
-        if (same.isEmpty() && typed.size() >= 3) {
-            for (const QJsonValue &f : have) {
-                if (str(f.toObject(), "name").startsWith(typed.left(3), Qt::CaseInsensitive)) {
-                    similar = str(f.toObject(), "name");
-                    break;
-                }
-            }
-        }
-        add->setEnabled(!typed.isEmpty() && same.isEmpty());
-        hint->setText(!same.isEmpty() ? tr("%1 already has “%2”.").arg(m_name, same) : !similar.isEmpty() ? tr("Did you mean the existing field “%1”?").arg(similar) : plain);
-    });
-    const auto submit = [this, name, group, existing] {
-        const QString typed = name->text().trimmed();
-        if (typed.isEmpty() || !existing(typed).isEmpty())
-            return;
+    connect(form, &TermFields::AddFieldForm::added, this, [this](const QJsonObject &field) {
         QJsonObject def = m_detail.value(QLatin1String("definition")).toObject();
         QJsonArray fs = def.value(QLatin1String("fields")).toArray();
-        fs.append(QJsonObject{{QLatin1String("name"), typed}, {QLatin1String("level"), group->checkedButton()->property("level").toString()}, {QLatin1String("kind"), QStringLiteral("text")}});
+        fs.append(field);
         def.insert(QLatin1String("fields"), fs);
-        putDefinition(def, tr("Added field “%1” to %2").arg(typed, m_name));
-    };
-    connect(add, &QPushButton::clicked, this, submit);
-    connect(name, &QLineEdit::returnPressed, this, submit);
-    return stack;
+        putDefinition(def, tr("Added field “%1” to %2").arg(str(field, "name"), m_name));
+    });
+    return form;
 }
 
 void TerminologyPage::showHistory(QVBoxLayout *into)

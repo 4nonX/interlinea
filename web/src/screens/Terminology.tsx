@@ -26,7 +26,6 @@ import {
   type Entry,
   type InfoType,
   type LangCode,
-  type Location,
   type Termbase,
   type TermStatus,
 } from "../data";
@@ -47,14 +46,14 @@ import {
   SettingsDialog,
   useCore,
 } from "./TermbaseDialogs";
-import { fromCoreEntry, term, toCoreEntry } from "../termio";
+import { fromCoreEntry, LEVEL_TO_CORE, term, toCoreEntry } from "../termio";
+import { AddFieldForm, FieldValue } from "./TermbaseFields";
 import { LocalDeleted, LocalHistory, LocalMasterDetail, LocalMasterList, useLocalMasters } from "./LocalTermbase";
 import { errorText, useRemote } from "../remote";
 import { ReloadButton, ServerReviewNote, ServerTermbaseGroup } from "./ServerTerminology";
 import {
   may,
   masterKey,
-  NewServerProjectTermbase,
   ReadStoreEntry,
   ServerBranchNote,
   ServerDeleted,
@@ -65,6 +64,7 @@ import {
   useMasterEntries,
 } from "./ServerTermbase";
 import { roleText } from "./Accounts";
+import { NewTermbaseDialog } from "./NewTermbase";
 
 type DialogKind = "import" | "import-new" | "export" | "settings" | null;
 
@@ -459,18 +459,10 @@ function TermbaseList({
   current: string;
   onImport: () => void;
 }) {
-  const { state, dispatch, notify } = useStore();
+  const { state } = useStore();
   const w = useWords();
   const r = useRemote();
-  const [creating, setCreating] = useState(false);
-  const [newProject, setNewProject] = useState(false);
-  const [name, setName] = useState("");
-  const [loc, setLoc] = useState<Location>("local");
-  const [langs, setLangs] = useState<LangCode[]>([]);
-  const nameRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (creating) nameRef.current?.focus();
-  }, [creating]);
+  const [creating, setCreating] = useState<"master" | "project" | null>(null);
   const groups: [string, Termbase[]][] = [
     ["Masters", state.termbases.filter((t) => t.kind === "master" && !t.remote)],
     [
@@ -512,146 +504,18 @@ function TermbaseList({
         </div>
       ))}
       <ServerTermbaseGroup current={current} />
-      {creating ? (
-        <form
-          className="tb-create"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!name.trim()) return;
-            // On the team server the master is made there, and opened from it.
-            if (loc === "server" && r.api) {
-              const n = name.trim();
-              void r.api.createTermbase({ name: n, languages: langs }).then(
-                async () => {
-                  notify(`Created master “${n}”`);
-                  setCreating(false);
-                  setName("");
-                  setLangs([]);
-                  const made = await r.openTermbase(n);
-                  window.location.hash = `#/terminology/${made}`;
-                },
-                (err) => notify(errorText(err)),
-              );
-              return;
-            }
-            const id = `tb-${Date.now().toString(36)}`;
-            dispatch({
-              type: "createMaster",
-              termbase: {
-                id,
-                name: name.trim(),
-                kind: "master",
-                location: "local",
-                languages: langs,
-                infoTypes: [],
-              },
-            });
-            notify(`Created master “${name.trim()}”`);
-            setCreating(false);
-            setName("");
-            setLangs([]);
-            go({ page: "terminology", termbaseId: id });
-          }}
-        >
-          <label htmlFor="new-tb">Name</label>
-          <input
-            id="new-tb"
-            ref={nameRef}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="For example a client"
-          />
-          {r.api && <div
-            className="segmented segmented-small"
-            role="radiogroup"
-            aria-label="Store on"
-          >
-            <label className="segment">
-              <input
-                type="radio"
-                name="newloc"
-                checked={loc === "local"}
-                onChange={() => setLoc("local")}
-              />
-              <span>Local</span>
-            </label>
-            <label className="segment">
-              <input
-                type="radio"
-                name="newloc"
-                checked={loc === "server"}
-                onChange={() => setLoc("server")}
-              />
-              <span>Server</span>
-            </label>
-          </div>}
-          <label htmlFor="new-tb-lang">
-            Languages <span className="optional">optional</span>
-          </label>
-          <select
-            id="new-tb-lang"
-            value=""
-            onChange={(e) =>
-              e.target.value && setLangs((l) => [...l, e.target.value])
-            }
-          >
-            <option value="">Add a language…</option>
-            {LANGUAGES.filter((l) => !langs.includes(l.code)).map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.name}
-              </option>
-            ))}
-          </select>
-          {langs.length > 0 && (
-            <ul className="lang-list" aria-label="Chosen languages">
-              {langs.map((l) => (
-                <li key={l}>
-                  <button
-                    type="button"
-                    className="chip-button"
-                    onClick={() => setLangs((x) => x.filter((y) => y !== l))}
-                    aria-label={`Remove ${lang(l).name}`}
-                  >
-                    {lang(l).name} ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="help">
-            Languages and fields are also added as you use it.
-          </p>
-          <div className="row">
-            <button
-              type="submit"
-              className="btn btn-primary btn-small"
-              disabled={!name.trim()}
-            >
-              Create master
-            </button>
-            <button
-              type="button"
-              className="btn btn-quiet btn-small"
-              onClick={() => setCreating(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : newProject ? (
-        <NewServerProjectTermbase onDone={() => setNewProject(false)} />
-      ) : (
+      {creating && <NewTermbaseDialog kind={creating} onClose={() => setCreating(null)} />}
         <div className="tb-actions">
           <button
             type="button"
             className="btn btn-quiet btn-small tb-new"
-            onClick={() => setCreating(true)}
+            onClick={() => setCreating("master")}
           >
             <Plus size={14} aria-hidden="true" />
             New master
           </button>
           {r.api && (
-            <button type="button" className="btn btn-quiet btn-small tb-new" onClick={() => setNewProject(true)}>
+            <button type="button" className="btn btn-quiet btn-small tb-new" onClick={() => setCreating("project")}>
               <GitBranch size={14} aria-hidden="true" />
               New project termbase
             </button>
@@ -665,7 +529,6 @@ function TermbaseList({
             Import termbase
           </button>
         </div>
-      )}
     </nav>
   );
 }
@@ -1580,8 +1443,6 @@ function FieldRow({
   value: string;
   onSave: (v: string) => void;
 }) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
   const id = useId();
   return (
     <div className="field-row">
@@ -1589,163 +1450,56 @@ function FieldRow({
         <label htmlFor={id}>{it.name}</label>
       </dt>
       <dd>
-        {it.kind === "picklist" ? (
-          <select
-            id={id}
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value);
-              onSave(e.target.value);
-            }}
-          >
-            <option value="">Not set</option>
-            {it.values?.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-            {draft && !it.values?.includes(draft) && (
-              <option value={draft}>{draft}</option>
-            )}
-          </select>
-        ) : it.level === "concept" ? (
-          <textarea
-            id={id}
-            value={draft}
-            rows={2}
-            placeholder="Not set"
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => draft !== value && onSave(draft)}
-          />
-        ) : (
-          <input
-            id={id}
-            value={draft}
-            placeholder="Not set"
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={() => draft !== value && onSave(draft)}
-          />
-        )}
+        <FieldValue it={it} value={value} onSave={onSave} id={id} long={it.level === "concept"} />
       </dd>
     </div>
   );
 }
 
+/**
+ * Adds a field to the termbase from an entry. On the team server it goes
+ * into the termbase's definition at once, with its kind and values.
+ */
 function AddInfoType({ tb }: { tb: Termbase }) {
   const { dispatch, notify } = useStore();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [scope, setScope] = useState<InfoType["level"]>("concept");
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (open) ref.current?.focus();
-  }, [open]);
-  const existing = tb.infoTypes.find(
-    (i) => i.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase(),
-  );
-  const similar =
-    !existing && name.trim().length >= 3
-      ? tb.infoTypes.find((i) =>
-          i.name
-            .toLocaleLowerCase()
-            .startsWith(name.trim().slice(0, 3).toLocaleLowerCase()),
-        )
-      : undefined;
-
-  if (!open)
-    return (
-      <button
-        type="button"
-        className="btn btn-quiet btn-small"
-        onClick={() => setOpen(true)}
-      >
-        <Plus size={14} aria-hidden="true" />
-        Add a field
-      </button>
-    );
+  const r = useRemote();
   return (
-    <form
-      className="add-field"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!name.trim() || existing) return;
+    <AddFieldForm
+      termbase={tb.name}
+      taken={tb.infoTypes.map((i) => i.name)}
+      onAdd={(f) => {
+        if (tb.remote && r.api) {
+          const api = r.api;
+          void api
+            .termbase(tb.name)
+            .then((d) =>
+              api.setDefinition(tb.name, {
+                ...d.definition,
+                fields: [...(d.definition.fields ?? []), { name: f.name, level: LEVEL_TO_CORE[f.level], kind: f.kind, ...(f.kind === "picklist" ? { values: f.values } : {}) }],
+              }),
+            )
+            .then(
+              () => {
+                notify(`Added field “${f.name}” to ${tb.name}`);
+                return r.openTermbase(tb.name);
+              },
+              (e) => notify(errorText(e)),
+            );
+          return;
+        }
         dispatch({
           type: "addInfoType",
           termbaseId: tb.id,
           infoType: {
             id: `it-${Date.now().toString(36)}`,
-            name: name.trim(),
-            level: scope,
-            kind: "text",
+            name: f.name,
+            level: f.level,
+            kind: f.kind,
+            ...(f.kind === "picklist" ? { values: f.values } : {}),
           },
         });
-        notify(`Added field “${name.trim()}” to ${tb.name}`);
-        setOpen(false);
-        setName("");
+        notify(`Added field “${f.name}” to ${tb.name}`);
       }}
-    >
-      <label htmlFor="new-field">Field name</label>
-      <input
-        id="new-field"
-        ref={ref}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="For example Source, Region, Register"
-        aria-describedby="new-field-hint"
-      />
-      <p id="new-field-hint" className="help" aria-live="polite">
-        {existing
-          ? `${tb.name} already has “${existing.name}”.`
-          : similar
-            ? `Did you mean the existing field “${similar.name}”?`
-            : "Every entry in this termbase gets the field. Nothing else changes."}
-      </p>
-      <fieldset className="scope">
-        <legend>Where does the value belong?</legend>
-        <label className="check">
-          <input
-            type="radio"
-            name="scope"
-            checked={scope === "concept"}
-            onChange={() => setScope("concept")}
-          />
-          <span>The whole entry, the same in every language</span>
-        </label>
-        <label className="check">
-          <input
-            type="radio"
-            name="scope"
-            checked={scope === "language"}
-            onChange={() => setScope("language")}
-          />
-          <span>Each language, for example a definition per language</span>
-        </label>
-        <label className="check">
-          <input
-            type="radio"
-            name="scope"
-            checked={scope === "term"}
-            onChange={() => setScope("term")}
-          />
-          <span>Each term, for example grammar or usage</span>
-        </label>
-      </fieldset>
-      <div className="row">
-        <button
-          type="submit"
-          className="btn btn-primary btn-small"
-          disabled={!name.trim() || !!existing}
-        >
-          Add field
-        </button>
-        <button
-          type="button"
-          className="btn btn-quiet btn-small"
-          onClick={() => setOpen(false)}
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+    />
   );
 }

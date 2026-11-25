@@ -358,6 +358,7 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var pinv *projectdb.InvalidError
 	var ainv *authdb.InvalidError
+	var tinv *termdb.InvalidError
 	var fp *fileProblem
 	switch {
 	case errors.As(err, &fp):
@@ -368,6 +369,9 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 			msg = pinv.Problems[0].Message
 		}
 		writeJSON(w, http.StatusUnprocessableEntity, apiError{Code: "invalid", Message: msg, Problems: pinv.Problems})
+	case errors.As(err, &tinv):
+		writeJSON(w, http.StatusUnprocessableEntity, apiError{Code: "invalid", Message: tinv.Message,
+			Problems: []project.Problem{{Field: "definition." + tinv.Field, Message: tinv.Message}}})
 	case errors.As(err, &ainv):
 		writeJSON(w, http.StatusUnprocessableEntity, apiError{Code: "invalid", Message: ainv.Message,
 			Problems: []project.Problem{{Field: ainv.Field, Message: ainv.Message}}})

@@ -23,6 +23,7 @@ export default () =>
       fixtures,
       waitFor,
       startFrom,
+      dlg,
     }) => {
       // A new project from a file.
       await startFrom(`${fixtures}/documents/Kaufvertrag_Mueller_Entwurf.txt`, { keep: false });
@@ -189,13 +190,71 @@ export default () =>
       );
       // A master made there is on this computer.
       await click("button", "New master");
-      await sleep(200);
       check(
-        !(await evaluate("!!document.querySelector('input[name=newloc]')")),
+        await waitFor("(document.querySelector('dialog[open]')?.innerText ?? '').includes('New termbase')"),
+        "a new master is made in a dialog, in steps",
+      );
+      check(
+        !(await evaluate("!!document.querySelector('dialog[open] input[name=ntb-loc]')")),
         "without a team server there is no place to choose",
       );
-      await setValue("#new-tb", "Erste Terminologie");
-      await click(".tb-create button", "Create");
+      check(
+        await evaluate("document.querySelector('dialog[open] input[name=ntb-kind]:not(:checked)')?.disabled === true"),
+        "and a project termbase is made with its project",
+      );
+      await setValue("#ntb-name", "Erste Terminologie");
+      await click("dialog[open] button", "Continue");
+      check(
+        await waitFor("document.querySelectorAll('dialog[open] .lang-pick-list label.check').length > 50"),
+        "its languages are chosen from a list",
+      );
+      check(
+        await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent === 'Continue').disabled"),
+        "and at least one is needed",
+      );
+      await setValue("dialog[open] .search-field input", "german");
+      await sleep(100);
+      check(
+        await evaluate("[...document.querySelectorAll('dialog[open] .lang-pick-list label.check')].every(l => /German/.test(l.textContent))"),
+        "the list is searched by name",
+      );
+      await evaluate("[...document.querySelectorAll('dialog[open] .lang-pick-list label.check')].find(l => l.textContent.includes('de-DE')).querySelector('input').click()");
+      await setValue("dialog[open] .search-field input", "en-gb");
+      await sleep(100);
+      await evaluate("[...document.querySelectorAll('dialog[open] .lang-pick-list label.check')].find(l => l.textContent.includes('en-GB')).querySelector('input').click()");
+      await sleep(100);
+      check(
+        (await dlg()).includes("German (Germany) ×") && (await dlg()).includes("English (United Kingdom) ×"),
+        "and by code, and what is chosen is shown",
+      );
+      await click("dialog[open] button", "Continue");
+      await waitFor("!!document.querySelector('dialog[open] input[name=ntb-start]')");
+      await evaluate("[...document.querySelectorAll('dialog[open] input[name=ntb-start]')][2].click()");
+      check(
+        await waitFor("document.querySelectorAll('dialog[open] .field-table tbody tr').length === 10"),
+        "a ready-made structure gives its fields",
+      );
+      check(
+        await evaluate("[...document.querySelectorAll('dialog[open] .field-table tbody tr')].find(r => r.querySelector('input').value === 'Gender')?.querySelector('textarea')?.value.split('\\n').length === 4"),
+        "with the values of its lists",
+      );
+      // A field of one's own: a name is needed, and one not taken.
+      await click("dialog[open] .field-table button", "Add a field");
+      await sleep(100);
+      check((await dlg()).includes("Give the field a name."), "a field needs a name");
+      await setValue("dialog[open] .field-table tbody tr:last-child input", "Gender");
+      await sleep(100);
+      check((await dlg()).includes("Another field has this name."), "and one no other field has");
+      await setValue("dialog[open] .field-table tbody tr:last-child input", "Checked by");
+      await sleep(100);
+      await click("dialog[open] button", "Continue");
+      await sleep(150);
+      const review = await dlg();
+      check(
+        review.includes("German (Germany), English (United Kingdom)") && review.includes("Gender (term, a list of values: masculine, feminine, neuter, common)") && review.includes("Checked by (entry, text)"),
+        "what will be made is shown before it is made",
+      );
+      await click("dialog[open] button", "Create master");
       check(
         await waitFor("document.body.innerText.includes('Created master')"),
         "the first master is made",

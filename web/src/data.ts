@@ -58,9 +58,27 @@ export interface InfoType {
   name: string;
   /** Where the value lives: the whole concept, one language, or one term. */
   level: "concept" | "language" | "term";
-  kind: "text" | "picklist";
+  kind: FieldKind;
   values?: string[];
 }
+
+/** The kinds of value a field takes, as the core names them. */
+export type FieldKind = "text" | "picklist" | "number" | "date" | "boolean";
+
+export const FIELD_KINDS: { kind: FieldKind; name: string }[] = [
+  { kind: "text", name: "Text" },
+  { kind: "picklist", name: "A list of values" },
+  { kind: "number", name: "Number" },
+  { kind: "date", name: "Date" },
+  { kind: "boolean", name: "Yes or no" },
+];
+
+/** Where a field's value belongs. */
+export const FIELD_LEVELS: { level: InfoType["level"]; name: string; hint: string }[] = [
+  { level: "concept", name: "Entry", hint: "the whole entry, the same in every language" },
+  { level: "language", name: "Language", hint: "each language, such as a definition per language" },
+  { level: "term", name: "Term", hint: "each term, such as grammar or usage" },
+];
 
 export type TermStatus = "approved" | "proposed" | "forbidden";
 

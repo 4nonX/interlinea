@@ -60,6 +60,8 @@ add_library(interlinea_app STATIC
     src/roles.cpp
     src/reviewpage.cpp
     src/termbasedialogs.cpp
+    src/termfields.cpp
+    src/newtermbasedialog.cpp
     src/termdata.cpp
     src/terminologypage.cpp
     src/words.cpp

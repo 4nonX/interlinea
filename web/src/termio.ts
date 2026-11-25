@@ -204,7 +204,7 @@ export const FORMAT_LABEL: Record<TermFormat, string> = {
 export const IMPORT_ACCEPT =
   ".tbx,.tbxm,.xml,.mtf,.sdltb,.xdt,.csv,.tsv,.tab,.txt,.xlsx";
 
-const LEVEL_TO_CORE: Record<InfoType["level"], CoreLevel> = {
+export const LEVEL_TO_CORE: Record<InfoType["level"], CoreLevel> = {
   concept: "entry",
   language: "language",
   term: "term",
@@ -284,7 +284,7 @@ export function infoTypesFromCore(fields: CoreField[] | null | undefined): InfoT
     id: slug(f.name) || f.name,
     name: f.name,
     level: LEVEL_FROM_CORE[f.level] ?? "concept",
-    kind: f.kind === "picklist" ? "picklist" : "text",
+    kind: (["text", "picklist", "number", "date", "boolean"] as const).find((k) => k === f.kind) ?? "text",
     values: f.values,
   }));
 }

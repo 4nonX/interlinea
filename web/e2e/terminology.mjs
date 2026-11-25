@@ -621,6 +621,55 @@ export default () =>
       await tab("Master");
       await sleep(300);
       check(!(await evaluate("!!document.querySelector('.left-out')")), "nothing is left out any more");
+
+      // Fields of each kind, added from an entry, take values with the control their kind asks for.
+      await open("/terminology/tb-weber", { wait: 0, reload: false });
+      await waitFor("!!document.querySelector('.entry-row')");
+      await click(".entry-row");
+      await waitFor("!!document.querySelector('#panel-entry')");
+      const addField = async (name, kind, values) => {
+        await click("#panel-entry button", "Add a field");
+        await waitFor("!!document.querySelector('#panel-entry form.add-field')");
+        await setValue("#panel-entry form.add-field input:not([type=radio])", name);
+        await evaluate("document.querySelector('#panel-entry form.add-field input[type=radio]').click()");
+        await setValue("#panel-entry form.add-field select", kind);
+        if (values) await setValue("#panel-entry form.add-field textarea", values);
+        await sleep(100);
+        await click("#panel-entry form.add-field button", "Add field");
+        return toast(`Added field “${name}”`);
+      };
+      const control = (name) => `[...document.querySelectorAll('#panel-entry .field-row')].find(r => r.querySelector('label')?.textContent === ${JSON.stringify(name)})?.querySelector('dd > *')`;
+      check(await addField("Geprüft", "boolean"), "a yes-or-no field is added");
+      check(
+        await waitFor(`${control("Geprüft")}?.tagName === 'SELECT' && [...${control("Geprüft")}.options].map(o => o.text).join() === 'Not set,Yes,No'`),
+        "it is answered with yes or no",
+      );
+      await evaluate(`(() => { const el = ${control("Geprüft")}; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'true'); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(200);
+      check(await evaluate(`${control("Geprüft")}.value === 'true'`), "and keeps its answer");
+      check(await addField("Stand", "date"), "a date field is added");
+      check(await waitFor(`${control("Stand")}?.type === 'date'`), "it takes a date from a calendar");
+      check(await addField("Register", "picklist", "formal\ninformal"), "a list field is added with its values, one a line");
+      check(
+        await waitFor(`[...(${control("Register")}?.options ?? [])].map(o => o.text).join() === 'Not set,formal,informal'`),
+        "its values are offered to choose from",
+      );
+      check(await addField("Seiten", "number"), "a number field is added");
+      await waitFor(`!!${control("Seiten")}?.querySelector('input')`);
+      await evaluate(`(() => { const el = ${control("Seiten")}.querySelector('input'); el.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'zwölf'); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await sleep(100);
+      await evaluate(`${control("Seiten")}.querySelector('input').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))`);
+      check(await waitFor(`${control("Seiten")}.innerText.includes('Type a number, such as 12 or 0.5.')`), "a number field refuses what is no number");
+      await click(".pane-tools button", "Settings");
+      check(
+        await waitFor("[...document.querySelectorAll('dialog[open] tr')].find(r => r.querySelector('input')?.value === 'Register')?.querySelector('textarea')?.value === 'formal\\ninformal'"),
+        "the settings show a list's values one a line",
+      );
+      check(
+        await evaluate("[...[...document.querySelectorAll('dialog[open] tr')].find(r => r.querySelector('input')?.value === 'Stand').querySelector('select').options].map(o => o.text).length === 5"),
+        "and offer the five kinds of value",
+      );
+      await click("dialog[open] button", "Done");
       check(errors.length === 0, "no console errors: " + errors.join("; "));
     },
   );

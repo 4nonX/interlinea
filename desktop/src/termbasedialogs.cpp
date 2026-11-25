@@ -8,6 +8,7 @@
 #include "icons.h"
 #include "languages.h"
 #include "termdata.h"
+#include "termfields.h"
 #include "theme.h"
 
 #include <QButtonGroup>
@@ -775,7 +776,7 @@ void TermbaseSettingsDialog::render()
     m_content->addWidget(Web::text(tr("Fields"), "settingsTitle", host));
     const QJsonArray fields = def.value(QLatin1String("fields")).toArray();
     if (fields.isEmpty()) {
-        auto *h = Web::text(tr("No fields yet. Add them from an entry, or import a file that has them."), "help", host);
+        auto *h = Web::text(tr("No fields yet: entries hold their terms and each term's status."), "help", host);
         h->setWordWrap(true);
         m_content->addWidget(h);
     } else {
@@ -812,21 +813,18 @@ void TermbaseSettingsDialog::render()
                 });
             });
             auto *kindCell = new QWidget(table);
-            auto *kl = new QHBoxLayout(kindCell);
+            auto *kl = new QVBoxLayout(kindCell);
             kl->setContentsMargins(0, 0, 0, 0);
             kl->setSpacing(S1);
-            auto *kind = new QComboBox(kindCell);
+            const QString was = TermFields::fromJson(f).kind;
+            auto *kind = TermFields::kindCombo(was, kindCell);
             kind->setAccessibleName(tr("Values of %1").arg(name));
             kind->setObjectName(QStringLiteral("fieldKind:%1").arg(name));
-            kind->addItem(tr("Free text"), QStringLiteral("text"));
-            kind->addItem(tr("Pick from a list"), QStringLiteral("picklist"));
-            const bool pick = str(f, "kind") == QLatin1String("picklist");
-            kind->setCurrentIndex(pick ? 1 : 0);
             kind->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
             // The row is measured before the style gives the choice its
             // height, so the cell says how tall it is.
             kindCell->setMinimumHeight(34);
-            kl->addWidget(kind);
+            kl->addWidget(kind, 0, Qt::AlignLeft);
             const auto setField = [this, def, i](const QJsonObject &now, const QString &done) {
                 QJsonObject d = def;
                 QJsonArray fs = d.value(QLatin1String("fields")).toArray();
@@ -834,42 +832,34 @@ void TermbaseSettingsDialog::render()
                 d.insert(QLatin1String("fields"), fs);
                 putDefinition(d, done);
             };
-            connect(kind, &QComboBox::activated, this, [kind, f, setField, pick] {
-                const bool nowPick = kind->currentData().toString() == QLatin1String("picklist");
-                if (nowPick == pick)
+            connect(kind, &QComboBox::activated, this, [kind, f, setField, was] {
+                const QString now = kind->currentData().toString();
+                if (now == was)
                     return;
-                QJsonObject now = f;
-                now.insert(QLatin1String("kind"), kind->currentData().toString());
-                if (!nowPick)
-                    now.remove(QLatin1String("values"));
-                else if (!now.contains(QLatin1String("values")))
-                    now.insert(QLatin1String("values"), QJsonArray());
-                setField(now, QString());
+                QJsonObject changed = f;
+                changed.insert(QLatin1String("kind"), now);
+                if (now != QLatin1String("picklist"))
+                    changed.remove(QLatin1String("values"));
+                else if (!changed.contains(QLatin1String("values")))
+                    changed.insert(QLatin1String("values"), QJsonArray());
+                setField(changed, QString());
             });
-            if (pick) {
+            if (was == QLatin1String("picklist")) {
                 QStringList values;
                 for (const QJsonValue &v : f.value(QLatin1String("values")).toArray())
                     values << v.toString();
-                auto *vals = new QLineEdit(values.join(QStringLiteral("; ")), kindCell);
+                auto *vals = new TermFields::ValuesEdit(values, kindCell);
                 vals->setObjectName(QStringLiteral("fieldValues:%1").arg(name));
-                vals->setAccessibleName(tr("List values, separated by semicolons"));
-                vals->setPlaceholderText(tr("Values, separated by ;"));
-                vals->setMinimumWidth(240);
-                kl->addWidget(vals, 1);
-                connect(vals, &QLineEdit::editingFinished, this, [vals, f, setField, values] {
-                    QStringList now;
-                    for (const QString &v : vals->text().split(QLatin1Char(';'))) {
-                        if (!v.trimmed().isEmpty() && !now.contains(v.trimmed()))
-                            now << v.trimmed();
-                    }
+                vals->setAccessibleName(tr("The values of %1, one a line").arg(name));
+                kl->addWidget(vals);
+                kindCell->setMinimumHeight(0);
+                connect(vals, &TermFields::ValuesEdit::left, this, [f, setField, values](const QStringList &now) {
                     if (now == values)
                         return;
                     QJsonObject changed = f;
                     changed.insert(QLatin1String("values"), QJsonArray::fromStringList(now));
                     setField(changed, QString());
                 });
-            } else {
-                kl->addStretch();
             }
             auto *remove = new Web::ConfirmButton(QString(), used ? tr("Remove “%1” and %2?").arg(name, plural(used, tr("1 value"), tr("%1 values"))) : tr("Remove “%1”?").arg(name),
                                                   tr("Remove"), table, true, QStringLiteral("trash"));
@@ -897,6 +887,21 @@ void TermbaseSettingsDialog::render()
         }
         table->fit();
         m_content->addWidget(table);
+    }
+    {
+        QStringList taken;
+        for (const QJsonValue &f : fields)
+            taken << str(f.toObject(), "name");
+        auto *add = new TermFields::AddFieldForm(m_name, taken, host);
+        add->setObjectName(QStringLiteral("settingsAddField"));
+        connect(add, &TermFields::AddFieldForm::added, this, [this, def](const QJsonObject &field) {
+            QJsonObject d = def;
+            QJsonArray fs = d.value(QLatin1String("fields")).toArray();
+            fs.append(field);
+            d.insert(QLatin1String("fields"), fs);
+            putDefinition(d, tr("Added field “%1” to %2").arg(str(field, "name"), m_name));
+        });
+        m_content->addWidget(add);
     }
 
     if (str(m_detail, "kind") == QLatin1String("master"))

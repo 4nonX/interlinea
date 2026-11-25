@@ -979,6 +979,11 @@ func (mr *MergeRequest) apply(ctx context.Context, tx *wtx, it *Item, edited *te
 	if err != nil {
 		return err
 	}
+	// The fields the project defines, for those it brings to the master.
+	pdef, err := p.definition(ctx, tx)
+	if err != nil {
+		return err
+	}
 	summary := fmt.Sprintf("Merged from %s (merge request %d)", mr.Project, mr.ID)
 	var result Stored
 	before := 0
@@ -994,7 +999,7 @@ func (mr *MergeRequest) apply(ctx context.Context, tx *wtx, it *Item, edited *te
 		if err != nil {
 			return err
 		}
-		if addDefinitionFor(&mdef, pe) {
+		if addDefinitionFor(&mdef, pe, pdef) {
 			if err := writeDefinition(ctx, tx, m.id, mdef); err != nil {
 				return err
 			}
@@ -1035,7 +1040,7 @@ func (mr *MergeRequest) apply(ctx context.Context, tx *wtx, it *Item, edited *te
 		if err != nil {
 			return err
 		}
-		if addDefinitionFor(&mdef, pe) {
+		if addDefinitionFor(&mdef, pe, pdef) {
 			if err := writeDefinition(ctx, tx, m.id, mdef); err != nil {
 				return err
 			}

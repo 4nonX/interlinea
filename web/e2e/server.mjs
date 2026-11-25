@@ -10,7 +10,7 @@ import { run, call, ADMIN_PASSWORD } from "./harness.mjs";
 export default () =>
   run(
     "Team server",
-    async ({ base, send, evaluate, click, text, body, check, sleep, open, setValue, key, samples, fixtures, waitFor, idp }) => {
+    async ({ base, send, evaluate, click, text, body, check, sleep, open, setValue, key, samples, fixtures, waitFor, idp, dlg }) => {
       const api = (method, path, token, b) => call(base, method, path, token, b);
       const admin = (await api("POST", "/api/auth/password", null, { username: "anna", password: ADMIN_PASSWORD })).token;
 
@@ -641,13 +641,30 @@ export default () =>
 
         // A project termbase made by hand over the master.
         await click(".pane-tbs button", "New project termbase");
-        check(await waitFor("!!document.querySelector('form[aria-label=\"New project termbase\"]')"), "a project termbase can be made by hand");
-        await setValue("#new-ptb", "E2E Fall");
-        check(await waitFor("[...document.querySelectorAll('form[aria-label=\"New project termbase\"] label.check')].some(l => l.textContent.includes('E2E Recht'))", 10000), "the masters of the server are offered to base it on");
-        await evaluate("[...document.querySelectorAll('form[aria-label=\"New project termbase\"] label.check')].find(l => l.textContent.includes('E2E Recht')).querySelector('input').click()");
+        check(await waitFor("(document.querySelector('dialog[open]')?.innerText ?? '').includes('New termbase') && document.querySelector('dialog[open] input[name=ntb-kind]:checked')?.parentElement.textContent.includes('A project termbase')"), "a project termbase can be made by hand");
+        await setValue("#ntb-name", "E2E Fall");
+        check(await waitFor("[...document.querySelectorAll('dialog[open] fieldset label.check')].some(l => l.textContent.includes('E2E Recht'))", 10000), "the masters of the server are offered to base it on");
+        check(await evaluate("[...document.querySelectorAll('dialog[open] button')].find(b => b.textContent === 'Continue').disabled"), "and one is needed");
+        await evaluate("[...document.querySelectorAll('dialog[open] fieldset label.check')].find(l => l.textContent.includes('E2E Recht')).querySelector('input').click()");
         await sleep(100);
-        await click("form[aria-label='New project termbase'] button", "Create");
+        await click("dialog[open] button", "Continue");
+        check(await waitFor("(document.querySelector('dialog[open]')?.innerText ?? '').includes('From E2E Recht') && document.querySelector('dialog[open]').innerText.includes('Note (')", 10000), "it shows the languages and fields it gets from the master");
+        await click("dialog[open] .field-table button", "Add a field");
+        await sleep(100);
+        await setValue("dialog[open] .field-table tbody tr:last-child input", "Note");
+        await sleep(100);
+        check((await dlg()).includes("Another field has this name."), "a field of its own has a name the master's fields do not have");
+        await setValue("dialog[open] .field-table tbody tr:last-child input", "Aktenzeichen");
+        await sleep(100);
+        await click("dialog[open] button", "Continue");
+        await sleep(150);
+        check((await dlg()).includes("from the masters") && (await dlg()).includes("Aktenzeichen (entry, text)"), "what it will have is shown before it is made");
+        await click("dialog[open] button", "Create project termbase");
         check(await toast("Created project termbase “E2E Fall”"), "the project termbase is made");
+        {
+          const fs = (await api("GET", tbPath("E2E Fall"), admin)).definition.fields ?? [];
+          check(fs.some((f) => f.name === "Aktenzeichen" && f.level === "entry") && fs.some((f) => f.name === "Note"), "it has its master's fields and its own: " + fs.map((f) => f.name).join(", "));
+        }
         check(await waitFor("[...document.querySelectorAll('.pane-entries [role=tab]')].some(t => t.textContent.includes('Master (2)'))", 15000), "it shows its master's entries in a view of their own");
         check((await text()).includes("Based on E2E Recht."), "and says what it is based on");
         await click(".pane-entries [role=tab]", "Master (2)");

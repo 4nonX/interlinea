@@ -18,6 +18,7 @@ class ConnectionManager;
 class EntryListModel;
 class ExportDialog;
 class ImportDialog;
+class NewTermbaseDialog;
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -73,6 +74,8 @@ public:
     // Changes waiting to be saved or being saved.
     bool busy() const { return m_saving || !m_queue.isEmpty(); }
 
+    // Makes a master, or a project termbase over masters, in steps.
+    NewTermbaseDialog *newTermbaseDialog(bool project);
     ImportDialog *importDialog(bool intoNew);
     ExportDialog *exportDialog();
     TermbaseSettingsDialog *settingsDialog();
@@ -127,7 +130,8 @@ private:
     void showMasterDetail();
     void showDetail();
     void showHistory(QVBoxLayout *into);
-    void showCreateForm(bool open);
+    // New master, New project termbase and Import termbase under the lists.
+    void showCreateForm();
     // What the page shows of the opened termbase, to tell whether reading
     // it again brought anything new.
     QByteArray signature() const;
@@ -201,16 +205,9 @@ private:
     QVBoxLayout *m_masterBody;
     QVBoxLayout *m_detailHolder;
     Web::Toast *m_toast;
-    QString m_newMasterName;
-    QStringList m_newMasterLangs;
-    int m_newMasterPlace = 0;
-    // The form makes a project termbase, over these masters.
-    bool m_newProject = false;
-    bool m_createOpen = false;
     bool m_loading = false;
     QByteArray m_drawn;
     QByteArray m_listsDrawn;
-    QStringList m_newUpstreams;
 };
 
 class ReviewPage;

@@ -7,6 +7,29 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Terminology
+
+- A termbase is made in steps: its name and kind, its languages from a
+  list with a search, its fields, and a review before it is made. A
+  master starts from a ready-made structure or from another master's
+  fields; a project termbase shows what it gets from its masters and may
+  have fields of its own.
+- Fields take text, a value from a list, a number, a date, or yes or no,
+  each with its own control in an entry. The values of a list are typed
+  one a line. Fields are added in the termbase settings as well as from
+  an entry.
+- A field a project termbase has and its master lacks reaches the master
+  with the first approved entry that uses it, with its kind and values.
+- The team server says which part of a termbase's definition it refuses
+  and why.
+
+### Desktop app
+
+- The editor's preview shows the document as it is laid out, in the
+  target language only.
+- Lists look like lists, choices open on a click, and text no longer runs
+  out of its box at any scaling.
+
 ## [0.1.0] - 2026-11-25
 
 The first release: the core, the team server, the web client and the

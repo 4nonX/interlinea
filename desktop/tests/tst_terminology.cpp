@@ -8,7 +8,9 @@
 #include "languages.h"
 #include "options.h"
 #include "reviewpage.h"
+#include "newtermbasedialog.h"
 #include "termbasedialogs.h"
+#include "termfields.h"
 #include "termdata.h"
 #include "terminologypage.h"
 #include "testcore.h"
@@ -19,6 +21,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateEdit>
 #include <QFile>
 #include <QLabel>
 #include <QLineEdit>
@@ -73,6 +76,17 @@ static T *named(QWidget *root, const QString &accessibleName)
     for (T *w : root->findChildren<T *>()) {
         if (w->accessibleName() == accessibleName && there(w, root))
             return w;
+    }
+    return nullptr;
+}
+
+// The dialog of this type that is open over the page.
+template <typename T>
+static T *openDialog(QWidget *page)
+{
+    for (T *d : page->window()->findChildren<T *>()) {
+        if (d->isVisible())
+            return d;
     }
     return nullptr;
 }
@@ -251,21 +265,77 @@ private slots:
         // A new master with two languages.
         QVERIFY(button(&page, QStringLiteral("New master")));
         button(&page, QStringLiteral("New master"))->click();
-        QLineEdit *name = nullptr;
-        QTRY_VERIFY((name = byName<QLineEdit>(&page, QStringLiteral("newMasterName"))));
-        QVERIFY(!button(&page, QStringLiteral("Create master"))->isEnabled());
-        name->setText(QStringLiteral("Kanzlei Weber"));
-        QVERIFY(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")));
-        choose(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")), QStringLiteral("de-DE"));
-        QTRY_VERIFY(button(&page, QStringLiteral("German (Germany) ×")));
-        choose(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")), QStringLiteral("fr-FR"));
-        choose(byName<QComboBox>(&page, QStringLiteral("newMasterLanguage")), QStringLiteral("en-GB"));
-        QTRY_VERIFY(button(&page, QStringLiteral("French (France) ×")));
-        button(&page, QStringLiteral("French (France) ×"))->click();
-        QTRY_VERIFY(!button(&page, QStringLiteral("French (France) ×")));
-        QCOMPARE(byName<QLineEdit>(&page, QStringLiteral("newMasterName"))->text(), QStringLiteral("Kanzlei Weber"));
-        QTRY_VERIFY(button(&page, QStringLiteral("Create master")) && button(&page, QStringLiteral("Create master"))->isEnabled());
-        button(&page, QStringLiteral("Create master"))->click();
+        NewTermbaseDialog *nd = nullptr;
+        QTRY_VERIFY((nd = openDialog<NewTermbaseDialog>(&page)));
+        QCOMPARE(nd->stepper()->steps(), QStringList({QStringLiteral("Start"), QStringLiteral("Languages"), QStringLiteral("Fields"), QStringLiteral("Review")}));
+        QCOMPARE(nd->kind(), NewTermbaseDialog::Master);
+        QVERIFY(!nd->nextButton()->isEnabled());
+        byName<QLineEdit>(nd, QStringLiteral("newTermbaseName"))->setText(QStringLiteral("Kanzlei Weber"));
+        QVERIFY(nd->nextButton()->isEnabled());
+        nd->nextButton()->click();
+        QCOMPARE(nd->step(), NewTermbaseDialog::LanguagesStep);
+        // The languages are chosen from a list, found by name or by code.
+        QVERIFY(!nd->nextButton()->isEnabled());
+        QCOMPARE(nd->blocking(), QStringLiteral("Choose its languages, at least one."));
+        auto *langs = byName<TermFields::LanguageChecklist>(nd, QStringLiteral("newTermbaseLanguages"));
+        QVERIFY(langs && langs->shown().size() > 50);
+        langs->search()->setText(QStringLiteral("german"));
+        QVERIFY(!langs->shown().isEmpty());
+        for (const QString &t : langs->shown())
+            QVERIFY2(Languages::name(t).contains(QStringLiteral("German")), qPrintable(t));
+        byName<QCheckBox>(nd, QStringLiteral("language:de-DE"))->click();
+        langs->search()->setText(QStringLiteral("fr-fr"));
+        QCOMPARE(langs->shown(), QStringList({QStringLiteral("fr-FR")}));
+        byName<QCheckBox>(nd, QStringLiteral("language:fr-FR"))->click();
+        langs->search()->setText(QStringLiteral("en-GB"));
+        byName<QCheckBox>(nd, QStringLiteral("language:en-GB"))->click();
+        langs->search()->setText(QStringLiteral("Klingonisch"));
+        QVERIFY(langs->shown().isEmpty() && label(nd, QStringLiteral("No language is called that.")));
+        QTRY_VERIFY(button(nd, QStringLiteral("French (France) ×")));
+        button(nd, QStringLiteral("French (France) ×"))->click();
+        QTRY_VERIFY(!button(nd, QStringLiteral("French (France) ×")));
+        QCOMPARE(langs->chosen(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+        QVERIFY(nd->nextButton()->isEnabled());
+        shot(nd, QStringLiteral("terminology-new-master-languages"));
+        nd->nextButton()->click();
+        // Its fields start from a ready-made structure, or none.
+        QCOMPARE(nd->step(), NewTermbaseDialog::Fields);
+        QVERIFY(byName<QRadioButton>(nd, QStringLiteral("newTermbaseStart:terms"))->isChecked());
+        byName<QRadioButton>(nd, QStringLiteral("newTermbaseStart:terminology"))->click();
+        QTRY_COMPARE(nd->fields().size(), 10);
+        QTRY_VERIFY(byName<QTableWidget>(nd, QStringLiteral("draftFields")) && byName<QTableWidget>(nd, QStringLiteral("draftFields"))->rowCount() == 10);
+        QCOMPARE(byName<TermFields::ValuesEdit>(nd, QStringLiteral("draftValues:6"))->values(), QStringList({QStringLiteral("masculine"), QStringLiteral("feminine"), QStringLiteral("neuter"), QStringLiteral("common")}));
+        QCOMPARE(byName<QComboBox>(nd, QStringLiteral("draftKind:2"))->currentData().toString(), QStringLiteral("date"));
+        shot(nd, QStringLiteral("terminology-new-master-fields"));
+        // A field of one's own needs a name no other field has.
+        byName<QPushButton>(nd, QStringLiteral("draftAdd"))->click();
+        QTRY_VERIFY(byName<QLineEdit>(nd, QStringLiteral("draftName:10")));
+        QVERIFY(!nd->nextButton()->isEnabled());
+        QCOMPARE(byName<QLabel>(nd, QStringLiteral("draftProblem:10"))->text(), QStringLiteral("Give the field a name."));
+        byName<QLineEdit>(nd, QStringLiteral("draftName:10"))->setText(QStringLiteral("gender"));
+        QCOMPARE(nd->blocking(), QStringLiteral("Another field has this name."));
+        byName<QLineEdit>(nd, QStringLiteral("draftName:10"))->setText(QStringLiteral("Register"));
+        choose(byName<QComboBox>(nd, QStringLiteral("draftKind:10")), QStringLiteral("picklist"));
+        QTRY_VERIFY(byName<TermFields::ValuesEdit>(nd, QStringLiteral("draftValues:10")));
+        QCOMPARE(nd->blocking(), QStringLiteral("Give the list its values, one a line."));
+        byName<TermFields::ValuesEdit>(nd, QStringLiteral("draftValues:10"))->setPlainText(QStringLiteral("formal\n\ninformal\nformal"));
+        QCOMPARE(nd->fields().at(10).values, QStringList({QStringLiteral("formal"), QStringLiteral("informal")}));
+        QVERIFY(nd->nextButton()->isEnabled());
+        byName<QPushButton>(nd, QStringLiteral("draftRemove:10"))->click();
+        QTRY_COMPARE(nd->fields().size(), 10);
+        // Back to none: the test goes on with fields added as it is used.
+        byName<QRadioButton>(nd, QStringLiteral("newTermbaseStart:terms"))->click();
+        QTRY_COMPARE(nd->fields().size(), 0);
+        nd->nextButton()->click();
+        QCOMPARE(nd->step(), NewTermbaseDialog::Review);
+        QVERIFY(label(nd, QStringLiteral("German (Germany), English (United Kingdom)")));
+        QVERIFY(label(nd, QStringLiteral("None: terms and their status")));
+        QCOMPARE(nd->nextButton()->text(), QStringLiteral("Create master"));
+        nd->nextButton()->click();
+        // The page is the active window again once the dialog is gone.
+        QTRY_VERIFY(!openDialog<NewTermbaseDialog>(&page));
+        page.activateWindow();
+        QVERIFY(QTest::qWaitForWindowActive(&page));
         QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Kanzlei Weber"), 10000);
         QTRY_VERIFY(label(&page, QStringLiteral("No entries yet")));
         QCOMPARE(page.message(), QStringLiteral("Created master “Kanzlei Weber”"));
@@ -382,6 +452,7 @@ private slots:
         byName<QLineEdit>(&page, QStringLiteral("newFieldName"))->setText(QStringLiteral("Usa"));
         QCOMPARE(byName<QLabel>(&page, QStringLiteral("newFieldHint"))->text(), QStringLiteral("Did you mean the existing field “Usage”?"));
         button(byName<QLineEdit>(&page, QStringLiteral("newFieldName"))->parentWidget(), QStringLiteral("Cancel"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(page.ready() && !page.busy(), 10000);
 
         QPlainTextEdit *definition = nullptr;
         QTRY_VERIFY((definition = named<QPlainTextEdit>(&page, QStringLiteral("Definition"))));
@@ -698,12 +769,32 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QWidget>(set, QStringLiteral("language:fr-FR")), 10000);
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added French (France)"), 10000);
         // A field becomes a list to pick from, with its values.
+        QCOMPARE(byName<QComboBox>(set, QStringLiteral("fieldKind:Source"))->count(), 5);
         choose(byName<QComboBox>(set, QStringLiteral("fieldKind:Source")), QStringLiteral("picklist"));
-        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QLineEdit>(set, QStringLiteral("fieldValues:Source")), 10000);
-        byName<QLineEdit>(set, QStringLiteral("fieldValues:Source"))->setText(QStringLiteral("BGB; BetrKV; BGB;"));
-        emit byName<QLineEdit>(set, QStringLiteral("fieldValues:Source"))->editingFinished();
-        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QLineEdit>(set, QStringLiteral("fieldValues:Source")) &&
-                                     byName<QLineEdit>(set, QStringLiteral("fieldValues:Source"))->text() == QStringLiteral("BGB; BetrKV"),
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<TermFields::ValuesEdit>(set, QStringLiteral("fieldValues:Source")), 10000);
+        {
+            auto *values = byName<TermFields::ValuesEdit>(set, QStringLiteral("fieldValues:Source"));
+            values->setPlainText(QStringLiteral("BGB\nBetrKV\n\nBGB"));
+            QFocusEvent out(QEvent::FocusOut);
+            QApplication::sendEvent(values, &out);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<TermFields::ValuesEdit>(set, QStringLiteral("fieldValues:Source")) &&
+                                     byName<TermFields::ValuesEdit>(set, QStringLiteral("fieldValues:Source"))->toPlainText() == QStringLiteral("BGB\nBetrKV"),
+                                 10000);
+        // A field of another kind, added in the settings.
+        {
+            auto *add = byName<TermFields::AddFieldForm>(set, QStringLiteral("settingsAddField"));
+            QVERIFY(add);
+            byName<QPushButton>(add, QStringLiteral("addField"))->click();
+            QTRY_VERIFY(byName<QLineEdit>(add, QStringLiteral("newFieldName")));
+            byName<QLineEdit>(add, QStringLiteral("newFieldName"))->setText(QStringLiteral("Geprüft"));
+            byName<QRadioButton>(add, QStringLiteral("newFieldLevel:entry"))->click();
+            choose(byName<QComboBox>(add, QStringLiteral("newFieldKind")), QStringLiteral("boolean"));
+            byName<QPushButton>(add, QStringLiteral("addFieldSubmit"))->click();
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added field “Geprüft” to Kanzlei Weber"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QComboBox>(set, QStringLiteral("fieldKind:Geprüft")) &&
+                                     byName<QComboBox>(set, QStringLiteral("fieldKind:Geprüft"))->currentData().toString() == QStringLiteral("boolean"),
                                  10000);
         // Renaming a field renames it in the entries.
         byName<QLineEdit>(set, QStringLiteral("fieldName:Usage"))->setText(QStringLiteral("Register"));
@@ -720,7 +811,7 @@ private slots:
             rm->yes()->click();
         }
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Removed the field “Definition”"), 10000);
-        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QTableWidget>(set, QStringLiteral("fieldsTable")) && byName<QTableWidget>(set, QStringLiteral("fieldsTable"))->rowCount() == 2, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QTableWidget>(set, QStringLiteral("fieldsTable")) && byName<QTableWidget>(set, QStringLiteral("fieldsTable"))->rowCount() == 3, 10000);
         // Removing a language takes its terms.
         {
             auto *rm = byName<QWidget>(set, QStringLiteral("language:fr-FR"))->findChild<Web::ConfirmButton *>();
@@ -742,6 +833,44 @@ private slots:
         // The page shows the renamed field and the list of values.
         QTRY_VERIFY(named<QComboBox>(&page, QStringLiteral("Source")));
         QCOMPARE(named<QComboBox>(&page, QStringLiteral("Source"))->count(), 3);
+        // Yes or no, a date and a number take values with controls of their own.
+        {
+            QComboBox *checked = nullptr;
+            QTRY_VERIFY((checked = named<QComboBox>(&page, QStringLiteral("Geprüft"))));
+            QCOMPARE(checked->count(), 3);
+            QCOMPARE(checked->itemText(1), QStringLiteral("Yes"));
+            choose(checked, QStringLiteral("true"));
+            QTRY_COMPARE_WITH_TIMEOUT(TermData::value(page.entry(page.entryId()).value("fields").toArray(), QStringLiteral("Geprüft")), QStringLiteral("true"), 10000);
+            QTRY_VERIFY(!page.busy());
+            const auto addKind = [&](const QString &fieldName, const QString &kind) {
+                QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("addField")));
+                byName<QPushButton>(&page, QStringLiteral("addField"))->click();
+                QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newFieldName")));
+                byName<QLineEdit>(&page, QStringLiteral("newFieldName"))->setText(fieldName);
+                choose(byName<QComboBox>(&page, QStringLiteral("newFieldKind")), kind);
+                byName<QPushButton>(&page, QStringLiteral("addFieldSubmit"))->click();
+                QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Added field “%1” to Weber Mietrecht").arg(fieldName), 10000);
+            };
+            addKind(QStringLiteral("Stand"), QStringLiteral("date"));
+            QDateEdit *date = nullptr;
+            QTRY_VERIFY((date = named<QDateEdit>(&page, QStringLiteral("Stand"))));
+            QCOMPARE(date->text(), QStringLiteral("Not set"));
+            date->setDate(QDate(2026, 11, 2));
+            emit date->editingFinished();
+            QTRY_COMPARE_WITH_TIMEOUT(TermData::value(page.entry(page.entryId()).value("fields").toArray(), QStringLiteral("Stand")), QStringLiteral("2026-11-02"), 10000);
+            QTRY_VERIFY(!page.busy());
+            addKind(QStringLiteral("Seiten"), QStringLiteral("number"));
+            QLineEdit *pages = nullptr;
+            QTRY_VERIFY((pages = named<QLineEdit>(&page, QStringLiteral("Seiten"))));
+            pages->setText(QStringLiteral("zwölf"));
+            emit pages->editingFinished();
+            QVERIFY(label(&page, QStringLiteral("Type a number, such as 12 or 0.5.")));
+            QVERIFY(TermData::value(page.entry(page.entryId()).value("fields").toArray(), QStringLiteral("Seiten")).isEmpty());
+            pages->setText(QStringLiteral("12"));
+            emit pages->editingFinished();
+            QTRY_COMPARE_WITH_TIMEOUT(TermData::value(page.entry(page.entryId()).value("fields").toArray(), QStringLiteral("Seiten")), QStringLiteral("12"), 10000);
+            QTRY_VERIFY(!page.busy());
+        }
         QVERIFY(named<QLineEdit>(byName<QFrame>(&page, QStringLiteral("term:en-GB:0")), QStringLiteral("Register")));
         const ApiResult after = wait(api->get(QStringLiteral("/api/termbases/Weber%20Mietrecht/entries/") + id));
         QCOMPARE(TermData::value(TermData::terms(after.object(), QStringLiteral("en-GB"))[0].toObject().value("fields").toArray(), QStringLiteral("Register")), QStringLiteral("tenancy law"));
@@ -1172,22 +1301,43 @@ private slots:
         QPushButton *fresh = nullptr;
         QTRY_VERIFY((fresh = byName<QPushButton>(&page, QStringLiteral("newProjectTermbase"))));
         fresh->click();
-        QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newMasterName")));
-        QPushButton *create = byName<QPushButton>(&page, QStringLiteral("createProjectTermbase"));
-        QVERIFY(create && !create->isEnabled());
-        byName<QLineEdit>(&page, QStringLiteral("newMasterName"))->setText(QStringLiteral("Fall Weber"));
+        NewTermbaseDialog *pd = nullptr;
+        QTRY_VERIFY((pd = openDialog<NewTermbaseDialog>(&page)));
+        QCOMPARE(pd->kind(), NewTermbaseDialog::Project);
+        QCOMPARE(pd->stepper()->steps(), QStringList({QStringLiteral("Start"), QStringLiteral("Fields"), QStringLiteral("Review")}));
+        byName<QLineEdit>(pd, QStringLiteral("newTermbaseName"))->setText(QStringLiteral("Fall Weber"));
         // Without a master it would be a master itself.
-        QVERIFY(!create->isEnabled());
-        QVERIFY(byName<QCheckBox>(&page, QStringLiteral("basedOn:Steuer")));
-        byName<QCheckBox>(&page, QStringLiteral("basedOn:Recht"))->click();
-        QVERIFY(create->isEnabled());
-        shot(&page, QStringLiteral("terminology-new-project-termbase"));
-        byName<QPushButton>(&page, QStringLiteral("createProjectTermbase"))->click();
+        QVERIFY(!pd->nextButton()->isEnabled());
+        QCOMPARE(pd->blocking(), QStringLiteral("Choose the masters it is based on."));
+        QVERIFY(byName<QCheckBox>(pd, QStringLiteral("basedOn:Steuer")));
+        byName<QCheckBox>(pd, QStringLiteral("basedOn:Recht"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!pd->busy() && pd->nextButton()->isEnabled() && !pd->inheritedLanguages().isEmpty(), 10000);
+        QCOMPARE(pd->inheritedLanguages(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+        shot(pd, QStringLiteral("terminology-new-project-termbase"));
+        pd->nextButton()->click();
+        QCOMPARE(pd->step(), NewTermbaseDialog::Fields);
+        QVERIFY(labelWith(pd, QStringLiteral("Languages: German (Germany), English (United Kingdom).")));
+        byName<QPushButton>(pd, QStringLiteral("draftAdd"))->click();
+        QTRY_VERIFY(byName<QLineEdit>(pd, QStringLiteral("draftName:0")));
+        byName<QLineEdit>(pd, QStringLiteral("draftName:0"))->setText(QStringLiteral("Aktenzeichen"));
+        QVERIFY(pd->nextButton()->isEnabled());
+        pd->nextButton()->click();
+        QCOMPARE(pd->step(), NewTermbaseDialog::Review);
+        QVERIFY(label(pd, QStringLiteral("A project termbase based on Recht")));
+        QVERIFY(label(pd, QStringLiteral("Aktenzeichen (entry, text)")));
+        QCOMPARE(pd->nextButton()->text(), QStringLiteral("Create project termbase"));
+        pd->nextButton()->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.termbase(), QStringLiteral("Fall Weber"), 10000);
         QCOMPARE(page.message(), QStringLiteral("Created project termbase “Fall Weber”"));
         QTRY_VERIFY(byName<Web::Clickable>(&page, QStringLiteral("tb:%1:Fall Weber").arg(here)));
         QTRY_COMPARE_WITH_TIMEOUT(page.detail().value("kind").toString(), QStringLiteral("project"), 10000);
         QCOMPARE(page.languages(), QStringList({QStringLiteral("de-DE"), QStringLiteral("en-GB")}));
+        {
+            QStringList names;
+            for (const QJsonValue &f : page.detail().value("definition").toObject().value("fields").toArray())
+                names << f.toObject().value("name").toString();
+            QVERIFY2(names.contains(QStringLiteral("Aktenzeichen")), qPrintable(names.join(QLatin1Char(','))));
+        }
 
         // Its settings: also based on the second master, and back.
         QTRY_VERIFY_WITH_TIMEOUT(page.ready(), 10000);
