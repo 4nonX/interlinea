@@ -135,6 +135,9 @@ jobs:
           curl -fsS http://127.0.0.1:18080/ | grep -qi '<!doctype html'
           docker rm -f try
       - uses: docker/build-push-action@v6
+        env:
+          # No record of the build among the run's artifacts.
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -340,8 +343,16 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      # Only what the jobs above built: the image job also leaves a
+      # record of its build among the artifacts, which is no file of the
+      # release and does not download like one.
       - uses: actions/download-artifact@v4
         with:
+          name: server
+          path: files
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
           path: files
           merge-multiple: true
       - name: checksums and notes
