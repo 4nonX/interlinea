@@ -49,7 +49,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
       throw e;
     }
     openMemory(c, m, x.projects);
-    if (tm.count(c, m.name) > 0) await api.importTMX(m.name, tm.exportTMX(c, m.name));
+    if (tm.count(c, m.name) > 0) await api.importMemory(m.name, tm.exportTMX(c, m.name));
     onServer.add(fold(name));
     uploaded.push(`memory ${name}`);
   }

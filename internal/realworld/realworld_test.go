@@ -4,6 +4,7 @@
 package realworld
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 	"github.com/4nonX/interlinea/filter/mqpackage"
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/term"
+	"github.com/4nonX/interlinea/tm"
 )
 
 func read(t *testing.T, name string) []byte {
@@ -242,5 +244,55 @@ func TestMultiTermCaseVariants(t *testing.T) {
 	issues := x.Check(hits, "The Mistjet prints fast.", "en")
 	if len(issues) != 1 || issues[0].Kind != "forbidden" || issues[0].Found != "Mistjet" {
 		t.Fatalf("the forbidden spelling: %+v", issues)
+	}
+}
+
+// TestMemoryFiles reads the Trados Studio and Wordfast memories. The counts
+// of units and tags were taken from the files with SQLite itself and by
+// counting their lines.
+func TestMemoryFiles(t *testing.T) {
+	for _, c := range []struct {
+		name, format, memory, source, target string
+		units, tags                          int
+	}{
+		{"trados/sdltm-importer-fr-en.sdltm", tm.FormatSDLTM, "French to US English", "fr-FR", "en-US", 537, 1178},
+		{"trados/sdltm-importer-es-de.sdltm", tm.FormatSDLTM, "Alfredo_Texas_enus-de", "en-US", "de-DE", 102, 198},
+		{"trados/disfr-tea-party.sdltm", tm.FormatSDLTM, "tea-party", "en-GB", "ja-JP", 9, 0},
+		{"trados/rws-general-en-de.sdltm", tm.FormatSDLTM, "General English - German", "en-US", "de-DE", 3, 0},
+		{"wordfast/txt-tm-importer-pt-en.txt", tm.FormatWordfast, "", "pt-BR", "en-US", 407, 458},
+		{"wordfast/txt-tm-importer-en-es.txt", tm.FormatWordfast, "", "en", "es", 1859, 2028},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			data := read(t, c.name)
+			f, err := tm.ReadFile(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tags := 0
+			for _, u := range f.Units {
+				tags += len(u.Source.Tags()) + len(u.Target.Tags())
+				if err := tm.ValidateUnit(u.Unit); err != nil && len(u.Source) > 0 && len(u.Target) > 0 {
+					t.Fatalf("unit %q: %v", u.Source.String(), err)
+				}
+			}
+			if f.Format != c.format || f.Name != c.memory || f.SourceLang != c.source || f.TargetLang != c.target || len(f.Units) != c.units || f.Count != c.units || f.Skipped != 0 || tags != c.tags {
+				t.Fatalf("%s %q %s>%s: %d units, %d tags, %d skipped", f.Format, f.Name, f.SourceLang, f.TargetLang, len(f.Units), tags, f.Skipped)
+			}
+			// Into a memory of its languages, every unit with a source and
+			// a target is stored and found again.
+			m, err := tm.NewInMemory(tm.Info{Name: "m", SourceLang: c.source, TargetLang: c.target})
+			if err != nil {
+				t.Fatal(err)
+			}
+			st, err := tm.Import(context.Background(), m, data, tm.ImportOptions{})
+			if err != nil || st.Read != c.units || st.Stored+st.Skipped != c.units || st.Stored < c.units*9/10 {
+				t.Fatalf("import %+v %v", st, err)
+			}
+			u := f.Units[len(f.Units)/2]
+			ms, err := m.Lookup(context.Background(), u.Source, tm.LookupOptions{MinScore: 100})
+			if err != nil || len(ms) == 0 || ms[0].Score < 100 {
+				t.Fatalf("lookup of %q: %+v %v", u.Source.String(), ms, err)
+			}
+		})
 	}
 }

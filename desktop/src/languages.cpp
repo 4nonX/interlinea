@@ -96,6 +96,23 @@ bool samePrimary(const QString &a, const QString &b)
     return a.section(QLatin1Char('-'), 0, 0).compare(b.section(QLatin1Char('-'), 0, 0), Qt::CaseInsensitive) == 0;
 }
 
+QString known(const QString &code)
+{
+    const QString c = code.trimmed();
+    if (c.isEmpty())
+        return {};
+    const QStringList list = common();
+    for (const QString &t : list) {
+        if (t.compare(c, Qt::CaseInsensitive) == 0)
+            return t;
+    }
+    for (const QString &t : list) {
+        if (samePrimary(t, c))
+            return t;
+    }
+    return {};
+}
+
 } // namespace Languages
 
 LanguageCombo::LanguageCombo(QWidget *parent)

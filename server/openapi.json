@@ -600,6 +600,45 @@
         },
         "type": "object"
       },
+      "MemoryFileInspection": {
+        "description": "memoryFileInspection is what a memory file holds.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "format": {
+            "description": "Format is tmx, sdltm (Trados Studio) or wordfast.",
+            "type": "string"
+          },
+          "formatName": {
+            "type": "string"
+          },
+          "name": {
+            "description": "Name, languages and description as the file gives them: a Trados memory names itself, a TMX or Wordfast file only its languages.",
+            "type": "string"
+          },
+          "skipped": {
+            "type": "integer"
+          },
+          "sourceLang": {
+            "type": "string"
+          },
+          "targetLang": {
+            "type": "string"
+          },
+          "units": {
+            "description": "Units is how many units the file holds; Skipped, how many of them cannot be read.",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
       "MemoryView": {
         "properties": {
           "client": {
@@ -5667,8 +5706,8 @@
     },
     "/api/memories/{name}/import": {
       "post": {
-        "description": "?policy=overwrite replaces translations of sources that are there; ?variants=exact takes only the memory's exact languages, not their variants (en-US for en-GB).\n\nAccess: edit on the memory.",
-        "operationId": "importTMX",
+        "description": "?policy=overwrite replaces translations of sources that are there; ?variants=exact takes only the memory's exact languages, not their variants (en-US for en-GB). Units in the memory's languages the other way round are read the other way round.\n\nAccess: edit on the memory.",
+        "operationId": "importMemoryFile",
         "parameters": [
           {
             "description": "The name of the memory or termbase.",
@@ -5712,6 +5751,13 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "format": {
+                      "type": "string"
+                    },
+                    "note": {
+                      "description": "Note says why nothing was stored, when the file is for other languages.",
+                      "type": "string"
+                    },
                     "read": {
                       "type": "integer"
                     },
@@ -5744,7 +5790,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Reads a TMX file (the request body) into a memory.",
+        "summary": "Reads a memory file (the request body) into a memory: TMX, a Trados Studio memory (.sdltm) or a Wordfast memory (.txt), told by its content.",
         "tags": [
           "Memories"
         ]
@@ -6140,6 +6186,52 @@
         "summary": "Changes a translation unit.",
         "tags": [
           "Memories"
+        ]
+      }
+    },
+    "/api/memoryfiles/inspect": {
+      "post": {
+        "description": "Nothing is kept.\n\nAccess: signed in.",
+        "operationId": "inspectMemoryFile",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file's bytes.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFileInspection"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Reads a memory file (the request body) without storing it: its format, the name and languages it gives and how many units it holds, for making a memory from it.",
+        "tags": [
+          "Other"
         ]
       }
     },

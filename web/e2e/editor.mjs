@@ -1,6 +1,7 @@
 // Projects, editor, memories, merge and settings
 import { createServer } from "node:http";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { run } from "./harness.mjs";
 
 export default () =>
@@ -643,10 +644,35 @@ export default () =>
       )
         await sleep(100);
       check(
-        (await evaluate("document.body.innerText")).includes(
-          "Imported 1 unit from test.tmx; 1 without both languages skipped",
+        /Imported 1 unit from test\.tmx into [^;]+; 1 without both languages skipped/.test(
+          await evaluate("document.body.innerText"),
         ),
         "TMX imported through the core",
+      );
+      // A Trados Studio memory, English to German, read the other way
+      // round into the project's German to English memory.
+      {
+        const doc = await send("DOM.getDocument", {});
+        const q = await send("DOM.querySelector", {
+          nodeId: doc.root.nodeId,
+          selector: "input[accept*='.sdltm']",
+        });
+        await send("DOM.setFileInputFiles", {
+          nodeId: q.nodeId,
+          files: [
+            resolve(fixtures, "../../../internal/realworld/testdata/trados/rws-general-en-de.sdltm"),
+          ],
+        });
+      }
+      check(
+        await waitFor(
+          "document.body.innerText.includes('Imported 3 units from rws-general-en-de.sdltm into')",
+        ),
+        "Trados memory imported through the core: " +
+          (await evaluate("document.body.innerText"))
+            .split("\n")
+            .filter((l) => l.includes("mport"))
+            .join(" | "),
       );
       await evaluate("window.__saved = null");
       await evaluate(

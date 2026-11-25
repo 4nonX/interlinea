@@ -92,7 +92,9 @@ browser client's editor:
    shortcuts close to memoQ's and Trados's.
 5. **Memories.** The main and project memories on this computer and the
    memories on each team server: new ones (for a client, filled from a TMX
-   file), TMX in and out, what uses each, the units of any memory
+   file, a Trados Studio memory or a Wordfast memory, whose name and
+   languages they take), those files in and TMX out, what uses each, the
+   units of any memory
    searched, added, changed with their tags kept and deleted, who may use
    a server memory, delete.
 6. **Terminology.** Termbases (master and project, layered), entries with

@@ -225,7 +225,10 @@ func tmCount(args []js.Value) (any, error) {
 	return m.Count(context.Background())
 }
 
-// tmImportTMX(name, bytes) -> {read, stored, skipped}
+// tmImportTMX(name, bytes) -> {format, read, stored, skipped, note}
+// reads a memory file into the memory: TMX, a Trados Studio memory
+// (.sdltm) or a Wordfast memory (.txt), told by its content. note says
+// why nothing was stored when the file is for other languages.
 func tmImportTMX(args []js.Value) (any, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("tmImportTMX(name, bytes)")
@@ -238,11 +241,49 @@ func tmImportTMX(args []js.Value) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	st, err := tm.ImportTMX(context.Background(), m, bytes.NewReader(data), tm.ImportOptions{AllowPrimaryMatch: true})
+	format := tm.FormatOf(data)
+	opts := tm.ImportOptions{AllowPrimaryMatch: true}
+	var st tm.ImportStats
+	note := ""
+	if format == tm.FormatTMX {
+		st, err = tm.ImportTMX(context.Background(), m, bytes.NewReader(data), opts)
+	} else {
+		var f *tm.File
+		if f, err = tm.ReadFile(data); err == nil {
+			st, err = tm.ImportUnits(context.Background(), m, f, opts)
+			if st.Stored == 0 {
+				note = tm.LanguagesNote(f, m.Info())
+			}
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("the file could not be read as a %s: %w", tm.FormatName(format), err)
+	}
+	return jsonOut(map[string]any{"format": format, "read": st.Read, "stored": st.Stored, "skipped": st.Skipped, "note": note})
+}
+
+// tmInspect(bytes) -> {format, formatName, name, sourceLang, targetLang,
+// description, units, skipped, warnings}: what a memory file holds.
+func tmInspect(args []js.Value) (any, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("tmInspect(bytes)")
+	}
+	data, err := bytesArg(args[0])
 	if err != nil {
 		return nil, err
 	}
-	return jsonOut(map[string]int{"read": st.Read, "stored": st.Stored, "skipped": st.Skipped})
+	f, err := tm.ReadFile(data)
+	if err != nil {
+		return nil, fmt.Errorf("the file could not be read as a %s: %w", tm.FormatName(tm.FormatOf(data)), err)
+	}
+	warnings := f.Warnings
+	if warnings == nil {
+		warnings = []string{}
+	}
+	return jsonOut(map[string]any{
+		"format": f.Format, "formatName": tm.FormatName(f.Format), "name": f.Name, "sourceLang": f.SourceLang, "targetLang": f.TargetLang,
+		"description": f.Description, "units": f.Count, "skipped": f.Skipped, "warnings": warnings,
+	})
 }
 
 // tmExportTMX(name) -> Uint8Array
@@ -270,6 +311,7 @@ func tmFuncs() map[string]any {
 		"tmSetTarget":   guard(tmSetTarget),
 		"tmDelete":      guard(tmDelete),
 		"tmImportTMX":   guard(tmImportTMX),
+		"tmInspect":     guard(tmInspect),
 		"tmExportTMX":   guard(tmExportTMX),
 	}
 }

@@ -91,6 +91,7 @@ export interface CoreApi {
   ): Res<string>;
   tmCount(name: string): Res<number>;
   tmImportTMX(name: string, bytes: Uint8Array): Res<string>;
+  tmInspect(bytes: Uint8Array): Res<string>;
   tmExportTMX(name: string): Res<Uint8Array>;
   // Termbase functions: see termio.ts.
   xliffDetect(bytes: Uint8Array): Res<string>;
@@ -214,17 +215,58 @@ export const tm = {
   count(c: CoreApi, name: string): number {
     return unwrap(c.tmCount(name));
   },
-  importTMX(
-    c: CoreApi,
-    name: string,
-    bytes: Uint8Array,
-  ): { read: number; stored: number; skipped: number } {
-    return JSON.parse(unwrap(c.tmImportTMX(name, bytes)));
+  importTMX(c: CoreApi, name: string, bytes: Uint8Array): MemoryImport {
+    return JSON.parse(unwrap(c.tmImportTMX(name, bytes))) as MemoryImport;
+  },
+  /** Reads a memory file someone chose: TMX, Trados Studio or Wordfast. */
+  importFile(c: CoreApi, name: string, bytes: Uint8Array): MemoryImport {
+    return JSON.parse(unwrap(c.tmImportTMX(name, bytes))) as MemoryImport;
+  },
+  /** What a memory file holds, without storing it. */
+  inspectFile(c: CoreApi, bytes: Uint8Array): MemoryFileInfo {
+    return JSON.parse(unwrap(c.tmInspect(bytes))) as MemoryFileInfo;
   },
   exportTMX(c: CoreApi, name: string): Uint8Array {
     return unwrap(c.tmExportTMX(name));
   },
 };
+
+/** What an import of a memory file did. */
+export interface MemoryImport {
+  format: string;
+  read: number;
+  stored: number;
+  skipped: number;
+  /** Why nothing was stored, when the file is for other languages. */
+  note?: string;
+}
+
+/** What a memory file holds: its format and what it says of itself. */
+export interface MemoryFileInfo {
+  format: string;
+  formatName: string;
+  name?: string;
+  sourceLang?: string;
+  targetLang?: string;
+  description?: string;
+  units: number;
+  skipped: number;
+  warnings: string[];
+}
+
+/** The memory files people can choose, for a file input's accept. */
+export const MEMORY_FILES =
+  ".tmx,.sdltm,.txt,application/x-tmx+xml,text/xml,text/plain";
+
+/** The memory files people can choose, in words. */
+export const MEMORY_FILES_NOTE =
+  "TMX, a Trados Studio memory (.sdltm) or a Wordfast memory (.txt).";
+
+/** What an import says it did, for a notice. */
+export function importNotice(st: MemoryImport, into: string, from?: string): string {
+  if (st.stored === 0 && st.note) return `Nothing was imported${from ? ` from ${from}` : ""}. ${st.note}`;
+  return `Imported ${st.stored === 1 ? "1 unit" : `${st.stored} units`} ${from ? `from ${from} ` : ""}into ${into}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}`;
+}
 
 declare global {
   interface Window {

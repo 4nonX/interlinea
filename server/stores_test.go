@@ -107,6 +107,42 @@ func TestMemories(t *testing.T) {
 	if r := e.do("POST", "/api/memories/Copy/import", carl, []byte("not xml"), "Content-Type", "application/xml"); r.status != 422 {
 		t.Fatalf("bad TMX: %d", r.status)
 	}
+	// A Trados Studio memory, English to German: read the other way round
+	// into this German to English one, en-US standing for en-GB.
+	sdltm, err := os.ReadFile("../internal/realworld/testdata/trados/rws-general-en-de.sdltm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var insp memoryFileInspection
+	e.call("POST", "/api/memoryfiles/inspect", carl, sdltm, 200, &insp, "Content-Type", "application/octet-stream")
+	if insp.Format != "sdltm" || insp.Name != "General English - German" || insp.SourceLang != "en-US" || insp.TargetLang != "de-DE" || insp.Units != 3 {
+		t.Fatalf("inspection %+v", insp)
+	}
+	var tst struct {
+		Format                string
+		Read, Stored, Skipped int
+		Note                  string
+	}
+	e.call("POST", "/api/memories/Copy/import", carl, sdltm, 200, &tst, "Content-Type", "application/octet-stream")
+	if tst.Format != "sdltm" || tst.Read != 3 || tst.Stored != 3 {
+		t.Fatalf("sdltm import %+v", tst)
+	}
+	e.call("POST", "/api/memories/Copy/import?variants=exact", carl, sdltm, 200, &tst, "Content-Type", "application/octet-stream")
+	if tst.Stored != 0 || tst.Skipped != 3 || tst.Note != "" {
+		t.Fatalf("sdltm import, exact languages %+v", tst)
+	}
+	// A Wordfast memory of other languages: nothing, and why.
+	wf, err := os.ReadFile("../internal/realworld/testdata/wordfast/txt-tm-importer-pt-en.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.call("POST", "/api/memories/Copy/import", carl, wf, 200, &tst, "Content-Type", "text/plain")
+	if tst.Format != "wordfast" || tst.Stored != 0 || tst.Read != 407 || !strings.Contains(tst.Note, "pt-BR to en-US") {
+		t.Fatalf("wordfast import %+v", tst)
+	}
+	if r := e.do("POST", "/api/memoryfiles/inspect", carl, append([]byte("SQLite format 3\x00\x10\x00"), make([]byte, 200)...), "Content-Type", "application/octet-stream"); r.status != 422 {
+		t.Fatalf("broken sdltm: %d", r.status)
+	}
 	var changes struct {
 		Changes []tmdb.Change `json:"changes"`
 	}

@@ -26,18 +26,18 @@ func (l *listFlag) Set(v string) error {
 	return nil
 }
 
-// loadTMX reads a TMX file into an in-memory TM for the language pair.
+// loadTMX reads a memory file (TMX, Trados .sdltm or Wordfast .txt) into
+// an in-memory TM for the language pair.
 func loadTMX(ctx context.Context, path, src, tgt string, primary bool) (*tm.InMemory, tm.ImportStats, error) {
 	mem, err := tm.NewInMemory(tm.Info{Name: filepath.Base(path), SourceLang: src, TargetLang: tgt})
 	if err != nil {
 		return nil, tm.ImportStats{}, usageErr("invalid languages %q/%q", src, tgt)
 	}
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, tm.ImportStats{}, err
 	}
-	defer f.Close()
-	st, err := tm.ImportTMX(ctx, mem, f, tm.ImportOptions{AllowPrimaryMatch: primary})
+	st, err := tm.Import(ctx, mem, data, tm.ImportOptions{AllowPrimaryMatch: primary})
 	if err != nil {
 		return nil, st, fmt.Errorf("%s: %w", path, err)
 	}
@@ -75,12 +75,12 @@ func readProjectFile(path, src string) (*filter.Extraction, error) {
 func runAnalyze(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlags("analyze", "file...", stderr)
 	var tmxFiles, memNames listFlag
-	fs.Var(&tmxFiles, "tmx", "TMX file to analyse against (repeatable)")
+	fs.Var(&tmxFiles, "tmx", "memory file to analyse against: TMX, Trados .sdltm or Wordfast .txt (repeatable)")
 	fs.Var(&memNames, "tm", "stored memory to analyse against (repeatable)")
 	dbPath := dbFlag(fs)
 	src := fs.String("src", "", "source language (default: from bilingual files)")
 	tgt := fs.String("tgt", "", "target language (default: from bilingual files)")
-	primary := fs.Bool("primary", false, "accept TMX units whose languages match only by primary language")
+	primary := fs.Bool("primary", false, "accept memory units whose languages match only by primary language")
 	rule := fs.String("context", "previous", "context matches compare the segment before (previous, as Trados) or before and after (both, as memoQ)")
 	noCross := fs.Bool("no-cross-file", false, "count repetitions across files by their matches instead of as cross-file repetitions")
 	weights := fs.String("weights", "", "share of the full rate per band in percent, e.g. context=0,repetition=10,100=30,95=60")

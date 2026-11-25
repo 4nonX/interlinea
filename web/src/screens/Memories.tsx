@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Columns2, Download, Plus, Trash2, Upload } from "lucide-react";
 import {
+  knownLanguage,
   LANGUAGES,
   lang,
   type LangCode,
   type TranslationMemory,
 } from "../data";
-import { core, download, loadCore, tm, type CoreApi } from "../core";
+import { core, download, importNotice, loadCore, MEMORY_FILES, MEMORY_FILES_NOTE, tm, type CoreApi } from "../core";
 import { ServerMemories } from "./ServerMemories";
 import { useLocalStore } from "../store";
 import {
@@ -286,13 +287,15 @@ function MemoryTable({
                         <button
                           type="button"
                           className="btn btn-small"
+                          aria-label={`Import a memory file into ${m.name}`}
+                          title={MEMORY_FILES_NOTE}
                           onClick={() => {
                             setImportInto(m.name);
                             input.current?.click();
                           }}
                         >
                           <Upload size={14} aria-hidden="true" />
-                          Import TMX
+                          Import
                         </button>
                       )}
                       <button
@@ -339,21 +342,22 @@ function MemoryTable({
         <input
           ref={input}
           type="file"
-          accept=".tmx,application/x-tmx+xml,text/xml"
+          accept={MEMORY_FILES}
           hidden
+          aria-label="Memory file to import"
           onChange={async (e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
             if (!f || !importInto) return;
             try {
-              const st = tm.importTMX(
+              const st = tm.importFile(
                 c,
                 importInto,
                 new Uint8Array(await f.arrayBuffer()),
               );
-              const kept = await persistMemory(c, importInto);
+              const kept = st.stored === 0 || (await persistMemory(c, importInto));
               notify(
-                `Imported ${plural(st.stored, "unit", "units")} into ${importInto}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
+                `${importNotice(st, importInto, f.name)}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
               );
               onChange();
             } catch (err) {
@@ -508,14 +512,35 @@ function NewMemoryForm({
         </div>
         <div className="field">
           <label htmlFor="nm-tmx">
-            Fill it from a TMX file <span className="optional">optional</span>
+            Fill it from a memory file <span className="optional">optional</span>
           </label>
           <input
             id="nm-tmx"
             type="file"
-            accept=".tmx,application/x-tmx+xml,text/xml"
-            onChange={(e) => setTmx(e.target.files?.[0] ?? null)}
+            accept={MEMORY_FILES}
+            aria-describedby="nm-tmx-help"
+            onChange={async (e) => {
+              const f = e.target.files?.[0] ?? null;
+              setTmx(f);
+              setError("");
+              if (!f) return;
+              // The file's own name and languages, where it gives them, fill
+              // what is still as it was.
+              try {
+                const info = tm.inspectFile(c, new Uint8Array(await f.arrayBuffer()));
+                if (!name.trim() && info.name) setName(info.name);
+                const src = info.sourceLang && knownLanguage(info.sourceLang);
+                const tgt = info.targetLang && knownLanguage(info.targetLang);
+                if (src) setSource(src);
+                if (tgt) setTarget(tgt);
+              } catch (err) {
+                setError(`Could not read ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+              }
+            }}
           />
+          <p id="nm-tmx-help" className="help">
+            {MEMORY_FILES_NOTE}
+          </p>
         </div>
       </div>
       {(problem && name) || error ? (

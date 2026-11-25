@@ -1,6 +1,6 @@
 // The Memories page against the app's own core: new memories with and
-// without a TMX file, TMX in and out, what uses a memory, the project
-// memories, and deleting.
+// without a memory file, memory files in (TMX, Trados Studio, Wordfast)
+// and TMX out, what uses a memory, the project memories, and deleting.
 #include "alignmentdialog.h"
 #include "apiclient.h"
 #include "connectionmanager.h"
@@ -214,8 +214,29 @@ private slots:
 
         // TMX in, and out again.
         page.importFile(here, QStringLiteral("Leer"), file);
-        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Imported 2 units into Leer"), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Imported 2 units from Weber.tmx into Leer"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT((main = named<QTableWidget>(&page, QStringLiteral("Main memories on this computer"))) && cell(main, 0, 2) == QStringLiteral("2"), 10000);
+        // A Trados Studio memory, English to German, is read the other way
+        // round into this German to English one.
+        const QString sdltm = QFINDTESTDATA("../../internal/realworld/testdata/trados/rws-general-en-de.sdltm");
+        QVERIFY(!sdltm.isEmpty());
+        page.importFile(here, QStringLiteral("Leer"), sdltm);
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Imported 3 units from rws-general-en-de.sdltm into Leer"), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT((main = named<QTableWidget>(&page, QStringLiteral("Main memories on this computer"))) && cell(main, 0, 2) == QStringLiteral("5"), 10000);
+        // A Wordfast memory of other languages: nothing, and why.
+        const QString wordfast = QFINDTESTDATA("../../internal/realworld/testdata/wordfast/txt-tm-importer-pt-en.txt");
+        page.importFile(here, QStringLiteral("Leer"), wordfast);
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Nothing was imported from txt-tm-importer-pt-en.txt. The file is for pt-BR to en-US; the memory is for de-DE to en-GB."), 10000);
+        // A new memory from a Trados memory takes its name and languages.
+        QTRY_VERIFY(button(&page, QStringLiteral("New memory")));
+        button(&page, QStringLiteral("New memory"))->click();
+        QTRY_VERIFY(named<QLineEdit>(&page, QStringLiteral("Name")) && button(&page, QStringLiteral("Cancel")));
+        page.setNewMemoryFile(sdltm);
+        QTRY_COMPARE_WITH_TIMEOUT(named<QLineEdit>(&page, QStringLiteral("Name"))->text(), QStringLiteral("General English - German"), 10000);
+        QCOMPARE(named<LanguageCombo>(&page, QStringLiteral("Source language"))->language(), QStringLiteral("en-US"));
+        QCOMPARE(named<LanguageCombo>(&page, QStringLiteral("Target language"))->language(), QStringLiteral("de-DE"));
+        button(&page, QStringLiteral("Cancel"))->click();
+        QTRY_VERIFY(!button(&page, QStringLiteral("Create memory")));
         page.importFile(here, QStringLiteral("Leer"), notTmx);
         QTRY_VERIFY_WITH_TIMEOUT(page.message().startsWith(QStringLiteral("Could not import Notizen.txt: ")), 10000);
         const QString out = m_tmp.filePath(QStringLiteral("Leer.tmx"));
@@ -262,7 +283,7 @@ private slots:
         QVERIFY(!deleteUsed->isEnabled());
         // A project memory is the project's: it is neither filled nor deleted here.
         QVERIFY(named<QPushButton>(&page, QStringLiteral("Export Mietsache (en-GB) as TMX")));
-        QVERIFY(!named<QPushButton>(&page, QStringLiteral("Import TMX into Mietsache (en-GB)")));
+        QVERIFY(!named<QPushButton>(&page, QStringLiteral("Import a memory file into Mietsache (en-GB)")));
         QVERIFY(!named<QPushButton>(&page, QStringLiteral("Delete Mietsache (en-GB)")));
 
         if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
@@ -279,7 +300,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT((del = named<QPushButton>(&page, QStringLiteral("Delete Leer"))), 10000);
         QVERIFY(del->isEnabled());
         del->click();
-        QTRY_VERIFY(label(&page, QStringLiteral("Delete Leer and its 2 units?")));
+        QTRY_VERIFY(label(&page, QStringLiteral("Delete Leer and its 5 units?")));
         auto *confirm = qobject_cast<Web::ConfirmButton *>(del->parentWidget());
         QVERIFY(confirm && confirm->asking());
         confirm->yes()->click();

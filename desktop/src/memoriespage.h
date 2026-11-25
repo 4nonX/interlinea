@@ -24,7 +24,8 @@ class QVBoxLayout;
 
 // Translation memories, laid out as the web app's Memories page: those on
 // each team server first, then the main and project memories on this
-// computer, with TMX in and out, search, new memories and who may use them.
+// computer, with memory files in (TMX, Trados Studio, Wordfast) and TMX
+// out, search, new memories and who may use them.
 class AlignmentDialog;
 
 class MemoriesPage : public QWidget {
@@ -51,11 +52,13 @@ public:
     // dialog, or one made for the documents.
     AlignmentDialog *alignFromPage(const QString &connectionId);
     Web::Dialog *editUnitDialog(const QString &connectionId, const QJsonObject &unit);
-    // Reads a TMX file into a memory, and writes a memory to a TMX file:
-    // what the buttons do once a file is chosen.
+    // Reads a memory file (TMX, Trados Studio or Wordfast) into a memory,
+    // and writes a memory to a TMX file: what the buttons do once a file
+    // is chosen.
     void importFile(const QString &connectionId, const QString &memory, const QString &path);
     void exportFile(const QString &connectionId, const QString &memory, const QString &path);
-    // The TMX file a new memory on this computer is filled from.
+    // The memory file a new memory is filled from; its name and languages,
+    // where it gives them, fill the form's that are still empty.
     void setNewMemoryFile(const QString &path);
     void notify(const QString &text);
     QString message() const;
@@ -118,6 +121,8 @@ private:
     QStringList usedBy(const Part *p, const QString &memory) const;
     static QString units(qint64 n);
     static QString date(const QString &iso);
+    // What an import says it did, as the browser client words it.
+    static QString importNotice(const QJsonObject &st, const QString &memory, const QString &file);
     static void clear(QVBoxLayout *layout);
 
     ConnectionManager *m_manager;
@@ -129,4 +134,7 @@ private:
     Web::Toast *m_toast;
     QString m_newFile;
     QPointer<QLabel> m_newFileLabel;
+    QString m_newFormConnection;
+    QPointer<QLineEdit> m_newName;
+    QPointer<LanguageCombo> m_newSource, m_newTarget;
 };

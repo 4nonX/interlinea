@@ -1,7 +1,8 @@
-# Files written by Trados Studio, MultiTerm and memoQ
+# Files written by Trados Studio, MultiTerm, memoQ and Wordfast
 
 The tests in `internal/realworld` read these files, write a translation into
-every segment that can take one, and read the result again. The files were
+every segment that can take one, and read the result again; memories are
+read and imported. The files were
 written by the tools themselves, not by Interlinea, and come from public
 repositories whose licences allow them to be copied. Each file is unchanged;
 only its name is new.
@@ -19,6 +20,12 @@ only its name is new.
 | `trados/rws-perfect-match.docx.sdlxliff` | Trados Studio | [RWS/Sdl-studio-powershell-toolkit](https://github.com/RWS/Sdl-studio-powershell-toolkit) `Samples/ForPerfectMatch/de-DE/Translatable/sample1_word.docx.sdlxliff` | Apache 2.0, `licenses/rws-sdl-studio-powershell-toolkit.txt` |
 | `trados/rws-sample.sdltb` | MultiTerm | RWS/trados-studio-api-samples `ProjectAutomation/Sdl.SDK.ProjectAutomation.Samples.Examples/SampleFiles/Sample.sdltb` | Apache 2.0 |
 | `trados/rws-printer.sdltb` | MultiTerm | RWS/trados-studio-api-samples `.../SampleFiles/Termbase/Software.sdltb` | Apache 2.0 |
+| `trados/sdltm-importer-fr-en.sdltm` | Trados Studio, a memory with tags | [diasks2/sdltm_importer](https://github.com/diasks2/sdltm_importer) `spec/sample_test_files/sample.sdltm` | MIT, `licenses/sdltm-importer.txt` |
+| `trados/sdltm-importer-es-de.sdltm` | Trados Studio, a memory | sdltm_importer `spec/sample_test_files/sample_2.sdltm` | MIT |
+| `trados/disfr-tea-party.sdltm` | Trados Studio, a memory | disfr `UnitTestDisfrDoc/Samples/tea-party.sdltm` | BSD |
+| `trados/rws-general-en-de.sdltm` | Trados Studio, a memory with a list field | RWS/trados-studio-api-samples `.../SampleFiles/General En-De.sdltm` | Apache 2.0 |
+| `wordfast/txt-tm-importer-pt-en.txt` | Wordfast, a memory in UTF-16 | [diasks2/txt_tm_importer](https://github.com/diasks2/txt_tm_importer) `spec/sample_files/wordfast_1.txt` | MIT, `licenses/txt-tm-importer.txt` |
+| `wordfast/txt-tm-importer-en-es.txt` | Wordfast, a memory of a later version | txt_tm_importer `spec/sample_files/wordfast_2.txt` | MIT |
 | `memoq/disfr-change-tracking.mqxliff` | memoQ, with tracked changes | disfr `ChangeTracking_memoQ_1.mqxliff` | BSD |
 | `memoq/disfr-git.html.mqxlz` | memoQ, archive of an HTML document | disfr `git.html_jpn.mqxlz` | BSD |
 | `memoq/xliffkit-ph.mqxliff` | memoQ | [ikuehirata/xliffkit](https://github.com/ikuehirata/xliffkit) `examples/01_fix_ph_to_bpt_ept/input.mqxliff` | MIT, `licenses/xliffkit.txt` |
@@ -27,7 +34,8 @@ only its name is new.
 
 The repositories were read at these commits: disfr `7f47558`, xliffkit
 `a1db2b7`, trados-studio-api-samples `4cf88a2`, Sdl-Community `70229c4`,
-Sdl-studio-powershell-toolkit `4f45d9a`.
+Sdl-studio-powershell-toolkit `4f45d9a`, sdltm_importer `8b2df47`,
+txt_tm_importer `f6b8fd9`.
 
 These files are older than Trados Studio 2024 and memoQ 11, and none is a
 project package (.sdlppx, .sdlrpx) or a memoQ handoff package. Files from

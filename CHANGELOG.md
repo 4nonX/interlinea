@@ -7,6 +7,20 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Memories
+
+- Trados Studio memories (.sdltm) and Wordfast memories (.txt) are
+  imported wherever TMX is: the Memories page, a project's memories and the
+  editor's, in the desktop app, the browser client and on the team server,
+  and on the command line (`tm import`, `lookup`, `concordance`, `analyze`).
+  Tags, who made and changed a unit and when, how often it was used, and a
+  memory's own fields come with the units.
+- A new memory made from one of these files takes the name and languages
+  the file gives.
+- A memory file in the memory's languages the other way round is read the
+  other way round; one of other languages stores nothing, and the import
+  says why.
+
 ### Fixed
 
 - A termbase keeps spellings that differ only in case as terms of their

@@ -22,6 +22,10 @@ QString normalize(const QString &typed);
 QString when(const QDateTime &t);
 // Whether two tags are the same language ("de" and "de-AT" are).
 bool samePrimary(const QString &a, const QString &b);
+// The language of the list a file's language code stands for, as in the
+// browser client: the same tag (case aside), else the first with its
+// primary language ("de-01" and "de" become de-DE); empty when none.
+QString known(const QString &code);
 }
 
 // A choice of language: the common ones, and any other typed as a tag.

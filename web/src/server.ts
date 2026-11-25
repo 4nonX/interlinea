@@ -5,6 +5,7 @@
 import type { CoreEntry } from "./termio";
 import type { SegmentIssue, CoreRun } from "./editor/model";
 import type { CoreReport } from "./project";
+import type { MemoryImport } from "./core";
 
 /** An account, as the server shows it. */
 export interface ServerUser {
@@ -815,12 +816,13 @@ export function client(conn: Connection) {
     closeMergeRequest: (id: number) => send<MergeRequest>("POST", `/api/merge-requests/${id}/close`),
     createMemory: (m: { name: string; sourceLang: string; targetLang: string }) =>
       send<CatalogMemory>("POST", "/api/memories", m),
-    importTMX: async (name: string, tmx: Uint8Array) =>
-      json<{ read: number; stored: number }>(
+    /** Reads a memory file into a memory: TMX, Trados Studio or Wordfast. */
+    importMemory: async (name: string, file: Uint8Array) =>
+      json<MemoryImport>(
         await call(`/api/memories/${encodeURIComponent(name)}/import`, {
           method: "POST",
-          body: tmx as unknown as BodyInit,
-          headers: { "Content-Type": "application/xml" },
+          body: file as unknown as BodyInit,
+          headers: { "Content-Type": "application/octet-stream" },
         }),
       ),
     createTermbase: (definition: { name: string; languages?: string[]; fields?: unknown[] }, upstreams?: string[]) =>

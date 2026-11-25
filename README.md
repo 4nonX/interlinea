@@ -100,12 +100,13 @@ The Go packages:
 | `segment` | SRX 2.0 parser and segmenter, built-in rules for German, English, CJK and a generic fallback |
 | `fuzzy` | Match percentages: a weighted edit distance over words, numbers, punctuation and tags, aware of case, marks, word forms, the digits and punctuation of every script, and scripts written without spaces |
 | `tmx` | Streaming TMX 1.4b reader and writer (UTF-8, UTF-16, ISO-8859-1, Windows-1252), inline markup mapped to tags |
-| `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export, penalties for less trusted memories |
+| `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export, import of Trados Studio memories (.sdltm) and Wordfast memories (.txt), penalties for less trusted memories |
 | `tm/tmdb` | Persistent backend: any number of memories in a SQLite file (desktop) or PostgreSQL (server); term index for fuzzy candidates, trigram index for concordance, unit versions that refuse stale edits, change log for syncing |
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
 | `align` | Alignment of a document with its translation into pairs for a memory: sentence lengths after Gale and Church, numbers as anchors in any notation, paragraphs kept where both documents have the same ones; pairs of one to one, two to one, one to two, two to two, and segments left out |
 | `term/termdb` | Persistent termbases: any number in one SQLite file, every version of every entry, edits on stale copies refused, term index for lookups, FTS5 trigram search, imports in one transaction |
 | `internal/sqlitedb` | Opens the SQLite stores with shared settings (WAL, busy timeout) and migrates their schema |
+| `internal/sqlitefile` | Reads the tables of an SQLite file from its bytes without an SQLite library (for Trados memories, in the browser core too) |
 | `filter` | What file filters hand over: units with inline tags and the document structure they sit in |
 | `filter/docx` | Word filter: extracts body, footnotes, endnotes, comments, headers and footers, text boxes, content controls, chart text and SmartArt; rebuilds the file from translations, keeping every byte it did not translate |
 | `filter/pptx` | PowerPoint filter: slides in the order of the show with their tables, charts and SmartArt, then each slide's speaker notes (shares the reading of DrawingML with the Word filter) |
@@ -303,7 +304,7 @@ and are refused with 409 `conflict` when someone saved in between. Errors are
 | `/api/me`, `/api/people`, `/api/users`, `/api/grants` | the signed-in person, their sign-ins and identities; whom work can go to; accounts (administrators); roles |
 | `/api/catalog`, `/api/templates` | memories and termbases to set projects up with; project templates |
 | `/api/projects/{id}` and below | settings, files (bytes in, originals out), segments, pre-translation, lookup and concordance in the project's memories, its terminology, assignments, presence, change log |
-| `/api/memories/{name}` and below | units, lookup, concordance, TMX import and export, change log |
+| `/api/memories/{name}` and below, `/api/memoryfiles/inspect` | units, lookup, concordance, import (TMX, Trados Studio, Wordfast) and TMX export, change log; what a memory file holds |
 | `/api/termbases/{name}` and below | entries, history, revert, merge, duplicates, lookup, the layered view of a project termbase, import and export (TBX, MultiTerm, CSV, TSV, Excel), review rules, merge requests |
 | `/api/merge-requests/{id}` and below | items, samples, progress, decisions, reviewers, closing, reverting |
 | `/api/events` | server-sent events for every change the person may see; reconnecting with `Last-Event-ID` sends what was missed |
@@ -325,6 +326,8 @@ Stored translation memories:
 interlinea tm create -name Mietrecht -src de-DE -tgt en-GB
 interlinea tm import -name Mietrecht memory.tmx
 interlinea tm import -name Mietrecht -overwrite -primary other.tmx
+interlinea tm import -name Mietrecht client.sdltm
+interlinea tm import -name Mietrecht wordfast-tm.txt
 interlinea tm list
 interlinea tm lookup -name Mietrecht "Der Mieter haftet für Schäden."
 interlinea tm concordance -name Mietrecht -target "leased property"
@@ -454,9 +457,10 @@ or the run array `extract -json` prints (with tags as `{"tag":{"kind":"open","id
 Units without a translation keep their source text.
 
 `segment` treats blank lines as paragraph boundaries and prints one segment
-per line. `lookup` and `concordance` load the TMX file into memory; `-src`
-overrides the header's source language and `-primary` also accepts variants
-that match by primary language only (`de-AT` for `de-DE`).
+per line. `lookup` and `concordance` load the memory file (TMX, a Trados
+Studio memory or a Wordfast memory) into memory; `-src` overrides the file's
+source language and `-primary` also accepts variants that match by primary
+language only (`de-AT` for `de-DE`).
 
 ## Notes on behaviour
 
@@ -497,6 +501,22 @@ that match by primary language only (`de-AT` for `de-DE`).
   matches it to its project) and the package's SDLXLIFF files, the
   translated ones replaced; memories, termbases and settings are not sent
   back.
+- Trados Studio memories (.sdltm) are read wherever TMX is, in every
+  client: the units with their tags (paired as Trados pairs them, the same
+  tag of source and target given the same ID), who made and changed each and
+  when, how often it was used, and the memory's own fields (text, numbers,
+  dates and lists) as unit attributes. Trados's own field StructureContext
+  is left out. A new memory made from the file takes its name and languages.
+  Changes still in the memory's write-ahead log (a `.sdltm-wal` file beside
+  it, while Trados has it open) are not seen: close the memory in Trados
+  first.
+- Wordfast memories (.txt, UTF-16 or Latin-1) are read with their dates,
+  users, usage counts and the five fields of one's own; Wordfast's escapes
+  (`&'92;` for a closing quote) become the characters, and its formatting
+  codes (`&tA;`) placeholders.
+- A memory file whose languages are the memory's the other way round is
+  read the other way round; one of other languages stores nothing, and the
+  import says so.
 - memoQ handoff packages (.mqout): the documents are read as memoQ XLIFF,
   out of their archives (.mqxlz) where they are in one; the package's
   memories (TMX) and term bases (CSV) stay in it and can be imported from
@@ -701,7 +721,8 @@ each checked by the core's project validation:
 - name, client, due date and description;
 - memories per target language, in priority order, each used for lookup,
   concordance and updating as chosen, with a penalty in points; new memories,
-  empty or from TMX; a project memory per language that collects confirmed
+  empty or from a memory file (TMX, Trados Studio, Wordfast); a project
+  memory per language that collects confirmed
   translations;
 - master termbases suggested for the client; a master lacking a project
   language gains it only when you choose so; where new terms go; where the

@@ -36,7 +36,7 @@ var tmCommands = []command{
 	{"create", "create a translation memory", runTMCreate},
 	{"list", "list translation memories", runTMList},
 	{"delete", "delete a translation memory and all its units", runTMDelete},
-	{"import", "import a TMX file into a memory", runTMImport},
+	{"import", "import a memory file (TMX, Trados .sdltm, Wordfast .txt) into a memory", runTMImport},
 	{"export", "export a memory as TMX", runTMExport},
 	{"lookup", "fuzzy-match a segment against a memory", runTMLookup},
 	{"concordance", "search a memory for a word or phrase", runTMConcordance},
@@ -198,7 +198,7 @@ func runTMDelete(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 }
 
 func runTMImport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
-	fs := newFlags("tm import", "<file.tmx>", stderr)
+	fs := newFlags("tm import", "<file.tmx|file.sdltm|wordfast.txt>", stderr)
 	dbPath := dbFlag(fs)
 	name := fs.String("name", "", "memory name (required)")
 	overwrite := fs.Bool("overwrite", false, "replace existing translations of the same source instead of keeping both")
@@ -207,7 +207,7 @@ func runTMImport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return usageErr("expected one TMX file")
+		return usageErr("expected one memory file")
 	}
 	ctx := context.Background()
 	db, m, err := openMemory(ctx, *dbPath, *name)
@@ -215,19 +215,18 @@ func runTMImport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 	defer db.Close()
-	f, err := os.Open(fs.Arg(0))
+	data, err := os.ReadFile(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	policy := tm.KeepBoth
 	if *overwrite {
 		policy = tm.Overwrite
 	}
 	start := time.Now()
-	st, err := tm.ImportTMX(ctx, m, f, tm.ImportOptions{Policy: policy, AllowPrimaryMatch: *primary})
+	st, err := tm.Import(ctx, m, data, tm.ImportOptions{Policy: policy, AllowPrimaryMatch: *primary})
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", fs.Arg(0), err)
 	}
 	fmt.Fprintf(stdout, "Read %d units: %d stored, %d skipped (no usable %s/%s pair) in %s\n",
 		st.Read, st.Stored, st.Skipped, m.Info().SourceLang, m.Info().TargetLang, time.Since(start).Round(time.Millisecond))

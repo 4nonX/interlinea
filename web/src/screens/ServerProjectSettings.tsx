@@ -139,7 +139,7 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
       // New memories go on the server first, with what was imported into them.
       for (const n of created) {
         await api.createMemory({ name: n.memory.name, sourceLang: n.memory.sourceLang, targetLang: n.memory.targetLang });
-        if (n.units > 0 && c) await api.importTMX(n.memory.name, tm.exportTMX(c, n.memory.name));
+        if (n.units > 0 && c) await api.importMemory(n.memory.name, tm.exportTMX(c, n.memory.name));
       }
       const t = draft.terminology;
       let termbase = t.mode === "direct" ? "" : (s.terminology.termbase ?? "");

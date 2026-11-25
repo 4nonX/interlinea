@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strconv"
@@ -27,7 +29,8 @@ func (s *Server) memoryRoutes() {
 	s.handle("GET /api/memories/{name}/units/{uid}", s.signedIn(s.getUnit))
 	s.handle("PUT /api/memories/{name}/units/{uid}", s.signedIn(s.updateUnit))
 	s.handle("DELETE /api/memories/{name}/units/{uid}", s.signedIn(s.deleteUnit))
-	s.handle("POST /api/memories/{name}/import", s.signedIn(s.importTMX))
+	s.handle("POST /api/memories/{name}/import", s.signedIn(s.importMemoryFile))
+	s.handle("POST /api/memoryfiles/inspect", s.signedIn(s.inspectMemoryFile))
 	s.handle("GET /api/memories/{name}/export", s.signedIn(s.exportTMX))
 	s.handle("GET /api/memories/{name}/changes", s.signedIn(s.memoryChanges))
 }
@@ -409,13 +412,15 @@ func (s *Server) deleteUnit(w http.ResponseWriter, r *http.Request, me session) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// importTMX reads a TMX file (the request body) into a memory.
-// ?policy=overwrite replaces translations of sources that are there;
-// ?variants=exact takes only the memory's exact languages, not their variants
-// (en-US for en-GB).
+// importMemoryFile reads a memory file (the request body) into a memory:
+// TMX, a Trados Studio memory (.sdltm) or a Wordfast memory (.txt), told
+// by its content. ?policy=overwrite replaces translations of sources that
+// are there; ?variants=exact takes only the memory's exact languages, not
+// their variants (en-US for en-GB). Units in the memory's languages the
+// other way round are read the other way round.
 //
 // Access: edit on the memory.
-func (s *Server) importTMX(w http.ResponseWriter, r *http.Request, me session) {
+func (s *Server) importMemoryFile(w http.ResponseWriter, r *http.Request, me session) {
 	m, _, ok := s.openMemoryFor(w, r, me, authdb.RoleEdit)
 	if !ok {
 		return
@@ -424,16 +429,82 @@ func (s *Server) importTMX(w http.ResponseWriter, r *http.Request, me session) {
 	if r.URL.Query().Get("policy") == "overwrite" {
 		opts.Policy = tm.Overwrite
 	}
-	st, err := tm.ImportTMX(r.Context(), m, http.MaxBytesReader(w, r.Body, maxFileBody), opts)
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxFileBody))
 	if err != nil {
-		invalid(w, "file", "The file could not be read as TMX: "+err.Error())
+		writeError(w, http.StatusRequestEntityTooLarge, "tooLarge", fmt.Sprintf("The file is larger than %d MB.", maxFileBody>>20))
+		return
+	}
+	format := tm.FormatOf(data)
+	var st tm.ImportStats
+	var note string
+	if format == tm.FormatTMX {
+		st, err = tm.ImportTMX(r.Context(), m, bytes.NewReader(data), opts)
+	} else {
+		var f *tm.File
+		if f, err = tm.ReadFile(data); err == nil {
+			st, err = tm.ImportUnits(r.Context(), m, f, opts)
+			if st.Stored == 0 {
+				note = tm.LanguagesNote(f, m.Info())
+			}
+		}
+	}
+	if err != nil {
+		invalid(w, "file", "The file could not be read as a "+tm.FormatName(format)+": "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, struct {
-		Read    int `json:"read"`
-		Stored  int `json:"stored"`
-		Skipped int `json:"skipped"`
-	}{st.Read, st.Stored, st.Skipped})
+		Format  string `json:"format"`
+		Read    int    `json:"read"`
+		Stored  int    `json:"stored"`
+		Skipped int    `json:"skipped"`
+		// Note says why nothing was stored, when the file is for other
+		// languages.
+		Note string `json:"note,omitempty"`
+	}{format, st.Read, st.Stored, st.Skipped, note})
+}
+
+// inspectMemoryFile reads a memory file (the request body) without
+// storing it: its format, the name and languages it gives and how many
+// units it holds, for making a memory from it. Nothing is kept.
+//
+// Access: signed in.
+func (s *Server) inspectMemoryFile(w http.ResponseWriter, r *http.Request, me session) {
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxFileBody))
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "tooLarge", fmt.Sprintf("The file is larger than %d MB.", maxFileBody>>20))
+		return
+	}
+	f, err := tm.ReadFile(data)
+	if err != nil {
+		invalid(w, "file", "The file could not be read as a "+tm.FormatName(tm.FormatOf(data))+": "+err.Error())
+		return
+	}
+	out := memoryFileInspection{
+		Format: f.Format, FormatName: tm.FormatName(f.Format), Name: f.Name, SourceLang: f.SourceLang, TargetLang: f.TargetLang,
+		Description: f.Description, Units: f.Count, Skipped: f.Skipped, Warnings: f.Warnings,
+	}
+	if out.Warnings == nil {
+		out.Warnings = []string{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// memoryFileInspection is what a memory file holds.
+type memoryFileInspection struct {
+	// Format is tmx, sdltm (Trados Studio) or wordfast.
+	Format     string `json:"format"`
+	FormatName string `json:"formatName"`
+	// Name, languages and description as the file gives them: a Trados
+	// memory names itself, a TMX or Wordfast file only its languages.
+	Name        string `json:"name,omitempty"`
+	SourceLang  string `json:"sourceLang,omitempty"`
+	TargetLang  string `json:"targetLang,omitempty"`
+	Description string `json:"description,omitempty"`
+	// Units is how many units the file holds; Skipped, how many of them
+	// cannot be read.
+	Units    int      `json:"units"`
+	Skipped  int      `json:"skipped"`
+	Warnings []string `json:"warnings"`
 }
 
 // exportTMX sends the whole memory as TMX.

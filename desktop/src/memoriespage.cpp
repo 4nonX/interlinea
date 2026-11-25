@@ -40,6 +40,18 @@ const QString tmxFilter()
     return MemoriesPage::tr("TMX files (*.tmx);;All files (*)");
 }
 
+// The memory files people can choose: TMX, Trados Studio and Wordfast.
+const QString memoryFilter()
+{
+    return MemoriesPage::tr("Memory files (*.tmx *.sdltm *.txt);;TMX (*.tmx);;Trados Studio memories (*.sdltm);;Wordfast memories (*.txt);;All files (*)");
+}
+
+// The same in words, as the browser client says it.
+const QString memoryFilesNote()
+{
+    return MemoriesPage::tr("TMX, a Trados Studio memory (.sdltm) or a Wordfast memory (.txt).");
+}
+
 bool sameName(const QString &a, const QString &b)
 {
     return a.compare(b, Qt::CaseInsensitive) == 0;
@@ -434,10 +446,11 @@ QWidget *MemoriesPage::localTable(Part *p, const QList<QJsonObject> &memories, b
         connect(toggle, &QPushButton::clicked, this, [this, id, name, isOpen] { open(id, isOpen ? QString() : name); });
         actions << toggle;
         if (main) {
-            auto *import = Web::button(tr("Import TMX"), Web::Small, table, QStringLiteral("upload"));
-            import->setAccessibleName(tr("Import TMX into %1").arg(name));
+            auto *import = Web::button(tr("Import"), Web::Small, table, QStringLiteral("upload"));
+            import->setAccessibleName(tr("Import a memory file into %1").arg(name));
+            import->setToolTip(memoryFilesNote());
             connect(import, &QPushButton::clicked, this, [this, id, name] {
-                const QString path = QFileDialog::getOpenFileName(this, tr("Import TMX into %1").arg(name), QString(), tmxFilter());
+                const QString path = QFileDialog::getOpenFileName(this, tr("Import a memory file into %1").arg(name), QString(), memoryFilter());
                 if (!path.isEmpty())
                     importFile(id, name, path);
             });
@@ -482,6 +495,44 @@ void MemoriesPage::setNewMemoryFile(const QString &path)
     m_newFile = path;
     if (m_newFileLabel)
         m_newFileLabel->setText(path.isEmpty() ? tr("No file chosen") : QFileInfo(path).fileName());
+    Part *p = part(m_newFormConnection);
+    if (path.isEmpty() || !p)
+        return;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly))
+        return;
+    // The file's own name and languages, where it gives them, fill what is
+    // still as it was, as in the browser client.
+    QPointer<QLineEdit> name(m_newName);
+    QPointer<LanguageCombo> source(m_newSource), target(m_newTarget);
+    onResult(p->conn->api()->upload("POST", QStringLiteral("/api/memoryfiles/inspect"), f.readAll(), QStringLiteral("application/octet-stream")), this,
+             [this, path, name, source, target](const ApiResult &r) {
+                 if (path != m_newFile || !r.ok())
+                     return;
+                 const QJsonObject o = r.object();
+                 const QString n = o.value(QLatin1String("name")).toString();
+                 if (name && name->text().trimmed().isEmpty() && !n.isEmpty())
+                     name->setText(n);
+                 const QString src = Languages::known(o.value(QLatin1String("sourceLang")).toString());
+                 const QString tgt = Languages::known(o.value(QLatin1String("targetLang")).toString());
+                 if (source && !src.isEmpty())
+                     source->setLanguage(src);
+                 if (target && !tgt.isEmpty())
+                     target->setLanguage(tgt);
+             });
+}
+
+QString MemoriesPage::importNotice(const QJsonObject &st, const QString &memory, const QString &file)
+{
+    const qint64 stored = st.value(QLatin1String("stored")).toInteger();
+    const qint64 skipped = st.value(QLatin1String("skipped")).toInteger();
+    const QString note = st.value(QLatin1String("note")).toString();
+    if (stored == 0 && !note.isEmpty())
+        return tr("Nothing was imported from %1. %2").arg(file, note);
+    QString text = tr("Imported %1 from %2 into %3").arg(units(stored), file, memory);
+    if (skipped > 0)
+        text += tr("; %1 without both languages skipped").arg(QLocale().toString(skipped));
+    return text;
 }
 
 void MemoriesPage::localForm(Part *p, bool open)
@@ -517,10 +568,14 @@ void MemoriesPage::localForm(Part *p, bool open)
     auto *target = new LanguageCombo(panel);
     target->setLanguage(QStringLiteral("en-GB"));
     auto *choose = Web::button(tr("Choose file"), Web::Small, panel);
-    choose->setAccessibleName(tr("Fill it from a TMX file"));
+    choose->setAccessibleName(tr("Fill it from a memory file"));
     auto *chosen = Web::text(tr("No file chosen"), "secondary", panel);
     chosen->setWordWrap(false);
     m_newFileLabel = chosen;
+    m_newFormConnection = id;
+    m_newName = name;
+    m_newSource = source;
+    m_newTarget = target;
     auto *grid = new QGridLayout;
     grid->setContentsMargins(0, 0, 0, 0);
     grid->setHorizontalSpacing(16);
@@ -531,7 +586,7 @@ void MemoriesPage::localForm(Part *p, bool open)
     grid->addWidget(Web::field(tr("Client"), client, panel, true), 0, 1);
     grid->addWidget(Web::field(tr("Source language"), source, panel), 1, 0);
     grid->addWidget(Web::field(tr("Target language"), target, panel), 1, 1);
-    grid->addWidget(Web::field(tr("Fill it from a TMX file"), Web::row({choose, chosen}, panel), panel, true), 2, 0);
+    grid->addWidget(Web::field(tr("Fill it from a memory file"), Web::row({choose, chosen}, panel), panel, true, memoryFilesNote()), 2, 0);
     body->addLayout(grid);
     auto *error = Web::text(QString(), "error", panel);
     error->hide();
@@ -570,7 +625,7 @@ void MemoriesPage::localForm(Part *p, bool open)
     check();
 
     connect(choose, &QPushButton::clicked, this, [this] {
-        const QString path = QFileDialog::getOpenFileName(this, tr("Fill it from a TMX file"), QString(), tmxFilter());
+        const QString path = QFileDialog::getOpenFileName(this, tr("Fill it from a memory file"), QString(), memoryFilter());
         if (!path.isEmpty())
             setNewMemoryFile(path);
     });
@@ -630,13 +685,13 @@ void MemoriesPage::localForm(Part *p, bool open)
                          return;
                      }
                      const QString at = QStringLiteral("/api/memories/%1").arg(ApiClient::seg(made));
-                     onResult(api->upload("POST", at + QStringLiteral("/import"), tmx, QStringLiteral("application/x-tmx+xml")), this,
+                     onResult(api->upload("POST", at + QStringLiteral("/import"), tmx, QStringLiteral("application/octet-stream")), this,
                               [this, api, at, path, fail, done](const ApiResult &i) {
                                   if (i.ok()) {
                                       done(i.object().value(QLatin1String("stored")).toInteger());
                                       return;
                                   }
-                                  // No memory is left behind for a file that isn't TMX.
+                                  // No memory is left behind for a file that can't be read.
                                   const QString why = i.error.message;
                                   onResult(api->del(at), this, [this, path, why, fail](const ApiResult &) {
                                       fail(tr("Could not read %1: %2").arg(QFileInfo(path).fileName(), why));
@@ -664,23 +719,13 @@ void MemoriesPage::importFile(const QString &connectionId, const QString &memory
     }
     const bool local = p->conn->isLocal();
     onResult(p->conn->api()->upload("POST", QStringLiteral("/api/memories/%1/import").arg(ApiClient::seg(memoryName)), f.readAll(),
-                                    QStringLiteral("application/x-tmx+xml")),
+                                    QStringLiteral("application/octet-stream")),
              this, [this, local, memoryName, file](const ApiResult &r) {
                  if (!r.ok()) {
                      notify(local ? tr("Could not import %1: %2").arg(file, r.error.message) : r.error.message);
                      return;
                  }
-                 const QJsonObject st = r.object();
-                 const qint64 stored = st.value(QLatin1String("stored")).toInteger();
-                 const qint64 skipped = st.value(QLatin1String("skipped")).toInteger();
-                 if (local) {
-                     QString text = tr("Imported %1 into %2").arg(units(stored), memoryName);
-                     if (skipped > 0)
-                         text += tr("; %1 without both languages skipped").arg(QLocale().toString(skipped));
-                     notify(text);
-                 } else {
-                     notify(tr("Read %1 from %2; %3 stored").arg(units(st.value(QLatin1String("read")).toInteger()), file, QLocale().toString(stored)));
-                 }
+                 notify(importNotice(r.object(), memoryName, file));
                  reload();
              });
 }

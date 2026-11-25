@@ -21,7 +21,7 @@ import {
   type TranslationMemory,
 } from "../data";
 import { useLocalStore, useWords } from "../store";
-import { tm, type CoreApi } from "../core";
+import { MEMORY_FILES, MEMORY_FILES_NOTE, tm, type CoreApi } from "../core";
 import { openMemory, openNewMemory } from "../editor/memory";
 import {
   checkOn,
@@ -535,14 +535,18 @@ function AddMemory({
           </div>
           <div className="field">
             <label htmlFor={`${id}-tmx`}>
-              Fill it from a TMX file <span className="optional">optional</span>
+              Fill it from a memory file <span className="optional">optional</span>
             </label>
             <input
               id={`${id}-tmx`}
               type="file"
-              accept=".tmx,application/x-tmx+xml,text/xml"
+              accept={MEMORY_FILES}
+              aria-describedby={`${id}-tmx-help`}
               onChange={(e) => setTmx(e.target.files?.[0] ?? null)}
             />
+            <p id={`${id}-tmx-help`} className="help">
+              {MEMORY_FILES_NOTE}
+            </p>
           </div>
           {error && (
             <p className="error" role="alert">

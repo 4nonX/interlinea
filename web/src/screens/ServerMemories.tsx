@@ -5,7 +5,7 @@ import { errorText, useRemote } from "../remote";
 import { allows, ApiError, type CatalogMemory, type Role, type ServerUnit } from "../server";
 import { MemoryUnits, SavedElsewhere, type UnitsBackend } from "./MemoryUnits";
 import { AlignDocuments } from "./Alignment";
-import { download } from "../core";
+import { download, importNotice, MEMORY_FILES, MEMORY_FILES_NOTE } from "../core";
 import { fmtDate, fmtNum } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
@@ -177,10 +177,10 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
     [api, m.name],
   );
 
-  async function importTMX(f: File) {
+  async function importFile(f: File) {
     try {
-      const res = await api.importTMX(m.name, new Uint8Array(await f.arrayBuffer()));
-      notify(`Read ${fmtNum(res.read)} units from ${f.name}; ${fmtNum(res.stored)} stored`);
+      const res = await api.importMemory(m.name, new Uint8Array(await f.arrayBuffer()));
+      notify(importNotice(res, m.name, f.name));
       await onChanged();
     } catch (err) {
       notify(errorText(err));
@@ -206,9 +206,9 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
           </button>
           {edit && (
             <>
-              <input ref={input} type="file" accept=".tmx,application/xml" hidden aria-label={`TMX file for ${m.name}`} onChange={(e) => e.target.files?.[0] && void importTMX(e.target.files[0])} />
-              <button type="button" className="btn" onClick={() => input.current?.click()}>
-                <Upload size={15} aria-hidden="true" /> Import TMX
+              <input ref={input} type="file" accept={MEMORY_FILES} hidden aria-label={`Memory file for ${m.name}`} onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
+              <button type="button" className="btn" title={MEMORY_FILES_NOTE} aria-label={`Import a memory file into ${m.name}`} onClick={() => input.current?.click()}>
+                <Upload size={15} aria-hidden="true" /> Import
               </button>
             </>
           )}

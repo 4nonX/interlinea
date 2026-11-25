@@ -104,6 +104,9 @@ import {
   returnPackageName,
   returnSdlPackage,
   SDL_RETURN_TYPE,
+  importNotice,
+  MEMORY_FILES,
+  MEMORY_FILES_NOTE,
   tm,
   XLIFF_TYPE,
   type CoreApi,
@@ -1283,10 +1286,12 @@ export function Editor({
                           <button
                             type="button"
                             className="btn btn-small"
+                            aria-label={`Import a memory file into ${name}`}
+                            title={MEMORY_FILES_NOTE}
                             onClick={() => tmxInput.current?.click()}
                           >
                             <Upload size={14} aria-hidden="true" />
-                            Import TMX
+                            Import
                           </button>
                         )}
                         <button
@@ -1324,22 +1329,23 @@ export function Editor({
           <input
             ref={tmxInput}
             type="file"
-            accept=".tmx,application/x-tmx+xml,text/xml"
+            accept={MEMORY_FILES}
             hidden
+            aria-label="Memory file to import"
             onChange={async (e) => {
               const f = e.target.files?.[0];
               e.target.value = "";
               if (!f || !c || !projectMemory) return;
               try {
-                const st = tm.importTMX(
+                const st = tm.importFile(
                   c,
                   projectMemory.name,
                   new Uint8Array(await f.arrayBuffer()),
                 );
                 setMemVersion((v) => v + 1);
-                const kept = await persistMemory(c, projectMemory.name);
+                const kept = st.stored === 0 || (await persistMemory(c, projectMemory.name));
                 notify(
-                  `Imported ${plural(st.stored, "unit", "units")} from ${f.name}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
+                  `${importNotice(st, projectMemory.name, f.name)}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
                 );
               } catch (err) {
                 notify(

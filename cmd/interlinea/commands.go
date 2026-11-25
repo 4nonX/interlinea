@@ -166,15 +166,16 @@ type memFlags struct {
 
 func addMemFlags(fs *flag.FlagSet) memFlags {
 	return memFlags{
-		file:    fs.String("tmx", "", "TMX file to search (required)"),
-		src:     fs.String("src", "", "source language (default: TMX header srclang)"),
+		file:    fs.String("tmx", "", "memory file to search: TMX, Trados .sdltm or Wordfast .txt (required)"),
+		src:     fs.String("src", "", "source language (default: the file's)"),
 		tgt:     fs.String("tgt", "", "target language (required)"),
 		primary: fs.Bool("primary", false, "also accept variants that match only by primary language (de-AT for de-DE)"),
 		asJSON:  fs.Bool("json", false, "print results as JSON"),
 	}
 }
 
-// loadMemory reads a TMX file into an in-memory TM.
+// loadMemory reads a memory file (TMX, Trados .sdltm or Wordfast .txt)
+// into an in-memory TM.
 func (mf memFlags) loadMemory(ctx context.Context) (*tm.InMemory, tm.ImportStats, error) {
 	if *mf.file == "" {
 		return nil, tm.ImportStats{}, usageErr("-tmx is required")
@@ -182,32 +183,26 @@ func (mf memFlags) loadMemory(ctx context.Context) (*tm.InMemory, tm.ImportStats
 	if *mf.tgt == "" {
 		return nil, tm.ImportStats{}, usageErr("-tgt is required")
 	}
+	data, err := os.ReadFile(*mf.file)
+	if err != nil {
+		return nil, tm.ImportStats{}, err
+	}
 	src := *mf.src
 	if src == "" {
-		f, err := os.Open(*mf.file)
+		f, err := tm.ReadFile(data)
 		if err != nil {
 			return nil, tm.ImportStats{}, err
 		}
-		rd, err := tmx.NewReader(f)
-		f.Close()
-		if err != nil {
-			return nil, tm.ImportStats{}, err
-		}
-		src = rd.Header.SrcLang
-		if src == "" || strings.EqualFold(src, "*all*") {
-			return nil, tm.ImportStats{}, usageErr("the TMX header names no single source language; use -src")
+		src = f.SourceLang
+		if src == "" {
+			return nil, tm.ImportStats{}, usageErr("the file names no single source language; use -src")
 		}
 	}
 	mem, err := tm.NewInMemory(tm.Info{Name: *mf.file, SourceLang: src, TargetLang: *mf.tgt})
 	if err != nil {
 		return nil, tm.ImportStats{}, usageErr("invalid languages %q/%q", src, *mf.tgt)
 	}
-	f, err := os.Open(*mf.file)
-	if err != nil {
-		return nil, tm.ImportStats{}, err
-	}
-	defer f.Close()
-	st, err := tm.ImportTMX(ctx, mem, f, tm.ImportOptions{AllowPrimaryMatch: *mf.primary})
+	st, err := tm.Import(ctx, mem, data, tm.ImportOptions{AllowPrimaryMatch: *mf.primary})
 	return mem, st, err
 }
 

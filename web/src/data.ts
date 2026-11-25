@@ -47,6 +47,20 @@ export function lang(code: LangCode): Language {
   return rtl ? { code, name, native: name, dir: "rtl" } : { code, name, native: name };
 }
 
+/**
+ * The language of the list a file's language code stands for: the same
+ * code (case aside), else the first with its primary language (de-01 or
+ * de become de-DE); undefined when there is none.
+ */
+export function knownLanguage(code: string): LangCode | undefined {
+  const lower = code.trim().toLowerCase();
+  if (!lower) return undefined;
+  const exact = LANGUAGES.find((l) => l.code.toLowerCase() === lower);
+  if (exact) return exact.code;
+  const p = primary(lower);
+  return LANGUAGES.find((l) => primary(l.code) === p)?.code;
+}
+
 export function primary(code: LangCode): string {
   return code.split("-")[0]!.toLowerCase();
 }

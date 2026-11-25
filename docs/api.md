@@ -1051,15 +1051,15 @@ Access: read on the memory.
 
 ### `POST /api/memories/{name}/import`
 
-Reads a TMX file (the request body) into a memory.
+Reads a memory file (the request body) into a memory: TMX, a Trados Studio memory (.sdltm) or a Wordfast memory (.txt), told by its content.
 
-?policy=overwrite replaces translations of sources that are there; ?variants=exact takes only the memory's exact languages, not their variants (en-US for en-GB).
+?policy=overwrite replaces translations of sources that are there; ?variants=exact takes only the memory's exact languages, not their variants (en-US for en-GB). Units in the memory's languages the other way round are read the other way round.
 
 Access: edit on the memory.
 
 - Parameters: `name` (path), `variants` (query), `policy` (query)
 - Body: the file's bytes
-- Answer: 200 OK: {`read`: integer, `skipped`: integer, `stored`: integer}
+- Answer: 200 OK: {`format`: string, `note`: string, `read`: integer, `skipped`: integer, `stored`: integer}
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `POST /api/memories/{name}/lookup`
@@ -1674,6 +1674,18 @@ Access: signed in.
 - Answer: 200 OK: list of [term.ExportPreset](#termexportpreset)
 - Errors: 401, 403 (see [Error](#error))
 
+### `POST /api/memoryfiles/inspect`
+
+Reads a memory file (the request body) without storing it: its format, the name and languages it gives and how many units it holds, for making a memory from it.
+
+Nothing is kept.
+
+Access: signed in.
+
+- Body: the file's bytes
+- Answer: 200 OK: [MemoryFileInspection](#memoryfileinspection)
+- Errors: 401, 403, 422 (see [Error](#error))
+
 ### `GET /api/providers`
 
 Lists the services: the translation services the editor can ask for a suggestion and the grammar services that read translations.
@@ -2021,6 +2033,22 @@ looseDictionary is a Hunspell dictionary sent as its two files.
 | `grants` | list of [authdb.Grant](#authdbgrant) |  |
 | `identities` | list of [authdb.Identity](#authdbidentity) |  |
 | `user` | [authdb.User](#authdbuser) |  |
+
+### MemoryFileInspection
+
+memoryFileInspection is what a memory file holds.
+
+| Field | Type | Description |
+|---|---|---|
+| `description` | string |  |
+| `format` | string | Format is tmx, sdltm (Trados Studio) or wordfast. |
+| `formatName` | string |  |
+| `name` | string | Name, languages and description as the file gives them: a Trados memory names itself, a TMX or Wordfast file only its languages. |
+| `skipped` | integer |  |
+| `sourceLang` | string |  |
+| `targetLang` | string |  |
+| `units` | integer | Units is how many units the file holds; Skipped, how many of them cannot be read. |
+| `warnings` | list of string |  |
 
 ### MemoryView
 
