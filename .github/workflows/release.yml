@@ -82,7 +82,7 @@ jobs:
                 -ldflags "-s -w -X main.version=$VERSION" -o "stage/$name/$cmd$ext" "./cmd/$cmd"
             done
             cp -r web/dist "stage/$name/web"
-            cp README.md CHANGELOG.md docs/running.md "stage/$name/"
+            cp README.md CHANGELOG.md LICENSE docs/running.md "stage/$name/"
             if [ "$os" = windows ]; then
               (cd stage && zip -qr "../out/$name.zip" "$name")
             else
@@ -233,7 +233,7 @@ jobs:
           New-Item -ItemType Directory -Force stage/Interlinea | Out-Null
           Copy-Item build/desktop/Release/Interlinea.exe, build/desktop/Release/interlinea-core.exe stage/Interlinea/
           windeployqt --release --compiler-runtime --no-system-d3d-compiler --no-opengl-sw stage/Interlinea/Interlinea.exe
-          Copy-Item README.md, CHANGELOG.md stage/Interlinea/
+          Copy-Item README.md, CHANGELOG.md, LICENSE stage/Interlinea/
       - name: the staged app starts, with its core
         shell: bash
         run: |

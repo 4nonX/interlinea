@@ -10,6 +10,9 @@ takes its notes from its section here.
 What the first release will hold: the core, the team server, the web
 client and the desktop app, with installers and a server image.
 
+Interlinea is free software under the GNU Affero General Public License,
+version 3.
+
 ### Translating
 
 - Projects from Word, PowerPoint and Excel documents, OpenDocument text,
