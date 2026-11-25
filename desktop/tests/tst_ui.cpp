@@ -7,6 +7,7 @@
 #include "navigationrail.h"
 #include "settingspage.h"
 #include "testcore.h"
+#include "theme.h"
 
 #include <QDialog>
 #include <QPlainTextEdit>
@@ -75,6 +76,8 @@ private slots:
 
     void settings()
     {
+        // Dressed as the app is, so a picture taken here shows what people see.
+        Theme::apply(*qApp);
         TestCore core;
         ConnectionManager m(&core.launcher);
         MainWindow w(&m);
