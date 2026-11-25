@@ -70,6 +70,8 @@ export interface CoreApi {
   ): Res<Uint8Array>;
   resegment(how: string, segments: string, index: number, before: string): Res<string>;
   segmentation(segments: string, rules: string, lang: string): Res<string>;
+  review(files: string): Res<string>;
+  reviewCSV(files: string): Res<string>;
   tmOpen(name: string, source: string, target: string): Res<boolean>;
   tmAdd(name: string, units: string, overwrite?: boolean): Res<number>;
   tmSetTarget(name: string, id: number, target: string, by: string): Res<string>;
@@ -441,6 +443,7 @@ function coreSegment(s: Segment) {
     maxLength: s.maxLength,
     notes: s.notes,
     comments: s.comments,
+    issues: s.issues,
     file: s.file,
     split: s.split,
     joined: s.joined?.map((j) => ({ id: j.id, source: runsToCoreWhole(j.source) })),
@@ -457,6 +460,7 @@ interface CoreCut {
   maxLength?: number;
   notes?: string[];
   comments?: Segment["comments"];
+  issues?: Segment["issues"];
   split?: Segment["split"];
   joined?: { id: string; source: CoreRun[] }[];
 }
@@ -472,6 +476,7 @@ function segmentOfCut(x: CoreCut, rev?: number): Segment {
     maxLength: x.maxLength || undefined,
     notes: x.notes?.length ? x.notes : undefined,
     comments: x.comments?.length ? x.comments : undefined,
+    issues: x.issues?.length ? x.issues : undefined,
     split: x.split ?? undefined,
     joined: x.joined?.length ? x.joined.map((j) => ({ id: j.id, source: coreToRuns(j.source) })) : undefined,
   };
@@ -488,6 +493,42 @@ export async function applySegmentation(segments: Segment[], rules: { break: boo
   if (!r.ok) throw new Error(r.error);
   const had = new Map(segments.map((x) => [x.id, x]));
   return (JSON.parse(r.value) as CoreCut[]).map((x) => (!x.split && !x.joined?.length && had.get(x.id)) || segmentOfCut(x));
+}
+
+/** The score of segments from the issues a reviewer marked on them. */
+export interface Quality {
+  words: number;
+  segments: number;
+  marked: number;
+  issues: number;
+  minor: number;
+  major: number;
+  critical: number;
+  categories: Record<string, number>;
+  penalty: number;
+  perThousand: number;
+  score: number;
+}
+
+/** The scored review of files: each one's score, and all together. */
+export interface Review {
+  files: ({ file: string; lang: string } & Quality)[];
+  total: Quality;
+}
+
+type Reviewed = { name: string; lang: string; segments: Segment[] }[];
+const reviewed = (files: Reviewed) => JSON.stringify(files.map((f) => ({ name: f.name, lang: f.lang, segments: f.segments.map(coreSegment) })));
+
+/** Scores files in their target languages by the issues marked on their segments. */
+export async function reviewOf(files: Reviewed): Promise<Review> {
+  const core = await loadCore();
+  return JSON.parse(unwrap(core.review(reviewed(files)))) as Review;
+}
+
+/** Every issue of the files as a CSV table, with its segment's number, source and translation. */
+export async function reviewCsv(files: Reviewed): Promise<string> {
+  const core = await loadCore();
+  return unwrap(core.reviewCSV(reviewed(files)));
 }
 
 /** How a file's segments are cut differently. */

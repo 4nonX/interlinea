@@ -1,5 +1,6 @@
 // Projects, editor, memories, merge and settings
 import { createServer } from "node:http";
+import { readFileSync, readdirSync } from "node:fs";
 import { run } from "./harness.mjs";
 
 export default () =>
@@ -20,6 +21,7 @@ export default () =>
       waitFor,
       startFrom,
       setValue,
+      downloads,
     }) => {
       await open("/projects", { wait: 0 });
       check(
@@ -336,6 +338,36 @@ export default () =>
         await click("dialog[open] button", "Replace all");
         check(await waitFor("document.querySelector('.target-editor').innerText.trim() === 'Basic rent'", 5000), "replaced back, the text is as it was");
         await waitFor("!document.querySelector('dialog[open]')");
+      }
+      // Scored review: issues are marked on the open segment, and the file gets a score.
+      {
+        const box = "section[aria-label=Review]";
+        const boxText = () => evaluate(`document.querySelector(${JSON.stringify(box)}).innerText.replace(/\\s+/g, ' ')`);
+        check((await boxText()).includes("No issues marked on this segment."), "a segment starts without issues");
+        check(await waitFor(`/Score of this file 100\\.0 of 100/.test(document.querySelector(${JSON.stringify(box)}).innerText.replace(/\\s+/g, ' '))`, 5000) && /No issues marked in \d+ words\./.test(await boxText()), "an unmarked file scores 100: " + (await boxText()));
+        const words = Number(/No issues marked in (\d+) words/.exec(await boxText())[1]);
+        await setValue("#issue-category", "terminology");
+        await setValue("#issue-severity", "major");
+        await setValue("#issue-note", "Kaltmiete is basic rent in this client's glossary.");
+        await click(`${box} button`, "Mark issue");
+        check(await waitFor(`document.querySelector(${JSON.stringify(box + " .comment-list")})?.innerText.includes("Terminology, major (5 points): Kaltmiete is basic rent")`), "the issue is listed with its kind, weight and note: " + (await boxText()));
+        check((await evaluate("document.querySelector('.seg.is-active .seg-issues')?.textContent ?? ''")).includes("1 issue marked in review") && (await evaluate("document.querySelector('#issue-note').value")) === "", "the segment shows it, and the note field is empty again");
+        await setValue("#issue-category", "style");
+        await setValue("#issue-severity", "minor");
+        await click(`${box} button`, "Mark issue");
+        await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 2`);
+        const want = Math.max(0, Math.round((100 - 600 / words) * 10) / 10).toFixed(1);
+        check(await waitFor(`document.querySelector(${JSON.stringify(box)}).innerText.replace(/\\s+/g, ' ').includes("Score of this file ${want} of 100")`, 5000), `six penalty points in ${words} words score ${want}: ` + (await boxText()));
+        check((await boxText()).includes(`2 issues (1 minor, 1 major), 6 penalty points in ${words} words.`), "and the score says what it is made of");
+        await click(`${box} button`, "Save the project's review as CSV");
+        check(await waitFor("document.body.innerText.includes('review.csv')", 5000), "the review is saved as a table");
+        await sleep(400);
+        const table = readFileSync(`${downloads}/${readdirSync(downloads).find((f) => f.endsWith("review.csv"))}`, "utf8");
+        check(table.split("\n").filter(Boolean).length === 3 && table.includes(",terminology,major,5,Kaltmiete is basic rent in this client's glossary.,") && table.includes(",style,minor,1,"), "with both issues, their points and the segment: " + table.slice(0, 300));
+        await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list li button")}).click()`);
+        await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 1`);
+        await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list li button")}).click()`);
+        check(await waitFor(`document.querySelector(${JSON.stringify(box)}).innerText.includes('No issues marked on this segment.')`) && (await waitFor(`document.querySelector(${JSON.stringify(box)}).innerText.replace(/\\s+/g, ' ').includes("Score of this file 100.0")`, 5000)) && !(await evaluate("!!document.querySelector('.seg.is-active .seg-issues')")), "deleted, the file scores 100 again");
       }
       // Comments on the open segment: written, counted on the segment, and deleted.
       {

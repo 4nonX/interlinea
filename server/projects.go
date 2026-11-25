@@ -50,6 +50,9 @@ func (s *Server) projectRoutes() {
 	s.handle("POST /api/projects/{id}/segments/join", s.signedIn(s.joinProjectSegments))
 	s.handle("POST /api/projects/{id}/comments", s.signedIn(s.addSegmentComment))
 	s.handle("DELETE /api/projects/{id}/comments", s.signedIn(s.deleteSegmentComment))
+	s.handle("POST /api/projects/{id}/issues", s.signedIn(s.addSegmentIssue))
+	s.handle("DELETE /api/projects/{id}/issues", s.signedIn(s.deleteSegmentIssue))
+	s.handle("GET /api/projects/{id}/review", s.signedIn(s.projectReview))
 	s.handle("POST /api/projects/{id}/pretranslate", s.signedIn(s.pretranslateProject))
 	s.handle("POST /api/projects/{id}/lookup", s.signedIn(s.projectLookup))
 	s.handle("POST /api/projects/{id}/concordance", s.signedIn(s.projectConcordance))
@@ -1269,6 +1272,119 @@ func (s *Server) addSegmentComment(w http.ResponseWriter, r *http.Request, me se
 		return
 	}
 	writeJSON(w, http.StatusCreated, got)
+}
+
+// addSegmentIssue marks an issue on a segment (?file=, ?lang=,
+// ?segment=): what a reviewer found wrong with its translation. The body
+// has "category" (accuracy, fluency, terminology, style, locale,
+// formatting or other), "severity" (minor, major or critical: 1, 5 and
+// 25 penalty points) and an optional "note". The segment's translation
+// and version stay as they are. The answer is the segment with its
+// issues.
+//
+// Access: read on the project, or work in it.
+func (s *Server) addSegmentIssue(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	var req struct {
+		Category string `json:"category"`
+		Severity string `json:"severity"`
+		Note     string `json:"note"`
+	}
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	if !project.KnownIssue(req.Category, req.Severity) {
+		invalid(w, "category", "An issue has a category (accuracy, fluency, terminology, style, locale, formatting or other) and a severity (minor, major or critical).")
+		return
+	}
+	note := strings.TrimSpace(req.Note)
+	if utf8.RuneCountInString(note) > project.MaxIssueNote {
+		invalid(w, "note", fmt.Sprintf("A note is at most %d characters long.", project.MaxIssueNote))
+		return
+	}
+	q := r.URL.Query()
+	got, err := s.cfg.Projects.AddIssue(r.Context(), p.ID, q.Get("file"), q.Get("lang"), q.Get("segment"), req.Category, req.Severity, note, me.by())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, got)
+}
+
+// deleteSegmentIssue takes an issue (?issue=) off a segment (?file=,
+// ?lang=, ?segment=). The answer is the segment with the issues that are
+// left.
+//
+// Access: whoever marked the issue; manage on the project for anyone's.
+func (s *Server) deleteSegmentIssue(w http.ResponseWriter, r *http.Request, me session) {
+	p, a, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	got, err := s.cfg.Projects.DeleteIssue(r.Context(), p.ID, q.Get("file"), q.Get("lang"), q.Get("segment"), q.Get("issue"), me.by(), a.manage())
+	if errors.Is(err, projectdb.ErrNotYours) {
+		forbidden(w, "Only who marked an issue or a manager of the project may delete it.")
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, got)
+}
+
+// projectReview is the scored review of the project: for each file and
+// target language (or only ?lang=) the issues marked, by severity and
+// category, the penalty points (1 for a minor issue, 5 for a major one,
+// 25 for a critical one) and the score, 100 less the penalty in percent
+// of the source words; and the same for all together. With ?format=csv
+// the answer is every issue as a CSV table, with its segment's number,
+// source and translation.
+//
+// Access: read on the project, or work in it.
+func (s *Server) projectReview(w http.ResponseWriter, r *http.Request, me session) {
+	p, _, ok := s.openProject(w, r, me)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	only := r.URL.Query().Get("lang")
+	var files []project.ReviewedFile
+	for _, f := range p.Settings.Files {
+		if f.Role != project.Translatable {
+			continue
+		}
+		langs := p.Settings.TargetLangs
+		if f.TargetLang != "" {
+			langs = []string{f.TargetLang}
+		}
+		for _, lang := range langs {
+			if only != "" && !strings.EqualFold(only, lang) {
+				continue
+			}
+			stored, err := s.cfg.Projects.Segments(ctx, p.ID, f.Name, lang)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			segs := make([]project.Segment, len(stored))
+			for i := range stored {
+				segs[i] = stored[i].Segment
+			}
+			files = append(files, project.ReviewedFile{Name: f.Name, Lang: lang, Segments: segs})
+		}
+	}
+	if r.URL.Query().Get("format") == "csv" {
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": p.Settings.Name + " review.csv"}))
+		w.Write(project.ReviewCSV(files))
+		return
+	}
+	writeJSON(w, http.StatusOK, project.ReviewOf(files))
 }
 
 // deleteSegmentComment takes a comment (?comment=) off a segment

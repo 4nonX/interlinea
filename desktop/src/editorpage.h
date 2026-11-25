@@ -71,6 +71,16 @@ public:
     void addComment(const QString &text);
     void deleteComment(const QString &commentId);
     QJsonArray comments() const;
+    // Scored review: an issue a reviewer marks on the open segment
+    // (category and severity as the server names them), and its removal.
+    void addIssue(const QString &category, const QString &severity, const QString &note);
+    void deleteIssue(const QString &issueId);
+    QJsonArray reviewIssues() const;
+    // The score of the open file in its language, as the server gives it;
+    // empty until it is known.
+    QJsonObject quality() const { return m_quality; }
+    // Writes every issue of the project as a CSV table to a file.
+    void saveReviewTo(const QString &path);
 
     // Asks a translation service for a suggestion for the open segment,
     // which is sent to the service; the answer is shown to be inserted.
@@ -103,6 +113,11 @@ signals:
     void suggested(bool ok);
     // The comments of a segment changed here.
     void commented(const QString &id);
+    // The issues of a segment changed here, and the file's score is known again.
+    void reviewed(const QString &id);
+    void scored();
+    // The review was written to a file, or could not be.
+    void reviewSaved(bool ok);
     // A segment was split or two were joined ("split", "join"), or it
     // could not be done.
     void resegmented(const QString &how, bool ok);
@@ -141,6 +156,8 @@ private:
     void loadServices();
     void takeComments(const QJsonObject &segment);
     void refreshComments();
+    void showReviewIssues();
+    void loadQuality();
     void showCapture(const QString &source, const QString &target);
     void searchMemory();
     void save(const QString &id, const QJsonArray &target, const QString &status, const QJsonArray &warnings,
@@ -242,6 +259,16 @@ private:
     QVBoxLayout *m_commentsList = nullptr;
     QPlainTextEdit *m_commentText = nullptr;
     QPushButton *m_commentAdd = nullptr;
+    QLabel *m_reviewCount = nullptr;
+    QVBoxLayout *m_reviewList = nullptr;
+    QComboBox *m_issueCategory = nullptr;
+    QComboBox *m_issueSeverity = nullptr;
+    QLineEdit *m_issueNote = nullptr;
+    QPushButton *m_issueAdd = nullptr;
+    QLabel *m_qualityScore = nullptr;
+    QLabel *m_qualityText = nullptr;
+    QJsonObject m_quality;
+    int m_qualityAsked = 0;
     QWidget *m_lookupSection;
     QLineEdit *m_lookupField;
     QVBoxLayout *m_lookupList;

@@ -11,6 +11,8 @@
 #include "testcore.h"
 #include "theme.h"
 
+#include <QScrollArea>
+#include <QTemporaryDir>
 #include <QLabel>
 #include <QPointer>
 #include <QApplication>
@@ -806,6 +808,74 @@ private slots:
             QCOMPARE(ed->comments().first().toObject().value("text").toString(), QStringLiteral("The total, see clause 3."));
             ed->deleteComment(ed->comments().first().toObject().value("id").toString());
             QTRY_VERIFY_WITH_TIMEOUT(ed->comments().isEmpty() && ed->findChild<QLabel *>(QStringLiteral("noComments")), 10000);
+        }
+
+        // Scored review: issues are marked on the open segment, the file
+        // gets a score from them, and the review is saved as a table.
+        {
+            auto *category = ed->findChild<QComboBox *>(QStringLiteral("issueCategory"));
+            auto *severity = ed->findChild<QComboBox *>(QStringLiteral("issueSeverity"));
+            auto *note = ed->findChild<QLineEdit *>(QStringLiteral("issueNote"));
+            auto *mark = ed->findChild<QPushButton *>(QStringLiteral("addIssue"));
+            auto *score = ed->findChild<QLabel *>(QStringLiteral("qualityScore"));
+            auto *said = ed->findChild<QLabel *>(QStringLiteral("qualityText"));
+            QVERIFY(category && severity && note && mark && score && said);
+            QCOMPARE(category->count(), 7);
+            QCOMPARE(severity->itemText(2), QStringLiteral("Critical (25 points)"));
+            QVERIFY(ed->findChild<QLabel *>(QStringLiteral("noIssues")));
+            QTRY_VERIFY_WITH_TIMEOUT(!ed->quality().isEmpty(), 10000);
+            QCOMPARE(ed->quality().value("score").toDouble(), 100.0);
+            const int words = ed->quality().value("words").toInt();
+            QVERIFY(words > 0);
+            QVERIFY2(score->text().contains(QStringLiteral(">100.0<")) && said->text().startsWith(QStringLiteral("No issues marked in %1 words.").arg(words)), qPrintable(score->text() + said->text()));
+            const QString openId = ed->activeId();
+            const int versionBefore = ed->model()->segment(ed->activeRow()).value("version").toInt();
+            category->setCurrentIndex(category->findData(QStringLiteral("terminology")));
+            severity->setCurrentIndex(severity->findData(QStringLiteral("major")));
+            note->setText(QStringLiteral("Kaltmiete is basic rent in this client's glossary."));
+            QSignalSpy reviewedSpy(ed, &EditorPage::reviewed);
+            QSignalSpy scoredSpy(ed, &EditorPage::scored);
+            mark->click();
+            QTRY_COMPARE_WITH_TIMEOUT(reviewedSpy.size(), 1, 10000);
+            QCOMPARE(ed->reviewIssues().size(), 1);
+            QVERIFY(note->text().isEmpty() && !ed->findChild<QLabel *>(QStringLiteral("noIssues")));
+            QCOMPARE(ed->findChild<QLabel *>(QStringLiteral("issueWords"))->text(), QStringLiteral("<b>Terminology</b>, major (5 points): Kaltmiete is basic rent in this client's glossary."));
+            QCOMPARE(ed->model()->segment(ed->activeRow()).value("version").toInt(), versionBefore);
+            // One marked elsewhere arrives, and the score counts both.
+            QVERIFY(wait(api->post(base + "/issues", QJsonObject{{"category", "style"}, {"severity", "minor"}}, {{"file", "Mietvertrag.txt"}, {"lang", "en-GB"}, {"segment", openId}})).ok());
+            QTRY_COMPARE_WITH_TIMEOUT(ed->reviewIssues().size(), 2, 10000);
+            QTRY_VERIFY2_WITH_TIMEOUT(ed->quality().value("penalty").toInt() == 6, QJsonDocument(ed->quality()).toJson(QJsonDocument::Compact).constData(), 10000);
+            const double want = qMax(0.0, qRound((100.0 - 600.0 / words) * 10) / 10.0);
+            QCOMPARE(ed->quality().value("score").toDouble(), want);
+            QVERIFY2(said->text().startsWith(QStringLiteral("2 issues (1 minor, 1 major), 6 penalty points in %1 words.").arg(words)), qPrintable(said->text()));
+            QVERIFY(score->text().contains(QStringLiteral(">%1<").arg(QString::number(want, 'f', 1))));
+            if (const QString shots = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !shots.isEmpty()) {
+                // The panel with the review in view.
+                if (auto *area = said->window()->findChild<QScrollArea *>(); area)
+                    area->ensureWidgetVisible(said);
+                QTest::qWait(300);
+                ed->window()->grab().save(shots + QStringLiteral("/editor-review.png"));
+            }
+            // The review as a table.
+            QTemporaryDir dir;
+            const QString to = dir.filePath(QStringLiteral("review.csv"));
+            QSignalSpy savedSpy(ed, &EditorPage::reviewSaved);
+            ed->saveReviewTo(to);
+            QTRY_COMPARE_WITH_TIMEOUT(savedSpy.size(), 1, 10000);
+            QVERIFY(savedSpy.at(0).at(0).toBool());
+            QFile table(to);
+            QVERIFY(table.open(QIODevice::ReadOnly));
+            const QString csv = QString::fromUtf8(table.readAll());
+            QVERIFY2(csv.count(QLatin1Char('\n')) == 3 && csv.contains(QStringLiteral(",terminology,major,5,Kaltmiete is basic rent in this client's glossary.,")) && csv.contains(QStringLiteral(",style,minor,1,")), qPrintable(csv));
+            // Deleted, the file scores 100 again.
+            const QString first = ed->reviewIssues().first().toObject().value("id").toString();
+            auto *del = ed->findChild<QPushButton *>(QStringLiteral("deleteIssue:%1").arg(first));
+            QVERIFY(del);
+            del->click();
+            QTRY_COMPARE_WITH_TIMEOUT(ed->reviewIssues().size(), 1, 10000);
+            ed->deleteIssue(ed->reviewIssues().first().toObject().value("id").toString());
+            QTRY_VERIFY_WITH_TIMEOUT(ed->reviewIssues().isEmpty() && ed->findChild<QLabel *>(QStringLiteral("noIssues")), 10000);
+            QTRY_VERIFY_WITH_TIMEOUT(ed->quality().value("score").toDouble() == 100.0, 10000);
         }
 
         // Someone else saves the segment being worked on: both are shown,

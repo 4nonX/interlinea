@@ -211,6 +211,15 @@ func TestJoinAndSplitFreely(t *testing.T) {
 	if z.Status != project.StatusDraft || len(z.Joined) != 2 || z.Joined[1].ID != "p1/s2" || z.MaxLength != 0 || z.Split != nil {
 		t.Errorf("joined: %+v", z)
 	}
+	// What a reviewer marked stays: joined segments have the issues of both, a split keeps them on the first part.
+	marked := append([]project.Segment{}, segs...)
+	marked[0].Issues = []project.Issue{{ID: "i1", Category: "accuracy", Severity: "major"}}
+	marked[1].Issues = []project.Issue{{ID: "i2", Category: "style", Severity: "minor"}}
+	if m, err := project.Join(marked, 0); err != nil || len(m[0].Issues) != 2 || project.QualityOf(m).Penalty != 6 {
+		t.Errorf("issues after joining: %v", err)
+	} else if parts, err := project.Split(m, 0, c("Erster")); err != nil || len(parts[0].Issues) != 2 || len(parts[1].Issues) != 0 {
+		t.Errorf("issues after splitting: %v", err)
+	}
 	// A third is joined on: the same as joining the last two first.
 	all, err := project.Join(two, 0)
 	if err != nil {

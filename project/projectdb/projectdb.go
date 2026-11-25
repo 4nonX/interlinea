@@ -76,6 +76,9 @@ const (
 	// ChangeComments: the comments on a segment changed; its translation
 	// and its version did not.
 	ChangeComments = "segment-commented"
+	// ChangeIssues: the issues a reviewer marked on a segment changed;
+	// its translation and version did not.
+	ChangeIssues = "segment-reviewed"
 	// ChangeResegmented: a segment was split, or segments were joined or
 	// separated, so the file's list of segments is another one.
 	ChangeResegmented     = "file-resegmented"
@@ -270,12 +273,13 @@ type segmentExtra struct {
 	Warnings  []project.Warning    `json:"warnings,omitempty"`
 	Ignored   []string             `json:"ignored,omitempty"`
 	Comments  []project.Comment    `json:"comments,omitempty"`
+	Issues    []project.Issue      `json:"issues,omitempty"`
 	Split     *project.SplitPart   `json:"split,omitempty"`
 	Joined    []project.JoinedUnit `json:"joined,omitempty"`
 }
 
 func extraJSON(s project.Segment) (string, error) {
-	b, err := json.Marshal(segmentExtra{Block: s.Block, MaxLength: s.MaxLength, Notes: s.Notes, File: s.File, Origin: s.Origin, Warnings: s.Warnings, Ignored: s.Ignored, Comments: s.Comments, Split: s.Split, Joined: s.Joined})
+	b, err := json.Marshal(segmentExtra{Block: s.Block, MaxLength: s.MaxLength, Notes: s.Notes, File: s.File, Origin: s.Origin, Warnings: s.Warnings, Ignored: s.Ignored, Comments: s.Comments, Issues: s.Issues, Split: s.Split, Joined: s.Joined})
 	return noNUL(string(b)), err
 }
 
@@ -283,6 +287,7 @@ func (x segmentExtra) apply(s *project.Segment) {
 	s.Block, s.MaxLength, s.Notes, s.File = x.Block, x.MaxLength, x.Notes, x.File
 	s.Origin, s.Warnings, s.Ignored = x.Origin, x.Warnings, x.Ignored
 	s.Comments = x.Comments
+	s.Issues = x.Issues
 	s.Split, s.Joined = x.Split, x.Joined
 }
 
@@ -1066,8 +1071,8 @@ func (d *DB) SaveEdit(ctx context.Context, projectID int64, file, target, segID 
 	return out, err
 }
 
-// ErrNotYours means the comment is someone else's.
-var ErrNotYours = errors.New("projectdb: the comment is someone else's")
+// ErrNotYours means the comment or issue is someone else's.
+var ErrNotYours = errors.New("projectdb: it is someone else's")
 
 // AddComment puts a comment on a segment. The segment's translation and
 // version stay as they are, so a comment disturbs nobody's work on it.
@@ -1105,6 +1110,52 @@ func (d *DB) DeleteComment(ctx context.Context, projectID int64, file, target, s
 }
 
 func (d *DB) changeComments(ctx context.Context, projectID int64, file, target, segID, by string, fn func([]project.Comment, time.Time) ([]project.Comment, error)) (StoredSegment, error) {
+	return d.changeExtra(ctx, projectID, file, target, segID, by, ChangeComments, func(x *segmentExtra, now time.Time) (err error) {
+		x.Comments, err = fn(x.Comments, now)
+		return err
+	})
+}
+
+// AddIssue marks an issue on a segment. The segment's translation and
+// version stay as they are.
+func (d *DB) AddIssue(ctx context.Context, projectID int64, file, target, segID, category, severity, note, by string) (StoredSegment, error) {
+	return d.changeExtra(ctx, projectID, file, target, segID, by, ChangeIssues, func(x *segmentExtra, now time.Time) error {
+		id := make([]byte, 8)
+		if _, err := rand.Read(id); err != nil {
+			return err
+		}
+		x.Issues = append(x.Issues, project.Issue{ID: hex.EncodeToString(id), Category: category, Severity: severity, Note: noNUL(note), By: noNUL(by), At: now.UTC().Format(time.RFC3339)})
+		return nil
+	})
+}
+
+// DeleteIssue takes an issue off a segment: the one who marked it may,
+// and with any set anyone.
+func (d *DB) DeleteIssue(ctx context.Context, projectID int64, file, target, segID, issueID, by string, any bool) (StoredSegment, error) {
+	return d.changeExtra(ctx, projectID, file, target, segID, by, ChangeIssues, func(x *segmentExtra, _ time.Time) error {
+		out := make([]project.Issue, 0, len(x.Issues))
+		found := false
+		for _, is := range x.Issues {
+			if is.ID != issueID {
+				out = append(out, is)
+				continue
+			}
+			if !any && is.By != by {
+				return ErrNotYours
+			}
+			found = true
+		}
+		if !found {
+			return ErrNotFound
+		}
+		x.Issues = out
+		return nil
+	})
+}
+
+// changeExtra changes what is kept beside a segment's translation,
+// without touching the translation or its version.
+func (d *DB) changeExtra(ctx context.Context, projectID int64, file, target, segID, by, kind string, fn func(*segmentExtra, time.Time) error) (StoredSegment, error) {
 	target = normLang(target)
 	var out StoredSegment
 	err := d.write(ctx, func(tx *sqlstore.Tx, now time.Time) error {
@@ -1129,7 +1180,7 @@ func (d *DB) changeComments(ctx context.Context, projectID int64, file, target, 
 		if err := json.Unmarshal([]byte(extra), &x); err != nil {
 			return fmt.Errorf("projectdb: segment %s: %w", segID, err)
 		}
-		if x.Comments, err = fn(x.Comments, now); err != nil {
+		if err := fn(&x, now); err != nil {
 			return err
 		}
 		xs, err := json.Marshal(x)
@@ -1139,7 +1190,7 @@ func (d *DB) changeComments(ctx context.Context, projectID int64, file, target, 
 		if _, err := tx.ExecContext(ctx, `UPDATE segments SET extra_json = ? WHERE file_id = ? AND target_lang = ? AND seg_id = ?`, noNUL(string(xs)), fid, target, segID); err != nil {
 			return err
 		}
-		if err := logChange(ctx, tx, change{projectID: projectID, project: cur.Settings.Name, kind: ChangeComments, file: file, target: target, segment: segID, version: ver}, by, now); err != nil {
+		if err := logChange(ctx, tx, change{projectID: projectID, project: cur.Settings.Name, kind: kind, file: file, target: target, segment: segID, version: ver}, by, now); err != nil {
 			return err
 		}
 		segs, err := querySegments(ctx, tx, fid, target)

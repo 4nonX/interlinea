@@ -89,6 +89,8 @@ QVariant SegmentModel::data(const QModelIndex &index, int role) const
                 parts << tr("Locked");
             if (warnings)
                 parts << tr("%n warning(s)", nullptr, warnings);
+            if (const int n = int(s.value(QLatin1String("issues")).toArray().size()); n > 0)
+                parts << (n == 1 ? tr("1 issue marked in review") : tr("%1 issues marked in review").arg(n));
             if (const int n = int(s.value(QLatin1String("comments")).toArray().size()); n > 0)
                 parts << (n == 1 ? tr("1 comment") : tr("%1 comments").arg(n));
             if (m_pending.contains(id))
@@ -417,6 +419,12 @@ void SegmentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &optio
             painter->drawText(QRect(cx + 4, y, 16, 13), Qt::AlignLeft | Qt::AlignVCenter, QString::number(w));
             y += 15;
         }
+        if (const int n = s.value(QLatin1String("issues")).toArray().size(); n > 0) {
+            Icons::paint(*painter, QRectF(cx - 10, y, 13, 13), QStringLiteral("flag"), Theme::color("warn"));
+            painter->setPen(Theme::color("warn"));
+            painter->drawText(QRect(cx + 4, y, 16, 13), Qt::AlignLeft | Qt::AlignVCenter, QString::number(n));
+            y += 15;
+        }
         if (const int n = s.value(QLatin1String("comments")).toArray().size(); n > 0) {
             Icons::paint(*painter, QRectF(cx - 10, y, 13, 13), QStringLiteral("comment"), Theme::color("text2"));
             painter->setPen(Theme::color("text2"));
@@ -486,6 +494,8 @@ QSize SegmentDelegate::sizeHint(const QStyleOptionViewItem &option, const QModel
         if (!s.value(QLatin1String("warnings")).toArray().isEmpty())
             h += 15;
         if (!s.value(QLatin1String("comments")).toArray().isEmpty())
+            h += 15;
+        if (!s.value(QLatin1String("issues")).toArray().isEmpty())
             h += 15;
         const QString origin = s.value(QLatin1String("origin")).toObject().value(QLatin1String("kind")).toString();
         if (origin == QLatin1String("tm") || origin == QLatin1String("repetition") || !index.data(SegmentModel::AvailableRole).toJsonObject().isEmpty())

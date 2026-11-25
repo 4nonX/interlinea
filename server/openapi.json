@@ -1888,6 +1888,60 @@
         },
         "type": "object"
       },
+      "project.FileQuality": {
+        "description": "FileQuality is the score of a file in a target language.",
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Categories counts the issues of each kind that has any.",
+            "type": "object"
+          },
+          "critical": {
+            "type": "integer"
+          },
+          "file": {
+            "type": "string"
+          },
+          "issues": {
+            "description": "Issues counts all issues; Minor, Major and Critical by severity.",
+            "type": "integer"
+          },
+          "lang": {
+            "type": "string"
+          },
+          "major": {
+            "type": "integer"
+          },
+          "marked": {
+            "type": "integer"
+          },
+          "minor": {
+            "type": "integer"
+          },
+          "penalty": {
+            "description": "Penalty is the sum of the issues' points.",
+            "type": "integer"
+          },
+          "perThousand": {
+            "description": "PerThousand is the penalty for every thousand words, and Score is 100 less the penalty in percent of the words, never below 0; both to one decimal place. Without words both are 0 and 100.",
+            "type": "number"
+          },
+          "score": {
+            "type": "number"
+          },
+          "segments": {
+            "description": "Segments is how many segments there are, and Marked how many of them have an issue.",
+            "type": "integer"
+          },
+          "words": {
+            "description": "Words is the number of source words of the segments.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "project.FileState": {
         "description": "FileState is a segment's state in its bilingual file.",
         "properties": {
@@ -1905,6 +1959,33 @@
           },
           "target": {
             "description": "Target is the translation in the file, as content JSON.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "project.Issue": {
+        "description": "Issue is something a reviewer found wrong with a segment's translation.",
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string"
+          },
+          "category": {
+            "description": "Category is what kind of mistake it is, one of IssueCategories.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "note": {
+            "description": "Note says what is wrong, if the reviewer wrote it down.",
+            "type": "string"
+          },
+          "severity": {
+            "description": "Severity is how much it weighs, one of IssueSeverities.",
             "type": "string"
           }
         },
@@ -2062,6 +2143,69 @@
         },
         "type": "object"
       },
+      "project.Quality": {
+        "description": "Quality is the score of segments from the issues marked on them.",
+        "properties": {
+          "categories": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Categories counts the issues of each kind that has any.",
+            "type": "object"
+          },
+          "critical": {
+            "type": "integer"
+          },
+          "issues": {
+            "description": "Issues counts all issues; Minor, Major and Critical by severity.",
+            "type": "integer"
+          },
+          "major": {
+            "type": "integer"
+          },
+          "marked": {
+            "type": "integer"
+          },
+          "minor": {
+            "type": "integer"
+          },
+          "penalty": {
+            "description": "Penalty is the sum of the issues' points.",
+            "type": "integer"
+          },
+          "perThousand": {
+            "description": "PerThousand is the penalty for every thousand words, and Score is 100 less the penalty in percent of the words, never below 0; both to one decimal place. Without words both are 0 and 100.",
+            "type": "number"
+          },
+          "score": {
+            "type": "number"
+          },
+          "segments": {
+            "description": "Segments is how many segments there are, and Marked how many of them have an issue.",
+            "type": "integer"
+          },
+          "words": {
+            "description": "Words is the number of source words of the segments.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "project.Review": {
+        "description": "Review is the scored review of files: each file's score and the score of all together.",
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/project.FileQuality"
+            },
+            "type": "array"
+          },
+          "total": {
+            "$ref": "#/components/schemas/project.Quality"
+          }
+        },
+        "type": "object"
+      },
       "project.Role": {
         "description": "Role says what a file is for.",
         "enum": [
@@ -2100,6 +2244,13 @@
             "description": "Ignored are the warnings marked as false alarms, by kind and text.",
             "items": {
               "type": "string"
+            },
+            "type": "array"
+          },
+          "issues": {
+            "description": "Issues are what a reviewer marked as wrong with the translation; the file's score comes from them.",
+            "items": {
+              "$ref": "#/components/schemas/project.Issue"
             },
             "type": "array"
           },
@@ -2576,6 +2727,13 @@
             "description": "Ignored are the warnings marked as false alarms, by kind and text.",
             "items": {
               "type": "string"
+            },
+            "type": "array"
+          },
+          "issues": {
+            "description": "Issues are what a reviewer marked as wrong with the translation; the file's score comes from them.",
+            "items": {
+              "$ref": "#/components/schemas/project.Issue"
             },
             "type": "array"
           },
@@ -7514,6 +7672,170 @@
         ]
       }
     },
+    "/api/projects/{id}/issues": {
+      "delete": {
+        "description": "The answer is the segment with the issues that are left.\n\nAccess: whoever marked the issue; manage on the project for anyone's.",
+        "operationId": "deleteSegmentIssue",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "issue",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/projectdb.StoredSegment"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Takes an issue (?issue=) off a segment (?file=, ?lang=, ?segment=).",
+        "tags": [
+          "Projects"
+        ]
+      },
+      "post": {
+        "description": "The body has \"category\" (accuracy, fluency, terminology, style, locale, formatting or other), \"severity\" (minor, major or critical: 1, 5 and 25 penalty points) and an optional \"note\". The segment's translation and version stay as they are. The answer is the segment with its issues.\n\nAccess: read on the project, or work in it.",
+        "operationId": "addSegmentIssue",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "category": {
+                    "type": "string"
+                  },
+                  "note": {
+                    "type": "string"
+                  },
+                  "severity": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/projectdb.StoredSegment"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Marks an issue on a segment (?file=, ?lang=, ?segment=): what a reviewer found wrong with its translation.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/api/projects/{id}/lookup": {
       "post": {
         "description": "Access: read on the project, or work in it.",
@@ -8230,6 +8552,68 @@
           }
         },
         "summary": "Sends the return package of a project made from a package: a Trados return package (.sdlrpx) or a memoQ delivery package (.mqback) with the package's bilingual files, the project's translations and states in them.",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/api/projects/{id}/review": {
+      "get": {
+        "description": "With ?format=csv the answer is every issue as a CSV table, with its segment's number, source and translation.\n\nAccess: read on the project, or work in it.",
+        "operationId": "projectReview",
+        "parameters": [
+          {
+            "description": "The number of the account, sign-in, project or merge request.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lang",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/project.Review"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Is the scored review of the project: for each file and target language (or only ?lang=) the issues marked, by severity and category, the penalty points (1 for a minor issue, 5 for a major one, 25 for a critical one) and the score, 100 less the penalty in percent of the source words; and the same for all together.",
         "tags": [
           "Projects"
         ]

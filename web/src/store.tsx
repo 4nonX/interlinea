@@ -51,6 +51,7 @@ import {
   type Run,
   type Segment,
   type SegmentComment,
+  type SegmentIssue,
   type SegmentStatus,
 } from "./editor/model";
 
@@ -207,6 +208,7 @@ type Action =
     }
   | { type: "ignoreIssue"; at: SegmentsAt; segmentId: string; text: string }
   | { type: "setComments"; at: SegmentsAt; segmentId: string; comments: SegmentComment[] }
+  | { type: "setIssues"; at: SegmentsAt; segmentId: string; issues: SegmentIssue[] }
   /** A file's segments in a language after one was split or some were joined. */
   | { type: "resegmented"; at: SegmentsAt; segments: Segment[] }
   | { type: "saveProvider"; provider: LocalProvider }
@@ -773,6 +775,10 @@ function reduce(state: State, action: Action): State {
       };
     case "deleteProvider":
       return { ...state, providers: state.providers.filter((p) => p.name !== action.name) };
+    case "setIssues":
+      return withSegments(state, action.at, (segments) =>
+        segments.map((sg) => (sg.id === action.segmentId ? { ...sg, issues: action.issues.length ? action.issues : undefined } : sg)),
+      );
     case "setComments":
       return withSegments(state, action.at, (segments) =>
         segments.map((sg) => (sg.id === action.segmentId ? { ...sg, comments: action.comments.length ? action.comments : undefined } : sg)),

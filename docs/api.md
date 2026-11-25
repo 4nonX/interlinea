@@ -600,6 +600,31 @@ Access: read on the project, or work in it.
 - Answer: 200 OK: `application/octet-stream`
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
+### `POST /api/projects/{id}/issues`
+
+Marks an issue on a segment (?file=, ?lang=, ?segment=): what a reviewer found wrong with its translation.
+
+The body has "category" (accuracy, fluency, terminology, style, locale, formatting or other), "severity" (minor, major or critical: 1, 5 and 25 penalty points) and an optional "note". The segment's translation and version stay as they are. The answer is the segment with its issues.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query)
+- Body: {`category`: string, `note`: string, `severity`: string}
+- Answer: 201 Created: [projectdb.StoredSegment](#projectdbstoredsegment)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `DELETE /api/projects/{id}/issues`
+
+Takes an issue (?issue=) off a segment (?file=, ?lang=, ?segment=).
+
+The answer is the segment with the issues that are left.
+
+Access: whoever marked the issue; manage on the project for anyone's.
+
+- Parameters: `id` (path), `file` (query), `lang` (query), `segment` (query), `issue` (query)
+- Answer: 200 OK: [projectdb.StoredSegment](#projectdbstoredsegment)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
 ### `POST /api/projects/{id}/lookup`
 
 Finds matches for a segment in the memories the project looks up in for the language.
@@ -728,6 +753,18 @@ Access: read on the project, or work in it.
 - Parameters: `id` (path)
 - Answer: 200 OK: `application/octet-stream`
 - Errors: 401, 403, 404 (see [Error](#error))
+
+### `GET /api/projects/{id}/review`
+
+Is the scored review of the project: for each file and target language (or only ?lang=) the issues marked, by severity and category, the penalty points (1 for a minor issue, 5 for a major one, 25 for a critical one) and the score, 100 less the penalty in percent of the source words; and the same for all together.
+
+With ?format=csv the answer is every issue as a CSV table, with its segment's number, source and translation.
+
+Access: read on the project, or work in it.
+
+- Parameters: `id` (path), `lang` (query), `format` (query)
+- Answer: 200 OK: [project.Review](#projectreview)
+- Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `GET /api/projects/{id}/segments`
 
@@ -2521,6 +2558,26 @@ File is a file of the project.
 | `role` | [project.Role](#projectrole) |  |
 | `targetLang` | string | TargetLang is set for a bilingual file (XLIFF, a file of a Trados package): it is translated into this language only. Empty for a monolingual file, which is translated into every target language. |
 
+### project.FileQuality
+
+FileQuality is the score of a file in a target language.
+
+| Field | Type | Description |
+|---|---|---|
+| `categories` | map of integer | Categories counts the issues of each kind that has any. |
+| `critical` | integer |  |
+| `file` | string |  |
+| `issues` | integer | Issues counts all issues; Minor, Major and Critical by severity. |
+| `lang` | string |  |
+| `major` | integer |  |
+| `marked` | integer |  |
+| `minor` | integer |  |
+| `penalty` | integer | Penalty is the sum of the issues' points. |
+| `perThousand` | number | PerThousand is the penalty for every thousand words, and Score is 100 less the penalty in percent of the words, never below 0; both to one decimal place. Without words both are 0 and 100. |
+| `score` | number |  |
+| `segments` | integer | Segments is how many segments there are, and Marked how many of them have an issue. |
+| `words` | integer | Words is the number of source words of the segments. |
+
 ### project.FileState
 
 FileState is a segment's state in its bilingual file.
@@ -2531,6 +2588,19 @@ FileState is a segment's state in its bilingual file.
 | `match` | integer | Match is the match percentage the file records. |
 | `state` | string | State is "new", "draft", "translated", "reviewed", "final" or "rejected". |
 | `target` | string | Target is the translation in the file, as content JSON. |
+
+### project.Issue
+
+Issue is something a reviewer found wrong with a segment's translation.
+
+| Field | Type | Description |
+|---|---|---|
+| `at` | string |  |
+| `by` | string |  |
+| `category` | string | Category is what kind of mistake it is, one of IssueCategories. |
+| `id` | string |  |
+| `note` | string | Note says what is wrong, if the reviewer wrote it down. |
+| `severity` | string | Severity is how much it weighs, one of IssueSeverities. |
 
 ### project.JoinedUnit
 
@@ -2605,6 +2675,33 @@ QA is which quality checks run while translating, as qa.Options switches them: a
 | `uneditedFuzzy` | boolean | UneditedFuzzy warns when a fuzzy match is confirmed unchanged. |
 | `words` | list of string | Words are always spelled right in this project (names, terms). |
 
+### project.Quality
+
+Quality is the score of segments from the issues marked on them.
+
+| Field | Type | Description |
+|---|---|---|
+| `categories` | map of integer | Categories counts the issues of each kind that has any. |
+| `critical` | integer |  |
+| `issues` | integer | Issues counts all issues; Minor, Major and Critical by severity. |
+| `major` | integer |  |
+| `marked` | integer |  |
+| `minor` | integer |  |
+| `penalty` | integer | Penalty is the sum of the issues' points. |
+| `perThousand` | number | PerThousand is the penalty for every thousand words, and Score is 100 less the penalty in percent of the words, never below 0; both to one decimal place. Without words both are 0 and 100. |
+| `score` | number |  |
+| `segments` | integer | Segments is how many segments there are, and Marked how many of them have an issue. |
+| `words` | integer | Words is the number of source words of the segments. |
+
+### project.Review
+
+Review is the scored review of files: each file's score and the score of all together.
+
+| Field | Type | Description |
+|---|---|---|
+| `files` | list of [project.FileQuality](#projectfilequality) |  |
+| `total` | [project.Quality](#projectquality) |  |
+
 ### project.Role
 
 Role says what a file is for.
@@ -2622,6 +2719,7 @@ Segment is a segment of a file in one target language.
 | `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
 | `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |
+| `issues` | list of [project.Issue](#projectissue) | Issues are what a reviewer marked as wrong with the translation; the file's score comes from them. |
 | `joined` | list of [project.JoinedUnit](#projectjoinedunit) |  |
 | `locked` | boolean |  |
 | `maxLength` | integer | MaxLength is the longest the translation may be, in characters. |
@@ -2805,6 +2903,7 @@ StoredSegment is a segment with its version.
 | `file` | [project.FileState](#projectfilestate) | File is the segment's state and translation in a bilingual file, so writing the file back keeps a reviewer's approval of a translation that did not change. |
 | `id` | string |  |
 | `ignored` | list of string | Ignored are the warnings marked as false alarms, by kind and text. |
+| `issues` | list of [project.Issue](#projectissue) | Issues are what a reviewer marked as wrong with the translation; the file's score comes from them. |
 | `joined` | list of [project.JoinedUnit](#projectjoinedunit) |  |
 | `locked` | boolean |  |
 | `maxLength` | integer | MaxLength is the longest the translation may be, in characters. |

@@ -128,6 +128,37 @@ export function runsToCoreWhole(runs: Run[]): CoreRun[] {
 export type Run = string | TagRun;
 
 /** A remark on a segment by someone working on the project. */
+/** The kinds of issue a reviewer marks, and what they are called. */
+export const ISSUE_CATEGORIES = [
+  ["accuracy", "Accuracy"],
+  ["fluency", "Fluency"],
+  ["terminology", "Terminology"],
+  ["style", "Style"],
+  ["locale", "Locale conventions"],
+  ["formatting", "Formatting"],
+  ["other", "Other"],
+] as const;
+
+/** How much an issue weighs: its name and its penalty points. */
+export const ISSUE_SEVERITIES = [
+  ["minor", "Minor", 1],
+  ["major", "Major", 5],
+  ["critical", "Critical", 25],
+] as const;
+
+export type IssueCategory = (typeof ISSUE_CATEGORIES)[number][0];
+export type IssueSeverity = (typeof ISSUE_SEVERITIES)[number][0];
+
+/** Something a reviewer found wrong with a segment's translation. */
+export interface SegmentIssue {
+  id: string;
+  category: IssueCategory;
+  severity: IssueSeverity;
+  note?: string;
+  by: string;
+  at: string;
+}
+
 export interface SegmentComment {
   id: string;
   text: string;
@@ -174,6 +205,8 @@ export interface Segment {
   joined?: { id: string; source: Run[] }[];
   /** What the people working on the project wrote about the segment, oldest first. */
   comments?: SegmentComment[];
+  /** What a reviewer marked as wrong with the translation. */
+  issues?: SegmentIssue[];
 }
 
 /** States of segments in bilingual files, as the core reports them. */

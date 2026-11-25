@@ -667,3 +667,85 @@ func TestSegmentComments(t *testing.T) {
 		t.Fatalf("deleting no comment: %d", r.status)
 	}
 }
+
+// A reviewer marks issues on segments; the project gets a score from them.
+func TestScoredReview(t *testing.T) {
+	te := newTeam(t)
+	var p projectView
+	te.call("POST", "/api/projects", te.pm, leaseRequest(), 201, &p)
+	at := func(seg string) string {
+		return fmt.Sprintf("/api/projects/%d/issues?file=Mietvertrag.txt&lang=en-GB&segment=%s", p.ID, seg)
+	}
+	segsAt := fmt.Sprintf("/api/projects/%d/segments?file=Mietvertrag.txt&lang=en-GB", p.ID)
+	var before []projectdb.StoredSegment
+	te.call("GET", segsAt, te.pm, nil, 200, &before)
+	words := project.QualityOf([]project.Segment{before[0].Segment, before[1].Segment, before[2].Segment, before[3].Segment}).Words
+	if len(before) != 4 || words == 0 {
+		t.Fatalf("%d segments, %d words", len(before), words)
+	}
+	var review project.Review
+	te.call("GET", fmt.Sprintf("/api/projects/%d/review?lang=en-GB", p.ID), te.pm, nil, 200, &review)
+	if len(review.Files) != 1 || review.Total.Score != 100 || review.Total.Issues != 0 || review.Total.Words != words {
+		t.Fatalf("before any issue %+v", review)
+	}
+
+	if r := te.do("POST", at("s2"), te.ben, map[string]string{"category": "accuracy", "severity": "major"}); r.status != 404 {
+		t.Fatalf("a stranger marks an issue: %d", r.status)
+	}
+	for _, bad := range []map[string]string{{"category": "accuracy"}, {"category": "taste", "severity": "minor"}, {"category": "style", "severity": "huge"}} {
+		if r := te.do("POST", at("s2"), te.pm, bad); r.status != 422 || r.err().Problems[0].Field != "category" {
+			t.Fatalf("%v: %d %s", bad, r.status, r.body)
+		}
+	}
+	if r := te.do("POST", at("s2"), te.pm, map[string]string{"category": "style", "severity": "minor", "note": strings.Repeat("x", project.MaxIssueNote+1)}); r.status != 422 || r.err().Problems[0].Field != "note" {
+		t.Fatalf("a long note: %d %s", r.status, r.body)
+	}
+	var got projectdb.StoredSegment
+	te.call("POST", at("s2"), te.pm, map[string]string{"category": "accuracy", "severity": "major", "note": "  Mieter is the tenant.  "}, 201, &got)
+	if len(got.Issues) != 1 || got.Issues[0].Note != "Mieter is the tenant." || got.Issues[0].By == "" || got.Issues[0].ID == "" || got.Version != before[1].Version {
+		t.Fatalf("marked %+v version %d", got.Issues, got.Version)
+	}
+	te.call("POST", at("s2"), te.pm, map[string]string{"category": "style", "severity": "minor"}, 201, &got)
+	var other projectdb.StoredSegment
+	te.call("POST", at("s4"), te.pm, map[string]string{"category": "terminology", "severity": "critical"}, 201, &other)
+	// A translation saved afterwards keeps the issues.
+	var saved projectdb.StoredSegment
+	te.call("PUT", fmt.Sprintf("%s&segment=s2&version=%d", segsAt, got.Version), te.pm, project.Edit{Target: content.Text("The tenant pays the rent."), Status: project.StatusDraft}, 200, &saved)
+	if len(saved.Issues) != 2 {
+		t.Fatalf("saving lost the issues: %+v", saved.Issues)
+	}
+
+	te.call("GET", fmt.Sprintf("/api/projects/%d/review?lang=en-GB", p.ID), te.pm, nil, 200, &review)
+	q := review.Total
+	if q.Issues != 3 || q.Minor != 1 || q.Major != 1 || q.Critical != 1 || q.Penalty != 31 || q.Marked != 2 || q.Categories["terminology"] != 1 || q.Categories["accuracy"] != 1 {
+		t.Fatalf("review %+v", q)
+	}
+	want := 100 - 31.0*100/float64(words)
+	if want < 0 {
+		want = 0
+	}
+	if diff := q.Score - want; diff > 0.06 || diff < -0.06 {
+		t.Fatalf("score %v, want about %v for %d words", q.Score, want, words)
+	}
+	// Every language: French has no issues, so the total is over more words.
+	var all project.Review
+	te.call("GET", fmt.Sprintf("/api/projects/%d/review", p.ID), te.pm, nil, 200, &all)
+	if len(all.Files) != 2 || all.Total.Words != 2*words || all.Total.Penalty != 31 || all.Total.PerThousand >= q.PerThousand || all.Files[1].Score != 100 {
+		t.Fatalf("all languages %+v", all)
+	}
+	// The list of issues as a table.
+	r := te.download(fmt.Sprintf("/api/projects/%d/review?format=csv", p.ID), te.pm)
+	table := string(r.body)
+	if !strings.HasPrefix(table, "\xEF\xBB\xBFFile,Language,Segment,Category,Severity,Points,Note") || strings.Count(table, "\n") != 4 ||
+		!strings.Contains(table, "Mietvertrag.txt,en-GB,2,accuracy,major,5,Mieter is the tenant.,") || !strings.Contains(table, ",4,terminology,critical,25,") || !strings.Contains(table, "The tenant pays the rent.") {
+		t.Fatalf("csv:\n%s", table)
+	}
+	// Taken off again, by who marked it.
+	te.call("DELETE", at("s2")+"&issue="+got.Issues[0].ID, te.pm, nil, 200, &got)
+	if len(got.Issues) != 1 || got.Issues[0].Category != "style" {
+		t.Fatalf("after deleting %+v", got.Issues)
+	}
+	if r := te.do("DELETE", at("s2")+"&issue=nope", te.pm, nil); r.status != 404 {
+		t.Fatalf("deleting no issue: %d", r.status)
+	}
+}

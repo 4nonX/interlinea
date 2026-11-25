@@ -2884,6 +2884,29 @@ table[aria-label="Units found"] .cell-action .row {
   margin: var(--s1) 0 0;
 }
 
+.seg-issues {
+  color: var(--warn-text, var(--text-2));
+}
+
+.issue-form {
+  margin-top: var(--s2);
+}
+
+.quality {
+  margin-top: var(--s3);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border);
+}
+
+.quality-score {
+  margin: 0 0 var(--s1);
+}
+
+.quality-score strong {
+  font-size: 1.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .seg-comments {
   display: inline-flex;
   gap: 2px;

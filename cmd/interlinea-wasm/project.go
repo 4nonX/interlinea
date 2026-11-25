@@ -194,6 +194,36 @@ func segmentation(args []js.Value) (any, error) {
 	return jsonOut(project.ApplySegmentation(segs, rules, args[2].String()))
 }
 
+// review(files): the scored review of files, [{name, lang, segments}]:
+// each file's score from the issues marked on its segments, and the
+// total. reviewCSV(files) lists the issues as a CSV table.
+func review(args []js.Value) (any, error) {
+	files, err := reviewedFiles(args)
+	if err != nil {
+		return nil, err
+	}
+	return jsonOut(project.ReviewOf(files))
+}
+
+func reviewCSV(args []js.Value) (any, error) {
+	files, err := reviewedFiles(args)
+	if err != nil {
+		return nil, err
+	}
+	return string(project.ReviewCSV(files)), nil
+}
+
+func reviewedFiles(args []js.Value) ([]project.ReviewedFile, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("review(files)")
+	}
+	var files []project.ReviewedFile
+	if err := json.Unmarshal([]byte(args[0].String()), &files); err != nil {
+		return nil, fmt.Errorf("files: %w", err)
+	}
+	return files, nil
+}
+
 func projectFuncs() map[string]any {
 	return map[string]any{
 		"projectDefaults":         guard(projectDefaults),
@@ -203,5 +233,7 @@ func projectFuncs() map[string]any {
 		"pretranslate":            guard(pretranslate),
 		"resegment":               guard(resegment),
 		"segmentation":            guard(segmentation),
+		"review":                  guard(review),
+		"reviewCSV":               guard(reviewCSV),
 	}
 }

@@ -28,6 +28,7 @@ import {
   Search,
   Replace,
   Scissors,
+  Flag,
   Combine,
   Settings2,
   Tag,
@@ -48,6 +49,11 @@ import {
   type Run,
   type Segment,
   type SegmentComment,
+  type SegmentIssue,
+  type IssueCategory,
+  type IssueSeverity,
+  ISSUE_CATEGORIES,
+  ISSUE_SEVERITIES,
   type TmUnit,
 } from "../editor/model";
 import type { QaIssue, TermHit } from "../editor/match";
@@ -90,6 +96,9 @@ import {
   DOCUMENT_TYPE,
   mergeDocx,
   mergeXliff,
+  reviewCsv,
+  reviewOf,
+  type Quality,
   keepsItsSegments,
   returnPackageName,
   returnSdlPackage,
@@ -108,7 +117,7 @@ import {
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
-import { usePresence, useResegment, useSegmentComments, useServerConcordance, useTranslationServices } from "../remote";
+import { usePresence, useResegment, useSegmentComments, useSegmentIssues, useServerConcordance, useTranslationServices } from "../remote";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -306,6 +315,29 @@ export function Editor({
   // On a team server: who else has which segment open.
   const present = usePresence(project, file?.id ?? "", target, activeId);
   const commenting = useSegmentComments(project, file?.id ?? "", target);
+  // Scored review: the issues a reviewer marks, and the file's score from them.
+  const reviewing = useSegmentIssues(project, file?.id ?? "", target);
+  const [quality, setQuality] = useState<Quality | null>(null);
+  const issuesKey = segments.map((x) => (x.issues ?? []).map((i) => i.id + i.severity).join(",")).join("|");
+  useEffect(() => {
+    let live = true;
+    if (!file) return;
+    void reviewOf([{ name: file.name, lang: target, segments }]).then((r) => live && setQuality(r.total));
+    return () => {
+      live = false;
+    };
+    // The score follows the issues, not every keystroke in a translation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file?.id, target, issuesKey, segments.length]);
+  async function saveReview() {
+    if (!project) return;
+    const files = project.files
+      .filter((f) => f.role === "translatable")
+      .flatMap((f) => Object.entries(f.segments).map(([l, segs]) => ({ name: f.name, lang: l, segments: segs })));
+    const name = `${project.name} review.csv`;
+    download(new TextEncoder().encode(await reviewCsv(files)), name, "text/csv");
+    notify(`Saved ${name}`);
+  }
   // Splitting and joining: in documents and in plain XLIFF files. Files of
   // Trados and memoQ keep their segments, as those programs keep their
   // own record of each.
@@ -1660,6 +1692,19 @@ export function Editor({
                   </Section>
                 )}
 
+                <Section title="Review" count={active.issues?.length}>
+                  <SegmentIssues
+                    key={active.id}
+                    issues={active.issues ?? []}
+                    me={reviewing.me}
+                    deletesAll={reviewing.deletesAll}
+                    quality={quality}
+                    onAdd={(issue) => reviewing.add(active.id, issue)}
+                    onDelete={(id) => reviewing.remove(active.id, id)}
+                    onSave={saveReview}
+                  />
+                </Section>
+
                 <Section title="Comments" count={active.comments?.length}>
                   <SegmentComments
                     key={active.id}
@@ -1923,6 +1968,13 @@ function SegmentStatusCell({
           {s.file.match}%
         </span>
       ) : null}
+      {(s.issues?.length ?? 0) > 0 && (
+        <span className="seg-comments seg-issues">
+          <Flag size={13} aria-hidden="true" />
+          <span className="sr-only">{plural(s.issues!.length, "issue marked in review", "issues marked in review")}</span>
+          <span aria-hidden="true">{s.issues!.length}</span>
+        </span>
+      )}
       {(s.comments?.length ?? 0) > 0 && (
         <span className="seg-comments">
           <MessageSquare size={13} aria-hidden="true" />
@@ -2412,6 +2464,141 @@ function ServiceSuggestions({
         </div>
       )}
     </div>
+  );
+}
+
+const categoryName = (c: string) => ISSUE_CATEGORIES.find(([id]) => id === c)?.[1] ?? c;
+const severityName = (v: string) => ISSUE_SEVERITIES.find(([id]) => id === v)?.[1] ?? v;
+const severityPoints = (v: string) => ISSUE_SEVERITIES.find(([id]) => id === v)?.[2] ?? 0;
+
+/** What a file's score says, in a sentence. */
+export function qualityText(q: Quality): string {
+  if (q.issues === 0) return `No issues marked in ${plural(q.words, "word", "words")}.`;
+  const parts = [
+    q.minor ? `${q.minor} minor` : "",
+    q.major ? `${q.major} major` : "",
+    q.critical ? `${q.critical} critical` : "",
+  ].filter(Boolean);
+  return `${plural(q.issues, "issue", "issues")} (${parts.join(", ")}), ${plural(q.penalty, "penalty point", "penalty points")} in ${plural(q.words, "word", "words")}.`;
+}
+
+/** The issues a reviewer marked on the open segment, a form for a new one, and the file's score. */
+function SegmentIssues({
+  issues,
+  me,
+  deletesAll,
+  quality,
+  onAdd,
+  onDelete,
+  onSave,
+}: {
+  issues: SegmentIssue[];
+  me: string;
+  deletesAll: boolean;
+  quality: Quality | null;
+  onAdd: (issue: { category: IssueCategory; severity: IssueSeverity; note?: string }) => Promise<unknown>;
+  onDelete: (id: string) => Promise<unknown>;
+  onSave: () => Promise<unknown>;
+}) {
+  const [category, setCategory] = useState<IssueCategory>("accuracy");
+  const [severity, setSeverity] = useState<IssueSeverity>("minor");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const add = () => {
+    if (busy) return;
+    setBusy(true);
+    void onAdd({ category, severity, note: note.trim() || undefined }).then(() => {
+      setNote("");
+      setBusy(false);
+    });
+  };
+  return (
+    <>
+      {issues.length === 0 ? (
+        <p className="muted">No issues marked on this segment.</p>
+      ) : (
+        <ul className="comment-list">
+          {issues.map((i) => (
+            <li key={i.id}>
+              <p className="comment-text">
+                <strong>{categoryName(i.category)}</strong>, {severityName(i.severity).toLowerCase()} ({plural(severityPoints(i.severity), "point", "points")})
+                {i.note ? `: ${i.note}` : ""}
+              </p>
+              <p className="result-meta">
+                {i.by}, {fmtDate(i.at)}
+                {(deletesAll || i.by === me) && (
+                  <button
+                    type="button"
+                    className="link-button"
+                    aria-label={`Delete the issue ${categoryName(i.category)}, ${severityName(i.severity).toLowerCase()}`}
+                    onClick={() => void onDelete(i.id)}
+                  >
+                    Delete
+                  </button>
+                )}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="field-grid issue-form">
+        <div className="field">
+          <label htmlFor="issue-category">Kind of issue</label>
+          <select id="issue-category" value={category} onChange={(e) => setCategory(e.target.value as IssueCategory)}>
+            {ISSUE_CATEGORIES.map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="issue-severity">Severity</label>
+          <select id="issue-severity" value={severity} onChange={(e) => setSeverity(e.target.value as IssueSeverity)}>
+            {ISSUE_SEVERITIES.map(([id, name, points]) => (
+              <option key={id} value={id}>
+                {name} ({plural(points, "point", "points")})
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <label className="field">
+        <span className="sr-only">What is wrong, if you want to say</span>
+        <input
+          id="issue-note"
+          maxLength={1000}
+          placeholder="What is wrong (optional)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.stopPropagation();
+              add();
+            }
+          }}
+        />
+      </label>
+      <button type="button" className="btn btn-small" disabled={busy} onClick={add}>
+        <Flag size={14} aria-hidden="true" />
+        Mark issue
+      </button>
+      {quality && (
+        <div className="quality" role="status">
+          <p className="quality-score">
+            Score of this file <strong>{quality.score.toFixed(1)}</strong>
+            <span className="muted"> of 100</span>
+          </p>
+          <p className="help">
+            {qualityText(quality)} The score is 100 less the penalty points in percent of the words.
+          </p>
+          <button type="button" className="link-button" onClick={() => void onSave()}>
+            Save the project's review as CSV
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 

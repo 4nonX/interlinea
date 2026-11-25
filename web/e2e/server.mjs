@@ -319,6 +319,26 @@ export default () =>
         const r = await fetch(`${base}/api/projects/${p.id}/comments?file=${encodeURIComponent(file)}&lang=${lang}&segment=${commented.id}&comment=nope`, { method: "DELETE", headers: { Authorization: `Bearer ${admin}` } });
         check(r.status === 404, "a comment that is not there is not found");
       }
+      // Scored review on the server: Ben marks an issue, Anna's arrives, the score counts both.
+      {
+        const box = "section[aria-label=Review]";
+        const marked = async () => (await api("GET", `/api/projects/${p.id}/segments?file=${encodeURIComponent(file)}&lang=${lang}`, admin)).find((x) => (x.issues ?? []).length > 0) ?? null;
+        await setValue("#issue-category", "accuracy");
+        await setValue("#issue-severity", "critical");
+        await click(`${box} button`, "Mark issue");
+        check(await waitFor(`document.querySelector(${JSON.stringify(box + " .comment-list")})?.innerText.includes('Accuracy, critical (25 points)')`, 10000), "Ben's issue is shown");
+        const seg = await marked();
+        check(!!seg && seg.issues[0].by === "ben" && seg.issues[0].severity === "critical", "and is kept on the server under his name");
+        await api("POST", `/api/projects/${p.id}/issues?file=${encodeURIComponent(file)}&lang=${lang}&segment=${encodeURIComponent(seg.id)}`, admin, { category: "style", severity: "minor", note: "Too formal." });
+        check(await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 2`, 10000), "Anna's issue arrives while Ben works");
+        check(await waitFor(`document.querySelector(${JSON.stringify(box)}).innerText.replace(/\\s+/g, ' ').includes('2 issues (1 minor, 1 critical), 26 penalty points')`, 10000), "the file's score counts both");
+        const review = await api("GET", `/api/projects/${p.id}/review?lang=${lang}`, admin);
+        const shown = await evaluate(`document.querySelector(${JSON.stringify(box + " .quality-score strong")}).textContent`);
+        check(review.total.penalty === 26 && review.total.score.toFixed(1) === shown, `the server scores the same: ${review.total.score} and ${shown}`);
+        check((await evaluate(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li button")}).length`)) === 1, "Ben may delete only his own issue");
+        await evaluate(`document.querySelector(${JSON.stringify(box + " .comment-list li button")}).click()`);
+        check(await waitFor(`document.querySelectorAll(${JSON.stringify(box + " .comment-list li")}).length === 1`, 10000) && (await marked()).issues.length === 1, "his issue is deleted, here and on the server");
+      }
 
       // Splitting and joining happen on the server: Ben's is there for
       // everyone, and Anna's shows here without reloading.

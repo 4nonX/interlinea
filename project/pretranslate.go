@@ -57,6 +57,9 @@ type Segment struct {
 	// Comments are what the people working on the project wrote about
 	// the segment, oldest first. They do not go into the document.
 	Comments []Comment `json:"comments,omitempty"`
+	// Issues are what a reviewer marked as wrong with the translation;
+	// the file's score comes from them.
+	Issues []Issue `json:"issues,omitempty"`
 }
 
 // Comment is a remark on a segment by someone working on the project.

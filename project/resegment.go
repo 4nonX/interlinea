@@ -204,6 +204,7 @@ func Split(segs []Segment, i int, before content.Content) ([]Segment, error) {
 	a.Status, b.Status = statusOf(a.Target), StatusNew
 	a.Origin, a.Warnings, a.Ignored, a.File = nil, nil, nil, nil
 	b.Origin, b.Warnings, b.Ignored, b.Comments, b.File = nil, nil, nil, nil, nil
+	b.Issues = nil
 	if s.Split == nil {
 		a.ID = r.key + "#1"
 		a.Split = &SplitPart{Unit: r.key}
@@ -587,6 +588,10 @@ func Join(segs []Segment, i int) ([]Segment, error) {
 	z.Comments = append(append([]Comment{}, x.Comments...), y.Comments...)
 	if len(z.Comments) == 0 {
 		z.Comments = nil
+	}
+	z.Issues = append(append([]Issue{}, x.Issues...), y.Issues...)
+	if len(z.Issues) == 0 {
+		z.Issues = nil
 	}
 	z.Notes = mergeNotes(x.Notes, y.Notes)
 	if x.MaxLength > 0 && y.MaxLength > 0 {

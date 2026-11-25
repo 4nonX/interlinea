@@ -357,6 +357,14 @@ void draw(QPainter &p, const QString &name)
         path.lineTo(19, 3);
         path.cubicTo(20.1, 3, 21, 3.9, 21, 5);
         path.closeSubpath();
+    } else if (name == QLatin1String("flag")) {
+        // A flag on its pole.
+        path.moveTo(4, 22);
+        path.lineTo(4, 3);
+        path.moveTo(4, 4);
+        path.cubicTo(8, 1.5, 12, 6.5, 20, 4);
+        path.lineTo(20, 14);
+        path.cubicTo(12, 16.5, 8, 11.5, 4, 14);
     } else if (name == QLatin1String("languages")) {
         // A letter of one script and one of another, as translation is drawn.
         path.moveTo(4, 6);

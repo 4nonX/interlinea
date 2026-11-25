@@ -64,6 +64,10 @@ client and the desktop app, with installers and a server image.
 - Plain text files are read by the same core as every other document, in the browser as on the desktop: a line is a paragraph, cut by the rules of the source language, and the translated text can be saved from the editor.
 - A project can have segmentation rules of its own: regular expressions for the text before and after a place, where a sentence ends or does not. They come before the rules for the language and cut the documents and text files added to the project; templates carry them.
 
+### Review
+
+- Scored review (LQA): a reviewer marks issues on a segment, each with a kind (accuracy, fluency, terminology, style, locale conventions, formatting, other) and a severity (minor 1, major 5, critical 25 penalty points). The editor shows the file's score, 100 less the penalty points in percent of the source words, and the review of the whole project is saved as a CSV table. On a team server the issues are there for everyone and arrive while others work; marking one leaves the translation and its version alone.
+
 ### Typing
 
 - While a translation is typed, the terms found for the segment and the words of its memory matches are offered after two letters. Tab or Enter takes one, Escape closes the list. It can be turned off in the settings.

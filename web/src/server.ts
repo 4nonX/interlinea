@@ -3,7 +3,7 @@
 // memories and terminology, and the live feed of changes.
 
 import type { CoreEntry } from "./termio";
-import type { CoreRun } from "./editor/model";
+import type { SegmentIssue, CoreRun } from "./editor/model";
 import type { CoreReport } from "./project";
 
 /** An account, as the server shows it. */
@@ -258,6 +258,7 @@ export interface CoreSegment {
   status: "new" | "draft" | "confirmed";
   locked?: boolean;
   comments?: { id: string; text: string; by: string; at: string }[];
+  issues?: SegmentIssue[];
   block?: string;
   maxLength?: number;
   notes?: string[];
@@ -633,6 +634,11 @@ export function client(conn: Connection) {
       send<StoredSegment>("POST", `${p(id)}/comments?${q({ file, lang, segment })}`, { text }),
     deleteComment: (id: number, file: string, lang: string, segment: string, comment: string) =>
       send<StoredSegment>("DELETE", `${p(id)}/comments?${q({ file, lang, segment, comment })}`),
+    /** Marks an issue a reviewer found on a segment; its translation and version stay. */
+    addIssue: (id: number, file: string, lang: string, segment: string, issue: { category: string; severity: string; note?: string }) =>
+      send<StoredSegment>("POST", `${p(id)}/issues?${q({ file, lang, segment })}`, issue),
+    deleteIssue: (id: number, file: string, lang: string, segment: string, issue: string) =>
+      send<StoredSegment>("DELETE", `${p(id)}/issues?${q({ file, lang, segment, issue })}`),
     /** The units of a memory the project uses that match its segments in a language, as TMX. */
     memoryExtract: async (id: number, name: string, lang: string) =>
       new Uint8Array(

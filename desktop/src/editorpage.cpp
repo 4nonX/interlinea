@@ -184,6 +184,22 @@ static bool hasSuffix(const QString &name, std::initializer_list<const char *> s
     return false;
 }
 
+// The kinds of issue a reviewer marks, as the server names them, and what
+// they are called; the same list as in the web app.
+static QList<std::pair<QString, QString>> issueCategories()
+{
+    return {{QStringLiteral("accuracy"), EditorPage::tr("Accuracy")},     {QStringLiteral("fluency"), EditorPage::tr("Fluency")},
+            {QStringLiteral("terminology"), EditorPage::tr("Terminology")}, {QStringLiteral("style"), EditorPage::tr("Style")},
+            {QStringLiteral("locale"), EditorPage::tr("Locale conventions")}, {QStringLiteral("formatting"), EditorPage::tr("Formatting")},
+            {QStringLiteral("other"), EditorPage::tr("Other")}};
+}
+
+// How much an issue weighs: its name and its penalty points.
+static QList<std::tuple<QString, QString, int>> issueSeverities()
+{
+    return {{QStringLiteral("minor"), EditorPage::tr("Minor"), 1}, {QStringLiteral("major"), EditorPage::tr("Major"), 5}, {QStringLiteral("critical"), EditorPage::tr("Critical"), 25}};
+}
+
 // Content without the whitespace at its end, or at its start.
 static QJsonArray trimmedContent(QJsonArray c, bool end)
 {
@@ -403,10 +419,12 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
                 const QJsonObject mine = m_model->segment(m_model->rowOf(data.value(QLatin1String("segment")).toString()));
                 if (data.value(QLatin1String("version")).toInt() > mine.value(QLatin1String("version")).toInt())
                     m_refreshTimer.start();
-            } else if (kind == QLatin1String("segment-commented") && data.value(QLatin1String("file")).toString() == m_file
+            } else if ((kind == QLatin1String("segment-commented") || kind == QLatin1String("segment-reviewed")) && data.value(QLatin1String("file")).toString() == m_file
                        && data.value(QLatin1String("targetLang")).toString() == m_lang) {
-                // Only the comments changed: the translations here stay as they are.
+                // Only the comments or the issues changed: the translations here stay as they are.
                 refreshComments();
+                if (kind == QLatin1String("segment-reviewed"))
+                    loadQuality();
             } else if (kind == QLatin1String("file-resegmented") && data.value(QLatin1String("file")).toString() == m_file
                        && data.value(QLatin1String("targetLang")).toString() == m_lang) {
                 // Someone split or joined segments: the file's list is another one.
@@ -724,6 +742,59 @@ QWidget *EditorPage::buildPanel()
     connect(esc, &QShortcut::activated, this, closeLookup);
     m_lookupSection->hide();
     v->addWidget(m_lookupSection);
+
+    // Scored review: the issues marked on the open segment, a form for a
+    // new one, and the file's score.
+    QVBoxLayout *reviewBody = nullptr;
+    v->addWidget(section(tr("Review"), &m_reviewCount, body, &reviewBody));
+    m_reviewList = new QVBoxLayout;
+    m_reviewList->setSpacing(S2);
+    reviewBody->addLayout(m_reviewList);
+    m_issueCategory = new QComboBox(body);
+    m_issueCategory->setObjectName(QStringLiteral("issueCategory"));
+    for (const auto &[id, name] : issueCategories())
+        m_issueCategory->addItem(name, id);
+    m_issueSeverity = new QComboBox(body);
+    m_issueSeverity->setObjectName(QStringLiteral("issueSeverity"));
+    for (const auto &[id, name, points] : issueSeverities())
+        m_issueSeverity->addItem(tr("%1 (%2)").arg(name, points == 1 ? tr("1 point") : tr("%1 points").arg(points)), id);
+    reviewBody->addWidget(Web::row({Web::field(tr("Kind of issue"), m_issueCategory, body), Web::field(tr("Severity"), m_issueSeverity, body)}, body));
+    m_issueNote = new QLineEdit(body);
+    m_issueNote->setObjectName(QStringLiteral("issueNote"));
+    m_issueNote->setAccessibleName(tr("What is wrong, if you want to say"));
+    m_issueNote->setPlaceholderText(tr("What is wrong (optional)"));
+    m_issueNote->setMaxLength(1000);
+    reviewBody->addWidget(m_issueNote);
+    m_issueAdd = new QPushButton(Icons::get(QStringLiteral("flag")), tr("Mark issue"), body);
+    m_issueAdd->setObjectName(QStringLiteral("addIssue"));
+    Theme::smallButton(m_issueAdd);
+    m_issueAdd->setIconSize(QSize(14, 14));
+    reviewBody->addWidget(m_issueAdd, 0, Qt::AlignLeft);
+    const auto mark = [this] { addIssue(m_issueCategory->currentData().toString(), m_issueSeverity->currentData().toString(), m_issueNote->text()); };
+    connect(m_issueAdd, &QPushButton::clicked, this, mark);
+    connect(m_issueNote, &QLineEdit::returnPressed, this, mark);
+    m_qualityScore = new QLabel(body);
+    m_qualityScore->setObjectName(QStringLiteral("qualityScore"));
+    m_qualityScore->setTextFormat(Qt::RichText);
+    m_qualityText = label(QString(), "help", body);
+    m_qualityText->setObjectName(QStringLiteral("qualityText"));
+    m_qualityText->setWordWrap(true);
+    auto *saveReview = new QPushButton(tr("Save the project's review as CSV"), body);
+    saveReview->setObjectName(QStringLiteral("saveReview"));
+    saveReview->setProperty("stepLink", true);
+    saveReview->setFlat(true);
+    saveReview->setCursor(Qt::PointingHandCursor);
+    connect(saveReview, &QPushButton::clicked, this, [this] {
+        const QString name = m_project.value(QLatin1String("settings")).toObject().value(QLatin1String("name")).toString() + QStringLiteral(" review.csv");
+        const QString to = QFileDialog::getSaveFileName(this, tr("Save the project's review as CSV"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QLatin1Char('/') + name);
+        if (!to.isEmpty())
+            saveReviewTo(to);
+    });
+    reviewBody->addWidget(m_qualityScore);
+    reviewBody->addWidget(m_qualityText);
+    reviewBody->addWidget(saveReview, 0, Qt::AlignLeft);
+    m_qualityScore->hide();
+    m_qualityText->hide();
 
     // Comments on the open segment, and a field for a new one.
     QVBoxLayout *commentsBody = nullptr;
@@ -1147,6 +1218,7 @@ void EditorPage::load()
         updateProgress();
         reloadPresence();
         loadAvailable();
+        loadQuality();
         m_grid->resizeRowsToContents();
         int first = 0;
         for (int i = 0; i < m_model->rowCount(); ++i) {
@@ -1384,6 +1456,7 @@ void EditorPage::activate(int row)
     showIssues();
     m_commentText->clear();
     showComments();
+    showReviewIssues();
     m_suggestion = {};
     m_serviceProblem.clear();
     showSuggestions();
@@ -1700,7 +1773,7 @@ void EditorPage::showIssues()
         }
         // .issue: the warning sign, the text, and what can be done.
         auto *box = new QFrame(panel);
-        box->setObjectName(QStringLiteral("issue"));
+        box->setObjectName(QStringLiteral("reviewIssue"));
         const bool forbidden = kind == QLatin1String("term-forbidden");
         box->setProperty("forbidden", forbidden);
         auto *h = new QHBoxLayout(box);
@@ -2330,16 +2403,199 @@ void EditorPage::takeComments(const QJsonObject &segment)
     if (row < 0)
         return;
     QJsonObject mine = m_model->segment(row);
-    if (mine.value(QLatin1String("comments")) == segment.value(QLatin1String("comments")))
+    const bool comments = mine.value(QLatin1String("comments")) != segment.value(QLatin1String("comments"));
+    const bool issues = mine.value(QLatin1String("issues")) != segment.value(QLatin1String("issues"));
+    if (!comments && !issues)
         return;
-    if (segment.value(QLatin1String("comments")).toArray().isEmpty())
-        mine.remove(QLatin1String("comments"));
-    else
-        mine.insert(QLatin1String("comments"), segment.value(QLatin1String("comments")));
+    for (const QLatin1String key : {QLatin1String("comments"), QLatin1String("issues")}) {
+        if (segment.value(key).toArray().isEmpty())
+            mine.remove(key);
+        else
+            mine.insert(key, segment.value(key));
+    }
     m_model->update(mine);
     m_grid->resizeRowToContents(row);
-    if (id == m_activeId)
+    if (id == m_activeId && comments)
         showComments();
+    if (id == m_activeId && issues)
+        showReviewIssues();
+    if (issues)
+        loadQuality();
+}
+
+QJsonArray EditorPage::reviewIssues() const
+{
+    return m_model->segment(activeRow()).value(QLatin1String("issues")).toArray();
+}
+
+void EditorPage::showReviewIssues()
+{
+    clear(m_reviewList);
+    QWidget *panel = m_issueNote->parentWidget();
+    const QJsonArray list = m_activeId.isEmpty() ? QJsonArray() : reviewIssues();
+    m_reviewCount->setVisible(!list.isEmpty());
+    m_reviewCount->setText(QString::number(list.size()));
+    m_issueAdd->setEnabled(!m_activeId.isEmpty());
+    if (list.isEmpty()) {
+        auto *none = label(tr("No issues marked on this segment."), "muted", panel);
+        none->setObjectName(QStringLiteral("noIssues"));
+        m_reviewList->addWidget(none);
+        return;
+    }
+    // Who marked an issue deletes it; on this computer, or managing the project, anyone's.
+    const bool all = m_conn && (m_conn->isLocal() || Roles::allows(m_project.value(QLatin1String("access")).toObject().value(QLatin1String("role")).toString(), QStringLiteral("manage")));
+    const QString me = m_conn ? m_conn->login() : QString();
+    const auto categoryName = [](const QString &id) {
+        for (const auto &[c, name] : issueCategories())
+            if (c == id)
+                return name;
+        return id;
+    };
+    for (const QJsonValue &v : list) {
+        const QJsonObject i = v.toObject();
+        const QString id = i.value(QLatin1String("id")).toString();
+        QString severity = i.value(QLatin1String("severity")).toString();
+        int points = 0;
+        for (const auto &[sv, name, p] : issueSeverities()) {
+            if (sv == severity) {
+                severity = name.toLower();
+                points = p;
+            }
+        }
+        const QString category = categoryName(i.value(QLatin1String("category")).toString());
+        const QString note = i.value(QLatin1String("note")).toString();
+        auto *box = new QFrame(panel);
+        box->setProperty("role", QStringLiteral("box"));
+        box->setObjectName(QStringLiteral("reviewIssue"));
+        auto *bv = new QVBoxLayout(box);
+        bv->setContentsMargins(S3, S2, S3, S2);
+        bv->setSpacing(S1);
+        auto *words = new QLabel(QStringLiteral("<b>%1</b>, %2 (%3)%4").arg(category.toHtmlEscaped(), severity.toHtmlEscaped(), points == 1 ? tr("1 point") : tr("%1 points").arg(points),
+                                                                           note.isEmpty() ? QString() : QStringLiteral(": ") + note.toHtmlEscaped()),
+                                 box);
+        words->setTextFormat(Qt::RichText);
+        words->setWordWrap(true);
+        words->setObjectName(QStringLiteral("issueWords"));
+        bv->addWidget(words);
+        auto *meta = new QHBoxLayout;
+        meta->setSpacing(S2);
+        const QDateTime at = QDateTime::fromString(i.value(QLatin1String("at")).toString(), Qt::ISODate).toLocalTime();
+        meta->addWidget(label(tr("%1, %2").arg(i.value(QLatin1String("by")).toString(), QLocale(QLocale::English, QLocale::UnitedKingdom).toString(at.date(), QStringLiteral("d MMM yyyy"))), "secondary", box), 1);
+        if (all || i.value(QLatin1String("by")).toString() == me) {
+            auto *del = new QPushButton(tr("Delete"), box);
+            del->setObjectName(QStringLiteral("deleteIssue:%1").arg(id));
+            del->setAccessibleName(tr("Delete the issue %1, %2").arg(category, severity));
+            Theme::smallButton(del);
+            Theme::quietButton(del);
+            connect(del, &QPushButton::clicked, this, [this, id] { deleteIssue(id); });
+            meta->addWidget(del);
+        }
+        bv->addLayout(meta);
+        m_reviewList->addWidget(box);
+    }
+}
+
+void EditorPage::addIssue(const QString &category, const QString &severity, const QString &note)
+{
+    if (!m_conn || m_activeId.isEmpty())
+        return;
+    const QUrlQuery q{{QStringLiteral("file"), m_file}, {QStringLiteral("lang"), m_lang}, {QStringLiteral("segment"), m_activeId}};
+    const QString id = m_activeId;
+    QJsonObject body{{QStringLiteral("category"), category}, {QStringLiteral("severity"), severity}};
+    if (!note.trimmed().isEmpty())
+        body.insert(QStringLiteral("note"), note.trimmed());
+    m_issueAdd->setEnabled(false);
+    onResult(m_conn->api()->post(projectPath() + QStringLiteral("/issues"), body, q), this, [this, id](const ApiResult &r) {
+        m_issueAdd->setEnabled(!m_activeId.isEmpty());
+        if (!r.ok()) {
+            notify(r.error.message);
+            return;
+        }
+        if (id == m_activeId)
+            m_issueNote->clear();
+        takeComments(r.object());
+        emit reviewed(id);
+    });
+}
+
+void EditorPage::deleteIssue(const QString &issueId)
+{
+    if (!m_conn || m_activeId.isEmpty())
+        return;
+    const QUrlQuery q{{QStringLiteral("file"), m_file}, {QStringLiteral("lang"), m_lang}, {QStringLiteral("segment"), m_activeId}, {QStringLiteral("issue"), issueId}};
+    const QString id = m_activeId;
+    onResult(m_conn->api()->del(projectPath() + QStringLiteral("/issues"), q), this, [this, id](const ApiResult &r) {
+        if (!r.ok()) {
+            notify(r.error.message);
+            return;
+        }
+        takeComments(r.object());
+        emit reviewed(id);
+    });
+}
+
+// The file's score, as the server counts it.
+void EditorPage::loadQuality()
+{
+    if (!m_conn)
+        return;
+    // Answers may come back in another order than they were asked for: only the last one asked counts.
+    const int asked = ++m_qualityAsked;
+    onResult(m_conn->api()->get(projectPath() + QStringLiteral("/review"), {{QStringLiteral("lang"), m_lang}}), this, [this, asked](const ApiResult &r) {
+        if (!r.ok() || asked != m_qualityAsked)
+            return;
+        for (const QJsonValue &v : r.object().value(QLatin1String("files")).toArray()) {
+            if (v.toObject().value(QLatin1String("file")).toString() == m_file)
+                m_quality = v.toObject();
+        }
+        if (m_quality.isEmpty())
+            return;
+        const int words = m_quality.value(QLatin1String("words")).toInt();
+        const int n = m_quality.value(QLatin1String("issues")).toInt();
+        const int penalty = m_quality.value(QLatin1String("penalty")).toInt();
+        const QString wordsText = words == 1 ? tr("1 word") : tr("%1 words").arg(words);
+        m_qualityScore->setText(tr("Score of this file <b style=\"font-size:20px\">%1</b> <span style=\"color:%2\">of 100</span>")
+                                    .arg(QString::number(m_quality.value(QLatin1String("score")).toDouble(), 'f', 1), Theme::color("text3").name()));
+        QString text;
+        if (n == 0) {
+            text = tr("No issues marked in %1.").arg(wordsText);
+        } else {
+            QStringList parts;
+            if (const int k = m_quality.value(QLatin1String("minor")).toInt())
+                parts << tr("%1 minor").arg(k);
+            if (const int k = m_quality.value(QLatin1String("major")).toInt())
+                parts << tr("%1 major").arg(k);
+            if (const int k = m_quality.value(QLatin1String("critical")).toInt())
+                parts << tr("%1 critical").arg(k);
+            text = tr("%1 (%2), %3 in %4.").arg(n == 1 ? tr("1 issue") : tr("%1 issues").arg(n), parts.join(QStringLiteral(", ")),
+                                              penalty == 1 ? tr("1 penalty point") : tr("%1 penalty points").arg(penalty), wordsText);
+        }
+        m_qualityText->setText(text + QLatin1Char(' ') + tr("The score is 100 less the penalty points in percent of the words."));
+        m_qualityScore->show();
+        m_qualityText->show();
+        emit scored();
+    });
+}
+
+void EditorPage::saveReviewTo(const QString &path)
+{
+    if (!m_conn)
+        return;
+    onResult(m_conn->api()->get(projectPath() + QStringLiteral("/review"), {{QStringLiteral("format"), QStringLiteral("csv")}}), this, [this, path](const ApiResult &r) {
+        if (!r.ok()) {
+            notify(tr("Could not save the review: %1").arg(r.error.message));
+            emit reviewSaved(false);
+            return;
+        }
+        QSaveFile f(path);
+        if (!f.open(QIODevice::WriteOnly) || f.write(r.body) != r.body.size() || !f.commit()) {
+            notify(tr("Could not save the review: %1").arg(f.errorString()));
+            emit reviewSaved(false);
+            return;
+        }
+        notify(tr("Saved %1").arg(QFileInfo(path).fileName()));
+        emit reviewSaved(true);
+    });
 }
 
 void EditorPage::refreshComments()
@@ -2352,6 +2608,10 @@ void EditorPage::refreshComments()
             return;
         for (const QJsonValue &v : r.array())
             takeComments(v.toObject());
+        // A segment saved meanwhile may have brought them already: what
+        // is shown for the open segment is what the list has now.
+        showComments();
+        showReviewIssues();
     });
 }
 
