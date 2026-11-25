@@ -33,7 +33,7 @@ per store (others wait up to ten seconds), PostgreSQL many.
 ## Starting it
 
 With Docker, from the released image (`:latest`, or a version such as
-`:0.1.0`):
+`:0.2.0`):
 
 ```
 docker run -d --name interlinea -p 8080:8080 -v interlinea:/data \

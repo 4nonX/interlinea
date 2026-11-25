@@ -7,6 +7,11 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-25
+
+Termbases made from scratch, with fields of every kind, and a desktop
+app that fits its text and shows a real preview.
+
 ### Terminology
 
 - A termbase is made in steps: its name and kind, its languages from a
@@ -207,5 +212,6 @@ version 3.
   a test, and the steps of each store's schema can no longer be changed
   once recorded.
 
-[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/4nonX/interlinea/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/4nonX/interlinea/releases/tag/v0.1.0
