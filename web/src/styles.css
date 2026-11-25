@@ -2496,16 +2496,6 @@ kbd {
   border-color: currentColor;
 }
 
-/* In the memories, not inserted: a dashed outline. */
-.score.is-available {
-  background: transparent;
-  border: 1px dashed currentColor;
-}
-
-.seg-available {
-  opacity: 0.75;
-}
-
 .seg-status .score {
   min-width: 0;
   height: 18px;

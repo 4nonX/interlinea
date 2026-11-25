@@ -26,10 +26,6 @@ public:
         SegmentRole,
         ActiveRole,
         PresenceRole,
-        // The best match the memories hold for the segment (a JSON
-        // object with band, score and memory), empty when it has none or
-        // has a translation from a match already.
-        AvailableRole,
     };
 
     explicit SegmentModel(QObject *parent = nullptr);
@@ -53,17 +49,11 @@ public:
     QString active() const { return m_active; }
     // Who else has which segment open.
     void setPresence(const QHash<QString, QStringList> &bySegment);
-    // The best match of each segment in the project's memories, by
-    // segment ID, as the analysis of the file reports it.
-    void setAvailable(const QHash<QString, QJsonObject> &bySegment);
     // A translation being typed, shown in the grid until it is saved.
     void setPending(const QString &id, const QJsonArray &target);
     void clearPending(const QString &id);
 
     static QString statusName(const QString &status);
-    // What an available match says in words: "Exact match (100%) in
-    // Client TM, not inserted".
-    static QString availableText(const QJsonObject &offer);
 
 private:
     void changed(int row);
@@ -72,7 +62,6 @@ private:
     QHash<QString, int> m_rows;
     QHash<QString, QVector<SegmentContent::Mark>> m_marks;
     QHash<QString, QStringList> m_presence;
-    QHash<QString, QJsonObject> m_available;
     QHash<QString, QJsonArray> m_pending;
     QString m_active;
 };

@@ -195,35 +195,10 @@ export default () =>
         )) === 4,
         "bold names in segment 2 come from the file as tags",
       );
-      // The match column: what the memories hold for each segment, before
-      // anything is inserted.
-      const offered = () =>
-        evaluate(
-          "[...document.querySelectorAll('.seg')].map(s => { const b = s.querySelector('.seg-status .score.is-available > [aria-hidden]'); return b ? s.querySelector('.seg-num').textContent + '=' + b.textContent : s.querySelector('.seg-available') ? s.querySelector('.seg-num').textContent + '=rep' : ''; }).filter(Boolean).join(' ')",
-        );
+      // The match column shows a match once it is inserted, not before.
       check(
-        await waitFor(
-          "document.querySelectorAll('.seg-status .score.is-available').length > 5",
-        ),
-        "the best match of each segment is shown beside it",
-      );
-      const offers = await offered();
-      check(
-        /(^| )11=100%( |$)/.test(offers) &&
-          /(^| )18=CM( |$)/.test(offers) &&
-          /(^| )32=rep( |$)/.test(offers) &&
-          /(^| )10=9\d%( |$)/.test(offers),
-        "exact, context and fuzzy matches and a repetition, by segment: " + offers,
-      );
-      check(
-        !/(^| )(1|2|3|9)=/.test(offers),
-        "none beside confirmed segments or segments without a match",
-      );
-      check(
-        (await evaluate(
-          "[...document.querySelectorAll('.seg')][10].querySelector('.score.is-available').title",
-        )) === "Exact match (100%) in Kanzlei Weber (DE-EN), not inserted",
-        "the badge says what it is and which memory holds it",
+        (await evaluate("[...document.querySelectorAll('.seg')].filter(s => !s.querySelector('.seg-target')?.innerText.trim() && s.querySelector('.seg-status .score')).length")) === 0,
+        "an empty segment shows no match percentage",
       );
       await key("ArrowDown", "ArrowDown", 40, 1);
       await key("ArrowDown", "ArrowDown", 40, 1);

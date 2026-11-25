@@ -257,10 +257,6 @@ EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &
     m_grid->setAccessibleName(tr("Segments"));
     m_grid->setModel(m_model);
     m_delegate = new SegmentDelegate(m_grid);
-    m_availableTimer = new QTimer(this);
-    m_availableTimer->setSingleShot(true);
-    m_availableTimer->setInterval(1500);
-    connect(m_availableTimer, &QTimer::timeout, this, &EditorPage::loadAvailable);
     m_delegate->rightToLeft = [this](int column) { return Languages::rtl(column == SegmentModel::Source ? m_sourceLang : m_lang); };
     m_delegate->factory = [this](QWidget *parent, const QModelIndex &index) { return makeCellWidget(parent, index); };
     m_delegate->activeHeight = [this](int column, int width) { return activeHeight(column, width); };
@@ -1170,39 +1166,6 @@ void EditorPage::updateReview()
     });
 }
 
-// The match column: the best match each segment of the file has in the
-// project's memories, from the analysis of this file. Asked for when the
-// file opens and, a moment after the last one, when a confirmation gave
-// the memories a unit.
-void EditorPage::loadAvailable()
-{
-    if (!m_conn)
-        return;
-    const QJsonObject body{{QStringLiteral("lang"), m_lang}, {QStringLiteral("file"), m_file}};
-    onResult(m_conn->api()->post(projectPath() + QStringLiteral("/analysis"), body), this, [this](const ApiResult &r) {
-        if (!r.ok())
-            return; // the results panel says what is wrong with a memory
-        QHash<QString, QJsonObject> offers;
-        const QJsonArray segments = r.array().at(0).toObject().value(QLatin1String("segments")).toArray();
-        for (const QJsonValue &v : segments) {
-            const QJsonObject s = v.toObject();
-            const QString band = s.value(QLatin1String("band")).toString();
-            const bool repeats = band == QLatin1String("repetition") || band == QLatin1String("cross-file");
-            if (!repeats && band != QLatin1String("context") && s.value(QLatin1String("score")).toInt() < 70)
-                continue;
-            QJsonObject offer{{QStringLiteral("band"), band}};
-            if (!repeats) {
-                offer.insert(QStringLiteral("score"), s.value(QLatin1String("score")));
-                offer.insert(QStringLiteral("memory"), s.value(QLatin1String("memory")));
-            }
-            offers.insert(s.value(QLatin1String("id")).toString(), offer);
-        }
-        m_model->setAvailable(offers);
-        m_grid->resizeRowsToContents();
-        emit availableLoaded();
-    });
-}
-
 void EditorPage::load()
 {
     if (!m_conn)
@@ -1217,7 +1180,6 @@ void EditorPage::load()
         applyFilter();
         updateProgress();
         reloadPresence();
-        loadAvailable();
         loadQuality();
         m_grid->resizeRowsToContents();
         int first = 0;
@@ -1954,7 +1916,6 @@ void EditorPage::confirm()
         save(id, target, QStringLiteral("confirmed"), warnings, origin, [this, id, row, warnings, numbers, repRows, target](bool ok) {
             if (!ok)
                 return;
-            m_availableTimer->start();
             for (int i : repRows)
                 save(m_model->segment(i).value(QLatin1String("id")).toString(), target, QStringLiteral("confirmed"), {},
                      QJsonObject{{QStringLiteral("kind"), QStringLiteral("repetition")}, {QStringLiteral("from"), id}});
@@ -2792,7 +2753,6 @@ void EditorPage::takeSegments(const QJsonArray &segments, int row)
     m_model->setSegments(segments);
     applyFilter();
     updateProgress();
-    loadAvailable();
     m_grid->resizeRowsToContents();
     if (m_model->rowCount() > 0)
         goToSegment(m_model->segment(qBound(0, row, m_model->rowCount() - 1)).value(QLatin1String("id")).toString());

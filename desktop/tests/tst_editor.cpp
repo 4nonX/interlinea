@@ -564,20 +564,11 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(ed->model()->rowCount(), 4, 10000);
         QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), 0, 10000);
 
-        // The match column: what the memory holds for each segment, before
-        // anything is inserted. The third segment has a match with one other
-        // word, the fourth repeats the second, and the second
-        // has nothing.
-        auto offer = [ed](int row) { return ed->model()->index(row, SegmentModel::State).data(SegmentModel::AvailableRole).toJsonObject(); };
-        QTRY_VERIFY_WITH_TIMEOUT(!offer(2).isEmpty(), 10000);
-        QVERIFY2(offer(2).value("score").toInt() >= 70 && offer(2).value("score").toInt() < 100, qPrintable(QString::number(offer(2).value("score").toInt())));
-        QCOMPARE(offer(2).value("memory").toString(), QStringLiteral("M"));
-        QCOMPARE(offer(3).value("band").toString(), QStringLiteral("repetition"));
-        QVERIFY(offer(1).isEmpty());
-        QVERIFY(ed->model()->index(2, SegmentModel::State).data(Qt::ToolTipRole).toString().contains(QStringLiteral("in M, not inserted")));
-        QVERIFY(ed->model()->index(3, SegmentModel::State).data(Qt::DisplayRole).toString().contains(QStringLiteral("Repeats an earlier segment")));
-        // The first has its exact match inserted already: no offer beside it.
-        QTRY_VERIFY_WITH_TIMEOUT(offer(0).isEmpty(), 10000);
+        // The match column shows a match once it is in the segment, not
+        // what the memory would offer: the third segment has a fuzzy match
+        // waiting and says nothing of it.
+        QVERIFY(!ed->model()->index(2, SegmentModel::State).data(Qt::ToolTipRole).toString().contains(QStringLiteral("%")));
+        QVERIFY(!ed->model()->index(2, SegmentModel::State).data(Qt::DisplayRole).toString().contains(QStringLiteral("%")));
 
         // The memory's match and the term are offered for the first segment.
         auto hasKind = [ed](const QString &kind) {

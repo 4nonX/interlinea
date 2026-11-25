@@ -62,13 +62,6 @@ QVariant SegmentModel::data(const QModelIndex &index, int role) const
         return !m_active.isEmpty() && id == m_active;
     case PresenceRole:
         return m_presence.value(id);
-    case AvailableRole: {
-        // Shown until the segment has a translation from a match or is
-        // confirmed, as the web's AvailableBadge.
-        if (status == QLatin1String("confirmed") || locked || !s.value(QLatin1String("origin")).toObject().isEmpty())
-            return QJsonObject();
-        return m_available.value(id);
-    }
     case HtmlRole:
         if (index.column() == Source)
             return SegmentContent::toHtml(s.value(QLatin1String("source")).toArray(), m_marks.value(id));
@@ -98,8 +91,6 @@ QVariant SegmentModel::data(const QModelIndex &index, int role) const
             const QStringList who = m_presence.value(id);
             if (!who.isEmpty())
                 parts << tr("Open by %1").arg(who.join(QLatin1String(", ")));
-            if (const QString offer = availableText(data(index, AvailableRole).toJsonObject()); !offer.isEmpty())
-                parts << offer;
             return parts.join(QLatin1String(", "));
         }
         }
@@ -118,8 +109,6 @@ QVariant SegmentModel::data(const QModelIndex &index, int role) const
             const QString by = s.value(QLatin1String("changedBy")).toString();
             if (!by.isEmpty())
                 lines << tr("Last saved by %1").arg(by);
-            if (const QString offer = availableText(data(index, AvailableRole).toJsonObject()); !offer.isEmpty())
-                lines << offer;
             return lines.join(QLatin1Char('\n'));
         }
         return {};
@@ -200,40 +189,6 @@ void SegmentModel::setPresence(const QHash<QString, QStringList> &bySegment)
         if (const int row = rowOf(id); row >= 0)
             changed(row);
     }
-}
-
-void SegmentModel::setAvailable(const QHash<QString, QJsonObject> &bySegment)
-{
-    QSet<QString> touched;
-    for (auto it = m_available.cbegin(); it != m_available.cend(); ++it)
-        touched << it.key();
-    for (auto it = bySegment.cbegin(); it != bySegment.cend(); ++it) {
-        if (m_available.value(it.key()) == it.value())
-            touched.remove(it.key());
-        else
-            touched << it.key();
-    }
-    m_available = bySegment;
-    for (const QString &id : touched) {
-        if (const int row = rowOf(id); row >= 0)
-            changed(row);
-    }
-}
-
-QString SegmentModel::availableText(const QJsonObject &offer)
-{
-    if (offer.isEmpty())
-        return {};
-    const QString band = offer.value(QLatin1String("band")).toString();
-    if (band == QLatin1String("repetition"))
-        return tr("Repeats an earlier segment of this file");
-    if (band == QLatin1String("cross-file"))
-        return tr("Repeats a segment of another file");
-    const bool context = band == QLatin1String("context");
-    const int score = context ? 100 : offer.value(QLatin1String("score")).toInt();
-    const QString memory = offer.value(QLatin1String("memory")).toString();
-    return memory.isEmpty() ? tr("%1, not inserted").arg(Bands::scoreDescription(score, context))
-                            : tr("%1 in %2, not inserted").arg(Bands::scoreDescription(score, context), memory);
 }
 
 void SegmentModel::setPending(const QString &id, const QJsonArray &target)
@@ -446,29 +401,6 @@ void SegmentDelegate::paint(QPainter *painter, const QStyleOptionViewItem &optio
         } else if (origin.value(QLatin1String("kind")).toString() == QLatin1String("repetition")) {
             Icons::paint(*painter, QRectF(cx - 6.5, y + 2, 13, 13), QStringLiteral("repeat"), Theme::color("text3"));
         }
-        // What the memories hold for a segment without a translation from
-        // one: the web's .score.is-available, outlined with dashes.
-        if (const QJsonObject offer = index.data(SegmentModel::AvailableRole).toJsonObject(); !offer.isEmpty()) {
-            const QString band = offer.value(QLatin1String("band")).toString();
-            if (band == QLatin1String("repetition") || band == QLatin1String("cross-file")) {
-                painter->setOpacity(0.75);
-                Icons::paint(*painter, QRectF(cx - 6.5, y + 2, 13, 13), QStringLiteral("repeat"), Theme::color("text3"));
-                painter->setOpacity(1);
-            } else {
-                const bool context = band == QLatin1String("context");
-                const int score = context ? 100 : offer.value(QLatin1String("score")).toInt();
-                const Bands::Colors bc = Bands::colors(Bands::ofScore(score, context));
-                const QRectF badge(cx - 19.5, y + 2.5, 39, 17);
-                painter->setRenderHint(QPainter::Antialiasing);
-                QPen pen(bc.text, 1, Qt::CustomDashLine);
-                pen.setDashPattern({3, 2});
-                painter->setPen(pen);
-                painter->setBrush(Qt::NoBrush);
-                painter->drawRoundedRect(badge, 4, 4);
-                painter->setPen(bc.text);
-                painter->drawText(badge, Qt::AlignCenter, Bands::scoreLabel(score, context));
-            }
-        }
         break;
     }
     }
@@ -498,7 +430,7 @@ QSize SegmentDelegate::sizeHint(const QStyleOptionViewItem &option, const QModel
         if (!s.value(QLatin1String("issues")).toArray().isEmpty())
             h += 15;
         const QString origin = s.value(QLatin1String("origin")).toObject().value(QLatin1String("kind")).toString();
-        if (origin == QLatin1String("tm") || origin == QLatin1String("repetition") || !index.data(SegmentModel::AvailableRole).toJsonObject().isEmpty())
+        if (origin == QLatin1String("tm") || origin == QLatin1String("repetition"))
             h += 22;
         return QSize(width, qMax(48, h + 6));
     }

@@ -328,39 +328,6 @@ export interface CoreReport {
   segments: { file: string; id: string; band: CoreBand; score?: number; memory?: string }[];
 }
 
-/** The best match a segment has in the project's memories. */
-export interface Available {
-  band: CoreBand;
-  /** 50 to 100; absent for a repetition of an earlier segment. */
-  score?: number;
-  memory?: string;
-}
-
-/**
- * The best match of each segment of a file, by segment ID: what the
- * memories hold for it before anything is inserted. Segments without a
- * match of at least min are left out.
- */
-export function availableMatches(
-  c: CoreApi,
-  file: ProjectFile,
-  sourceLang: LangCode,
-  lang: LangCode,
-  memories: MemoryRef[],
-  context: ContextRule,
-  min = 70,
-): Map<string, Available> {
-  const out = new Map<string, Available>();
-  const r = analyzeFiles(c, [file], sourceLang, lang, memories, context);
-  for (const s of r.segments ?? []) {
-    if (s.band === "repetition" || s.band === "cross-file")
-      out.set(s.id, { band: s.band });
-    else if (s.band === "context" || (s.score ?? 0) >= min)
-      out.set(s.id, { band: s.band, score: s.score, memory: s.memory });
-  }
-  return out;
-}
-
 /** The core's analysis of the files in one target language. */
 export function analyzeFiles(
   c: CoreApi,

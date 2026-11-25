@@ -38,8 +38,8 @@ client and the desktop app, with installers and a server image.
 - Find and replace in the translations of a file, with matching case
   and whole words: the places are counted before anything changes, tags
   and locked segments stay, and a segment that changes is a draft again.
-- The best match of every segment is shown beside it in the editor before
-  anything is inserted: context, exact and fuzzy matches and repetitions.
+- A segment shows the match it was translated from beside it. An empty
+  segment shows none: its matches are in the results when it is opened.
 - Analysis of a project against its memories, by match band.
 - Alignment: a document and its translation, done before, are paired
   sentence by sentence and shown side by side with a line from each

@@ -651,9 +651,9 @@ in the browser as WebAssembly: the units keep their formatting as tags, and
 "Save translated document" writes the .docx with the original layout.
 
 Creating a project opens it in the editor. It follows the
-conventions Trados Studio, memoQ and Phrase share: the best match of every
-segment shows beside it before it is opened (CM, a percentage or a
-repetition, outlined until it is inserted), the best match goes into
+conventions Trados Studio, memoQ and Phrase share: a segment shows the
+match it was translated from beside it (CM, a percentage or a repetition)
+and an empty segment shows none, the best match goes into
 an empty segment when it opens, Ctrl+Enter confirms and fills repetitions,
 Ctrl+1 to 9 insert numbered results, terms are recognized by the core
 (including inflected forms), the core's checks run as the project switches
