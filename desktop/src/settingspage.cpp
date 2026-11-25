@@ -14,6 +14,8 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QDesktopServices>
+#include <QPlainTextEdit>
+#include <QFile>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -229,6 +231,30 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     page.body->addWidget(Web::panel(tr("Saved work"), p, &body));
     m_saved = host(body);
 
+    page.body->addWidget(Web::panel(tr("About Interlinea"), p, &body));
+    {
+        auto *what = Web::text(tr("Interlinea is free software under the GNU Affero General Public License, version 3: you may use it, pass it on and change it under the terms of that "
+                                  "licence. It comes without warranty."),
+                               "help", p);
+        what->setWordWrap(true);
+        body->addWidget(what);
+        auto *whose = Web::text(tr("Copyright © 2026 Dan Dreßen."), "help", p);
+        whose->setObjectName(QStringLiteral("copyright"));
+        body->addWidget(whose);
+        auto *read = Web::button(tr("Read the licence"), Web::Small, p);
+        read->setObjectName(QStringLiteral("readLicence"));
+        connect(read, &QPushButton::clicked, this, &SettingsPage::showLicence);
+        auto *source = Web::button(tr("Source code"), Web::Small, p);
+        source->setObjectName(QStringLiteral("sourceCode"));
+        connect(source, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/4nonX/interlinea"))); });
+        auto *row = new QHBoxLayout;
+        row->setSpacing(8);
+        row->addWidget(read);
+        row->addWidget(source);
+        row->addStretch();
+        body->addLayout(row);
+    }
+
     page.body->addWidget(Web::text(tr("Interlinea %1. Open source: a translation workspace with its editor, terminology, memories and projects.").arg(QStringLiteral(INTERLINEA_VERSION)),
                                    "muted", p));
     page.body->addStretch();
@@ -294,6 +320,32 @@ void SettingsPage::refresh()
         fillTemplates();
         fillDictionaries();
     }
+}
+
+// The licence as it comes with the app, to read.
+void SettingsPage::showLicence()
+{
+    auto *dlg = new Web::Dialog(tr("GNU Affero General Public License, version 3"), this, true);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    auto *text = new QPlainTextEdit(dlg);
+    text->setObjectName(QStringLiteral("licenceText"));
+    text->setReadOnly(true);
+    text->setAccessibleName(tr("The licence"));
+    QFile notice(QStringLiteral(":/legal/NOTICE"));
+    QFile licence(QStringLiteral(":/legal/LICENSE"));
+    QString all;
+    if (notice.open(QIODevice::ReadOnly))
+        all += QString::fromUtf8(notice.readAll()) + QStringLiteral("\n\n");
+    if (licence.open(QIODevice::ReadOnly))
+        all += QString::fromUtf8(licence.readAll());
+    text->setPlainText(all);
+    text->setMinimumHeight(420);
+    dlg->body()->addWidget(text);
+    auto *close = Web::button(tr("Close"), Web::Primary, dlg);
+    connect(close, &QPushButton::clicked, dlg, &QDialog::accept);
+    dlg->buttons()->addStretch();
+    dlg->buttons()->addWidget(close);
+    dlg->open();
 }
 
 void SettingsPage::reload()

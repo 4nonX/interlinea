@@ -28,7 +28,9 @@ RUN npm run build
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=core /out/interlinea-server /usr/local/bin/interlinea-server
 COPY --from=web /src/web/dist /web
+COPY LICENSE NOTICE /licenses/
 COPY --from=core --chown=nonroot:nonroot /out/data /data
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
 ENV INTERLINEA_ADDR=:8080 \
     INTERLINEA_DATA=/data \
     INTERLINEA_WEB=/web \

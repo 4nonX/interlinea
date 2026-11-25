@@ -971,6 +971,14 @@ export default () =>
           await open("/settings", { wait: 0, reload: false });
           const panel = "section[aria-labelledby=s-grammar]";
           await waitFor(`!!document.querySelector(${JSON.stringify(panel)})`);
+          // The app says whose it is and under which licence, and has the licence to read.
+          {
+            const about = await evaluate("document.querySelector('section[aria-labelledby=s-about]').innerText");
+            check(about.includes("GNU Affero General Public License, version 3") && about.includes("Copyright © 2026 Dan Dreßen."), "the settings name the licence and whose the program is");
+            check((await evaluate("[...document.querySelectorAll('section[aria-labelledby=s-about] a')].map(a => a.textContent.trim() + '=' + a.getAttribute('href')).join(' ')")) === "Read the licence=LICENSE.txt Source code=https://github.com/4nonX/interlinea", "with the licence and the source to go to");
+            const text = await evaluate("fetch('LICENSE.txt').then(r => r.text())", true);
+            check(text.startsWith("GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007") && text.includes("END OF TERMS AND CONDITIONS"), "the web client carries the licence");
+          }
           check((await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("No service yet."), "no grammar service at first, the translation service is not one");
           await click(`${panel} button`, "Add a grammar service");
           const fill = (i, v) => evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(panel + " form input")})[${i}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);

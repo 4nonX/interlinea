@@ -82,7 +82,7 @@ jobs:
                 -ldflags "-s -w -X main.version=$VERSION" -o "stage/$name/$cmd$ext" "./cmd/$cmd"
             done
             cp -r web/dist "stage/$name/web"
-            cp README.md CHANGELOG.md LICENSE docs/running.md "stage/$name/"
+            cp README.md CHANGELOG.md LICENSE NOTICE docs/running.md "stage/$name/"
             if [ "$os" = windows ]; then
               (cd stage && zip -qr "../out/$name.zip" "$name")
             else
@@ -147,6 +147,7 @@ jobs:
             org.opencontainers.image.title=Interlinea team server
             org.opencontainers.image.description=The Interlinea team server with the web client
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
 
@@ -181,6 +182,8 @@ jobs:
           cp build/desktop/Interlinea build/desktop/interlinea-core AppDir/usr/bin/
           cp desktop/packaging/org.interlinea.desktop.desktop AppDir/usr/share/applications/
           cp desktop/packaging/interlinea.png AppDir/usr/share/icons/hicolor/512x512/apps/
+          mkdir -p AppDir/usr/share/doc/interlinea
+          cp LICENSE NOTICE AppDir/usr/share/doc/interlinea/
           base=https://github.com/linuxdeploy
           curl -fsSL -o linuxdeploy "$base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
           curl -fsSL -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
@@ -233,7 +236,7 @@ jobs:
           New-Item -ItemType Directory -Force stage/Interlinea | Out-Null
           Copy-Item build/desktop/Release/Interlinea.exe, build/desktop/Release/interlinea-core.exe stage/Interlinea/
           windeployqt --release --compiler-runtime --no-system-d3d-compiler --no-opengl-sw stage/Interlinea/Interlinea.exe
-          Copy-Item README.md, CHANGELOG.md, LICENSE stage/Interlinea/
+          Copy-Item README.md, CHANGELOG.md, LICENSE, NOTICE stage/Interlinea/
       - name: the staged app starts, with its core
         shell: bash
         run: |
@@ -301,11 +304,14 @@ jobs:
         run: |
           app=build/desktop/Interlinea.app
           macdeployqt "$app"
+          cp LICENSE NOTICE "$app/Contents/Resources/"
           # Signed for this computer only: there is no developer certificate.
           codesign --force --deep --sign - "$app"
           codesign --verify --deep "$app"
           mkdir -p dmg out
           cp -R "$app" dmg/
+          cp LICENSE dmg/LICENSE.txt
+          cp NOTICE dmg/NOTICE.txt
           ln -s /Applications dmg/Applications
           hdiutil create -volname "Interlinea $VERSION" -srcfolder dmg -ov -format UDZO "out/Interlinea-$VERSION-macos-universal.dmg"
       - name: the app from the disk image starts, with its core

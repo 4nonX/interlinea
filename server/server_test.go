@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -518,6 +519,25 @@ func TestConfig(t *testing.T) {
 
 func tmInfo(name string) tm.Info {
 	return tm.Info{Name: name, SourceLang: "de-DE", TargetLang: "en-GB"}
+}
+
+// The web client carries the licence the repository has, word for word.
+func TestLicenceCopies(t *testing.T) {
+	own, err := os.ReadFile("../LICENSE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(own, []byte("GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007")) {
+		t.Fatalf("LICENSE starts with %q", own[:60])
+	}
+	web, err := os.ReadFile("../web/public/LICENSE.txt")
+	if err != nil || !bytes.Equal(own, web) {
+		t.Fatalf("web/public/LICENSE.txt is not LICENSE: %v", err)
+	}
+	notice, err := os.ReadFile("../NOTICE")
+	if err != nil || !bytes.Contains(notice, []byte("Copyright (C) 2026 Dan Dreßen")) {
+		t.Fatalf("NOTICE: %v", err)
+	}
 }
 
 func TestWebApp(t *testing.T) {

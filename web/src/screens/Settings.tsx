@@ -197,6 +197,8 @@ export function Settings() {
       <TeamServer />
 
       <SavedWork />
+
+      <About />
     </div>
   );
 }
@@ -478,6 +480,30 @@ function YourName() {
           it, in their history and in exported files. On a team server your
           account's name is used.
         </p>
+      </div>
+    </section>
+  );
+}
+
+/** What Interlinea is in law: its licence, whose it is, and where its source is. */
+function About() {
+  return (
+    <section className="panel" aria-labelledby="s-about">
+      <h2 id="s-about" className="panel-title">
+        About Interlinea
+      </h2>
+      <p className="help">
+        Interlinea is free software under the GNU Affero General Public License, version 3: you may use it, pass it on and change it under the terms of that
+        licence. It comes without warranty.
+      </p>
+      <p className="help">Copyright © 2026 Dan Dreßen.</p>
+      <div className="row">
+        <a className="btn btn-small" href="LICENSE.txt" target="_blank" rel="noreferrer">
+          Read the licence
+        </a>
+        <a className="btn btn-small" href="https://github.com/4nonX/interlinea" target="_blank" rel="noreferrer">
+          Source code
+        </a>
       </div>
     </section>
   );

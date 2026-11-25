@@ -64,6 +64,8 @@ add_library(interlinea_app STATIC
     src/terminologypage.cpp
     src/words.cpp
 )
+# The licence and the copyright notice are in the app, which shows them.
+qt_add_resources(interlinea_app "legal" PREFIX "/legal" BASE .. FILES ../LICENSE ../NOTICE)
 target_include_directories(interlinea_app PUBLIC src)
 target_compile_definitions(interlinea_app PUBLIC INTERLINEA_VERSION="${INTERLINEA_VERSION}")
 target_link_libraries(interlinea_app PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
@@ -97,7 +99,8 @@ set_target_properties(interlinea PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME Interlinea
     MACOSX_BUNDLE_GUI_IDENTIFIER org.interlinea.desktop
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
+    MACOSX_BUNDLE_COPYRIGHT "Copyright (C) 2026 Dan Dreßen. GNU Affero General Public License, version 3.")
 
 # The app's icon: in the program file on Windows, in the bundle on macOS,
 # and as the icon of its windows everywhere.

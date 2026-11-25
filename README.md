@@ -720,12 +720,14 @@ npx skills experimental_install
 
 ## License
 
-Copyright (C) 2026 Dan (4nonX) and the Interlinea contributors.
+Copyright (C) 2026 Dan Dreßen.
 
 Interlinea is free software: you can redistribute it and modify it under
 the terms of the GNU Affero General Public License, version 3
 (AGPL-3.0-only), as published by the Free Software Foundation. The full
-text is in [LICENSE](LICENSE).
+text is in [LICENSE](LICENSE), the copyright notice in [NOTICE](NOTICE).
+Every download carries both, and both apps show them under Settings,
+About Interlinea.
 
 It comes without any warranty, to the extent the law allows. If you run a
 changed version of the team server for others to use over a network, the

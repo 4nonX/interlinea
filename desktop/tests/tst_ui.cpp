@@ -8,6 +8,8 @@
 #include "settingspage.h"
 #include "testcore.h"
 
+#include <QDialog>
+#include <QPlainTextEdit>
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCheckBox>
@@ -16,6 +18,8 @@
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QLabel>
+#include <QDialog>
+#include <QPlainTextEdit>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
@@ -87,7 +91,19 @@ private slots:
             panels << f->accessibleName();
         QCOMPARE(panels, (QStringList{QStringLiteral("Your name"), QStringLiteral("Terminology wording"), QStringLiteral("Editor"), QStringLiteral("Project templates"),
                                       QStringLiteral("Spelling dictionaries"), QStringLiteral("Translation services"), QStringLiteral("Grammar services"), QStringLiteral("Access for programs"),
-                                      QStringLiteral("Team server"), QStringLiteral("Saved work")}));
+                                      QStringLiteral("Team server"), QStringLiteral("Saved work"), QStringLiteral("About Interlinea")}));
+        // The app says whose it is and under which licence, and has the licence to read.
+        {
+            QCOMPARE(page->findChild<QLabel *>(QStringLiteral("copyright"))->text(), QStringLiteral("Copyright © 2026 Dan Dreßen."));
+            QVERIFY(page->findChild<QPushButton *>(QStringLiteral("sourceCode")));
+            page->findChild<QPushButton *>(QStringLiteral("readLicence"))->click();
+            QPlainTextEdit *licence = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT((licence = page->findChild<QPlainTextEdit *>(QStringLiteral("licenceText"))), 5000);
+            const QString said = licence->toPlainText();
+            QVERIFY(said.startsWith(QStringLiteral("Interlinea\nCopyright (C) 2026 Dan Dreßen")));
+            QVERIFY(said.contains(QStringLiteral("GNU AFFERO GENERAL PUBLIC LICENSE\nVersion 3, 19 November 2007")) && said.contains(QStringLiteral("END OF TERMS AND CONDITIONS")));
+            qobject_cast<QDialog *>(licence->window())->accept();
+        }
         // A translation service is added on this computer, listed by its
         // name and where it is, and its key is not shown.
         {

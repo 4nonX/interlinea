@@ -26,6 +26,8 @@ public:
 
     // Adds a translation service at a place, and makes an access token
     // for a program there, as the forms do.
+    // Shows the licence and the copyright notice that come with the app.
+    void showLicence();
     // kind is "translate" for a translation service and "check" for a
     // grammar service.
     void saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue,
