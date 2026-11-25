@@ -1577,7 +1577,7 @@ void EditorPage::showResults()
         g->setSpacing(S2);
         auto *key = new QLabel(QString::number(i + 1), card);
         Theme::role(key, "progress");
-        key->setFixedWidth(18);
+        key->setMinimumWidth(18);
         g->addWidget(key, 0, Qt::AlignTop);
         auto *bodyBox = new QVBoxLayout;
         bodyBox->setSpacing(2);
@@ -1587,7 +1587,8 @@ void EditorPage::showResults()
             const int score = r.value(QLatin1String("score")).toInt();
             const bool context = r.value(QLatin1String("context")).toBool();
             QWidget *b = Bands::badge(Bands::scoreLabel(score, context), Bands::ofScore(score, context), card);
-            b->setFixedWidth(44);
+            // At the least as wide as 44 px: a wider font widens it.
+            b->setMinimumWidth(44);
             b->setToolTip(Bands::scoreDescription(score, context));
             g->addWidget(b, 0, Qt::AlignTop);
             const QString matchSource = plainText(unit.value(QLatin1String("source")).toArray());
