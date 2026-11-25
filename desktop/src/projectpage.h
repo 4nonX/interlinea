@@ -38,6 +38,7 @@ signals:
     void back();
     // The project was deleted.
     void gone();
+
     // Translate a file into a language; both empty for the first file.
     void openEditor(const QString &file, const QString &lang);
 
@@ -45,6 +46,8 @@ protected:
     void resizeEvent(QResizeEvent *e) override;
 
 private:
+    void leave();
+    bool m_gone = false;
     void reload();
     void showProject();
     void fillFiles();

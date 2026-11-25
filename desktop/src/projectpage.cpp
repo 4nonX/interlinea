@@ -220,6 +220,16 @@ ProjectPage::ProjectPage(Connection *connection, qint64 projectId, QWidget *pare
     reload();
 }
 
+// The project is gone (deleted here or elsewhere): said once, however many
+// reads after it find it missing.
+void ProjectPage::leave()
+{
+    if (m_gone)
+        return;
+    m_gone = true;
+    emit gone();
+}
+
 void ProjectPage::resizeEvent(QResizeEvent *e)
 {
     QWidget::resizeEvent(e);
@@ -256,7 +266,7 @@ void ProjectPage::reload()
     onResult(m_conn->api()->get(base), this, [this, base](const ApiResult &r) {
         if (!r.ok()) {
             if (r.status == 404)
-                emit gone();
+                leave();
             else
                 say(r.error.message);
             return;
@@ -1279,6 +1289,6 @@ void ProjectPage::deleteProject()
             say(r.error.message);
             return;
         }
-        emit gone();
+        leave();
     });
 }
