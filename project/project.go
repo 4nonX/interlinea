@@ -128,6 +128,10 @@ type QA struct {
 	Words []string `json:"words,omitempty"`
 	// UneditedFuzzy warns when a fuzzy match is confirmed unchanged.
 	UneditedFuzzy bool `json:"uneditedFuzzy"`
+	// Grammar names the grammar service that reads the translations of
+	// this project; empty for none. A translation goes to the service
+	// while it is worked on.
+	Grammar string `json:"grammar,omitempty"`
 }
 
 // Prepare is what happens to the files when the project is created.
@@ -472,6 +476,9 @@ func Validate(s Settings, cat Catalog) []Problem {
 			add("qa.words", "The project's words can't be empty or contain line breaks or tabs.")
 			break
 		}
+	}
+	if len(s.QA.Grammar) > 100 || hasControl(s.QA.Grammar) {
+		add("qa.grammar", "Name the grammar service as it is listed.")
 	}
 	if s.Prepare.Pretranslate && (s.Prepare.MinScore < 50 || s.Prepare.MinScore > 100) {
 		add("prepare.minScore", "The lowest match to insert must be between 50%% and 100%%.")

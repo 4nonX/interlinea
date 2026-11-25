@@ -51,6 +51,18 @@ public:
     int shownCount() const;
     QJsonArray results() const { return m_results; }
     QJsonArray issues() const { return m_issues; }
+    // What the project's grammar service found in the open segment's
+    // translation as it is now: issues of the kind "grammar", each with
+    // its place (offset, length) and replacements. Empty until it has
+    // read the translation.
+    QJsonArray grammarIssues() const;
+    // The grammar service the project names, or nothing.
+    QString grammarService() const { return m_project.value(QLatin1String("settings")).toObject().value(QLatin1String("qa")).toObject().value(QLatin1String("grammar")).toString(); }
+    // Why the grammar service did not check, if it did not.
+    QString grammarError() const { return m_grammarError; }
+    // Puts a replacement where the grammar service found something;
+    // false where the place has a tag in it.
+    bool replaceFound(int offset, int length, const QString &value);
     // The last thing said to the person (a notice or a conflict).
     QString message() const { return m_lastMessage; }
 
@@ -127,6 +139,8 @@ signals:
     // what says which, for those who do not see it.
     void bestInserted(const QString &what);
     void checked();
+    // The grammar service has answered, or failed to.
+    void grammarChecked();
     void resultsShown();
 
 protected:
@@ -197,6 +211,16 @@ private:
     QJsonArray m_results;
     QJsonArray m_terms;
     QJsonArray m_issues;
+    // The grammar service's findings, and the segment and text they are for.
+    QJsonArray m_grammar;
+    QString m_grammarId;
+    QString m_grammarText;
+    QString m_grammarError;
+    int m_grammarSerial = 0;
+    // A confirmation waits for the grammar service, or comes back from it.
+    bool m_confirmWaits = false;
+    bool m_confirmAsked = false;
+    void checkGrammar(const QString &id, const QString &text, std::function<void()> then = {});
     int m_selected = 0;
     QHash<QString, QJsonObject> m_conflicts;
     QString m_conflictId;

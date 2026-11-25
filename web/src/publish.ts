@@ -111,7 +111,10 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
   // The server spells with its own dictionaries: a language whose
   // dictionary is only in this browser is not spell-checked there.
   const serverDicts = new Set((await api.dictionaries()).map((d) => fold(d.name)));
-  const qa = (settings as { qa?: { dictionaries?: Record<string, string> } }).qa;
+  const qa = (settings as { qa?: { dictionaries?: Record<string, string>; grammar?: string } }).qa;
+  // And it checks grammar with its own services: one that is only in
+  // this browser is not asked there.
+  if (qa?.grammar && !(await api.providers()).some((x) => x.kind === "check" && fold(x.name) === fold(qa.grammar!))) delete qa.grammar;
   if (qa?.dictionaries)
     qa.dictionaries = Object.fromEntries(Object.entries(qa.dictionaries).filter(([, n]) => serverDicts.has(fold(n))));
 

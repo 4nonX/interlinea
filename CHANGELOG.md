@@ -68,6 +68,19 @@ client and the desktop app, with installers and a server image.
 
 - Scored review (LQA): a reviewer marks issues on a segment, each with a kind (accuracy, fluency, terminology, style, locale conventions, formatting, other) and a severity (minor 1, major 5, critical 25 penalty points). The editor shows the file's score, 100 less the penalty points in percent of the source words, and the review of the whole project is saved as a CSV table. On a team server the issues are there for everyone and arrive while others work; marking one leaves the translation and its version alone.
 
+### Grammar
+
+- Grammar checking with a service of your own that answers the check
+  request of the LanguageTool HTTP API, such as a LanguageTool server you
+  run yourself. A service is added in the settings, and a project names
+  the one that reads its translations.
+- The open segment's translation is read a moment after the last change
+  and when it is confirmed. What the service finds is listed with the
+  checks, with replacements that go into the translation at a click, and
+  is kept with the confirmed segment.
+- Spelling stays with the project's dictionary. The quality report of a
+  file from the API has the service's findings.
+
 ### Typing
 
 - While a translation is typed, the terms found for the segment and the words of its memory matches are offered after two letters. Tab or Enter takes one, Escape closes the list. It can be turned off in the settings.

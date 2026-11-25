@@ -123,7 +123,71 @@ Over the API, `GET /api/providers` lists the services,
 administrators, and `POST /api/providers/{name}/translate` asks one for up
 to 50 segments.
 
+## Grammar services
+
+A grammar checker of your choice reads the translations of the projects
+that name it. Interlinea asks it the way the LanguageTool HTTP API is
+asked, so a LanguageTool server you run yourself works as it is, and so
+does anything else that answers the same request.
+
+A service is added in Settings under Grammar services, like a translation
+service: a name, the address of its check request (for a LanguageTool
+server, `http://localhost:8081/v2/check`), and optionally a header that
+signs each request. A project names its service under Quality checks.
+On a team server an administrator adds the services and the server sends
+the requests. For work on your own computer the desktop app's core sends
+them; in the web app without a server the browser does, so the service
+must allow requests from the page (a LanguageTool server is started with
+`--allow-origin`).
+
+The request is a POST with a form body
+(`application/x-www-form-urlencoded`):
+
+```
+text=The translation.&language=en-GB&disabledCategories=TYPOS
+```
+
+The answer has status 200 and this JSON body:
+
+```json
+{
+  "matches": [
+    {
+      "message": "Use “an” instead of “a” before a vowel sound.",
+      "offset": 6,
+      "length": 1,
+      "replacements": [{ "value": "an" }],
+      "rule": { "id": "EN_A_VS_AN", "category": { "id": "MISC", "name": "Miscellaneous" } }
+    }
+  ]
+}
+```
+
+`offset` and `length` count UTF-16 code units of the text. The text is
+the translation without its tags. Spelling is not asked for, and a finding
+of the category `TYPOS` is left out: the project's dictionary and its own
+words decide what is spelled right. A service that refuses a language with
+a region (`pt-AO`) is asked again for the language alone (`pt`).
+
+In the editor the service reads the open segment's translation a moment
+after the last change to it, and again when the segment is confirmed, so
+its findings are kept with the confirmed segment as warnings. A finding
+is listed with the checks, with up to three replacements that go into the
+translation at a click; where the place has a tag in it, the change is
+left to the translator.
+
+Over the API, `PUT /api/providers/{name}` with `"kind": "check"` adds a
+grammar service, `POST /api/providers/{name}/check` asks one about a text
+of up to 20,000 bytes, and the quality report of a file
+(`GET /api/projects/{id}/qa/report`) has the service's findings in a
+project that names one.
+
 ## What is sent where
+
+In a project that names a grammar service, the translation of the open
+segment goes to that service while it is worked on, and a file's
+translations go to it when the file's quality report is asked for. In a
+project that names none, nothing goes to any grammar service.
 
 A segment goes to a translation service when someone asks that service
 for a suggestion for it, and not before. Nothing leaves Interlinea through

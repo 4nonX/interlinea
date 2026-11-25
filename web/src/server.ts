@@ -268,9 +268,10 @@ export interface CoreSegment {
   joined?: { id: string; source: CoreRun[] }[];
 }
 
-/** A translation service on the server. */
+/** A translation or grammar service on the server. */
 export interface ServerProvider {
   name: string;
+  kind: "translate" | "check";
   host: string;
   url?: string;
   headerName?: string;
@@ -319,6 +320,7 @@ export interface CoreSettings {
     dictionaries?: Record<string, string>;
     words?: string[];
     uneditedFuzzy: boolean;
+    grammar?: string;
   };
   prepare: { pretranslate: boolean; minScore: number; confirmExact: boolean; confirmContext: boolean };
   segmentation?: { break: boolean; before?: string; after?: string }[];
@@ -618,10 +620,12 @@ export function client(conn: Connection) {
       send<StoredSegment>("PUT", `${p(id)}/segments?${q({ file, lang, segment })}`, { target, status }, version),
     /** The translation services the server can ask; administrators also get each one's address. */
     providers: () => get<ServerProvider[]>("/api/providers"),
-    saveProvider: (name: string, p: { url: string; headerName: string; headerValue?: string }) =>
+    saveProvider: (name: string, p: { kind?: "translate" | "check"; url: string; headerName: string; headerValue?: string }) =>
       send<ServerProvider>("PUT", `/api/providers/${encodeURIComponent(name)}`, p),
     deleteProvider: (name: string) => send<void>("DELETE", `/api/providers/${encodeURIComponent(name)}`),
     /** Asks a service for the translation of segments; their text leaves the server for the service. */
+    providerCheck: (name: string, lang: string, text: string) =>
+      send<{ matches: { offset: number; length: number; message: string; found: string; replacements: string[] }[] }>("POST", `/api/providers/${encodeURIComponent(name)}/check`, { lang, text }),
     providerTranslate: (name: string, sourceLang: string, targetLang: string, segments: { id: string; source: CoreRun[] }[]) =>
       send<{ translations: { id: string; target: CoreRun[]; tagsLost?: boolean }[] }>("POST", `/api/providers/${encodeURIComponent(name)}/translate`, { sourceLang, targetLang, segments }),
     /** Makes an access token for a program; the token itself is in the answer once. */

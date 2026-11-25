@@ -18,6 +18,9 @@ import (
 // answers the contract (see docs/integration.md).
 type Provider struct {
 	Name string `json:"name"`
+	// Kind is what the service is for: ProviderTranslate, the default,
+	// or ProviderCheck for one that finds grammar mistakes.
+	Kind string `json:"kind"`
 	// URL is where a request is sent.
 	URL string `json:"url"`
 	// HeaderName and HeaderValue are a header sent with each request,
@@ -29,9 +32,15 @@ type Provider struct {
 	CreatedBy   string    `json:"createdBy"`
 }
 
+// What a service is for.
+const (
+	ProviderTranslate = "translate"
+	ProviderCheck     = "check"
+)
+
 // Providers lists the translation services, by name.
 func (d *DB) Providers(ctx context.Context) ([]Provider, error) {
-	rows, err := d.sql.QueryContext(ctx, `SELECT name, url, header_name, header_value, created_at, created_by FROM providers ORDER BY lower(name)`)
+	rows, err := d.sql.QueryContext(ctx, `SELECT name, kind, url, header_name, header_value, created_at, created_by FROM providers ORDER BY lower(name)`)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +49,7 @@ func (d *DB) Providers(ctx context.Context) ([]Provider, error) {
 	for rows.Next() {
 		var x Provider
 		var created string
-		if err := rows.Scan(&x.Name, &x.URL, &x.HeaderName, &x.HeaderValue, &created, &x.CreatedBy); err != nil {
+		if err := rows.Scan(&x.Name, &x.Kind, &x.URL, &x.HeaderName, &x.HeaderValue, &created, &x.CreatedBy); err != nil {
 			return nil, err
 		}
 		x.CreatedAt = parseTime(created)
@@ -53,8 +62,8 @@ func (d *DB) Providers(ctx context.Context) ([]Provider, error) {
 func (d *DB) Provider(ctx context.Context, name string) (Provider, error) {
 	var x Provider
 	var created string
-	err := d.sql.QueryRowContext(ctx, `SELECT name, url, header_name, header_value, created_at, created_by FROM providers WHERE lower(name) = lower(?)`, strings.TrimSpace(name)).
-		Scan(&x.Name, &x.URL, &x.HeaderName, &x.HeaderValue, &created, &x.CreatedBy)
+	err := d.sql.QueryRowContext(ctx, `SELECT name, kind, url, header_name, header_value, created_at, created_by FROM providers WHERE lower(name) = lower(?)`, strings.TrimSpace(name)).
+		Scan(&x.Name, &x.Kind, &x.URL, &x.HeaderName, &x.HeaderValue, &created, &x.CreatedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return x, ErrNotFound
 	}
@@ -67,8 +76,14 @@ func (d *DB) Provider(ctx context.Context, name string) (Provider, error) {
 func (d *DB) SaveProvider(ctx context.Context, x Provider, keepSecret bool, by string) (Provider, error) {
 	x.Name, x.URL, x.HeaderName = strings.TrimSpace(x.Name), strings.TrimSpace(x.URL), strings.TrimSpace(x.HeaderName)
 	var problems []project.Problem
+	if x.Kind == "" {
+		x.Kind = ProviderTranslate
+	}
+	if x.Kind != ProviderTranslate && x.Kind != ProviderCheck {
+		problems = append(problems, project.Problem{Field: "kind", Message: "A service is of the kind translate or check."})
+	}
 	if x.Name == "" || len(x.Name) > 100 || strings.ContainsFunc(x.Name, unicode.IsControl) || strings.ContainsAny(x.Name, "/?#") {
-		problems = append(problems, project.Problem{Field: "name", Message: "A translation service needs a name of at most 100 characters, without / ? or #."})
+		problems = append(problems, project.Problem{Field: "name", Message: "A service needs a name of at most 100 characters, without / ? or #."})
 	}
 	if u, err := url.Parse(x.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		problems = append(problems, project.Problem{Field: "url", Message: "The address starts with https:// or http:// and names where requests are sent."})
@@ -101,8 +116,8 @@ func (d *DB) SaveProvider(ctx context.Context, x Provider, keepSecret bool, by s
 			return err
 		}
 		x.CreatedAt, x.CreatedBy = now, by
-		_, err := tx.ExecContext(ctx, `INSERT INTO providers(name, url, header_name, header_value, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-			noNUL(x.Name), noNUL(x.URL), noNUL(x.HeaderName), noNUL(x.HeaderValue), now.Format(timeLayout), noNUL(by))
+		_, err := tx.ExecContext(ctx, `INSERT INTO providers(name, kind, url, header_name, header_value, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			noNUL(x.Name), x.Kind, noNUL(x.URL), noNUL(x.HeaderName), noNUL(x.HeaderValue), now.Format(timeLayout), noNUL(by))
 		return err
 	})
 	return x, err

@@ -7,7 +7,7 @@
 // so the editor works on it as on any other; the store leaves it out of
 // what the browser saves.
 
-import { askLocalProvider, type Suggestion } from "./editor/provider";
+import { askLocalChecker, askLocalProvider, type GrammarMatch, type Suggestion } from "./editor/provider";
 import {
   createContext,
   useCallback,
@@ -185,6 +185,7 @@ export function qaOf(q: CoreSettings["qa"]) {
     rules: (q.rules ?? []) as QaRule[],
     dictionaries: q.dictionaries ?? {},
     words: q.words ?? [],
+    ...(q.grammar ? { grammar: q.grammar } : {}),
   };
 }
 
@@ -1020,14 +1021,14 @@ export function useTranslationServices(project: Project | undefined, lang: LangC
     if (!remote || !api) return;
     let live = true;
     api.providers().then(
-      (ps) => live && setOnServer(ps.map((p) => p.name)),
+      (ps) => live && setOnServer(ps.filter((p) => p.kind !== "check").map((p) => p.name)),
       () => live && setOnServer([]),
     );
     return () => {
       live = false;
     };
   }, [remote, api]);
-  const local = state.providers;
+  const local = useMemo(() => state.providers.filter((p) => p.kind !== "check"), [state.providers]);
   const sourceLang = project?.sourceLang ?? "";
   return useMemo(
     () => ({
@@ -1047,6 +1048,37 @@ export function useTranslationServices(project: Project | undefined, lang: LangC
       },
     }),
     [remote, onServer, local, api, sourceLang, lang],
+  );
+}
+
+/**
+ * The project's grammar service, if it has one: asked by the team server
+ * for a project there, by this browser for one on this computer. Checking
+ * sends the text to the service.
+ */
+export function useGrammar(project: Project | undefined, lang: LangCode) {
+  const { api } = useRemote();
+  const { state } = useStore();
+  const name = project?.qa.grammar ?? "";
+  const remote = !!project?.remote;
+  const local = state.providers;
+  return useMemo(
+    () =>
+      name
+        ? {
+            name,
+            async check(text: string): Promise<GrammarMatch[]> {
+              if (remote) {
+                if (!api) throw new Error("Sign in to the team server first.");
+                return (await api.providerCheck(name, lang, text)).matches;
+              }
+              const p = local.find((x) => x.kind === "check" && x.name === name);
+              if (!p) throw new Error(`The project's grammar service, ${name}, is no longer among this browser's services.`);
+              return askLocalChecker(p, lang, text);
+            },
+          }
+        : null,
+    [name, remote, local, api, lang],
   );
 }
 

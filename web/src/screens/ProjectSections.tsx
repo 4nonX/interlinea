@@ -63,6 +63,8 @@ export interface SectionsSource {
   entries: Entry[];
   /** Units per memory, when the memories are not in the browser. */
   units?: Record<string, number>;
+  /** The grammar services a project there can name. */
+  grammar?: string[];
 }
 
 const SourceCtx = createContext<SectionsSource | null>(null);
@@ -850,6 +852,46 @@ export function TerminologySection({
   );
 }
 
+/** Which grammar service reads the project's translations, if any. */
+function GrammarField({ qa, setQa, problems }: { qa: QaSettings; setQa: (q: QaSettings) => void; problems: string[] }) {
+  const { state } = useLocalStore();
+  const o = useContext(SourceCtx);
+  const names = o ? (o.grammar ?? []) : state.providers.filter((p) => p.kind === "check").map((p) => p.name);
+  const set = qa.grammar ?? "";
+  const gone = !!set && !names.some((n) => n.toLowerCase() === set.toLowerCase());
+  return (
+    <fieldset className="field">
+      <legend>Grammar</legend>
+      <div className="field-row-inline">
+        <label htmlFor="qa-grammar">Grammar service</label>
+        <select
+          id="qa-grammar"
+          className="select-small"
+          value={set}
+          onChange={(e) => {
+            const { grammar: _was, ...rest } = qa;
+            setQa(e.target.value ? { ...rest, grammar: e.target.value } : rest);
+          }}
+        >
+          <option value="">{names.length || gone ? "No grammar check" : "No grammar service yet"}</option>
+          {gone && <option value={set}>{set} (no longer there)</option>}
+          {names.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+      <Problems messages={problems} />
+      <p className="help">
+        With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under{" "}
+        <a href="#/settings">Settings</a>
+        {o ? ", by an administrator of the server" : ""}.
+      </p>
+    </fieldset>
+  );
+}
+
 /** How many of the checks are on. */
 export function checksOn(
   c: CoreApi,
@@ -1111,6 +1153,8 @@ export function ChecksSection({
           <Problems messages={problemsAt(problems, "qa.words")} />
         </div>
       </fieldset>
+
+      <GrammarField qa={qa} setQa={setQa} problems={problemsAt(problems, "qa.grammar")} />
 
       <fieldset className="field">
         <legend>Rules of your own</legend>

@@ -39,10 +39,14 @@ func (s *Server) providerRoutes() {
 	s.handle("PUT /api/providers/{name}", s.admin(s.saveProvider))
 	s.handle("DELETE /api/providers/{name}", s.admin(s.deleteProvider))
 	s.handle("POST /api/providers/{name}/translate", s.signedIn(s.providerTranslate))
+	s.handle("POST /api/providers/{name}/check", s.signedIn(s.providerCheck))
 }
 
 type providerView struct {
 	Name string `json:"name"`
+	// Kind is "translate" for a translation service and "check" for a
+	// grammar service.
+	Kind string `json:"kind"`
 	// Host is where the service is, without the rest of its address.
 	Host string `json:"host"`
 	// URL, HeaderName and Signed (a header's value is kept) are for
@@ -53,7 +57,7 @@ type providerView struct {
 }
 
 func viewProvider(p projectdb.Provider, admin bool) providerView {
-	v := providerView{Name: p.Name}
+	v := providerView{Name: p.Name, Kind: p.Kind}
 	if u, err := url.Parse(p.URL); err == nil {
 		v.Host = u.Host
 	}
@@ -63,8 +67,9 @@ func viewProvider(p projectdb.Provider, admin bool) providerView {
 	return v
 }
 
-// listProviders lists the translation services the editor can ask for a
-// suggestion. Administrators also see each one's address and the name of
+// listProviders lists the services: the translation services the editor
+// can ask for a suggestion and the grammar services that read
+// translations. Administrators also see each one's address and the name of
 // its header; the header's value is never given out.
 //
 // Access: signed in.
@@ -81,13 +86,15 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request, me sessio
 	writeJSON(w, http.StatusOK, out)
 }
 
-// saveProvider adds a translation service or changes the one of the name:
-// its address, and a header sent with each request to sign it. Without
+// saveProvider adds a service or changes the one of the name: its kind
+// ("translate", the default, or "check" for a grammar service), its
+// address, and a header sent with each request to sign it. Without
 // headerValue, the service keeps the value it has.
 //
 // Access: administrators.
 func (s *Server) saveProvider(w http.ResponseWriter, r *http.Request, me session) {
 	var req struct {
+		Kind        string  `json:"kind"`
 		URL         string  `json:"url"`
 		HeaderName  string  `json:"headerName"`
 		HeaderValue *string `json:"headerValue"`
@@ -95,7 +102,7 @@ func (s *Server) saveProvider(w http.ResponseWriter, r *http.Request, me session
 	if !readJSON(w, r, &req, maxBody) {
 		return
 	}
-	p := projectdb.Provider{Name: r.PathValue("name"), URL: req.URL, HeaderName: req.HeaderName}
+	p := projectdb.Provider{Name: r.PathValue("name"), Kind: req.Kind, URL: req.URL, HeaderName: req.HeaderName}
 	if req.HeaderValue != nil {
 		p.HeaderValue = *req.HeaderValue
 	}
@@ -107,7 +114,7 @@ func (s *Server) saveProvider(w http.ResponseWriter, r *http.Request, me session
 	writeJSON(w, http.StatusOK, viewProvider(saved, true))
 }
 
-// deleteProvider removes a translation service.
+// deleteProvider removes a service.
 //
 // Access: administrators.
 func (s *Server) deleteProvider(w http.ResponseWriter, r *http.Request, me session) {
@@ -148,6 +155,10 @@ func (s *Server) providerTranslate(w http.ResponseWriter, r *http.Request, me se
 	p, err := s.cfg.Projects.Provider(r.Context(), r.PathValue("name"))
 	if err != nil {
 		s.fail(w, r, err)
+		return
+	}
+	if p.Kind != projectdb.ProviderTranslate {
+		invalid(w, "name", fmt.Sprintf("%s is a grammar service, not a translation service.", p.Name))
 		return
 	}
 	var req providerRequest

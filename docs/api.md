@@ -727,10 +727,12 @@ Access: read on the project, or work in it.
 
 Writes the quality report of a file in a target language (?file=&lang=) as HTML, CSV or JSON (?format=, html by default).
 
+In a project with a grammar service the translations are sent to it, and what it finds is in the report.
+
 Access: read on the project, or work in it.
 
 - Parameters: `id` (path), `lang` (query), `file` (query), `format` (query)
-- Answer: 200 OK: `application/octet-stream`
+- Answer: 200 OK: `application/x-www-form-urlencoded`, `application/octet-stream`
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `POST /api/projects/{id}/recognize`
@@ -1651,7 +1653,7 @@ Access: signed in.
 
 ### `GET /api/providers`
 
-Lists the translation services the editor can ask for a suggestion.
+Lists the services: the translation services the editor can ask for a suggestion and the grammar services that read translations.
 
 Administrators also see each one's address and the name of its header; the header's value is never given out.
 
@@ -1662,25 +1664,38 @@ Access: signed in.
 
 ### `PUT /api/providers/{name}`
 
-Adds a translation service or changes the one of the name: its address, and a header sent with each request to sign it.
+Adds a service or changes the one of the name: its kind ("translate", the default, or "check" for a grammar service), its address, and a header sent with each request to sign it.
 
 Without headerValue, the service keeps the value it has.
 
 Access: administrators.
 
 - Parameters: `name` (path)
-- Body: {`headerName`: string, `headerValue`: string or null, `url`: string}
+- Body: {`headerName`: string, `headerValue`: string or null, `kind`: string, `url`: string}
 - Answer: 200 OK: [ProviderView](#providerview)
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `DELETE /api/providers/{name}`
 
-Removes a translation service.
+Removes a service.
 
 Access: administrators.
 
 - Parameters: `name` (path)
 - Answer: 204 No Content
+- Errors: 401, 403, 404, 422 (see [Error](#error))
+
+### `POST /api/providers/{name}/check`
+
+Asks a grammar service what it finds in a text of a language.
+
+The text is sent to the service's address, outside the server. Spelling is not asked for.
+
+Access: signed in.
+
+- Parameters: `name` (path)
+- Body: {`lang`: string, `text`: string}
+- Answer: 200 OK: {`matches`: list of [GrammarMatch](#grammarmatch)}
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `POST /api/providers/{name}/translate`
@@ -1877,6 +1892,20 @@ fileUpload is a file as the apps send it: the original bytes (base64 in JSON) an
 | `role` | [project.Role](#projectrole) | Role is translatable, reference, or package for a Trados project package, whose bilingual files the project gets. |
 | `segments` | map of list of [project.Segment](#projectsegment) | Segments are a translatable file's segments per target language, as the app read them; left out, the server makes them. |
 | `targetLang` | string | TargetLang is a bilingual file's target language; the server reads it from the file when it is left out. |
+
+### GrammarMatch
+
+grammarMatch is something a grammar service found in a text.
+
+| Field | Type | Description |
+|---|---|---|
+| `category` | string |  |
+| `found` | string | Found is the text there. |
+| `length` | integer |  |
+| `message` | string |  |
+| `offset` | integer | Offset and Length say where, in UTF-16 code units of the text. |
+| `replacements` | list of string |  |
+| `rule` | string | Rule and Category name what the service checked, in its words. |
 
 ### GrantView
 
@@ -2093,6 +2122,7 @@ projectPreview is what a project would be in one target language.
 |---|---|---|
 | `headerName` | string |  |
 | `host` | string | Host is where the service is, without the rest of its address. |
+| `kind` | string | Kind is "translate" for a translation service and "check" for a grammar service. |
 | `name` | string |  |
 | `signed` | boolean |  |
 | `url` | string | URL, HeaderName and Signed (a header's value is kept) are for administrators. |
@@ -2671,6 +2701,7 @@ QA is which quality checks run while translating, as qa.Options switches them: a
 | `dictionaries` | map of string | Dictionaries names the spelling dictionary for each target language; a language without one is not spell-checked. |
 | `disabled` | list of [qa.Kind](#qakind) |  |
 | `enabled` | list of [qa.Kind](#qakind) |  |
+| `grammar` | string | Grammar names the grammar service that reads the translations of this project; empty for none. A translation goes to the service while it is worked on. |
 | `rules` | list of [qa.UserRule](#qauserrule) | Rules are checks of the project's own. |
 | `uneditedFuzzy` | boolean | UneditedFuzzy warns when a fuzzy match is confirmed unchanged. |
 | `words` | list of string | Words are always spelled right in this project (names, terms). |
@@ -2962,7 +2993,7 @@ Issue is a problem found in a segment.
 
 Kind names a check.
 
-One of `brackets`, `capitalization`, `double-space`, `edge-space`, `empty`, `end-punctuation`, `inconsistent`, `inconsistent-source`, `length`, `length-ratio`, `numbers-extra`, `numbers-missing`, `repeated-word`, `rule`, `space-before-punctuation`, `spelling`, `tag-order`, `tags-extra`, `tags-missing`, `term-forbidden`, `term-missing`, `untranslated`.
+One of `brackets`, `capitalization`, `double-space`, `edge-space`, `empty`, `end-punctuation`, `grammar`, `inconsistent`, `inconsistent-source`, `length`, `length-ratio`, `numbers-extra`, `numbers-missing`, `repeated-word`, `rule`, `space-before-punctuation`, `spelling`, `tag-order`, `tags-extra`, `tags-missing`, `term-forbidden`, `term-missing`, `untranslated`.
 
 ### qa.Severity
 

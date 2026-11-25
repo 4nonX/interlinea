@@ -52,6 +52,11 @@ const (
 
 // Kinds lists the checks with a short description, in the order reports
 // group them.
+// Grammar is the kind of an issue a grammar service found. It is not one
+// of the checks Check runs: the service is asked by whoever holds its
+// address, and its findings are listed with the others.
+const Grammar Kind = "grammar"
+
 var Kinds = []struct {
 	Kind        Kind   `json:"kind"`
 	Name        string `json:"name"`

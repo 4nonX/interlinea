@@ -361,6 +361,39 @@
         },
         "type": "object"
       },
+      "GrammarMatch": {
+        "description": "grammarMatch is something a grammar service found in a text.",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "found": {
+            "description": "Found is the text there.",
+            "type": "string"
+          },
+          "length": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "offset": {
+            "description": "Offset and Length say where, in UTF-16 code units of the text.",
+            "type": "integer"
+          },
+          "replacements": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "rule": {
+            "description": "Rule and Category name what the service checked, in its words.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "GrantView": {
         "description": "grantView is a grant with the person's name, for lists.",
         "properties": {
@@ -835,6 +868,10 @@
           },
           "host": {
             "description": "Host is where the service is, without the rest of its address.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind is \"translate\" for a translation service and \"check\" for a grammar service.",
             "type": "string"
           },
           "name": {
@@ -2122,6 +2159,10 @@
             },
             "type": "array"
           },
+          "grammar": {
+            "description": "Grammar names the grammar service that reads the translations of this project; empty for none. A translation goes to the service while it is worked on.",
+            "type": "string"
+          },
           "rules": {
             "description": "Rules are checks of the project's own.",
             "items": {
@@ -2908,6 +2949,7 @@
           "edge-space",
           "empty",
           "end-punctuation",
+          "grammar",
           "inconsistent",
           "inconsistent-source",
           "length",
@@ -8382,7 +8424,7 @@
     },
     "/api/projects/{id}/qa/report": {
       "get": {
-        "description": "Access: read on the project, or work in it.",
+        "description": "In a project with a grammar service the translations are sent to it, and what it finds is in the report.\n\nAccess: read on the project, or work in it.",
         "operationId": "projectQAReport",
         "parameters": [
           {
@@ -8420,6 +8462,12 @@
           "200": {
             "content": {
               "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "application/x-www-form-urlencoded": {
                 "schema": {
                   "format": "binary",
                   "type": "string"
@@ -9208,7 +9256,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Lists the translation services the editor can ask for a suggestion.",
+        "summary": "Lists the services: the translation services the editor can ask for a suggestion and the grammar services that read translations.",
         "tags": [
           "Other"
         ]
@@ -9249,7 +9297,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Removes a translation service.",
+        "summary": "Removes a service.",
         "tags": [
           "Other"
         ]
@@ -9285,6 +9333,9 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "kind": {
+                    "type": "string"
                   },
                   "url": {
                     "type": "string"
@@ -9323,7 +9374,81 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Adds a translation service or changes the one of the name: its address, and a header sent with each request to sign it.",
+        "summary": "Adds a service or changes the one of the name: its kind (\"translate\", the default, or \"check\" for a grammar service), its address, and a header sent with each request to sign it.",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
+    "/api/providers/{name}/check": {
+      "post": {
+        "description": "The text is sent to the service's address, outside the server. Spelling is not asked for.\n\nAccess: signed in.",
+        "operationId": "providerCheck",
+        "parameters": [
+          {
+            "description": "The name of the memory or termbase.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "lang": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "matches": {
+                      "items": {
+                        "$ref": "#/components/schemas/GrammarMatch"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "404": {
+            "$ref": "#/components/responses/404"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Asks a grammar service what it finds in a text of a language.",
         "tags": [
           "Other"
         ]

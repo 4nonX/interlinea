@@ -200,6 +200,17 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     }
     m_providers = host(body);
 
+    page.body->addWidget(Web::panel(tr("Grammar services"), p, &body));
+    {
+        auto *help = Web::text(tr("A grammar checker of your choice, which reads the translation you are working on in a project that names it under Quality checks. Any service works "
+                                  "that answers a check request at its address as the integration guide describes. In such a project each translation is sent to the service while you "
+                                  "work on it; in other projects nothing is sent. Spelling stays with the project's dictionary."),
+                               "help", p);
+        help->setWordWrap(true);
+        body->addWidget(help);
+    }
+    m_checkers = host(body);
+
     page.body->addWidget(Web::panel(tr("Access for programs"), p, &body));
     {
         auto *help = Web::text(tr("An AI assistant or a script works as you, with your rights, when it signs in with a token made here. "
@@ -558,12 +569,12 @@ void SettingsPage::sendLoose(int index)
     });
 }
 
-void SettingsPage::saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue)
+void SettingsPage::saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue, const QString &kind)
 {
     Connection *conn = m_manager->find(connectionId);
     if (!conn)
         return;
-    QJsonObject body{{QStringLiteral("url"), url.trimmed()}, {QStringLiteral("headerName"), headerName.trimmed()}, {QStringLiteral("headerValue"), headerValue}};
+    QJsonObject body{{QStringLiteral("kind"), kind}, {QStringLiteral("url"), url.trimmed()}, {QStringLiteral("headerName"), headerName.trimmed()}, {QStringLiteral("headerValue"), headerValue}};
     onResult(conn->api()->put(QStringLiteral("/api/providers/%1").arg(ApiClient::seg(name.trimmed())), body), this, [this, name](const ApiResult &r) {
         if (!r.ok()) {
             say(r.error.message);
@@ -575,19 +586,34 @@ void SettingsPage::saveProvider(const QString &connectionId, const QString &name
     });
 }
 
-// The translation services of each place: listed by name and where they
-// are; administrators (on this computer, you) add and delete them.
 void SettingsPage::fillProviders()
+{
+    fillServices(m_providers, QStringLiteral("translate"));
+    fillServices(m_checkers, QStringLiteral("check"));
+}
+
+// The services of a kind of each place: listed by name and where they
+// are; administrators (on this computer, you) add and delete them.
+void SettingsPage::fillServices(QVBoxLayout *m_providers, const QString &kind)
 {
     clear(m_providers);
     QWidget *p = m_providers->parentWidget();
+    const bool check = kind == QLatin1String("check");
+    // The object names of the form: provider… for a translation service,
+    // checker… for a grammar service.
+    const QString stem = check ? QStringLiteral("checker") : QStringLiteral("provider");
+    const QString Stem = check ? QStringLiteral("Checker") : QStringLiteral("Provider");
     const QList<Connection *> places = ready();
     for (Connection *c : places) {
         const QString id = c->id();
         const bool admin = c->isLocal() || c->isAdmin();
         if (places.size() > 1)
             m_providers->addWidget(Web::text(c->isLocal() ? tr("On this computer") : tr("On %1").arg(c->displayName()), "fieldLabel", p));
-        const QJsonArray list = m_providerList.value(id);
+        QJsonArray list;
+        for (const QJsonValue &v : m_providerList.value(id)) {
+            if ((v.toObject().value(QLatin1String("kind")).toString() == QLatin1String("check")) == check)
+                list.append(v);
+        }
         if (list.isEmpty())
             m_providers->addWidget(Web::text(tr("No service yet."), "muted", p));
         for (const QJsonValue &v : list) {
@@ -621,11 +647,12 @@ void SettingsPage::fillProviders()
             m_providers->addWidget(note);
             continue;
         }
-        if (m_providerFormAt != id) {
-            auto *add = Web::button(tr("Add a service"), Web::Small, p, QStringLiteral("plus"));
-            add->setObjectName(QStringLiteral("addProvider:%1").arg(id));
-            connect(add, &QPushButton::clicked, this, [this, id] {
+        if (m_providerFormAt != id || m_providerFormKind != kind) {
+            auto *add = Web::button(check ? tr("Add a grammar service") : tr("Add a service"), Web::Small, p, QStringLiteral("plus"));
+            add->setObjectName(QStringLiteral("add%1:%2").arg(Stem, id));
+            connect(add, &QPushButton::clicked, this, [this, id, kind] {
                 m_providerFormAt = id;
+                m_providerFormKind = kind;
                 fillProviders();
             });
             m_providers->addWidget(add, 0, Qt::AlignLeft);
@@ -633,21 +660,21 @@ void SettingsPage::fillProviders()
         }
         auto *form = new QFrame(p);
         form->setProperty("role", QStringLiteral("box"));
-        form->setAccessibleName(tr("A translation service"));
+        form->setAccessibleName(check ? tr("A grammar service") : tr("A translation service"));
         auto *grid = new QGridLayout(form);
         grid->setContentsMargins(12, 12, 12, 12);
         grid->setHorizontalSpacing(16);
         grid->setVerticalSpacing(12);
         auto *name = new QLineEdit(form);
-        name->setObjectName(QStringLiteral("providerName"));
+        name->setObjectName(stem + QStringLiteral("Name"));
         auto *url = new QLineEdit(form);
-        url->setObjectName(QStringLiteral("providerUrl"));
-        url->setPlaceholderText(QStringLiteral("https://"));
+        url->setObjectName(stem + QStringLiteral("Url"));
+        url->setPlaceholderText(check ? QStringLiteral("https://…/v2/check") : QStringLiteral("https://"));
         auto *headerName = new QLineEdit(form);
-        headerName->setObjectName(QStringLiteral("providerHeader"));
+        headerName->setObjectName(stem + QStringLiteral("Header"));
         headerName->setPlaceholderText(QStringLiteral("Authorization"));
         auto *headerValue = new QLineEdit(form);
-        headerValue->setObjectName(QStringLiteral("providerHeaderValue"));
+        headerValue->setObjectName(stem + QStringLiteral("HeaderValue"));
         headerValue->setEchoMode(QLineEdit::Password);
         headerValue->setPlaceholderText(tr("Bearer …"));
         grid->addWidget(Web::field(tr("Name"), name, form), 0, 0);
@@ -655,7 +682,7 @@ void SettingsPage::fillProviders()
         grid->addWidget(Web::field(tr("Header that signs requests"), headerName, form, true), 1, 0);
         grid->addWidget(Web::field(tr("Its value"), headerValue, form, true), 1, 1);
         auto *save = Web::button(tr("Add the service"), Web::Primary | Web::Small, form);
-        save->setObjectName(QStringLiteral("saveProvider"));
+        save->setObjectName(QStringLiteral("save") + Stem);
         save->setEnabled(false);
         auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
         auto *row = new QHBoxLayout;
@@ -671,7 +698,8 @@ void SettingsPage::fillProviders()
             m_providerFormAt.clear();
             fillProviders();
         });
-        connect(save, &QPushButton::clicked, this, [this, id, name, url, headerName, headerValue] { saveProvider(id, name->text(), url->text(), headerName->text(), headerValue->text()); });
+        connect(save, &QPushButton::clicked, this,
+                [this, id, kind, name, url, headerName, headerValue] { saveProvider(id, name->text(), url->text(), headerName->text(), headerValue->text(), kind); });
         m_providers->addWidget(form);
     }
 }

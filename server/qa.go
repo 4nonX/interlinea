@@ -466,7 +466,9 @@ func (s *Server) projectQA(w http.ResponseWriter, r *http.Request, me session) {
 }
 
 // projectQAReport writes the quality report of a file in a target language
-// (?file=&lang=) as HTML, CSV or JSON (?format=, html by default).
+// (?file=&lang=) as HTML, CSV or JSON (?format=, html by default). In a
+// project with a grammar service the translations are sent to it, and
+// what it finds is in the report.
 //
 // Access: read on the project, or work in it.
 func (s *Server) projectQAReport(w http.ResponseWriter, r *http.Request, me session) {
@@ -492,6 +494,12 @@ func (s *Server) projectQAReport(w http.ResponseWriter, r *http.Request, me sess
 		invalid(w, "qa", err.Error())
 		return
 	}
+	found, err := s.grammarIssues(ctx, p, lang, segs)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "provider", err.Error()+".")
+		return
+	}
+	issues = append(issues, found...)
 	rep := qa.NewReport(q.Get("file"), segs, issues, o, s.cfg.Now())
 	var data []byte
 	var ct, ext string

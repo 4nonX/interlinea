@@ -42,6 +42,7 @@ import {
   isTag,
   missingTags,
   plain,
+  replaceStretch,
   runsToCore,
   sourceKey,
   wordCount,
@@ -57,6 +58,7 @@ import {
   type TmUnit,
 } from "../editor/model";
 import type { QaIssue, TermHit } from "../editor/match";
+import type { GrammarMatch } from "../editor/provider";
 import { buildIndex, recognizeTerms } from "../termio";
 import {
   bandOf,
@@ -115,7 +117,7 @@ import {
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
-import { usePresence, useResegment, useSegmentComments, useSegmentIssues, useServerConcordance, useTranslationServices } from "../remote";
+import { usePresence, useResegment, useSegmentComments, useSegmentIssues, useGrammar, useServerConcordance, useTranslationServices } from "../remote";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -497,9 +499,59 @@ export function Editor({
     dictReady,
     dictName,
   ]);
+  // The project's grammar service reads the open segment's translation a
+  // moment after the last change to it.
+  const grammar = useGrammar(project, target);
+  const [grammarFound, setGrammarFound] = useState<{ id: string; text: string; matches: GrammarMatch[] } | null>(null);
+  const [grammarError, setGrammarError] = useState("");
+  const grammarAsked = useRef(false);
+  // What a confirmation waited for the grammar service to read.
+  const [confirmRead, setConfirmRead] = useState<{ id: string; text: string } | null>(null);
+  const grammarId = active && !active.locked ? active.id : "";
+  const grammarText = active && !active.locked ? plain(active.target) : "";
+  useEffect(() => {
+    if (!grammar || !grammarId || !grammarText.trim()) {
+      setGrammarError("");
+      return;
+    }
+    let live = true;
+    const timer = window.setTimeout(() => {
+      grammar.check(grammarText).then(
+        (matches) => {
+          if (!live) return;
+          setGrammarFound({ id: grammarId, text: grammarText, matches });
+          setGrammarError("");
+        },
+        (e: unknown) => live && setGrammarError(e instanceof Error ? e.message : String(e)),
+      );
+    }, 700);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [grammar, grammarId, grammarText]);
+  // The service has read what was to be confirmed: confirm it, if it is
+  // still what is there.
+  useEffect(() => {
+    if (!confirmRead) return;
+    setConfirmRead(null);
+    if (active && active.id === confirmRead.id && plain(active.target) === confirmRead.text) confirmAndNext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmRead]);
   const allIssues = useMemo<QaIssue[]>(() => {
     if (!active) return [];
     const extra: QaIssue[] = [];
+    if (grammar && grammarFound && grammarFound.id === active.id && grammarFound.text === plain(active.target)) {
+      for (const m of grammarFound.matches)
+        extra.push({
+          kind: "grammar",
+          text: `${m.message} (“${m.found}”)`,
+          found: m.found,
+          replacements: m.replacements,
+          offset: m.offset,
+          length: m.length,
+        });
+    }
     // Unedited fuzzy match: a common check in memoQ, Phrase and Trados Verify.
     if (
       project?.qa.uneditedFuzzy &&
@@ -514,7 +566,7 @@ export function Editor({
     }
     const ignored = new Set(active.ignored ?? []);
     return [...issues, ...extra].filter((q) => !ignored.has(q.text));
-  }, [active, issues, project?.qa.uneditedFuzzy]);
+  }, [active, issues, project?.qa.uneditedFuzzy, grammar, grammarFound]);
 
   // The numbered results list: memory matches first, then terms (as in memoQ).
   const results: Result[] = [
@@ -687,6 +739,31 @@ export function Editor({
       setAnnouncement(
         "The target is empty. Type a translation or insert a match first.",
       );
+      return;
+    }
+    // A translation confirmed before the grammar service has read it as it
+    // is now is read first, so what the service finds is kept with it.
+    const text = plain(active.target);
+    if (grammar && !(grammarFound && grammarFound.id === active.id && grammarFound.text === text)) {
+      if (grammarAsked.current) return;
+      grammarAsked.current = true;
+      const id = active.id;
+      void grammar
+        .check(text)
+        .then(
+          (matches) => {
+            setGrammarFound({ id, text, matches });
+            setGrammarError("");
+          },
+          (e: unknown) => {
+            setGrammarFound({ id, text, matches: [] });
+            setGrammarError(e instanceof Error ? e.message : String(e));
+          },
+        )
+        .finally(() => {
+          grammarAsked.current = false;
+          setConfirmRead({ id, text });
+        });
       return;
     }
     const key = sourceKey(active.source);
@@ -1511,6 +1588,11 @@ export function Editor({
                 </Section>
 
                 <Section title="Checks" count={allIssues.length}>
+                  {grammar && grammarError && (
+                    <p className="muted" role="status">
+                      Grammar is not checked: {grammarError}
+                    </p>
+                  )}
                   {allIssues.length === 0 ? (
                     <p className="muted">
                       {plain(active.target).trim()
@@ -1525,7 +1607,30 @@ export function Editor({
                           className={`issue issue-${q.kind === "term-forbidden" ? "forbidden" : q.kind}`}
                         >
                           <AlertTriangle size={14} aria-hidden="true" />
-                          <span className="issue-text">{q.text}</span>
+                          <span className="issue-text">
+                            {q.text}
+                            {q.kind === "grammar" &&
+                              q.offset !== undefined &&
+                              (q.replacements ?? []).length > 0 &&
+                              replaceStretch(active.target, q.offset, q.length ?? 0, "") !== null && (
+                                <span className="issue-replace">
+                                  {(q.replacements ?? []).slice(0, 3).map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                className="btn btn-quiet btn-tiny"
+                                onClick={() => {
+                                  const runs = replaceStretch(active.target, q.offset!, q.length ?? 0, value);
+                                  if (runs) editor.current?.setRuns(runs);
+                                }}
+                                aria-label={`Replace ${q.found} with ${value}`}
+                              >
+                                Replace with “{value}”
+                              </button>
+                                  ))}
+                                </span>
+                              )}
+                          </span>
                           {q.kind === "spelling" && q.found && (
                             <button
                               type="button"

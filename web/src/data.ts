@@ -256,6 +256,8 @@ export interface QaSettings {
   dictionaries: Record<LangCode, string>;
   /** Words always spelled right in this project. */
   words: string[];
+  /** The grammar service that reads this project's translations, by name; none without. */
+  grammar?: string;
 }
 
 /** A Hunspell spelling dictionary. Its files are saved in the browser. */

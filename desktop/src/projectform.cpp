@@ -262,7 +262,7 @@ void ProjectForm::setCatalog(const QJsonObject &catalog, const QJsonArray &dicti
 void ProjectForm::load(Connection *c, std::function<void(const QString &)> done)
 {
     m_conn = c;
-    auto pending = std::make_shared<int>(3);
+    auto pending = std::make_shared<int>(4);
     auto catalog = std::make_shared<QJsonObject>();
     auto dicts = std::make_shared<QJsonArray>();
     auto kinds = std::make_shared<QJsonArray>();
@@ -286,6 +286,18 @@ void ProjectForm::load(Connection *c, std::function<void(const QString &)> done)
             *dicts = r.array();
         else
             *error = r.error.message;
+        finish();
+    });
+    onResult(c->api()->get(QStringLiteral("/api/providers")), this, [this, error, finish](const ApiResult &r) {
+        m_grammar.clear();
+        if (r.ok()) {
+            for (const QJsonValue &v : r.array()) {
+                if (v.toObject().value(QLatin1String("kind")).toString() == QLatin1String("check"))
+                    m_grammar << v.toObject().value(QLatin1String("name")).toString();
+            }
+        } else {
+            *error = r.error.message;
+        }
         finish();
     });
     onResult(c->api()->get(QStringLiteral("/api/qa/kinds")), this, [kinds, error, finish](const ApiResult &r) {
@@ -1486,6 +1498,51 @@ void ProjectForm::fillChecks()
         connect(addWord, &QPushButton::clicked, this, addIt);
         connect(word, &QLineEdit::returnPressed, this, addIt);
         v->addWidget(words);
+
+        // The grammar service that reads the translations, if any.
+        {
+            auto *grammar = new QWidget(w);
+            auto *gv = new QVBoxLayout(grammar);
+            gv->setContentsMargins(0, 0, 0, 0);
+            gv->setSpacing(8);
+            gv->addWidget(legend(tr("Grammar"), grammar));
+            auto *combo = new QComboBox(grammar);
+            combo->setObjectName(QStringLiteral("grammarService"));
+            combo->setAccessibleName(tr("Grammar service"));
+            const QString set = qa.value(QLatin1String("grammar")).toString();
+            const bool gone = !set.isEmpty() && !m_grammar.contains(set, Qt::CaseInsensitive);
+            combo->addItem(m_grammar.isEmpty() && !gone ? tr("No grammar service yet") : tr("No grammar check"), QString());
+            if (gone)
+                combo->addItem(tr("%1 (no longer there)").arg(set), set);
+            for (const QString &n : std::as_const(m_grammar))
+                combo->addItem(n, n);
+            int at = 0;
+            for (int i = 1; i < combo->count(); ++i) {
+                if (combo->itemData(i).toString().compare(set, Qt::CaseInsensitive) == 0)
+                    at = i;
+            }
+            combo->setCurrentIndex(at);
+            auto *label = new QLabel(tr("Grammar service"), grammar);
+            label->setBuddy(combo);
+            gv->addWidget(Web::row({label, combo}, grammar));
+            gv->addWidget(problemLabel(QStringLiteral("qa.grammar"), grammar));
+            auto *help = Web::text(host().isEmpty()
+                                       ? tr("With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under Settings.")
+                                       : tr("With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under Settings, by an administrator of the server."),
+                                   "help", grammar);
+            help->setWordWrap(true);
+            gv->addWidget(help);
+            connect(combo, &QComboBox::currentIndexChanged, this, [combo, setQa] {
+                const QString name = combo->currentData().toString();
+                setQa([name](QJsonObject &x) {
+                    if (name.isEmpty())
+                        x.remove(QStringLiteral("grammar"));
+                    else
+                        x.insert(QStringLiteral("grammar"), name);
+                });
+            });
+            v->addWidget(grammar);
+        }
 
         // Rules of the project's own.
         auto *rules = new QWidget(w);

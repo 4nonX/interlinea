@@ -1,4 +1,4 @@
-import { ProgramAccess, TranslationServices } from "./Integrations";
+import { GrammarServices, ProgramAccess, TranslationServices } from "./Integrations";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Upload } from "lucide-react";
 import { DEFAULT_USER_NAME, LANGUAGES, lang, type LangCode } from "../data";
@@ -190,6 +190,7 @@ export function Settings() {
       <Dictionaries />
 
       <TranslationServices />
+      <GrammarServices />
 
       <ProgramAccess />
 

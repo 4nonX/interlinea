@@ -955,6 +955,150 @@ private slots:
         QCOMPARE(SegmentContent::plainText(stored), QStringLiteral("Please now pay."));
         QCOMPARE(segs.at(0).toObject().value("status").toString(), QStringLiteral("confirmed"));
 
+        // A grammar service of one's own: named in the project, it reads the
+        // translation that is worked on, and what it finds is listed with
+        // the checks, with its replacements.
+        {
+            QTcpServer checker;
+            QVERIFY(checker.listen(QHostAddress::LocalHost));
+            QStringList asked;
+            connect(&checker, &QTcpServer::newConnection, &checker, [&checker, &asked] {
+                QTcpSocket *sock = checker.nextPendingConnection();
+                auto *buf = new QByteArray;
+                connect(sock, &QTcpSocket::readyRead, sock, [sock, buf, &asked] {
+                    buf->append(sock->readAll());
+                    const int head = buf->indexOf("\r\n\r\n");
+                    if (head < 0)
+                        return;
+                    const int at = buf->toLower().indexOf("content-length:");
+                    const int length = at < 0 ? 0 : buf->mid(at + 15, buf->indexOf("\r\n", at) - at - 15).trimmed().toInt();
+                    if (buf->size() < head + 4 + length)
+                        return;
+                    const QUrlQuery q(QString::fromUtf8(buf->mid(head + 4)).replace(QLatin1Char('+'), QLatin1String("%20")));
+                    const QString lang = q.queryItemValue("language", QUrl::FullyDecoded);
+                    const QString said = q.queryItemValue("text", QUrl::FullyDecoded);
+                    asked << lang + "|" + q.queryItemValue("disabledCategories") + "|" + said;
+                    QByteArray status = "200 OK";
+                    QByteArray body;
+                    if (lang != "en") {
+                        // It knows English, without regions.
+                        status = "400 Bad Request";
+                        body = "Error: not a language code known";
+                    } else {
+                        QJsonArray matches;
+                        if (const int i = int(said.indexOf("a apple")); i >= 0)
+                            matches.append(QJsonObject{{"message", "Use “an” before a vowel sound."}, {"offset", i}, {"length", 1},
+                                                       {"replacements", QJsonArray{QJsonObject{{"value", "an"}}}},
+                                                       {"rule", QJsonObject{{"id", "A_AN"}, {"category", QJsonObject{{"id", "MISC"}, {"name", "Misc"}}}}}});
+                        if (const int i = int(said.indexOf("teh end")); i >= 0)
+                            matches.append(QJsonObject{{"message", "These words are in the wrong form."}, {"offset", i}, {"length", 7},
+                                                       {"replacements", QJsonArray{QJsonObject{{"value", "the end"}}}},
+                                                       {"rule", QJsonObject{{"id", "FORM"}, {"category", QJsonObject{{"id", "GRAMMAR"}, {"name", "Grammar"}}}}}});
+                        if (const int i = int(said.indexOf("apple")); i >= 0)
+                            matches.append(QJsonObject{{"message", "Possible spelling mistake."}, {"offset", i}, {"length", 5},
+                                                       {"rule", QJsonObject{{"id", "SPELL"}, {"issueType", "misspelling"}, {"category", QJsonObject{{"id", "TYPOS"}}}}}});
+                        body = QJsonDocument(QJsonObject{{"matches", matches}}).toJson(QJsonDocument::Compact);
+                    }
+                    sock->write("HTTP/1.1 " + status + "\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: " + QByteArray::number(body.size()) + "\r\n\r\n" + body);
+                    sock->disconnectFromHost();
+                    delete buf;
+                });
+            });
+            const QString url = QStringLiteral("http://127.0.0.1:%1/v2/check").arg(checker.serverPort());
+            QVERIFY(wait(api->put(QStringLiteral("/api/providers/Checker"), QJsonObject{{"kind", "check"}, {"url", url}})).ok());
+            // It is no translation service: the editor does not offer it for suggestions.
+            ed->reloadServices();
+            QTest::qWait(500);
+            QVERIFY(!ed->services().contains(QStringLiteral("Checker")));
+
+            const QString first = segs.at(0).toObject().value("id").toString();
+            ed->goToSegment(first);
+            QTRY_COMPARE_WITH_TIMEOUT(ed->activeId(), first, 5000);
+            QSignalSpy read(ed, &EditorPage::grammarChecked);
+            const auto type = [ed](const QJsonArray &content) {
+                ed->target()->setContent(content);
+                emit ed->target()->edited();
+            };
+            // A project that names no service sends nothing.
+            type(text("I ate a apple."));
+            QTRY_VERIFY_WITH_TIMEOUT(read.size() > 0, 10000);
+            QVERIFY(asked.isEmpty() && ed->grammarIssues().isEmpty());
+
+            QJsonObject project = wait(api->get(base)).object();
+            QJsonObject settings = project.value("settings").toObject();
+            QJsonObject qa = settings.value("qa").toObject();
+            qa.insert("grammar", "Checker");
+            settings.insert("qa", qa);
+            QVERIFY(wait(api->put(base + "/settings", settings, project.value("version").toInt())).ok());
+            QTRY_COMPARE_WITH_TIMEOUT(ed->grammarService(), QStringLiteral("Checker"), 10000);
+
+            type(text("I ate a apple!"));
+            QTRY_COMPARE_WITH_TIMEOUT(ed->grammarIssues().size(), 1, 10000);
+            // Asked for the target language, then for the language alone; spelling is not asked for.
+            QCOMPARE(asked, (QStringList{QStringLiteral("en-GB|TYPOS|I ate a apple!"), QStringLiteral("en|TYPOS|I ate a apple!")}));
+            const QJsonObject found = ed->grammarIssues().first().toObject();
+            QCOMPARE(found.value("message").toString(), QStringLiteral("Use “an” before a vowel sound. (“a”)"));
+            QCOMPARE(found.value("offset").toInt(), 6);
+            auto *put = ed->findChild<QPushButton *>(QStringLiteral("replaceFound"));
+            QVERIFY(put);
+            QCOMPARE(put->text(), QStringLiteral("Replace with “an”"));
+            QCOMPARE(put->accessibleName(), QStringLiteral("Replace a with an"));
+            if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+                QTest::qWait(300);
+                projects.grab().save(dir + QStringLiteral("/grammar-desktop.png"));
+            }
+            int reads = int(read.size());
+            put->click();
+            QCOMPARE(SegmentContent::plainText(ed->target()->content()), QStringLiteral("I ate an apple!"));
+            // Read again, the finding is gone.
+            QTRY_VERIFY_WITH_TIMEOUT(read.size() > reads, 10000);
+            QVERIFY(ed->grammarIssues().isEmpty() && !ed->findChild<QPushButton *>(QStringLiteral("replaceFound")));
+
+            // A finding with a tag in it is listed, and left to the translator to change.
+            QJsonArray tagged{QJsonObject{{"text", "teh "}}};
+            for (const QJsonValue &run : withTags) {
+                if (run.toObject().contains("tag")) {
+                    tagged.append(run);
+                    if (tagged.size() == 2)
+                        tagged.append(QJsonObject{{"text", "end"}});
+                }
+            }
+            type(tagged);
+            QTRY_COMPARE_WITH_TIMEOUT(ed->grammarIssues().size(), 1, 10000);
+            QVERIFY(!ed->findChild<QPushButton *>(QStringLiteral("replaceFound")));
+            QVERIFY(!ed->replaceFound(0, 7, QStringLiteral("the end")));
+            QCOMPARE(SegmentContent::tags(ed->target()->content()).size(), 2);
+
+            // Confirmed before the service has read it: it is read first,
+            // and what it finds is kept with the segment.
+            QJsonArray both{QJsonObject{{"text", "We ate a apple"}}};
+            for (const QJsonValue &run : withTags) {
+                if (run.toObject().contains("tag"))
+                    both.append(run);
+            }
+            QSignalSpy saved3(ed, &EditorPage::saved);
+            type(both);
+            ed->confirm();
+            QVERIFY(saved3.wait(10000));
+            QVERIFY(asked.contains(QStringLiteral("en|TYPOS|We ate a apple")));
+            bool kept = false;
+            for (const QJsonValue &v : wait(api->get(base + "/segments", {{"file", "Hinweis.xlf"}, {"lang", "en-GB"}})).array()) {
+                if (v.toObject().value("id").toString() != first)
+                    continue;
+                QCOMPARE(v.toObject().value("status").toString(), QStringLiteral("confirmed"));
+                for (const QJsonValue &w : v.toObject().value("warnings").toArray())
+                    kept = kept || (w.toObject().value("kind").toString() == "grammar" && w.toObject().value("text").toString().startsWith(QStringLiteral("Use “an”")));
+            }
+            QVERIFY(kept);
+
+            // A service that is gone says so, and the other checks go on.
+            checker.close();
+            ed->goToSegment(first);
+            QTRY_COMPARE_WITH_TIMEOUT(ed->activeId(), first, 5000);
+            type(text("They ate a apple."));
+            QTRY_VERIFY_WITH_TIMEOUT(ed->grammarError().startsWith(QStringLiteral("Checker did not check")), 15000);
+            QTRY_VERIFY_WITH_TIMEOUT(ed->findChild<QLabel *>(QStringLiteral("grammarError")), 5000);
+        }
     }
 
 private:

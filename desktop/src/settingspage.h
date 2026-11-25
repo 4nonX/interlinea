@@ -26,7 +26,10 @@ public:
 
     // Adds a translation service at a place, and makes an access token
     // for a program there, as the forms do.
-    void saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue);
+    // kind is "translate" for a translation service and "check" for a
+    // grammar service.
+    void saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue,
+                      const QString &kind = QStringLiteral("translate"));
     void makeToken(const QString &connectionId, const QString &name, int days);
     QString madeToken() const { return m_madeToken; }
     // Reads what the panels show again.
@@ -51,6 +54,7 @@ private:
     void fillTemplates();
     void fillDictionaries();
     void fillProviders();
+    void fillServices(QVBoxLayout *into, const QString &kind);
     void fillPrograms();
     void fillServers();
     void fillSaved();
@@ -68,6 +72,7 @@ private:
     QVBoxLayout *m_dictionaries;
     QVBoxLayout *m_servers;
     QVBoxLayout *m_providers = nullptr;
+    QVBoxLayout *m_checkers = nullptr;
     QVBoxLayout *m_programs = nullptr;
     QVBoxLayout *m_saved;
     // Per connection: its templates and dictionaries, and whether the
@@ -79,6 +84,7 @@ private:
     // The form for a new service is open at this place; the token just
     // made, shown once, and where.
     QString m_providerFormAt;
+    QString m_providerFormKind;
     QString m_madeToken;
     QString m_madeTokenName;
     QString m_madeTokenAt;

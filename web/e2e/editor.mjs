@@ -1,6 +1,6 @@
 // Projects, editor, memories, merge and settings
 import { createServer } from "node:http";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { run } from "./harness.mjs";
 
 export default () =>
@@ -937,6 +937,106 @@ export default () =>
           check(await waitFor("document.querySelector('.seg.is-active .target-editor').innerText.includes('[en-GB]')", 5000), "inserted, it is the translation to work on");
         } finally {
           service.close();
+        }
+      }
+
+      // A grammar service of one's own: added in the settings, named in the
+      // project, and reading the translation that is worked on.
+      {
+        const asked = [];
+        const checker = createServer((req, res) => {
+          const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "content-type, accept", "Access-Control-Allow-Methods": "POST" };
+          if (req.method === "OPTIONS") return res.writeHead(204, cors).end();
+          let body = "";
+          req.on("data", (c) => (body += c));
+          req.on("end", () => {
+            const q = new URLSearchParams(body);
+            const text = q.get("text") ?? "";
+            asked.push({ language: q.get("language"), text, disabled: q.get("disabledCategories") });
+            // It knows English, without regions.
+            if (q.get("language") !== "en") return res.writeHead(400, cors).end("Error: not a language code known");
+            const matches = [];
+            const at = text.indexOf("a apple");
+            if (at >= 0)
+              matches.push({ message: "Use “an” before a vowel sound.", offset: at, length: 1, replacements: [{ value: "an" }], rule: { id: "A_AN", category: { id: "MISC", name: "Misc" } } });
+            const typo = text.indexOf("apple");
+            if (typo >= 0) matches.push({ message: "Possible spelling mistake.", offset: typo, length: 5, replacements: [{ value: "Apple" }], rule: { id: "SPELL", issueType: "misspelling", category: { id: "TYPOS", name: "Typos" } } });
+            res.writeHead(200, { ...cors, "Content-Type": "application/json" });
+            res.end(JSON.stringify({ matches }));
+          });
+        });
+        await new Promise((r) => checker.listen(0, "127.0.0.1", r));
+        const url = `http://127.0.0.1:${checker.address().port}/v2/check`;
+        try {
+          await open("/settings", { wait: 0, reload: false });
+          const panel = "section[aria-labelledby=s-grammar]";
+          await waitFor(`!!document.querySelector(${JSON.stringify(panel)})`);
+          check((await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("No service yet."), "no grammar service at first, the translation service is not one");
+          await click(`${panel} button`, "Add a grammar service");
+          const fill = (i, v) => evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(panel + " form input")})[${i}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+          await fill(0, "Echo");
+          await fill(1, url);
+          await sleep(100);
+          check((await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("A service with this name is there already."), "a grammar service cannot take a translation service's name");
+          await fill(0, "Checker");
+          await sleep(100);
+          await click(`${panel} button`, "Add the service");
+          check(await waitFor(`document.querySelector(${JSON.stringify(panel + " .settings-list")})?.innerText.includes('Checker')`), "the grammar service is listed");
+          check(!(await evaluate("document.querySelector('section[aria-labelledby=s-mt] .settings-list').innerText")).includes("Checker"), "and not among the translation services");
+
+          await sleep(800);
+          await open("/projects", { wait: 0, reload: false });
+          await sleep(400);
+          await click("a", "Mietvertrag Hofmann");
+          await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 15000);
+          check(!(await evaluate("[...document.querySelectorAll('section[aria-label=\"Translation results\"] button')].some(b => b.textContent.includes('Checker'))")), "a grammar service is not offered for suggestions");
+          const setText = async (t) => {
+            await evaluate(`(() => { const el = document.querySelector('.seg.is-active .target-editor'); el.focus(); el.textContent = ${JSON.stringify(t)}; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+          };
+          await setText("I ate a apple.");
+          await sleep(1500);
+          check(asked.length === 0, "nothing is sent to a service the project does not name");
+
+          await click("a", "Project settings");
+          await waitFor("!!document.getElementById('qa-grammar')", 5000);
+          check((await evaluate("[...document.getElementById('qa-grammar').options].map(o => o.textContent).join('|')")) === "No grammar check|Checker", "the project's checks offer the grammar service");
+          await evaluate("(() => { const el = document.getElementById('qa-grammar'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, 'Checker'); el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+          await sleep(150);
+          await click("button", "Save changes");
+          await sleep(300);
+          await click("a", "Open in the editor");
+          await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 15000);
+          await setText("I ate a apple.");
+          check(await waitFor("!!document.querySelector('.issue-grammar')", 8000), "what the service finds is listed with the checks");
+          const found = await evaluate("document.querySelector('.issue-grammar').innerText");
+          check(found.includes("Use “an” before a vowel sound.") && found.includes("(“a”)") && found.includes("Replace with “an”"), "with its message, the text it is about and a replacement: " + found);
+          check((await evaluate("document.querySelectorAll('.issue-grammar').length")) === 1, "its spelling findings are left out");
+          if (process.env.INTERLINEA_SHOTS) {
+            const shot = await send("Page.captureScreenshot", { format: "png" });
+            writeFileSync(`${process.env.INTERLINEA_SHOTS}/grammar-web.png`, Buffer.from(shot.data, "base64"));
+          }
+          const mine = asked.filter((a) => a.text === "I ate a apple.");
+          check(mine.length === 2 && mine[0].language === "en-GB" && mine[1].language === "en" && mine[0].disabled === "TYPOS", "asked for the target language, then for the language alone: " + JSON.stringify(mine));
+          await click(".issue-grammar button", "Replace with “an”");
+          check(await waitFor("document.querySelector('.seg.is-active .target-editor').innerText.trim() === 'I ate an apple.'", 5000), "the replacement goes into the translation");
+          check(await waitFor("!document.querySelector('.issue-grammar')", 8000), "and the finding is gone once the service has read it again");
+
+          // Confirmed before the service has read it: it is read first, and
+          // what it finds stays with the segment.
+          const num = await evaluate("document.querySelector('.seg.is-active .seg-num').textContent");
+          const before = asked.length;
+          await setText("We ate a apple.");
+          await key("Enter", "Enter", 13, 2);
+          check(await waitFor(`[...document.querySelectorAll('.seg')].find(s => s.querySelector('.seg-num').textContent === ${JSON.stringify(num)})?.querySelector('.seg-status')?.title.includes('Use “an” before a vowel sound.')`, 8000), "a translation confirmed at once is read first, and the finding is kept with it");
+          check(asked.slice(before).some((a) => a.text === "We ate a apple."), "the confirmed text was the one read");
+
+          // A service that is gone says so, and the other checks go on.
+          checker.close();
+          await sleep(300);
+          await setText("They ate a apple.");
+          check(await waitFor("document.querySelector('.results')?.innerText.includes('Grammar is not checked: Checker did not check')", 8000), "a service that cannot be reached is said, in the checks");
+        } finally {
+          checker.close();
         }
       }
     },

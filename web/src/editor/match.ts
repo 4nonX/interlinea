@@ -129,4 +129,8 @@ export interface QaIssue {
   text: string;
   /** The text the check is about (the misspelled word). */
   found?: string;
+  /** For a grammar service's finding: what could stand there instead, and where it is in the text. */
+  replacements?: string[];
+  offset?: number;
+  length?: number;
 }

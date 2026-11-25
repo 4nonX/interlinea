@@ -1708,6 +1708,99 @@ void EditorPage::runChecks()
         showIssues();
         emit checked();
     });
+    checkGrammar(id, plainText(m_target->content()));
+}
+
+// Asks the project's grammar service about a segment's translation, and
+// calls then when it has answered or failed. A project without a service
+// asks nobody.
+void EditorPage::checkGrammar(const QString &id, const QString &text, std::function<void()> then)
+{
+    const QString service = grammarService();
+    const int serial = ++m_grammarSerial;
+    const auto done = [this, id, text, serial, then](const QJsonArray &found, const QString &error) {
+        if (serial == m_grammarSerial) {
+            m_grammar = found;
+            m_grammarId = id;
+            m_grammarText = text;
+            m_grammarError = error;
+            if (id == m_activeId)
+                showIssues();
+            emit grammarChecked();
+        }
+        if (then)
+            then();
+    };
+    if (!m_conn || service.isEmpty() || text.trimmed().isEmpty()) {
+        done({}, {});
+        return;
+    }
+    const QJsonObject body{{QStringLiteral("lang"), m_lang}, {QStringLiteral("text"), text}};
+    onResult(m_conn->api()->post(QStringLiteral("/api/providers/%1/check").arg(ApiClient::seg(service)), body), this, [done](const ApiResult &r) {
+        if (!r.ok()) {
+            done({}, r.error.message);
+            return;
+        }
+        QJsonArray found;
+        for (const QJsonValue &v : r.object().value(QLatin1String("matches")).toArray()) {
+            const QJsonObject m = v.toObject();
+            const QString what = m.value(QLatin1String("found")).toString();
+            found.append(QJsonObject{{QStringLiteral("kind"), QStringLiteral("grammar")},
+                                     {QStringLiteral("message"), tr("%1 (“%2”)").arg(m.value(QLatin1String("message")).toString(), what)},
+                                     {QStringLiteral("found"), what},
+                                     {QStringLiteral("replacements"), m.value(QLatin1String("replacements"))},
+                                     {QStringLiteral("offset"), m.value(QLatin1String("offset"))},
+                                     {QStringLiteral("length"), m.value(QLatin1String("length"))}});
+        }
+        done(found, {});
+    });
+}
+
+QJsonArray EditorPage::grammarIssues() const
+{
+    if (grammarService().isEmpty() || !m_target || m_grammarId != m_activeId || m_grammarText != plainText(m_target->content()))
+        return {};
+    return m_grammar;
+}
+
+// The run of text a stretch of the plain text lies in, and where in it;
+// -1 where the stretch has a tag in it.
+static int runOfStretch(const QJsonArray &content, int offset, int length, int *within)
+{
+    int at = 0;
+    for (int i = 0; i < content.size(); ++i) {
+        const QJsonObject run = content.at(i).toObject();
+        if (run.contains(QLatin1String("tag")))
+            continue;
+        const int size = int(run.value(QLatin1String("text")).toString().size());
+        if (offset >= at && offset + length <= at + size) {
+            *within = offset - at;
+            return i;
+        }
+        at += size;
+    }
+    return -1;
+}
+
+bool EditorPage::replaceFound(int offset, int length, const QString &value)
+{
+    if (!m_target || !editable())
+        return false;
+    QJsonArray content = m_target->content();
+    int within = 0;
+    const int i = runOfStretch(content, offset, length, &within);
+    if (i < 0)
+        return false;
+    QString text = content.at(i).toObject().value(QLatin1String("text")).toString();
+    text.replace(within, length, value);
+    if (text.isEmpty())
+        content.removeAt(i);
+    else
+        content.replace(i, QJsonObject{{QStringLiteral("text"), text}});
+    m_target->setContent(content);
+    emit m_target->edited();
+    m_target->setFocus();
+    return true;
 }
 
 void EditorPage::showIssues()
@@ -1719,7 +1812,15 @@ void EditorPage::showIssues()
         ignored << v.toString();
     QVector<TargetEditor::Misspelling> words;
     int shown = 0;
-    for (const QJsonValue &v : std::as_const(m_issues)) {
+    if (!grammarService().isEmpty() && !m_grammarError.isEmpty() && m_grammarId == m_activeId) {
+        auto *failed = label(tr("Grammar is not checked: %1").arg(m_grammarError), "muted", panel);
+        failed->setObjectName(QStringLiteral("grammarError"));
+        m_issuesList->addWidget(failed);
+    }
+    QJsonArray all = m_issues;
+    for (const QJsonValue &v : grammarIssues())
+        all.append(v);
+    for (const QJsonValue &v : std::as_const(all)) {
         const QJsonObject issue = v.toObject();
         const QString text = issue.value(QLatin1String("message")).toString();
         if (ignored.contains(text))
@@ -1735,7 +1836,7 @@ void EditorPage::showIssues()
         }
         // .issue: the warning sign, the text, and what can be done.
         auto *box = new QFrame(panel);
-        box->setObjectName(QStringLiteral("reviewIssue"));
+        box->setObjectName(QStringLiteral("issue"));
         const bool forbidden = kind == QLatin1String("term-forbidden");
         box->setProperty("forbidden", forbidden);
         auto *h = new QHBoxLayout(box);
@@ -1744,13 +1845,33 @@ void EditorPage::showIssues()
         auto *icon = new QLabel(box);
         icon->setPixmap(Icons::get(QStringLiteral("alert-triangle"), Theme::color(forbidden ? "danger" : "warn")).pixmap(14, 14));
         h->addWidget(icon, 0, Qt::AlignTop);
-        h->addWidget(label(text, nullptr, box), 1);
+        // The text, and under it what could stand there instead.
+        auto *words = new QVBoxLayout;
+        words->setContentsMargins(0, 0, 0, 0);
+        words->setSpacing(S1);
+        words->addWidget(label(text, nullptr, box));
+        h->addLayout(words, 1);
         if (kind == QLatin1String("spelling") && !found.isEmpty()) {
             auto *add = new QPushButton(tr("Add to the project's words"), box);
             add->setProperty("tiny", true);
             add->setAccessibleName(tr("Add %1 to the project's words").arg(found));
             connect(add, &QPushButton::clicked, this, [this, found] { addWord(found); });
             h->addWidget(add, 0, Qt::AlignTop);
+        }
+        if (kind == QLatin1String("grammar") && m_target) {
+            const int offset = issue.value(QLatin1String("offset")).toInt();
+            const int length = issue.value(QLatin1String("length")).toInt();
+            int within = 0;
+            const QJsonArray values = issue.value(QLatin1String("replacements")).toArray();
+            for (int i = 0; i < values.size() && i < 3 && runOfStretch(m_target->content(), offset, length, &within) >= 0; ++i) {
+                const QString value = values.at(i).toString();
+                auto *put = new QPushButton(tr("Replace with “%1”").arg(value), box);
+                put->setObjectName(QStringLiteral("replaceFound"));
+                put->setProperty("tiny", true);
+                put->setAccessibleName(tr("Replace %1 with %2").arg(found, value));
+                connect(put, &QPushButton::clicked, this, [this, offset, length, value] { replaceFound(offset, length, value); });
+                words->addWidget(put, 0, Qt::AlignLeft);
+            }
         }
         auto *ignore = new QPushButton(tr("Ignore"), box);
         ignore->setProperty("tiny", true);
@@ -1882,7 +2003,25 @@ void EditorPage::confirm()
     const QJsonObject body{{QStringLiteral("file"), m_file}, {QStringLiteral("lang"), m_lang},
                            {QStringLiteral("segments"), QJsonArray{id}}, {QStringLiteral("targets"), targets}};
     const QJsonObject origin = m_origin;
-    onResult(m_conn->api()->post(projectPath() + QStringLiteral("/qa"), body), this, [this, id, target, origin](const ApiResult &r) {
+    // The grammar service reads the translation as it is confirmed, unless
+    // it has read just that; what it finds is kept with the segment.
+    const QString said = plainText(target);
+    if (!grammarService().isEmpty() && !m_confirmAsked && !(m_grammarId == id && m_grammarText == said)) {
+        if (m_confirmWaits)
+            return;
+        m_confirmWaits = true;
+        checkGrammar(id, said, [this, id, said] {
+            m_confirmWaits = false;
+            // An answer or a failure: either way it has been asked, and
+            // the segment is confirmed if it still says the same.
+            m_confirmAsked = true;
+            if (id == m_activeId && m_target && plainText(m_target->content()) == said)
+                confirm();
+            m_confirmAsked = false;
+        });
+        return;
+    }
+    onResult(m_conn->api()->post(projectPath() + QStringLiteral("/qa"), body), this, [this, id, target, origin, said](const ApiResult &r) {
         QSet<QString> ignored;
         for (const QJsonValue &v : std::as_const(m_ignored))
             ignored << v.toString();
@@ -1892,7 +2031,12 @@ void EditorPage::confirm()
                 m_issues = r.array();
                 showIssues();
             }
-            for (const QJsonValue &v : r.array()) {
+            QJsonArray found = r.array();
+            if (m_grammarId == id && m_grammarText == said) {
+                for (const QJsonValue &v : std::as_const(m_grammar))
+                    found.append(v);
+            }
+            for (const QJsonValue &v : std::as_const(found)) {
                 const QJsonObject issue = v.toObject();
                 if (!ignored.contains(issue.value(QLatin1String("message")).toString()))
                     warnings.append(QJsonObject{{QStringLiteral("kind"), issue.value(QLatin1String("kind"))},
@@ -2205,8 +2349,10 @@ void EditorPage::loadServices()
         if (!r.ok())
             return;
         m_services.clear();
-        for (const QJsonValue &v : r.array())
-            m_services << v.toObject().value(QLatin1String("name")).toString();
+        for (const QJsonValue &v : r.array()) {
+            if (v.toObject().value(QLatin1String("kind")).toString() != QLatin1String("check"))
+                m_services << v.toObject().value(QLatin1String("name")).toString();
+        }
         showSuggestions();
     });
 }

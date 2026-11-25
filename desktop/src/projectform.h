@@ -135,6 +135,8 @@ private:
     QJsonObject m_s;
     QJsonObject m_catalog;
     QJsonArray m_dicts;
+    // The grammar services of the place, by name.
+    QStringList m_grammar;
     QJsonArray m_kinds;
     bool m_new = true;
     bool m_readOnly = false;

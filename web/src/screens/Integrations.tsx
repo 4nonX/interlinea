@@ -18,8 +18,10 @@ interface Draft {
 
 const EMPTY: Draft = { name: "", url: "", headerName: "", headerValue: "" };
 
-/** The form for a translation service: its name, address, and the header that signs requests. */
-function ProviderForm({ onSave, taken }: { onSave: (d: Draft) => Promise<void>; taken: (name: string) => boolean }) {
+type Kind = "translate" | "check";
+
+/** The form for a service: its name, address, and the header that signs requests. */
+function ProviderForm({ kind, onSave, taken }: { kind: Kind; onSave: (d: Draft) => Promise<void>; taken: (name: string) => boolean }) {
   const [open, setOpen] = useState(false);
   const [d, setD] = useState<Draft>(EMPTY);
   const [problem, setProblem] = useState("");
@@ -27,7 +29,7 @@ function ProviderForm({ onSave, taken }: { onSave: (d: Draft) => Promise<void>; 
     return (
       <button type="button" className="btn btn-small" onClick={() => setOpen(true)}>
         <Plus size={14} aria-hidden="true" />
-        Add a service
+        {kind === "check" ? "Add a grammar service" : "Add a service"}
       </button>
     );
   const wrong = providerProblem(d) || (taken(d.name.trim()) ? "A service with this name is there already." : "");
@@ -44,7 +46,7 @@ function ProviderForm({ onSave, taken }: { onSave: (d: Draft) => Promise<void>; 
     }
   }
   return (
-    <form className="dialog-form provider-form" aria-label="A translation service" onSubmit={save}>
+    <form className="dialog-form provider-form" aria-label={kind === "check" ? "A grammar service" : "A translation service"} onSubmit={save}>
       <div className="field-grid">
         <label className="field">
           <span className="field-label">Name</span>
@@ -52,7 +54,7 @@ function ProviderForm({ onSave, taken }: { onSave: (d: Draft) => Promise<void>; 
         </label>
         <label className="field">
           <span className="field-label">Address requests are sent to</span>
-          <input type="url" placeholder="https://" value={d.url} onChange={(e) => setD({ ...d, url: e.target.value })} />
+          <input type="url" placeholder={kind === "check" ? "https://…/v2/check" : "https://"} value={d.url} onChange={(e) => setD({ ...d, url: e.target.value })} />
         </label>
         <label className="field">
           <span className="field-label">
@@ -109,11 +111,12 @@ const hostOf = (url: string) => {
 };
 
 /**
- * Translation services the editor asks for a suggestion: machine
- * translation or a language model, at any address that answers the
- * contract. Those of this browser, and those of the team server.
+ * Services at any address that answers the contract: translation services
+ * the editor asks for a suggestion (machine translation or a language
+ * model), or grammar services that read translations. Those of this
+ * browser, and those of the team server.
  */
-export function TranslationServices() {
+function Services({ kind }: { kind: Kind }) {
   const { state, dispatch, notify } = useStore();
   const r = useRemote();
   const [onServer, setOnServer] = useState<ServerProvider[] | null>(null);
@@ -131,27 +134,39 @@ export function TranslationServices() {
   }, [load]);
   const admin = !!r.conn?.user.admin;
   const host = r.conn ? new URL(r.conn.url).host : "";
+  const check = kind === "check";
+  const here = state.providers.filter((p) => (p.kind === "check") === check);
+  const id = check ? "s-grammar" : "s-mt";
   return (
-    <section className="panel" aria-labelledby="s-mt">
-      <h2 id="s-mt" className="panel-title">
-        Translation services
+    <section className="panel" aria-labelledby={id}>
+      <h2 id={id} className="panel-title">
+        {check ? "Grammar services" : "Translation services"}
       </h2>
-      <p className="help">
-        Machine translation or a language model of your choice, asked for a suggestion in the editor when you ask for one. Any service works that answers at an
-        address as the integration guide describes. A segment you ask a suggestion for is sent to the service; nothing is sent on its own.
-      </p>
+      {check ? (
+        <p className="help">
+          A grammar checker of your choice, which reads the translation you are working on in a project that names it under Quality checks. Any service works
+          that answers a check request at its address as the integration guide describes. In such a project each translation is sent to the service while you
+          work on it; in other projects nothing is sent. Spelling stays with the project's dictionary.
+        </p>
+      ) : (
+        <p className="help">
+          Machine translation or a language model of your choice, asked for a suggestion in the editor when you ask for one. Any service works that answers at
+          an address as the integration guide describes. A segment you ask a suggestion for is sent to the service; nothing is sent on its own.
+        </p>
+      )}
       {api && <h3 className="field-label">In this browser</h3>}
       <ProviderList
-        items={state.providers.map((p) => ({ name: p.name, where: hostOf(p.url) }))}
+        items={here.map((p) => ({ name: p.name, where: hostOf(p.url) }))}
         onDelete={(name) => {
           dispatch({ type: "deleteProvider", name });
           notify(`Deleted the service ${name}`);
         }}
       />
       <ProviderForm
+        kind={kind}
         taken={(name) => state.providers.some((p) => p.name.toLowerCase() === name.toLowerCase())}
         onSave={async (d) => {
-          dispatch({ type: "saveProvider", provider: d });
+          dispatch({ type: "saveProvider", provider: { ...d, kind } });
           notify(`Added the service ${d.name}`);
         }}
       />
@@ -160,7 +175,7 @@ export function TranslationServices() {
         <>
           <h3 className="field-label">On {host}</h3>
           <ProviderList
-            items={onServer.map((p) => ({ name: p.name, where: p.host }))}
+            items={onServer.filter((p) => (p.kind === "check") === check).map((p) => ({ name: p.name, where: p.host }))}
             onDelete={
               admin
                 ? (name) =>
@@ -176,10 +191,11 @@ export function TranslationServices() {
           />
           {admin ? (
             <ProviderForm
+              kind={kind}
               taken={(name) => onServer.some((p) => p.name.toLowerCase() === name.toLowerCase())}
               onSave={async (d) => {
                 try {
-                  await api.saveProvider(d.name, { url: d.url, headerName: d.headerName, headerValue: d.headerValue });
+                  await api.saveProvider(d.name, { kind, url: d.url, headerName: d.headerName, headerValue: d.headerValue });
                 } catch (e) {
                   throw e instanceof ApiError ? new Error(e.message) : e;
                 }
@@ -195,6 +211,9 @@ export function TranslationServices() {
     </section>
   );
 }
+
+export const TranslationServices = () => <Services kind="translate" />;
+export const GrammarServices = () => <Services kind="check" />;
 
 /**
  * Access for programs: a token an assistant or script signs in with on

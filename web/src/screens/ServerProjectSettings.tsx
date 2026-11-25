@@ -85,6 +85,13 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
   useEffect(() => {
     void api.catalog().then(setCat, (e) => setError(errorText(e)));
   }, [api, project.version]);
+  const [grammar, setGrammar] = useState<string[]>([]);
+  useEffect(() => {
+    void api.providers().then(
+      (ps) => setGrammar(ps.filter((p) => p.kind === "check").map((p) => p.name)),
+      () => setGrammar([]),
+    );
+  }, [api]);
   // The project changed on the server (a file, someone's save): start
   // again from it, unless changes here are not saved yet; saving those
   // then meets the newer version and says so.
@@ -118,8 +125,8 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
         infoTypes: [],
         remote: true,
       }));
-    return { memories, termbases, entries: [], units: Object.fromEntries(cat.memories.map((m) => [m.name, m.units])) };
-  }, [cat, r.conn, project]);
+    return { memories, termbases, entries: [], units: Object.fromEntries(cat.memories.map((m) => [m.name, m.units])), grammar };
+  }, [cat, r.conn, project, grammar]);
 
   const fixed = project.settings.files.filter((f) => f.targetLang).map((f) => f.targetLang!);
 

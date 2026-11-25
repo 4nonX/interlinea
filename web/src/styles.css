@@ -2335,6 +2335,17 @@ kbd {
   flex: 1;
 }
 
+.issue-replace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s1);
+}
+
+.issue .issue-replace .btn-tiny {
+  margin: 0 0 -3px -6px;
+}
+
 .issue .btn-tiny {
   margin: -3px -6px -3px 0;
   color: inherit;

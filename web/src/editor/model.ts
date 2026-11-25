@@ -238,6 +238,25 @@ export function plain(runs: Run[]): string {
   return runs.filter((r): r is string => typeof r === "string").join("");
 }
 
+/**
+ * Runs with a stretch of their text replaced: offset and length count in
+ * plain(runs). Null where the stretch has a tag in it, which a replacement
+ * would have to place.
+ */
+export function replaceStretch(runs: Run[], offset: number, length: number, value: string): Run[] | null {
+  let at = 0;
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i]!;
+    if (typeof r !== "string") continue;
+    if (offset >= at && offset + length <= at + r.length) {
+      const text = r.slice(0, offset - at) + value + r.slice(offset - at + length);
+      return [...runs.slice(0, i), ...(text ? [text] : []), ...runs.slice(i + 1)];
+    }
+    at += r.length;
+  }
+  return null;
+}
+
 export function tagsOf(runs: Run[]): TagRun[] {
   return runs.filter(isTag);
 }

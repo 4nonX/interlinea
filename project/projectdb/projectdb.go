@@ -246,6 +246,10 @@ const schemaV5 = `
 		created_by   TEXT NOT NULL
 	);`
 
+// Version 6: what a service is for. "translate" suggests translations,
+// "check" finds grammar mistakes in a translation.
+const schemaV6 = `ALTER TABLE providers ADD COLUMN kind TEXT NOT NULL DEFAULT 'translate';`
+
 var (
 	migrations = []string{
 		fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT", "BLOB"),
@@ -253,6 +257,7 @@ var (
 		schemaV3,
 		fmt.Sprintf(schemaV4, "BLOB"),
 		schemaV5,
+		schemaV6,
 	}
 	pgMigrations = []string{
 		fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "BYTEA"),
@@ -260,6 +265,7 @@ var (
 		schemaV3,
 		fmt.Sprintf(schemaV4, "BYTEA"),
 		schemaV5,
+		schemaV6,
 	}
 )
 

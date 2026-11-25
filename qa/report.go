@@ -74,12 +74,18 @@ func NewReport(document string, segs []Segment, issues []Issue, o Options, now t
 			r.ByKind = append(r.ByKind, KindCount{Kind: k.Kind, Name: k.Name, Count: counts[k.Kind]})
 		}
 	}
+	if counts[Grammar] > 0 {
+		r.ByKind = append(r.ByKind, KindCount{Kind: Grammar, Name: KindName(Grammar), Count: counts[Grammar]})
+	}
 	sort.SliceStable(r.Issues, func(i, j int) bool { return r.Issues[i].Number < r.Issues[j].Number })
 	return r
 }
 
 // KindName is the readable name of a check.
 func KindName(k Kind) string {
+	if k == Grammar {
+		return "Grammar"
+	}
 	for _, x := range Kinds {
 		if x.Kind == k {
 			return x.Name

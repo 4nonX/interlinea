@@ -86,7 +86,7 @@ private slots:
         for (QFrame *f : page->findChildren<QFrame *>(QStringLiteral("panel")))
             panels << f->accessibleName();
         QCOMPARE(panels, (QStringList{QStringLiteral("Your name"), QStringLiteral("Terminology wording"), QStringLiteral("Editor"), QStringLiteral("Project templates"),
-                                      QStringLiteral("Spelling dictionaries"), QStringLiteral("Translation services"), QStringLiteral("Access for programs"),
+                                      QStringLiteral("Spelling dictionaries"), QStringLiteral("Translation services"), QStringLiteral("Grammar services"), QStringLiteral("Access for programs"),
                                       QStringLiteral("Team server"), QStringLiteral("Saved work")}));
         // A translation service is added on this computer, listed by its
         // name and where it is, and its key is not shown.
@@ -120,6 +120,28 @@ private slots:
             // An address that is none is refused by the core, in its words.
             page->saveProvider(here, QStringLiteral("Bad"), QStringLiteral("ftp://nowhere"), QString(), QString());
             QTRY_VERIFY_WITH_TIMEOUT(page->lastNotice().contains(QStringLiteral("https://")), 10000);
+
+            // A grammar service has its own list and form, and is kept as one.
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QPushButton *>(QStringLiteral("addChecker:%1").arg(here)), 10000);
+            QCOMPARE(page->findChild<QPushButton *>(QStringLiteral("addChecker:%1").arg(here))->text(), QStringLiteral("Add a grammar service"));
+            page->findChild<QPushButton *>(QStringLiteral("addChecker:%1").arg(here))->click();
+            auto *saveChecker = page->findChild<QPushButton *>(QStringLiteral("saveChecker"));
+            QVERIFY(saveChecker && !saveChecker->isEnabled() && !page->findChild<QPushButton *>(QStringLiteral("saveProvider")));
+            page->findChild<QLineEdit *>(QStringLiteral("checkerName"))->setText(QStringLiteral("Checker"));
+            page->findChild<QLineEdit *>(QStringLiteral("checkerUrl"))->setText(QStringLiteral("https://grammar.example.org/v2/check"));
+            saveChecker->click();
+            QTRY_COMPARE_WITH_TIMEOUT(page->lastNotice(), QStringLiteral("Added the service Checker"), 10000);
+            QString kinds;
+            for (const QJsonValue &v : wait(m.local()->api()->get(QStringLiteral("/api/providers"))).array())
+                kinds += v.toObject().value("name").toString() + QLatin1Char('=') + v.toObject().value("kind").toString() + QLatin1Char(' ');
+            QCOMPARE(kinds, QStringLiteral("Checker=check Echo=translate "));
+            QTRY_VERIFY_WITH_TIMEOUT([&] {
+                for (QLabel *l : page->findChildren<QLabel *>()) {
+                    if (l->text() == QStringLiteral("grammar.example.org") && !l->isHidden())
+                        return true;
+                }
+                return false;
+            }(), 10000);
 
             // An access token for a program: made, shown once, and listed.
             const int before = int(wait(m.local()->api()->get(QStringLiteral("/api/me/tokens"))).array().size());

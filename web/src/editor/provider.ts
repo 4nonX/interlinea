@@ -5,9 +5,11 @@
 
 import type { CoreRun } from "./model";
 
-/** A translation service kept in this browser. */
+/** A service kept in this browser. */
 export interface LocalProvider {
   name: string;
+  /** What it is for: suggesting translations (the default) or checking grammar. */
+  kind?: "translate" | "check";
   url: string;
   /** A header sent with each request, which signs it at the service. */
   headerName: string;
@@ -114,4 +116,69 @@ export async function askLocalProvider(p: LocalProvider, sourceLang: string, tar
   const t = body?.translations?.find((x) => x.id === "1");
   if (!t) throw new Error(`${p.name} did not translate: its answer has no translation of what was asked.`);
   return suggestionOf(t.text, source);
+}
+
+/** Something a grammar service found in a text. */
+export interface GrammarMatch {
+  /** Where, in UTF-16 code units of the text. */
+  offset: number;
+  length: number;
+  message: string;
+  /** The text there. */
+  found: string;
+  replacements: string[];
+}
+
+/**
+ * What a grammar service's answer says about a text: the findings that lie
+ * in the text and are not about spelling, which the project's dictionary
+ * and its own words decide.
+ */
+export function readMatches(answer: unknown, text: string): GrammarMatch[] | null {
+  const matches = (answer as { matches?: unknown } | null)?.matches;
+  if (!Array.isArray(matches)) return null;
+  const out: GrammarMatch[] = [];
+  for (const raw of matches) {
+    const m = raw as {
+      message?: string;
+      offset?: number;
+      length?: number;
+      replacements?: { value?: string }[];
+      rule?: { issueType?: string; category?: { id?: string } };
+    };
+    const offset = m.offset ?? -1;
+    const length = m.length ?? 0;
+    const message = (m.message ?? "").trim();
+    if (!Number.isInteger(offset) || !Number.isInteger(length) || offset < 0 || length <= 0 || offset + length > text.length || !message) continue;
+    if (m.rule?.category?.id === "TYPOS" || m.rule?.issueType === "misspelling") continue;
+    const found = text.slice(offset, offset + length);
+    const replacements: string[] = [];
+    for (const r of m.replacements ?? []) if (typeof r.value === "string" && r.value !== found && replacements.length < 5) replacements.push(r.value);
+    out.push({ offset, length, message, found, replacements });
+  }
+  return out;
+}
+
+/** Asks a grammar service kept in this browser what it finds in a text. */
+export async function askLocalChecker(p: LocalProvider, lang: string, text: string): Promise<GrammarMatch[]> {
+  if (!text.trim()) return [];
+  const ask = async (language: string) => {
+    const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
+    if (p.headerName) headers[p.headerName] = p.headerValue;
+    try {
+      return await fetch(p.url, { method: "POST", headers, body: new URLSearchParams({ text, language, disabledCategories: "TYPOS" }).toString() });
+    } catch {
+      throw new Error(`${p.name} did not check: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.`);
+    }
+  };
+  let res = await ask(lang);
+  // A service that refuses a language with a region is asked for the language alone.
+  if (res.status >= 400 && res.status < 500 && lang.includes("-")) {
+    const again = await ask(lang.split("-")[0]!);
+    if (again.ok) res = again;
+  }
+  if (!res.ok) throw new Error(`${p.name} did not check: it answered ${res.status} ${(await res.text().catch(() => "")).trim().slice(0, 200)}.`);
+  const found = readMatches(await res.json().catch(() => null), text);
+  if (!found) throw new Error(`${p.name} did not check: its answer is not the JSON the contract asks for.`);
+  return found;
 }
