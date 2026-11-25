@@ -98,6 +98,7 @@ private:
     bool m_loading = false;
     bool m_creating = false;
     bool m_checksOpen = false;
+    bool m_segmentationOpen = false;
     bool m_asTemplate = false;
     QString m_templateName;
     // The review: what the project would be, per target language.

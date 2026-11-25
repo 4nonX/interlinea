@@ -505,6 +505,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
         context: s.analysis.context,
         qa: qaOf(s.qa),
         prepare: { ...DEFAULT_PREPARE, ...s.prepare },
+        segmentation: s.segmentation?.length ? s.segmentation : undefined,
         createdAt: p.createdAt,
         due: s.due || undefined,
         progress: 0,

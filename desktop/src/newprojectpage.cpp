@@ -1120,8 +1120,10 @@ void NewProjectPage::fillReview()
     QWidget *p = m_panels[4];
     QWidget *checks = m_form->checks(p);
     QWidget *prepare = m_form->prepare(p);
+    QWidget *segmentation = m_form->segmentation(p);
     m_reviewBody->removeWidget(checks);
     m_reviewBody->removeWidget(prepare);
+    m_reviewBody->removeWidget(segmentation);
     clear(m_reviewBody);
     m_analysisBody = nullptr;
     const QJsonObject s = m_form->settings();
@@ -1231,6 +1233,28 @@ void NewProjectPage::fillReview()
     });
     m_reviewBody->addWidget(checks);
     checks->setVisible(m_checksOpen);
+
+    // Segmentation, folded away until asked for.
+    const int ownRules = int(s.value(QLatin1String("segmentation")).toArray().size());
+    auto *segToggle = new QPushButton(p);
+    segToggle->setObjectName(QStringLiteral("segmentationToggle"));
+    segToggle->setProperty("stepLink", true);
+    segToggle->setFlat(true);
+    segToggle->setCursor(Qt::PointingHandCursor);
+    segToggle->setCheckable(true);
+    segToggle->setChecked(m_segmentationOpen);
+    segToggle->setIcon(Icons::get(QStringLiteral("chevron-right"), Theme::color("accentText")));
+    segToggle->setText(tr("Segmentation"));
+    segToggle->setAccessibleName(m_segmentationOpen ? tr("Hide the segmentation rules") : tr("Show the segmentation rules"));
+    auto *segState = Web::text(ownRules == 0 ? tr("as usual for the language") : ownRules == 1 ? tr("1 rule of your own") : tr("%1 rules of your own").arg(ownRules), "muted", p);
+    segState->setWordWrap(false);
+    m_reviewBody->addWidget(Web::row({segToggle, segState}, p));
+    connect(segToggle, &QPushButton::toggled, this, [this](bool open) {
+        m_segmentationOpen = open;
+        fillReview();
+    });
+    m_reviewBody->addWidget(segmentation);
+    segmentation->setVisible(m_segmentationOpen);
 
     m_reviewBody->addWidget(prepare);
     prepare->show();

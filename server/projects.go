@@ -354,7 +354,7 @@ func (s *Server) previewProject(w http.ResponseWriter, r *http.Request, me sessi
 		return
 	}
 	set := req.Settings
-	uploads, err := prepareFiles(req.Files, set.SourceLang, set.TargetLangs)
+	uploads, err := prepareFiles(req.Files, set.SourceLang, set.TargetLangs, set.Segmentation)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -546,7 +546,7 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me sessio
 		cat.Termbases[name] = langs
 		set.Terminology.Termbase = name
 	}
-	uploads, err := prepareFiles(req.Files, set.SourceLang, set.TargetLangs)
+	uploads, err := prepareFiles(req.Files, set.SourceLang, set.TargetLangs, set.Segmentation)
 	if err != nil {
 		s.fail(w, r, err)
 		return

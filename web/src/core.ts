@@ -69,6 +69,7 @@ export interface CoreApi {
     options?: string,
   ): Res<Uint8Array>;
   resegment(how: string, segments: string, index: number, before: string): Res<string>;
+  segmentation(segments: string, rules: string, lang: string): Res<string>;
   tmOpen(name: string, source: string, target: string): Res<boolean>;
   tmAdd(name: string, units: string, overwrite?: boolean): Res<number>;
   tmSetTarget(name: string, id: number, target: string, by: string): Res<string>;
@@ -441,6 +442,49 @@ function coreSegment(s: Segment) {
   };
 }
 
+/** A segment as the core gives it back. */
+interface CoreCut {
+  id: string;
+  source: CoreRun[];
+  target: CoreRun[] | null;
+  status: Segment["status"];
+  block?: string;
+  maxLength?: number;
+  notes?: string[];
+  comments?: Segment["comments"];
+  split?: Segment["split"];
+  joined?: { id: string; source: CoreRun[] }[];
+}
+
+function segmentOfCut(x: CoreCut, rev?: number): Segment {
+  return {
+    rev,
+    id: x.id,
+    source: coreToRuns(x.source),
+    target: coreToRuns(x.target ?? []),
+    status: x.status,
+    block: x.block,
+    maxLength: x.maxLength || undefined,
+    notes: x.notes?.length ? x.notes : undefined,
+    comments: x.comments?.length ? x.comments : undefined,
+    split: x.split ?? undefined,
+    joined: x.joined?.length ? x.joined.map((j) => ({ id: j.id, source: coreToRuns(j.source) })) : undefined,
+  };
+}
+
+/**
+ * A document's segments cut as the project's own segmentation rules say:
+ * joined where a rule says a sentence does not end, split where one says
+ * it does. Segments the rules leave alone are the same objects.
+ */
+export async function applySegmentation(segments: Segment[], rules: { break: boolean; before?: string; after?: string }[], lang: string): Promise<Segment[]> {
+  const core = await loadCore();
+  const r = core.segmentation(JSON.stringify(segments.map(coreSegment)), JSON.stringify(rules), lang);
+  if (!r.ok) throw new Error(r.error);
+  const had = new Map(segments.map((x) => [x.id, x]));
+  return (JSON.parse(r.value) as CoreCut[]).map((x) => (!x.split && !x.joined?.length && had.get(x.id)) || segmentOfCut(x));
+}
+
 /** How a file's segments are cut differently. */
 export type Resegment = "split" | "join" | "separate";
 
@@ -455,37 +499,12 @@ export async function resegment(how: Resegment, segments: Segment[], index: numb
   const core = await loadCore();
   const r = core.resegment(how, JSON.stringify(segments.map(coreSegment)), index, JSON.stringify(runsToCoreWhole(before)));
   if (!r.ok) throw new Error(r.error);
-  const out = JSON.parse(r.value) as {
-    id: string;
-    source: CoreRun[];
-    target: CoreRun[] | null;
-    status: Segment["status"];
-    block?: string;
-    maxLength?: number;
-    notes?: string[];
-    comments?: Segment["comments"];
-    split?: Segment["split"];
-    joined?: { id: string; source: CoreRun[] }[];
-  }[];
+  const out = JSON.parse(r.value) as CoreCut[];
   const gone = how === "join" ? 2 : 1;
   const come = out.length - segments.length + gone;
   // Counted on, so an open editor shows what the segment is now.
   const rev = Math.max(0, ...segments.slice(index, index + gone).map((x) => x.rev ?? 0)) + 1;
-  const fresh = out.slice(index, index + come).map(
-    (x): Segment => ({
-      rev,
-      id: x.id,
-      source: coreToRuns(x.source),
-      target: coreToRuns(x.target ?? []),
-      status: x.status,
-      block: x.block,
-      maxLength: x.maxLength || undefined,
-      notes: x.notes?.length ? x.notes : undefined,
-      comments: x.comments?.length ? x.comments : undefined,
-      split: x.split ?? undefined,
-      joined: x.joined?.length ? x.joined.map((j) => ({ id: j.id, source: coreToRuns(j.source) })) : undefined,
-    }),
-  );
+  const fresh = out.slice(index, index + come).map((x) => segmentOfCut(x, rev));
   return [...segments.slice(0, index), ...fresh, ...segments.slice(index + gone)];
 }
 

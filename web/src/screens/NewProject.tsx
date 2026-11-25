@@ -76,6 +76,7 @@ import {
   withDictionaries,
   MemoriesSection,
   PrepareSection,
+  SegmentationSection,
   Problems,
   TargetPicker,
   TerminologySection,
@@ -135,6 +136,7 @@ function emptyDraft(contextRule: Draft["context"]): Draft {
     context: contextRule,
     qa: DEFAULT_QA,
     prepare: DEFAULT_PREPARE,
+    segmentation: [],
   };
 }
 
@@ -463,7 +465,10 @@ export function NewProject() {
 
   // Word files are extracted again with the confirmed source language, so
   // sentences break as that language does; the review and the project use it.
+  // Only rules that are filled in cut anything.
+  const rulesKey = JSON.stringify(draft.segmentation.filter((r) => r.before || r.after));
   const [words, setWords] = useState<{
+    rules: string;
     lang: LangCode;
     docs: DraftDoc[];
     ex: Map<string, Extracted>;
@@ -471,11 +476,11 @@ export function NewProject() {
   const [prepareError, setPrepareError] = useState("");
   useEffect(() => {
     if (step < 4 || !draft.sourceLang) return;
-    if (words && words.lang === draft.sourceLang && words.docs === docs) return;
+    if (words && words.lang === draft.sourceLang && words.docs === docs && words.rules === rulesKey) return;
     let live = true;
     setPrepareError("");
-    extractWordDocs(docs, draft.sourceLang).then(
-      (ex) => live && setWords({ lang: draft.sourceLang, docs, ex }),
+    extractWordDocs(docs, draft.sourceLang, draft.segmentation).then(
+      (ex) => live && setWords({ lang: draft.sourceLang, docs, ex, rules: rulesKey }),
       (e: unknown) =>
         live && setPrepareError(e instanceof Error ? e.message : String(e)),
     );
@@ -483,14 +488,14 @@ export function NewProject() {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, draft.sourceLang, docs]);
+  }, [step, draft.sourceLang, docs, rulesKey]);
 
   const projectFiles: ProjectFile[] | null = useMemo(
     () =>
-      words && words.lang === draft.sourceLang && words.docs === docs
+      words && words.lang === draft.sourceLang && words.docs === docs && words.rules === rulesKey
         ? buildFiles(docs, words.ex, draft.targetLangs, (i) => `f${i + 1}`)
         : null,
-    [docs, words, draft.sourceLang, draft.targetLangs],
+    [docs, words, draft.sourceLang, draft.targetLangs, rulesKey],
   );
 
   // The review analyses each target language against its memories, and
@@ -638,6 +643,7 @@ export function NewProject() {
       context: draft.context,
       qa: draft.qa,
       prepare: draft.prepare,
+      segmentation: draft.segmentation.length ? draft.segmentation : undefined,
       createdAt: now,
       due: draft.due || undefined,
       progress: 0,
@@ -1228,6 +1234,16 @@ export function NewProject() {
               context={draft.context}
               setContext={(context) => setDraft((d) => ({ ...d, context }))}
             />
+          </details>
+
+          <details className="settings-details">
+            <summary>
+              Segmentation
+              <span className="muted">
+                {draft.segmentation.length ? ` ${plural(draft.segmentation.length, "rule", "rules")} of your own` : " as usual for the language"}
+              </span>
+            </summary>
+            <SegmentationSection rules={draft.segmentation} setRules={(segmentation) => setDraft((d) => ({ ...d, segmentation }))} problems={problems} />
           </details>
 
           <PrepareSection

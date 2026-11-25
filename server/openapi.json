@@ -2154,6 +2154,21 @@
         },
         "type": "object"
       },
+      "project.SegmentationRule": {
+        "description": "SegmentationRule is a rule of the project's own for where sentences end: at a place where the text before it ends with Before and the text after it begins with After (regular expressions, either may be empty), a segment ends (Break) or does not. The project's rules come before the ones Interlinea has for the language, and the first rule that matches a place decides it.",
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "before": {
+            "type": "string"
+          },
+          "break": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "project.Settings": {
         "description": "Settings is a project as it is set up.",
         "properties": {
@@ -2198,6 +2213,13 @@
           },
           "qa": {
             "$ref": "#/components/schemas/project.QA"
+          },
+          "segmentation": {
+            "description": "Segmentation are the project's own rules for where sentences end, applied to the files added to it.",
+            "items": {
+              "$ref": "#/components/schemas/project.SegmentationRule"
+            },
+            "type": "array"
           },
           "sourceLang": {
             "type": "string"
@@ -2269,6 +2291,12 @@
           },
           "qa": {
             "$ref": "#/components/schemas/project.QA"
+          },
+          "segmentation": {
+            "items": {
+              "$ref": "#/components/schemas/project.SegmentationRule"
+            },
+            "type": "array"
           },
           "sourceLang": {
             "type": "string"
@@ -2644,6 +2672,12 @@
           },
           "qa": {
             "$ref": "#/components/schemas/project.QA"
+          },
+          "segmentation": {
+            "items": {
+              "$ref": "#/components/schemas/project.SegmentationRule"
+            },
+            "type": "array"
           },
           "sourceLang": {
             "type": "string"

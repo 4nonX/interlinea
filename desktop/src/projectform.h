@@ -83,6 +83,8 @@ public:
     QWidget *terminology(QWidget *parent);
     QWidget *checks(QWidget *parent);
     QWidget *prepare(QWidget *parent);
+    // The project's own rules for where sentences end.
+    QWidget *segmentation(QWidget *parent);
 
     // What pre-translation would do with these settings, shown in the
     // preparation section.
@@ -123,6 +125,7 @@ private:
     void fillTerminology();
     void fillChecks();
     void fillPrepare();
+    void fillSegmentation();
     QLabel *problemLabel(const QString &field, QWidget *parent);
     void dropStaleMemories();
     QJsonObject memoryInfo(const QString &name) const;
@@ -149,5 +152,6 @@ private:
     QPointer<QWidget> m_terminology;
     QPointer<QWidget> m_checks;
     QPointer<QWidget> m_prepare;
+    QPointer<QWidget> m_segmentation;
     QList<QPair<QString, QPointer<QLabel>>> m_problemLabels;
 };

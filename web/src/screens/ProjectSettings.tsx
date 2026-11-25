@@ -52,6 +52,7 @@ import {
   ChecksSection,
   MemoriesSection,
   PrepareSection,
+  SegmentationSection,
   Problems,
   TargetPicker,
   TerminologySection,
@@ -249,7 +250,7 @@ function SettingsForm({ project }: { project: Project }) {
         );
         return { ...f, segments };
       });
-      const ex = await extractWordDocs(added, project.sourceLang);
+      const ex = await extractWordDocs(added, project.sourceLang, draft.segmentation);
       const n = project.files.length;
       const addedFiles =
         buildFiles(
@@ -311,6 +312,7 @@ function SettingsForm({ project }: { project: Project }) {
         context: draft.context,
         qa: draft.qa,
         prepare: draft.prepare,
+        segmentation: draft.segmentation.length ? draft.segmentation : undefined,
       };
       dispatch({
         type: "updateProject",
@@ -593,6 +595,13 @@ function SettingsForm({ project }: { project: Project }) {
           problems={problems}
           existing
         />
+      </section>
+
+      <section className="panel" aria-labelledby="ps-seg">
+        <h2 id="ps-seg" className="panel-title">
+          Segmentation
+        </h2>
+        <SegmentationSection rules={draft.segmentation} setRules={(segmentation) => setDraft((d) => ({ ...d, segmentation }))} problems={problems} existing />
       </section>
 
       <section className="panel" aria-labelledby="ps-checks">

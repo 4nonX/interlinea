@@ -137,6 +137,9 @@ ProjectPage::ProjectPage(Connection *connection, qint64 projectId, QWidget *pare
     page.body->addWidget(Web::panel(tr("Terminology"), p, &body));
     body->addWidget(m_form->terminology(p));
 
+    page.body->addWidget(Web::panel(tr("Segmentation"), p, &body));
+    body->addWidget(m_form->segmentation(p));
+
     page.body->addWidget(Web::panel(tr("Checks and analysis"), p, &body));
     body->addWidget(m_form->checks(p));
     m_analysisBody = host(body);

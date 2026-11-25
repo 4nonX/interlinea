@@ -15,6 +15,7 @@ import {
   ChecksSection,
   MemoriesSection,
   PrepareSection,
+  SegmentationSection,
   Problems,
   SectionsSourceProvider,
   TargetPicker,
@@ -47,6 +48,7 @@ function draftOf(s: CoreSettings): Draft {
     context: s.analysis.context,
     qa: qaOf(s.qa),
     prepare: { ...DEFAULT_PREPARE, ...s.prepare },
+    segmentation: s.segmentation ?? [],
   };
 }
 
@@ -209,6 +211,13 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
         <TerminologySection draft={draft} setDraft={setDraft} problems={problems} existing />
       </section>
 
+      <section className="panel" aria-labelledby="sps-seg">
+        <h2 id="sps-seg" className="panel-title">
+          Segmentation
+        </h2>
+        <SegmentationSection rules={draft.segmentation} setRules={(segmentation) => setDraft((d) => ({ ...d, segmentation }))} problems={problems} existing />
+      </section>
+
       <section className="panel" aria-labelledby="sps-checks">
         <h2 id="sps-checks" className="panel-title">
           Checks and analysis
@@ -285,7 +294,7 @@ function ServerFiles({ project, onChanged }: { project: ServerProject; onChanged
     setBusy("Reading the files…");
     try {
       const docs = draftDocs(await readFiles([...list].map((file) => ({ file }))));
-      const words = await extractWordDocs(docs, s.sourceLang);
+      const words = await extractWordDocs(docs, s.sourceLang, s.segmentation ?? []);
       const files = buildFiles(docs, words, s.targetLangs, (i) => `new${i}`) ?? [];
       let version = project.version;
       for (const f of files) {

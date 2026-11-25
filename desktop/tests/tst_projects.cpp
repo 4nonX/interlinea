@@ -10,6 +10,7 @@
 #include "testcore.h"
 #include "theme.h"
 
+#include <QLabel>
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
@@ -312,9 +313,36 @@ private slots:
         QTRY_VERIFY(named<QLineEdit>(pp, QStringLiteral("Name of rule 1")));
         QTest::keyClicks(named<QLineEdit>(pp, QStringLiteral("Name of rule 1")), QStringLiteral("No double spaces"));
         QTest::keyClicks(named<QLineEdit>(pp, QStringLiteral("Translation pattern of rule 1")), QStringLiteral("  "));
+        // A segmentation rule of the project's own: one that is no regular expression is refused.
+        button(pp, QStringLiteral("Add a segmentation rule"))->click();
+        QTRY_VERIFY(named<QLineEdit>(pp, QStringLiteral("Text before the place, segmentation rule 1")));
+        QTest::keyClicks(named<QLineEdit>(pp, QStringLiteral("Text before the place, segmentation rule 1")), QStringLiteral("("));
+        button(pp, QStringLiteral("Save changes"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(pp->findChild<QWidget *>()->window() && [pp] {
+            for (QLabel *l : pp->findChildren<QLabel *>())
+                if (l->isVisible() && l->text().contains(QStringLiteral("not a regular expression that can be used")))
+                    return true;
+            return false;
+        }(), 10000);
+        QVERIFY(pp->unsaved());
+        auto *before = named<QLineEdit>(pp, QStringLiteral("Text before the place, segmentation rule 1"));
+        before->setFocus();
+        before->selectAll();
+        QTest::keyClicks(before, QStringLiteral(";"));
+        QTest::keyClicks(named<QLineEdit>(pp, QStringLiteral("Text after the place, segmentation rule 1")), QStringLiteral("\\s"));
+        auto *what = pp->findChild<QComboBox *>(QStringLiteral("segBreak0"));
+        QVERIFY(what);
+        what->setCurrentIndex(1);
         button(pp, QStringLiteral("Save changes"))->click();
         QTRY_VERIFY_WITH_TIMEOUT(!pp->unsaved(), 10000);
         QVERIFY2(pp->lastNotice().contains(QStringLiteral("French (France) added to every file")), qPrintable(pp->lastNotice()));
+        {
+            const QJsonArray rules = wait(api->get(QStringLiteral("/api/projects/%1").arg(id))).object().value("settings").toObject().value("segmentation").toArray();
+            QCOMPARE(rules.size(), 1);
+            QCOMPARE(rules.at(0).toObject().value("before").toString(), QStringLiteral(";"));
+            QCOMPARE(rules.at(0).toObject().value("after").toString(), QStringLiteral("\\s"));
+            QVERIFY(rules.at(0).toObject().value("break").toBool());
+        }
         r = wait(api->get(QStringLiteral("/api/projects/%1").arg(id)));
         const QJsonObject saved = r.object().value("settings").toObject();
         QCOMPARE(saved.value("client").toString(), QStringLiteral("Weber & Partner"));

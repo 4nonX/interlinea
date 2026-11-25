@@ -163,6 +163,9 @@ type Settings struct {
 	Analysis      Analysis    `json:"analysis"`
 	QA            QA          `json:"qa"`
 	Prepare       Prepare     `json:"prepare"`
+	// Segmentation are the project's own rules for where sentences end,
+	// applied to the files added to it.
+	Segmentation []SegmentationRule `json:"segmentation,omitempty"`
 }
 
 // Catalog describes the memories and termbases a setup may refer to.
@@ -417,6 +420,14 @@ func Validate(s Settings, cat Catalog) []Problem {
 			add("qa.enabled", "%q is not a quality check.", k)
 		}
 	}
+	if len(s.Segmentation) > MaxSegmentationRules {
+		add("segmentation", "A project has at most %d segmentation rules of its own.", MaxSegmentationRules)
+	}
+	for i, r := range s.Segmentation {
+		if err := r.Check(); err != nil {
+			add(fmt.Sprintf("segmentation[%d]", i), "%s", err.Error())
+		}
+	}
 	ruleNames := map[string]bool{}
 	for i, r := range s.QA.Rules {
 		field := fmt.Sprintf("qa.rules[%d]", i)
@@ -546,6 +557,7 @@ type Template struct {
 	Analysis      Analysis                   `json:"analysis"`
 	QA            QA                         `json:"qa"`
 	Prepare       Prepare                    `json:"prepare"`
+	Segmentation  []SegmentationRule         `json:"segmentation,omitempty"`
 }
 
 // TemplateFrom makes a template of a project's settings.
@@ -565,6 +577,7 @@ func TemplateFrom(name string, s Settings) Template {
 		Analysis:      s.Analysis,
 		QA:            cloneQA(s.QA),
 		Prepare:       s.Prepare,
+		Segmentation:  append([]SegmentationRule(nil), s.Segmentation...),
 	}
 }
 
@@ -581,6 +594,7 @@ func (t Template) Settings() Settings {
 		Analysis:      t.Analysis,
 		QA:            cloneQA(t.QA),
 		Prepare:       t.Prepare,
+		Segmentation:  append([]SegmentationRule(nil), t.Segmentation...),
 	}
 }
 

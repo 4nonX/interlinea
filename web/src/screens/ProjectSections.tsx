@@ -14,6 +14,7 @@ import {
   type Project,
   type QaRule,
   type QaSettings,
+  type SegmentationRule,
   type SpellDictionary,
   type Entry,
   type Termbase,
@@ -1233,6 +1234,71 @@ export function ChecksSection({
         </div>
       </fieldset>
     </>
+  );
+}
+
+/** The project's own rules for where sentences end. */
+export function SegmentationSection({
+  rules,
+  setRules,
+  problems,
+  existing,
+}: {
+  rules: SegmentationRule[];
+  setRules: (rules: SegmentationRule[]) => void;
+  problems: Problem[];
+  /** The project exists: its files are cut already. */
+  existing?: boolean;
+}) {
+  const setRule = (i: number, patch: Partial<SegmentationRule>) => setRules(rules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <fieldset className="field">
+      <legend>Segmentation rules of your own</legend>
+      <p className="help">
+        Sentences end as is usual for the source language. A rule changes that at every place where the text before it ends with the first pattern and the
+        text after it begins with the second (regular expressions; one may stay empty). Your rules come first.{" "}
+        {existing ? "They cut the documents added from now on; the files in the project stay as they are." : "They cut the documents of the project."} Files that
+        bring their own segments keep them.
+      </p>
+      {rules.map((r, i) => {
+        const id = `seg-rule-${i}`;
+        return (
+          <div key={i} className="rule" role="group" aria-label={`Segmentation rule ${i + 1}`}>
+            <div className="field-grid">
+              <div className="field">
+                <label htmlFor={`${id}-break`}>At this place</label>
+                <select id={`${id}-break`} value={r.break ? "break" : "keep"} onChange={(e) => setRule(i, { break: e.target.value === "break" })}>
+                  <option value="keep">a sentence does not end</option>
+                  <option value="break">a sentence ends</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor={`${id}-before`}>Text before the place</label>
+                <input id={`${id}-before`} className="mono" value={r.before ?? ""} onChange={(e) => setRule(i, { before: e.target.value || undefined })} />
+              </div>
+              <div className="field">
+                <label htmlFor={`${id}-after`}>Text after the place</label>
+                <input id={`${id}-after`} className="mono" value={r.after ?? ""} onChange={(e) => setRule(i, { after: e.target.value || undefined })} />
+              </div>
+            </div>
+            <Problems messages={problemsAt(problems, `segmentation[${i}]`)} />
+            <button type="button" className="btn btn-quiet btn-small" onClick={() => setRules(rules.filter((_, j) => j !== i))}>
+              <X size={14} aria-hidden="true" />
+              Remove rule
+            </button>
+          </div>
+        );
+      })}
+      <Problems messages={problems.filter((p) => p.field === "segmentation").map((p) => p.message)} />
+      <button type="button" className="btn btn-small" onClick={() => setRules([...rules, { break: false, before: "" }])}>
+        <Plus size={14} aria-hidden="true" />
+        Add a segmentation rule
+      </button>
+      <p className="help">
+        An abbreviation that should not end a sentence: “does not end”, before <code>\bca\.</code>, after <code>\s</code>. A new segment after every
+        semicolon: “ends”, before <code>;</code>, after <code>\s</code>.
+      </p>
+    </fieldset>
   );
 }
 

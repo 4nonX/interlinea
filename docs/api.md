@@ -2644,6 +2644,16 @@ Segment is a segment of a file in one target language.
 | `target` | [content.Content](#contentcontent) |  |
 | `warnings` | list of [project.Warning](#projectwarning) | Warnings are the checks' results saved when it was confirmed. |
 
+### project.SegmentationRule
+
+SegmentationRule is a rule of the project's own for where sentences end: at a place where the text before it ends with Before and the text after it begins with After (regular expressions, either may be empty), a segment ends (Break) or does not. The project's rules come before the ones Interlinea has for the language, and the first rule that matches a place decides it.
+
+| Field | Type | Description |
+|---|---|---|
+| `after` | string |  |
+| `before` | string |  |
+| `break` | boolean |  |
+
 ### project.Settings
 
 Settings is a project as it is set up.
@@ -2660,6 +2670,7 @@ Settings is a project as it is set up.
 | `prepare` | [project.Prepare](#projectprepare) |  |
 | `projectMemory` | boolean | ProjectMemory gives the project its own memory per target language, which collects its confirmed translations. |
 | `qa` | [project.QA](#projectqa) |  |
+| `segmentation` | list of [project.SegmentationRule](#projectsegmentationrule) | Segmentation are the project's own rules for where sentences end, applied to the files added to it. |
 | `sourceLang` | string |  |
 | `targetLangs` | list of string |  |
 | `terminology` | [project.Terminology](#projectterminology) |  |
@@ -2693,6 +2704,7 @@ Template is what a new project can start from: everything but the project's name
 | `prepare` | [project.Prepare](#projectprepare) |  |
 | `projectMemory` | boolean |  |
 | `qa` | [project.QA](#projectqa) |  |
+| `segmentation` | list of [project.SegmentationRule](#projectsegmentationrule) |  |
 | `sourceLang` | string |  |
 | `targetLangs` | list of string |  |
 | `terminology` | [project.Terminology](#projectterminology) |  |
@@ -2832,6 +2844,7 @@ StoredTemplate is a template with its version.
 | `prepare` | [project.Prepare](#projectprepare) |  |
 | `projectMemory` | boolean |  |
 | `qa` | [project.QA](#projectqa) |  |
+| `segmentation` | list of [project.SegmentationRule](#projectsegmentationrule) |  |
 | `sourceLang` | string |  |
 | `targetLangs` | list of string |  |
 | `terminology` | [project.Terminology](#projectterminology) |  |

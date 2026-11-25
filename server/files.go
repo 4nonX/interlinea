@@ -58,7 +58,10 @@ func formatOf(name string) string {
 // and target languages: a Trados package becomes the package and its
 // bilingual files, and each translatable file gets its segments, made or
 // checked.
-func prepareFiles(files []fileUpload, sourceLang string, targets []string) ([]fileUpload, error) {
+//
+// A document whose segments the server makes is cut by the project's own
+// segmentation rules; segments the app sent are taken as the app has them.
+func prepareFiles(files []fileUpload, sourceLang string, targets []string, rules []project.SegmentationRule) ([]fileUpload, error) {
 	var out []fileUpload
 	for _, f := range files {
 		if f.Role == project.Package {
@@ -69,8 +72,14 @@ func prepareFiles(files []fileUpload, sourceLang string, targets []string) ([]fi
 			out = append(out, fs...)
 			continue
 		}
+		sent := len(f.Segments) > 0
 		if err := prepareFile(&f, sourceLang, targets); err != nil {
 			return nil, err
+		}
+		if !sent && formats.Document(f.Format) {
+			for lang, segs := range f.Segments {
+				f.Segments[lang] = project.ApplySegmentation(segs, rules, sourceLang)
+			}
 		}
 		out = append(out, f)
 	}

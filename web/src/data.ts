@@ -305,6 +305,8 @@ export interface Project {
   context: ContextRule;
   qa: QaSettings;
   prepare: PrepareSettings;
+  /** The project's own rules for where sentences end, for the files added to it. */
+  segmentation?: SegmentationRule[];
   createdAt: string;
   due?: string;
   /** Share of confirmed segments over all files and languages. */
@@ -346,7 +348,20 @@ export interface Template {
   context: ContextRule;
   qa: QaSettings;
   prepare: PrepareSettings;
+  /** The project's own rules for where sentences end, for the files added to it. */
+  segmentation?: SegmentationRule[];
   createdAt: string;
+}
+
+/**
+ * A rule of the project's own for where sentences end: at a place where
+ * the text before ends with `before` and the text after begins with
+ * `after` (regular expressions), a segment ends or does not.
+ */
+export interface SegmentationRule {
+  break: boolean;
+  before?: string;
+  after?: string;
 }
 
 export const DEFAULT_QA: QaSettings = {

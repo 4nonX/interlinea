@@ -315,6 +315,7 @@ void ProjectForm::setSettings(const QJsonObject &settings, bool newProject)
     fillTerminology();
     fillChecks();
     fillPrepare();
+    fillSegmentation();
 }
 
 QJsonObject ProjectForm::settings() const
@@ -371,7 +372,7 @@ void ProjectForm::set(const QString &key, const QJsonValue &value)
 void ProjectForm::setReadOnly(bool readOnly)
 {
     m_readOnly = readOnly;
-    for (const QPointer<QWidget> &w : {m_details, m_targets, m_memories, m_terminology, m_checks, m_prepare}) {
+    for (const QPointer<QWidget> &w : {m_details, m_targets, m_memories, m_terminology, m_checks, m_prepare, m_segmentation}) {
         if (w)
             w->setEnabled(!readOnly);
     }
@@ -1672,10 +1673,124 @@ void ProjectForm::fillPrepare()
     });
 }
 
+// Segmentation: the project's own rules for where sentences end.
+
+QWidget *ProjectForm::segmentation(QWidget *parent)
+{
+    if (!m_segmentation) {
+        m_segmentation = new QWidget(parent);
+        fillSegmentation();
+    }
+    return m_segmentation;
+}
+
+void ProjectForm::fillSegmentation()
+{
+    if (!m_segmentation)
+        return;
+    QWidget *w = m_segmentation;
+    refill(w, [this, w] {
+        QVBoxLayout *v = reset(w);
+        v->setSpacing(8);
+        const QString key = QStringLiteral("segmentation");
+        const auto setRules = [this, key](const std::function<void(QJsonArray &)> &change) {
+            QJsonArray a = m_s.value(key).toArray();
+            change(a);
+            if (a.isEmpty())
+                m_s.remove(key);
+            else
+                m_s.insert(key, a);
+            touch();
+        };
+        v->addWidget(legend(tr("Segmentation rules of your own"), w));
+        auto *help = Web::text(tr("Sentences end as is usual for the source language. A rule changes that at every place where the text before it ends with the first pattern and the "
+                                  "text after it begins with the second (regular expressions; one may stay empty). Your rules come first. %1 Files that bring their own segments keep them.")
+                                   .arg(m_new ? tr("They cut the documents of the project.")
+                                              : tr("They cut the documents added from now on; the files in the project stay as they are.")),
+                               "help", w);
+        help->setWordWrap(true);
+        v->addWidget(help);
+        const QJsonArray have = m_s.value(key).toArray();
+        for (int i = 0; i < have.size(); ++i) {
+            const QJsonObject r = have.at(i).toObject();
+            auto *box = new QFrame(w);
+            box->setObjectName(QStringLiteral("choice"));
+            box->setAccessibleName(tr("Segmentation rule %1").arg(i + 1));
+            auto *bv = new QVBoxLayout(box);
+            bv->setContentsMargins(12, 12, 12, 12);
+            bv->setSpacing(12);
+            auto *g = new QGridLayout;
+            g->setHorizontalSpacing(16);
+            g->setVerticalSpacing(12);
+            for (int c = 0; c < 3; ++c)
+                g->setColumnStretch(c, 1);
+            const QString n = tr("segmentation rule %1").arg(i + 1);
+            auto *what = new QComboBox(box);
+            what->setObjectName(QStringLiteral("segBreak%1").arg(i));
+            what->setAccessibleName(tr("What happens at the place, %1").arg(n));
+            what->addItem(tr("a sentence does not end"), false);
+            what->addItem(tr("a sentence ends"), true);
+            what->setCurrentIndex(r.value(QLatin1String("break")).toBool() ? 1 : 0);
+            g->addWidget(Web::field(tr("At this place"), what, box), 0, 0, Qt::AlignTop);
+            connect(what, &QComboBox::currentIndexChanged, this, [what, setRules, i] {
+                setRules([&](QJsonArray &a) {
+                    QJsonObject o = a.at(i).toObject();
+                    o.insert(QStringLiteral("break"), what->currentData().toBool());
+                    a.replace(i, o);
+                });
+            });
+            const auto line = [&](const QString &label, const QString &a11y, const QString &field, int col) {
+                auto *e = new QLineEdit(r.value(field).toString(), box);
+                e->setObjectName(QStringLiteral("seg%1%2").arg(field).arg(i));
+                e->setAccessibleName(a11y);
+                QFont f(QStringLiteral("monospace"));
+                f.setStyleHint(QFont::Monospace);
+                f.setPointSizeF(e->font().pointSizeF());
+                e->setFont(f);
+                g->addWidget(Web::field(label, e, box), 0, col, Qt::AlignTop);
+                connect(e, &QLineEdit::textEdited, this, [setRules, field, i](const QString &t) {
+                    setRules([&](QJsonArray &a) {
+                        QJsonObject o = a.at(i).toObject();
+                        if (t.isEmpty())
+                            o.remove(field);
+                        else
+                            o.insert(field, t);
+                        a.replace(i, o);
+                    });
+                });
+            };
+            line(tr("Text before the place"), tr("Text before the place, %1").arg(n), QStringLiteral("before"), 1);
+            line(tr("Text after the place"), tr("Text after the place, %1").arg(n), QStringLiteral("after"), 2);
+            bv->addLayout(g);
+            bv->addWidget(problemLabel(QStringLiteral("segmentation[%1]").arg(i), box));
+            auto *remove = Web::button(tr("Remove rule"), Web::Quiet | Web::Small, box, QStringLiteral("x"));
+            remove->setAccessibleName(tr("Remove %1").arg(n));
+            bv->addWidget(remove, 0, Qt::AlignLeft);
+            connect(remove, &QPushButton::clicked, this, [this, i, setRules] {
+                setRules([i](QJsonArray &a) { a.removeAt(i); });
+                fillSegmentation();
+            });
+            v->addWidget(box);
+        }
+        auto *add = Web::button(tr("Add a segmentation rule"), Web::Small, w, QStringLiteral("plus"));
+        add->setObjectName(QStringLiteral("addSegmentationRule"));
+        v->addWidget(add, 0, Qt::AlignLeft);
+        connect(add, &QPushButton::clicked, this, [this, setRules] {
+            setRules([](QJsonArray &a) { a.append(QJsonObject{{QStringLiteral("break"), false}}); });
+            fillSegmentation();
+        });
+        auto *example = Web::text(tr("An abbreviation that should not end a sentence: “does not end”, before \\bca\\., after \\s. A new segment after every semicolon: “ends”, before ;, after \\s."),
+                                  "help", w);
+        example->setWordWrap(true);
+        v->addWidget(example);
+        w->setEnabled(!m_readOnly);
+    });
+}
+
 QJsonObject ProjectForm::templateOf(const QString &name, const QJsonObject &s)
 {
     QJsonObject t{{QStringLiteral("name"), name}};
-    for (const char *key : {"client", "sourceLang", "targetLangs", "memories", "projectMemory", "terminology", "analysis", "qa", "prepare"})
+    for (const char *key : {"client", "sourceLang", "targetLangs", "memories", "projectMemory", "terminology", "analysis", "qa", "prepare", "segmentation"})
         t.insert(QLatin1String(key), s.value(QLatin1String(key)));
     // The project termbase belongs to the project; a new project makes
     // its own.

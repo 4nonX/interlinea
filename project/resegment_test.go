@@ -332,3 +332,58 @@ func TestResegmentedWebPage(t *testing.T) {
 		t.Errorf("page: %s", out)
 	}
 }
+
+func TestProjectSegmentationRules(t *testing.T) {
+	page := []byte("<html><body><p>Die Miete nach Abs. 2 ist fällig; die Kaution auch. Der <b>Mieter zahlt. Er</b> zahlt gern.</p><p>z. B. so.</p></body></html>")
+	ex, err := formats.Extract("html", page, "de-DE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	segs := segmentsOf(ex)
+	usual := sources(segs)
+	rules := []project.SegmentationRule{
+		{Break: false, Before: `\bz\.`, After: `\s+B\.`},
+		{Break: true, Before: `;`, After: `\s`},
+	}
+	for i, r := range rules {
+		if err := r.Check(); err != nil {
+			t.Fatalf("rule %d: %v", i, err)
+		}
+	}
+	got := project.ApplySegmentation(segs, rules, "de-DE")
+	var parts []string
+	for _, s := range got {
+		parts = append(parts, s.Source.Plain())
+	}
+	t.Logf("usual: %s", usual)
+	want := "Die Miete nach Abs. 2 ist fällig;|die Kaution auch.|Der Mieter zahlt. Er zahlt gern.|z. B. so."
+	if strings.Join(parts, "|") != want {
+		t.Fatalf("got  %s\nwant %s", strings.Join(parts, "|"), want)
+	}
+	// The file takes them as its own, and is written with their translations.
+	us := project.Units(got)
+	if len(us) != len(ex.Units) {
+		t.Fatalf("%d units for %d of the file", len(us), len(ex.Units))
+	}
+	for i := range got {
+		got[i].Target = content.Text("T" + string(rune('1'+i)) + ".")
+	}
+	out, err := formats.Merge("html", page, "de-DE", "en-GB", project.Translations(got))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(out), "<p>T1. T2. T3.</p><p>T4.</p>") || len(got) != 4 || len(got[3].Joined) != 2 || got[0].Split == nil {
+		t.Errorf("page: %s", out)
+	}
+	// Without rules, and with rules that match nothing, nothing changes.
+	if same := project.ApplySegmentation(segs, nil, "de-DE"); sources(same) != usual {
+		t.Errorf("no rules: %s", sources(same))
+	}
+	if same := project.ApplySegmentation(segs, []project.SegmentationRule{{Break: true, Before: `§§§`}}, "de-DE"); sources(same) != usual {
+		t.Errorf("a rule that matches nothing: %s", sources(same))
+	}
+	// A rule that is no regular expression, or says nothing, is refused.
+	if (project.SegmentationRule{Break: true, Before: `(`}).Check() == nil || (project.SegmentationRule{Break: true}).Check() == nil {
+		t.Error("a bad rule passes")
+	}
+}

@@ -320,6 +320,7 @@ export interface CoreSettings {
     uneditedFuzzy: boolean;
   };
   prepare: { pretranslate: boolean; minScore: number; confirmExact: boolean; confirmContext: boolean };
+  segmentation?: { break: boolean; before?: string; after?: string }[];
 }
 
 export interface ServerProject {

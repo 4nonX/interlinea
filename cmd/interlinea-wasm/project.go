@@ -179,6 +179,24 @@ func resegment(args []js.Value) (any, error) {
 	return jsonOut(out)
 }
 
+// segmentation(segments, rules, lang): cuts a document's segments as the
+// project's own segmentation rules say, by joining and splitting the ones
+// the filter read. It returns the segments as they are then.
+func segmentation(args []js.Value) (any, error) {
+	if len(args) != 3 {
+		return nil, fmt.Errorf("segmentation(segments, rules, lang)")
+	}
+	var segs []project.Segment
+	if err := json.Unmarshal([]byte(args[0].String()), &segs); err != nil {
+		return nil, fmt.Errorf("segments: %w", err)
+	}
+	var rules []project.SegmentationRule
+	if err := json.Unmarshal([]byte(args[1].String()), &rules); err != nil {
+		return nil, fmt.Errorf("rules: %w", err)
+	}
+	return jsonOut(project.ApplySegmentation(segs, rules, args[2].String()))
+}
+
 func projectFuncs() map[string]any {
 	return map[string]any{
 		"projectDefaults":         guard(projectDefaults),
@@ -187,5 +205,6 @@ func projectFuncs() map[string]any {
 		"analyze":                 guard(analyze),
 		"pretranslate":            guard(pretranslate),
 		"resegment":               guard(resegment),
+		"segmentation":            guard(segmentation),
 	}
 }

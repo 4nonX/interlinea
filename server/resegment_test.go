@@ -125,4 +125,29 @@ func TestSplitAndJoinSegments(t *testing.T) {
 	if r := te.do("POST", "/api/projects", te.pm, again); r.status != 422 {
 		t.Fatalf("parts that are not the file's: %d %s", r.status, r.body)
 	}
+
+	// A project's own segmentation rules cut the files the server reads.
+	ruled := leaseRequest()
+	ruled.Settings.Name = "Mietvertrag Hofmann 4"
+	ruled.Settings.TargetLangs = []string{"en-GB"}
+	ruled.Settings.Memories = map[string][]project.MemorySetting{}
+	ruled.Memories, ruled.Termbase = nil, nil
+	ruled.Settings.Terminology = project.Terminology{Mode: project.Direct, Masters: []string{"tb-weber"}, WriteTo: "tb-weber", Location: project.Server}
+	ruled.Settings.Segmentation = []project.SegmentationRule{{Break: false, Before: `Miete\.`, After: `\s+Die`}, {Break: true, Before: `Vermieter`, After: `\s`}}
+	ruled.Files = []fileUpload{{Name: "Mietvertrag.docx", Role: project.Translatable, Data: lease}}
+	var p4 projectView
+	te.call("POST", "/api/projects", te.pm, ruled, 201, &p4)
+	var cut []projectdb.StoredSegment
+	te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=Mietvertrag.docx&lang=en-GB", p4.ID), te.pm, nil, 200, &cut)
+	if len(cut) != 3 || len(cut[0].Joined) != 2 || cut[1].Source.Plain() != "Der Vermieter" || cut[2].Source.Plain() != "haftet nicht." {
+		t.Fatalf("cut by the project's rules %+v", cut)
+	}
+	if len(p4.Settings.Segmentation) != 2 {
+		t.Fatalf("the rules are kept with the project: %+v", p4.Settings.Segmentation)
+	}
+	ruled.Settings.Name = "Mietvertrag Hofmann 5"
+	ruled.Settings.Segmentation = []project.SegmentationRule{{Break: true, Before: `(`}}
+	if r := te.do("POST", "/api/projects", te.pm, ruled); r.status != 422 || r.err().Problems[0].Field != "segmentation[0]" {
+		t.Fatalf("a rule that is no regular expression: %d %s", r.status, r.body)
+	}
 }

@@ -185,7 +185,7 @@ func main() {
 		"extract": js.FuncOf(extract),
 		"align":   guard(alignFiles),
 		"merge":   js.FuncOf(merge),
-		"version": "8",
+		"version": "9",
 	}
 	for k, v := range tmFuncs() {
 		api[k] = v

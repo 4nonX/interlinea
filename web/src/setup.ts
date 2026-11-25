@@ -11,7 +11,8 @@ import {
   type LangCode,
   type ProjectFile,
 } from "./data";
-import { documentFormat, extractDocx, type Extracted } from "./core";
+import type { SegmentationRule } from "./data";
+import { documentFormat, applySegmentation, extractDocx, type Extracted } from "./core";
 import { segmentText, type Segment } from "./editor/model";
 import type { PendingDoc } from "./draft";
 
@@ -77,11 +78,16 @@ export function knownLang(code: string): LangCode {
 export async function extractWordDocs(
   docs: DraftDoc[],
   source: LangCode,
+  rules: SegmentationRule[] = [],
 ): Promise<Map<string, Extracted>> {
   const out = new Map<string, Extracted>();
+  // Rules that are not filled in, or are no regular expressions, cut nothing.
+  const own = rules.filter((r) => r.before || r.after);
   for (const d of docs) {
-    if (d.role === "translatable" && kindOf(d.doc) === "docx")
-      out.set(d.key, await extractDocx(d.doc.bytes!, source, d.doc.file));
+    if (d.role === "translatable" && kindOf(d.doc) === "docx") {
+      const ex = await extractDocx(d.doc.bytes!, source, d.doc.file);
+      out.set(d.key, own.length ? { ...ex, segments: await applySegmentation(ex.segments, own, source) } : ex);
+    }
   }
   return out;
 }

@@ -11,6 +11,7 @@ import {
   type Location,
   type MemorySetting,
   type PrepareSettings,
+  type SegmentationRule,
   type Project,
   type ProjectFile,
   type QaSettings,
@@ -52,6 +53,7 @@ export interface Draft {
   context: ContextRule;
   qa: QaSettings;
   prepare: PrepareSettings;
+  segmentation: SegmentationRule[];
 }
 
 export interface Problem {
@@ -85,6 +87,7 @@ export function draftOf(p: Project): Draft {
     context: p.context,
     qa: p.qa,
     prepare: p.prepare,
+    segmentation: p.segmentation ?? [],
   };
 }
 
@@ -101,6 +104,7 @@ export function draftOfTemplate(t: Template): Omit<Draft, "name" | "files"> {
     context: t.context,
     qa: t.qa,
     prepare: t.prepare,
+    segmentation: t.segmentation ?? [],
   };
 }
 
@@ -123,6 +127,7 @@ export function templateOf(
     context: d.context,
     qa: d.qa,
     prepare: d.prepare,
+    segmentation: d.segmentation.length ? d.segmentation : undefined,
     createdAt: now,
   };
 }
@@ -155,6 +160,7 @@ export function coreSettings(d: Omit<Draft, "files"> & { files: Draft["files"] }
     analysis: { context: d.context },
     qa: d.qa,
     prepare: d.prepare,
+    segmentation: d.segmentation.length ? d.segmentation : undefined,
   };
 }
 

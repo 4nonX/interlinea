@@ -281,6 +281,36 @@ export default () =>
         await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
         check((await evaluate("document.querySelector('.seg.is-active .target-editor').innerText.trim()")) === "The landlord is not liable. is not liable.", "with what was translated of its parts");
       }
+      // A project's own segmentation rules cut its documents.
+      await open("/new", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFiles([`${docs}/LIESMICH.md`]);
+      await waitFor("document.querySelectorAll('.file-table tbody tr').length === 1", 15000);
+      await setValue("#pname", "Eigene Regeln");
+      await sleep(200);
+      await through();
+      await evaluate("[...document.querySelectorAll('details.settings-details')].find(d => d.querySelector('summary').textContent.includes('Segmentation')).open = true");
+      check((await text()).includes("Segmentation as usual for the language"), "the review says the documents are cut as usual");
+      await click("details.settings-details button", "Add a segmentation rule");
+      await sleep(200);
+      check((await text()).includes("Say what stands before the place, after it, or both."), "a rule that says nothing is a problem");
+      await setValue("#seg-rule-0-before", "(");
+      await sleep(400);
+      check((await text()).includes("not a regular expression that can be used"), "and so is one that is no regular expression");
+      await setValue("#seg-rule-0-before", "Miete\\.");
+      await setValue("#seg-rule-0-after", "\\s");
+      await sleep(500);
+      check((await text()).includes("1 rule of your own") && !(await text()).includes("Say what stands before"), "filled in, the rule is counted");
+      await click("button", "Create project");
+      check(await waitFor("document.querySelectorAll('.seg').length === 2", 15000), "the two sentences the rule keeps together are one segment");
+      check((await evaluate("document.querySelectorAll('.seg')[1].querySelector('.seg-source').innerText.replace(/\\s+/g, ' ')")).endsWith("zahlt die Miete. Der Vermieter haftet nicht."), "with both sentences");
+      await open("/projects", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('a')].some(a => a.textContent.includes('Eigene Regeln'))", 10000);
+      await evaluate("location.hash = '#/project/' + JSON.parse(JSON.stringify([...document.querySelectorAll('a')].find(a => a.textContent.includes('Eigene Regeln')).getAttribute('href'))).split('/').pop()");
+      check(await waitFor("!!document.querySelector('#seg-rule-0-before') && document.querySelector('#seg-rule-0-before').value === 'Miete\\\\.'", 10000), "the project's settings show its rule: " + (await evaluate("location.hash + ' ' + (document.querySelector('#seg-rule-0-before')?.value ?? 'no field')")));
+      check((await text()).includes("They cut the documents added from now on"), "and say it is for files added from now on");
       check(errors.length === 0, "no console errors: " + errors.join(" | "));
     },
   );
