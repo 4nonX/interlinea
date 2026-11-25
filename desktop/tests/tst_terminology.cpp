@@ -865,6 +865,7 @@ private slots:
         // Yes or no, a date and a number take values with controls of their own.
         {
             QComboBox *checked = nullptr;
+            QTRY_VERIFY_WITH_TIMEOUT(page.ready() && !page.busy(), 10000);
             QTRY_VERIFY((checked = named<QComboBox>(&page, QStringLiteral("Geprüft"))));
             QCOMPARE(checked->count(), 3);
             QCOMPARE(checked->itemText(1), QStringLiteral("Yes"));
@@ -872,6 +873,10 @@ private slots:
             QTRY_COMPARE_WITH_TIMEOUT(TermData::value(page.entry(page.entryId()).value("fields").toArray(), QStringLiteral("Geprüft")), QStringLiteral("true"), 10000);
             QTRY_VERIFY(!page.busy());
             const auto addKind = [&](const QString &fieldName, const QString &kind) {
+                // The page is read and drawn again after each change: the
+                // form is filled in once it has settled.
+                QTRY_VERIFY_WITH_TIMEOUT(page.ready() && !page.busy(), 10000);
+                QTest::qWait(300);
                 QTRY_VERIFY(byName<QPushButton>(&page, QStringLiteral("addField")));
                 byName<QPushButton>(&page, QStringLiteral("addField"))->click();
                 QTRY_VERIFY(byName<QLineEdit>(&page, QStringLiteral("newFieldName")));
