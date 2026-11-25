@@ -150,7 +150,10 @@ foreach(name apiclient eventfeed secretstore providersignin connections ui proje
     endif()
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "${test_env}" TIMEOUT 180)
     # Again at 150% scaling, as many screens are set: the layout check
-    # finds what only breaks there.
-    add_test(NAME ${name}_150 COMMAND tst_${name})
-    set_tests_properties(${name}_150 PROPERTIES ENVIRONMENT "${test_env};QT_SCALE_FACTOR=1.5" TIMEOUT 180)
+    # finds what only breaks there. Not the end-to-end test: it works on
+    # one team server, whose state a second run would find changed.
+    if(NOT name STREQUAL "endtoend")
+        add_test(NAME ${name}_150 COMMAND tst_${name})
+        set_tests_properties(${name}_150 PROPERTIES ENVIRONMENT "${test_env};QT_SCALE_FACTOR=1.5" TIMEOUT 180)
+    endif()
 endforeach()
