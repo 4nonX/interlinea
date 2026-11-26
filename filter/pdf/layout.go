@@ -369,7 +369,12 @@ func inOrder(blocks []*block) []*block {
 				second = append(second, b)
 			}
 		}
-	default:
+	}
+	// A cut parts the blocks in two, each with fewer blocks than before.
+	// Blocks of a broken file (extents upside down, or not numbers) can
+	// all fall on one side of it; those are read as blocks that lie over
+	// each other, or the parting would never end.
+	if len(first) == 0 || len(second) == 0 {
 		// Blocks that lie over each other: from the top, then from the left.
 		sorted := append([]*block(nil), blocks...)
 		sort.SliceStable(sorted, func(i, j int) bool {

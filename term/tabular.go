@@ -216,13 +216,16 @@ func splitLangField(h string) (lang, field string) {
 	}
 	// A language name before or after a field: "German Definition",
 	// "Status Englisch".
+	// No language name has more words than the longest known one, so only
+	// that many words are tried: a long header is not tried word by word.
 	parts := strings.Fields(h)
-	for i := len(parts) - 1; i > 0; i-- {
+	most := langIndex().words
+	for i := min(len(parts)-1, most); i > 0; i-- {
 		if l, ok := LangFromName(strings.Join(parts[:i], " ")); ok {
 			return l, strings.Join(parts[i:], " ")
 		}
 	}
-	for i := 1; i < len(parts); i++ {
+	for i := max(1, len(parts)-most); i < len(parts); i++ {
 		if l, ok := LangFromName(strings.Join(parts[i:], " ")); ok {
 			return l, strings.Join(parts[:i], " ")
 		}

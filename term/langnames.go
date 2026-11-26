@@ -2,6 +2,7 @@ package term
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/4nonX/interlinea/langtag"
 )
@@ -62,44 +63,65 @@ func LangFromName(s string) (string, bool) {
 	if k == "" {
 		return "", false
 	}
-	for _, l := range langNames {
-		for _, n := range l.names {
-			if k == n {
-				return l.code, true
-			}
-		}
-	}
-	// The names of the languages the apps list: "Thai (Thailand)", "Thai",
-	// "ไทย".
-	for _, l := range langtag.Languages() {
-		if k == strings.ToLower(l.Name) {
-			return l.Tag, true
-		}
-	}
-	for _, l := range langtag.Languages() {
-		bare, _, _ := strings.Cut(strings.ToLower(l.Name), " (")
-		if k == bare || k == strings.ToLower(l.Native) {
-			return langtag.Primary(l.Tag), true
-		}
+	idx := langIndex()
+	if code, ok := idx.names[k]; ok {
+		return code, true
 	}
 	// A tag on its own: a known language, optionally with a script and a
 	// region. A field named "Nl-term" has the shape of a tag but is none.
 	if langtag.WellFormed(k) {
 		t := langtag.MustNormalize(k)
-		p := langtag.Primary(t)
-		for _, l := range langNames {
-			if langtag.Primary(l.code) == p {
-				return t, true
-			}
-		}
-		for _, l := range langtag.Languages() {
-			if langtag.Primary(l.Tag) == p {
-				return t, true
-			}
+		if idx.primaries[langtag.Primary(t)] {
+			return t, true
 		}
 	}
 	return "", false
 }
+
+// langNameIndex holds every language name LangFromName knows, lower case,
+// with the tag it stands for, so that a name is found at once: headers of
+// spreadsheets are tried word by word, and long ones are tried often.
+type langNameIndex struct {
+	names     map[string]string
+	primaries map[string]bool
+	// words is the most words a known name has.
+	words int
+}
+
+var langIndex = sync.OnceValue(func() *langNameIndex {
+	idx := &langNameIndex{names: map[string]string{}, primaries: map[string]bool{}}
+	// Earlier names win: the names of MultiTerm files and spreadsheet
+	// headers, then the names of the languages the apps list ("Thai
+	// (Thailand)"), then those without the region ("Thai") and in the
+	// language itself ("ไทย").
+	add := func(name, code string) {
+		if name == "" {
+			return
+		}
+		if _, ok := idx.names[name]; !ok {
+			idx.names[name] = code
+		}
+		if n := len(strings.Fields(name)); n > idx.words {
+			idx.words = n
+		}
+	}
+	for _, l := range langNames {
+		for _, n := range l.names {
+			add(n, l.code)
+		}
+		idx.primaries[langtag.Primary(l.code)] = true
+	}
+	for _, l := range langtag.Languages() {
+		add(strings.ToLower(l.Name), l.Tag)
+	}
+	for _, l := range langtag.Languages() {
+		bare, _, _ := strings.Cut(strings.ToLower(l.Name), " (")
+		add(bare, langtag.Primary(l.Tag))
+		add(strings.ToLower(l.Native), langtag.Primary(l.Tag))
+		idx.primaries[langtag.Primary(l.Tag)] = true
+	}
+	return idx
+})
 
 // LangName is the English name of a language tag ("German (Germany)").
 func LangName(code string) string {
