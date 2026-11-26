@@ -7,6 +7,8 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-26
+
 ### Subtitles
 
 - More subtitle formats: YouTube (.sbv), Advanced SubStation Alpha and
@@ -443,7 +445,8 @@ version 3.
   a test, and the steps of each store's schema can no longer be changed
   once recorded.
 
-[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/4nonX/interlinea/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/4nonX/interlinea/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/4nonX/interlinea/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/4nonX/interlinea/releases/tag/v0.1.0

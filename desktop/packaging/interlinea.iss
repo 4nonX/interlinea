@@ -1,6 +1,6 @@
 ; The Windows installer of Interlinea, built with Inno Setup:
 ;
-;   iscc /DAppVersion=0.3.0 /DSourceDir=<folder with Interlinea.exe and its files> /DOutputDir=<folder> interlinea.iss
+;   iscc /DAppVersion=0.4.0 /DSourceDir=<folder with Interlinea.exe and its files> /DOutputDir=<folder> interlinea.iss
 ;
 ; It installs for the person who runs it, without administrator rights.
 
