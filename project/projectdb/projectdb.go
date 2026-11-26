@@ -250,6 +250,15 @@ const schemaV5 = `
 // "check" finds grammar mistakes in a translation.
 const schemaV6 = `ALTER TABLE providers ADD COLUMN kind TEXT NOT NULL DEFAULT 'translate';`
 
+// Version 7: which service a translation service is (package mt): a
+// service of one's own ("own", what every service was before), or one of
+// those built in, with the model and the region of its key. A built-in
+// service keeps its key in header_value.
+const schemaV7 = `
+	ALTER TABLE providers ADD COLUMN service TEXT NOT NULL DEFAULT 'own';
+	ALTER TABLE providers ADD COLUMN model TEXT NOT NULL DEFAULT '';
+	ALTER TABLE providers ADD COLUMN region TEXT NOT NULL DEFAULT '';`
+
 var (
 	migrations = []string{
 		fmt.Sprintf(schema, "INTEGER PRIMARY KEY AUTOINCREMENT", "BLOB"),
@@ -258,6 +267,7 @@ var (
 		fmt.Sprintf(schemaV4, "BLOB"),
 		schemaV5,
 		schemaV6,
+		schemaV7,
 	}
 	pgMigrations = []string{
 		fmt.Sprintf(schema, "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY", "BYTEA"),
@@ -266,6 +276,7 @@ var (
 		fmt.Sprintf(schemaV4, "BYTEA"),
 		schemaV5,
 		schemaV6,
+		schemaV7,
 	}
 )
 

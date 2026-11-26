@@ -23,8 +23,8 @@ terminology, memories and projects when people work together.
 **Translate.** Source and target side by side, tags as numbered markers,
 memory matches with their differences, terms from the termbases recognized
 in the source (inflected forms included), checks as you type, spelling and
-grammar, suggestions from a translation service of your own, and a preview
-of the translated document. Repetitions are filled, confirmed segments go
+grammar, suggestions from DeepL, Google, Microsoft or a language model with
+the key of your own account, and a preview of the translated document. Repetitions are filled, confirmed segments go
 into the memories, and the keyboard shortcuts are the familiar ones.
 
 **Run projects.** Projects from documents, folders, bilingual files and

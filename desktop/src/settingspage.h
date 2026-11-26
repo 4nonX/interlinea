@@ -32,6 +32,10 @@ public:
     // grammar service.
     void saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue,
                       const QString &kind = QStringLiteral("translate"));
+    // Saves a service with all it is set up with: name, kind, service
+    // ("own" or one built in), url, headerName, headerValue (the key),
+    // model and region.
+    void saveProvider(const QString &connectionId, const QJsonObject &fields);
     void makeToken(const QString &connectionId, const QString &name, int days);
     QString madeToken() const { return m_madeToken; }
     // Reads what the panels show again.
@@ -57,6 +61,8 @@ private:
     void fillDictionaries();
     void fillProviders();
     void fillServices(QVBoxLayout *into, const QString &kind);
+    QWidget *serviceForm(const QString &connectionId, const QString &kind, QWidget *parent);
+    QString serviceWhere(const QJsonObject &service) const;
     void fillPrograms();
     void fillServers();
     void fillSaved();
@@ -87,6 +93,10 @@ private:
     // made, shown once, and where.
     QString m_providerFormAt;
     QString m_providerFormKind;
+    // The services built in, as the core lists them, and the one the
+    // form for a translation service is set up for.
+    QJsonArray m_services;
+    QString m_providerService;
     QString m_madeToken;
     QString m_madeTokenName;
     QString m_madeTokenAt;

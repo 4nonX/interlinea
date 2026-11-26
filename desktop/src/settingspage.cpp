@@ -375,6 +375,14 @@ void SettingsPage::reload()
                 m_providerList.insert(id, r.array());
             fillProviders();
         });
+        if (m_services.isEmpty()) {
+            onResult(c->api()->get(QStringLiteral("/api/providers/services")), this, [this](const ApiResult &r) {
+                if (r.ok() && m_services.isEmpty()) {
+                    m_services = r.array();
+                    fillProviders();
+                }
+            });
+        }
         onResult(c->api()->get(QStringLiteral("/api/me/tokens")), this, [this, id](const ApiResult &r) {
             if (r.ok())
                 m_tokenList.insert(id, r.array());
@@ -623,17 +631,31 @@ void SettingsPage::sendLoose(int index)
 
 void SettingsPage::saveProvider(const QString &connectionId, const QString &name, const QString &url, const QString &headerName, const QString &headerValue, const QString &kind)
 {
+    saveProvider(connectionId, QJsonObject{{QStringLiteral("name"), name},
+                                           {QStringLiteral("kind"), kind},
+                                           {QStringLiteral("service"), QStringLiteral("own")},
+                                           {QStringLiteral("url"), url},
+                                           {QStringLiteral("headerName"), headerName},
+                                           {QStringLiteral("headerValue"), headerValue}});
+}
+
+void SettingsPage::saveProvider(const QString &connectionId, const QJsonObject &fields)
+{
     Connection *conn = m_manager->find(connectionId);
     if (!conn)
         return;
-    QJsonObject body{{QStringLiteral("kind"), kind}, {QStringLiteral("url"), url.trimmed()}, {QStringLiteral("headerName"), headerName.trimmed()}, {QStringLiteral("headerValue"), headerValue}};
-    onResult(conn->api()->put(QStringLiteral("/api/providers/%1").arg(ApiClient::seg(name.trimmed())), body), this, [this, name](const ApiResult &r) {
+    const QString name = fields.value(QLatin1String("name")).toString().trimmed();
+    QJsonObject body;
+    for (const char *k : {"kind", "service", "url", "headerName", "model", "region"})
+        body.insert(QLatin1String(k), fields.value(QLatin1String(k)).toString().trimmed());
+    body.insert(QStringLiteral("headerValue"), fields.value(QLatin1String("headerValue")).toString());
+    onResult(conn->api()->put(QStringLiteral("/api/providers/%1").arg(ApiClient::seg(name)), body), this, [this, name](const ApiResult &r) {
         if (!r.ok()) {
             say(r.error.message);
             return;
         }
         m_providerFormAt.clear();
-        say(tr("Added the service %1").arg(name.trimmed()));
+        say(tr("Added the service %1").arg(name));
         reload();
     });
 }
@@ -676,7 +698,7 @@ void SettingsPage::fillServices(QVBoxLayout *m_providers, const QString &kind)
             h->setContentsMargins(0, 0, 0, 0);
             h->setSpacing(8);
             h->addWidget(new QLabel(QStringLiteral("<b>%1</b>").arg(name.toHtmlEscaped()), what));
-            h->addWidget(Web::text(d.value(QLatin1String("host")).toString(), "muted", what), 1);
+            h->addWidget(Web::text(serviceWhere(d), "muted", what), 1);
             Web::ConfirmButton *del = nullptr;
             if (admin) {
                 del = new Web::ConfirmButton(tr("Delete"), tr("Delete the service %1?").arg(name), tr("Delete"), p);
@@ -710,50 +732,207 @@ void SettingsPage::fillServices(QVBoxLayout *m_providers, const QString &kind)
             m_providers->addWidget(add, 0, Qt::AlignLeft);
             continue;
         }
-        auto *form = new QFrame(p);
-        form->setProperty("role", QStringLiteral("box"));
-        form->setAccessibleName(check ? tr("A grammar service") : tr("A translation service"));
-        auto *grid = new QGridLayout(form);
-        grid->setContentsMargins(12, 12, 12, 12);
-        grid->setHorizontalSpacing(16);
-        grid->setVerticalSpacing(12);
-        auto *name = new QLineEdit(form);
-        name->setObjectName(stem + QStringLiteral("Name"));
-        auto *url = new QLineEdit(form);
+        m_providers->addWidget(serviceForm(id, kind, p));
+    }
+}
+
+// Where a service is: the address of one's own, or the service built in
+// and its model.
+QString SettingsPage::serviceWhere(const QJsonObject &d) const
+{
+    const QString service = d.value(QLatin1String("service")).toString();
+    if (service.isEmpty() || service == QLatin1String("own"))
+        return d.value(QLatin1String("host")).toString();
+    QString name = service;
+    for (const QJsonValue &v : m_services) {
+        if (v.toObject().value(QLatin1String("service")).toString() == service)
+            name = v.toObject().value(QLatin1String("name")).toString();
+    }
+    const QString model = d.value(QLatin1String("model")).toString();
+    return model.isEmpty() ? name : tr("%1, %2").arg(name, model);
+}
+
+// The form for a new service at a place. A translation service is one of
+// those built in, set up with the key of one's own account (and a model or
+// a region where it needs one), or a service of one's own at an address;
+// a grammar service is one of one's own. Choosing another service makes
+// the form again with what that one needs.
+QWidget *SettingsPage::serviceForm(const QString &id, const QString &kind, QWidget *p)
+{
+    const bool check = kind == QLatin1String("check");
+    const QString stem = check ? QStringLiteral("checker") : QStringLiteral("provider");
+    const QString Stem = check ? QStringLiteral("Checker") : QStringLiteral("Provider");
+    QJsonObject info;
+    if (!check) {
+        if (m_providerService.isEmpty() && !m_services.isEmpty())
+            m_providerService = m_services.first().toObject().value(QLatin1String("service")).toString();
+        for (const QJsonValue &v : m_services) {
+            if (v.toObject().value(QLatin1String("service")).toString() == m_providerService)
+                info = v.toObject();
+        }
+    }
+    const bool own = check || info.isEmpty() || m_providerService == QLatin1String("own");
+    auto *form = new QFrame(p);
+    form->setProperty("role", QStringLiteral("box"));
+    form->setAccessibleName(check ? tr("A grammar service") : tr("A translation service"));
+    auto *grid = new QGridLayout(form);
+    grid->setContentsMargins(12, 12, 12, 12);
+    grid->setHorizontalSpacing(16);
+    grid->setVerticalSpacing(12);
+    int row = 0;
+    if (!check) {
+        auto *service = new QComboBox(form);
+        service->setObjectName(stem + QStringLiteral("Service"));
+        for (const QJsonValue &v : m_services)
+            service->addItem(v.toObject().value(QLatin1String("name")).toString(), v.toObject().value(QLatin1String("service")).toString());
+        service->setCurrentIndex(std::max(0, service->findData(m_providerService)));
+        connect(service, &QComboBox::currentIndexChanged, this, [this, service] {
+            m_providerService = service->currentData().toString();
+            fillProviders();
+        });
+        grid->addWidget(Web::field(tr("Service"), service, form), row++, 0, 1, 2);
+        if (!info.isEmpty()) {
+            QString note = info.value(QLatin1String("note")).toString().toHtmlEscaped();
+            const QString signup = info.value(QLatin1String("signup")).toString();
+            if (!signup.isEmpty())
+                note += QStringLiteral(" <a href=\"%1\">%2</a>").arg(signup.toHtmlEscaped(), tr("Get a key"));
+            auto *help = Web::text(note, "help", form);
+            help->setObjectName(stem + QStringLiteral("Note"));
+            help->setTextFormat(Qt::RichText);
+            help->setWordWrap(true);
+            connect(help, &QLabel::linkActivated, this, [](const QString &link) { QDesktopServices::openUrl(QUrl(link)); });
+            grid->addWidget(help, row++, 0, 1, 2);
+        }
+    }
+    auto *name = new QLineEdit(form);
+    name->setObjectName(stem + QStringLiteral("Name"));
+    if (!own)
+        name->setText(info.value(QLatin1String("name")).toString());
+    QLineEdit *url = nullptr, *headerName = nullptr, *headerValue = nullptr, *key = nullptr, *region = nullptr;
+    QComboBox *model = nullptr;
+    grid->addWidget(Web::field(tr("Name"), name, form), row, 0);
+    if (own || info.value(QLatin1String("url")).toBool()) {
+        url = new QLineEdit(form);
         url->setObjectName(stem + QStringLiteral("Url"));
-        url->setPlaceholderText(check ? QStringLiteral("https://…/v2/check") : QStringLiteral("https://"));
-        auto *headerName = new QLineEdit(form);
+        url->setPlaceholderText(check ? QStringLiteral("https://…/v2/check") : own ? QStringLiteral("https://") : QStringLiteral("https://api.openai.com/v1"));
+        grid->addWidget(Web::field(own ? tr("Address requests are sent to") : tr("Address of a service that speaks the same API"), url, form, !own), row, 1);
+        ++row;
+    }
+    if (own) {
+        headerName = new QLineEdit(form);
         headerName->setObjectName(stem + QStringLiteral("Header"));
         headerName->setPlaceholderText(QStringLiteral("Authorization"));
-        auto *headerValue = new QLineEdit(form);
+        headerValue = new QLineEdit(form);
         headerValue->setObjectName(stem + QStringLiteral("HeaderValue"));
         headerValue->setEchoMode(QLineEdit::Password);
         headerValue->setPlaceholderText(tr("Bearer …"));
-        grid->addWidget(Web::field(tr("Name"), name, form), 0, 0);
-        grid->addWidget(Web::field(tr("Address requests are sent to"), url, form), 0, 1);
-        grid->addWidget(Web::field(tr("Header that signs requests"), headerName, form, true), 1, 0);
-        grid->addWidget(Web::field(tr("Its value"), headerValue, form, true), 1, 1);
-        auto *save = Web::button(tr("Add the service"), Web::Primary | Web::Small, form);
-        save->setObjectName(QStringLiteral("save") + Stem);
-        save->setEnabled(false);
-        auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
-        auto *row = new QHBoxLayout;
-        row->setSpacing(8);
-        row->addWidget(save);
-        row->addWidget(cancel);
-        row->addStretch();
-        grid->addLayout(row, 2, 0, 1, 2);
-        const auto ready = [name, url, save] { save->setEnabled(!name->text().trimmed().isEmpty() && !url->text().trimmed().isEmpty()); };
-        connect(name, &QLineEdit::textChanged, save, ready);
-        connect(url, &QLineEdit::textChanged, save, ready);
-        connect(cancel, &QPushButton::clicked, this, [this] {
-            m_providerFormAt.clear();
-            fillProviders();
-        });
-        connect(save, &QPushButton::clicked, this,
-                [this, id, kind, name, url, headerName, headerValue] { saveProvider(id, name->text(), url->text(), headerName->text(), headerValue->text(), kind); });
-        m_providers->addWidget(form);
+        grid->addWidget(Web::field(tr("Header that signs requests"), headerName, form, true), row, 0);
+        grid->addWidget(Web::field(tr("Its value"), headerValue, form, true), row, 1);
+        ++row;
+    } else {
+        key = new QLineEdit(form);
+        key->setObjectName(stem + QStringLiteral("Key"));
+        key->setEchoMode(QLineEdit::Password);
+        // Beside the name, or under it where the address is beside it.
+        if (url)
+            grid->addWidget(Web::field(tr("Key"), key, form), row++, 0);
+        else
+            grid->addWidget(Web::field(tr("Key"), key, form), row++, 1);
+        if (info.value(QLatin1String("region")).toBool()) {
+            region = new QLineEdit(form);
+            region->setObjectName(stem + QStringLiteral("Region"));
+            region->setPlaceholderText(QStringLiteral("westeurope"));
+            grid->addWidget(Web::field(tr("Region of the key"), region, form, true, tr("Not needed for a global key.")), row++, 0);
+        }
+        if (info.value(QLatin1String("model")).toBool()) {
+            model = new QComboBox(form);
+            model->setObjectName(stem + QStringLiteral("Model"));
+            model->setEditable(true);
+            model->setInsertPolicy(QComboBox::NoInsert);
+            auto *list = Web::button(tr("List the models"), Web::Small, form);
+            list->setObjectName(QStringLiteral("listModels"));
+            list->setEnabled(false);
+            auto *line = new QWidget(form);
+            auto *h = new QHBoxLayout(line);
+            h->setContentsMargins(0, 0, 0, 0);
+            h->setSpacing(8);
+            h->addWidget(model, 1);
+            h->addWidget(list);
+            grid->addWidget(Web::field(tr("Model"), line, form), row++, 0, 1, 2);
+            connect(key, &QLineEdit::textChanged, list, [key, list] { list->setEnabled(!key->text().trimmed().isEmpty()); });
+            connect(list, &QPushButton::clicked, this, [this, id, key, url, model, list] {
+                Connection *conn = m_manager->find(id);
+                if (!conn)
+                    return;
+                list->setEnabled(false);
+                QJsonObject body{{QStringLiteral("service"), m_providerService}, {QStringLiteral("key"), key->text().trimmed()}};
+                if (url)
+                    body.insert(QStringLiteral("url"), url->text().trimmed());
+                onResult(conn->api()->post(QStringLiteral("/api/providers/models"), body), this, [this, model, list, key](const ApiResult &r) {
+                    list->setEnabled(!key->text().trimmed().isEmpty());
+                    if (!r.ok()) {
+                        say(r.error.message);
+                        return;
+                    }
+                    const QString was = model->currentText();
+                    model->clear();
+                    for (const QJsonValue &v : r.object().value(QLatin1String("models")).toArray())
+                        model->addItem(v.toString());
+                    if (!was.isEmpty())
+                        model->setCurrentText(was);
+                    say(model->count() ? tr("The key may use %n models.", nullptr, model->count()) : tr("The key may use no model."));
+                });
+            });
+        }
     }
+    auto *save = Web::button(tr("Add the service"), Web::Primary | Web::Small, form);
+    save->setObjectName(QStringLiteral("save") + Stem);
+    save->setEnabled(false);
+    auto *cancel = Web::button(tr("Cancel"), Web::Quiet | Web::Small, form);
+    auto *buttons = new QHBoxLayout;
+    buttons->setSpacing(8);
+    buttons->addWidget(save);
+    buttons->addWidget(cancel);
+    buttons->addStretch();
+    grid->addLayout(buttons, row, 0, 1, 2);
+    // What a service needs before it can be added; the core says what is
+    // wrong with the rest when it is saved.
+    const auto ready = [name, url, key, model, save, own] {
+        bool ok = !name->text().trimmed().isEmpty();
+        if (own)
+            ok = ok && url && !url->text().trimmed().isEmpty();
+        else
+            ok = ok && key && !key->text().trimmed().isEmpty() && (!model || !model->currentText().trimmed().isEmpty());
+        save->setEnabled(ok);
+    };
+    connect(name, &QLineEdit::textChanged, save, ready);
+    if (url)
+        connect(url, &QLineEdit::textChanged, save, ready);
+    if (key)
+        connect(key, &QLineEdit::textChanged, save, ready);
+    if (model)
+        connect(model, &QComboBox::currentTextChanged, save, ready);
+    connect(cancel, &QPushButton::clicked, this, [this] {
+        m_providerFormAt.clear();
+        fillProviders();
+    });
+    connect(save, &QPushButton::clicked, this, [this, id, kind, own, name, url, headerName, headerValue, key, region, model] {
+        QJsonObject f{{QStringLiteral("name"), name->text()}, {QStringLiteral("kind"), kind}, {QStringLiteral("service"), own ? QStringLiteral("own") : m_providerService}};
+        if (url)
+            f.insert(QStringLiteral("url"), url->text());
+        if (own) {
+            f.insert(QStringLiteral("headerName"), headerName->text());
+            f.insert(QStringLiteral("headerValue"), headerValue->text());
+        } else {
+            f.insert(QStringLiteral("headerValue"), key->text());
+        }
+        if (region)
+            f.insert(QStringLiteral("region"), region->text());
+        if (model)
+            f.insert(QStringLiteral("model"), model->currentText());
+        saveProvider(id, f);
+    });
+    return form;
 }
 
 void SettingsPage::makeToken(const QString &connectionId, const QString &name, int days)

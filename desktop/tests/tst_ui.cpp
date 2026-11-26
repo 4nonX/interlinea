@@ -13,6 +13,7 @@
 #include "testcore.h"
 #include "theme.h"
 
+#include <QComboBox>
 #include <QDialog>
 #include <QPlainTextEdit>
 #include <QAbstractButton>
@@ -125,6 +126,55 @@ private slots:
             };
             QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QPushButton *>(QStringLiteral("addProvider:%1").arg(here)), 10000);
             page->findChild<QPushButton *>(QStringLiteral("addProvider:%1").arg(here))->click();
+            // The services built in come first, each with what it needs.
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QComboBox *>(QStringLiteral("providerService")) && page->findChild<QComboBox *>(QStringLiteral("providerService"))->count() == 6, 10000);
+            auto *service = page->findChild<QComboBox *>(QStringLiteral("providerService"));
+            QCOMPARE(service->currentData().toString(), QStringLiteral("deepl"));
+            QVERIFY(page->findChild<QLineEdit *>(QStringLiteral("providerKey")) && !page->findChild<QLineEdit *>(QStringLiteral("providerHeader")));
+            QVERIFY(page->findChild<QLabel *>(QStringLiteral("providerNote"))->text().contains(QStringLiteral("Get a key")));
+            QCOMPARE(page->findChild<QLineEdit *>(QStringLiteral("providerName"))->text(), QStringLiteral("DeepL"));
+            service->setCurrentIndex(service->findData(QStringLiteral("openai")));
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QComboBox *>(QStringLiteral("providerModel")), 5000);
+            auto *list = page->findChild<QPushButton *>(QStringLiteral("listModels"));
+            QVERIFY(list && !list->isEnabled());
+            page->findChild<QLineEdit *>(QStringLiteral("providerKey"))->setText(QStringLiteral("sk-x"));
+            QVERIFY(list->isEnabled());
+            if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+                // The form made last: choosing a service makes it again.
+                QFrame *form = nullptr;
+                for (QFrame *f : page->findChildren<QFrame *>()) {
+                    if (f->accessibleName() == QStringLiteral("A translation service"))
+                        form = f;
+                }
+                QVERIFY(form);
+                w.resize(1200, 900);
+                QTest::qWait(200);
+                form->grab().save(dir + QStringLiteral("/translation-service.png"));
+            }
+            // A built-in service is added with its key, and listed by what it is.
+            service = page->findChild<QComboBox *>(QStringLiteral("providerService"));
+            service->setCurrentIndex(service->findData(QStringLiteral("deepl")));
+            QTRY_VERIFY_WITH_TIMEOUT(!page->findChild<QComboBox *>(QStringLiteral("providerModel")), 5000);
+            page->findChild<QLineEdit *>(QStringLiteral("providerKey"))->setText(QStringLiteral("dk:fx"));
+            QVERIFY(page->findChild<QPushButton *>(QStringLiteral("saveProvider"))->isEnabled());
+            page->findChild<QPushButton *>(QStringLiteral("saveProvider"))->click();
+            QTRY_COMPARE_WITH_TIMEOUT(page->lastNotice(), QStringLiteral("Added the service DeepL"), 10000);
+            QTRY_VERIFY_WITH_TIMEOUT([&] {
+                for (QLabel *l : page->findChildren<QLabel *>()) {
+                    if (l->text() == QStringLiteral("DeepL") && !l->isHidden())
+                        return true;
+                }
+                return false;
+            }(), 10000);
+            QVERIFY(!QJsonDocument(wait(m.local()->api()->get(QStringLiteral("/api/providers"))).array()).toJson().contains("dk:fx"));
+            wait(m.local()->api()->del(QStringLiteral("/api/providers/DeepL")));
+            // A service of one's own: an address and a header.
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QPushButton *>(QStringLiteral("addProvider:%1").arg(here)), 10000);
+            page->findChild<QPushButton *>(QStringLiteral("addProvider:%1").arg(here))->click();
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QComboBox *>(QStringLiteral("providerService")), 5000);
+            service = page->findChild<QComboBox *>(QStringLiteral("providerService"));
+            service->setCurrentIndex(service->findData(QStringLiteral("own")));
+            QTRY_VERIFY_WITH_TIMEOUT(page->findChild<QLineEdit *>(QStringLiteral("providerHeader")), 5000);
             auto *save = page->findChild<QPushButton *>(QStringLiteral("saveProvider"));
             QVERIFY(save && !save->isEnabled());
             page->findChild<QLineEdit *>(QStringLiteral("providerName"))->setText(QStringLiteral("Echo"));

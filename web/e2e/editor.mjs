@@ -948,6 +948,20 @@ export default () =>
           const panel = "section[aria-labelledby=s-mt]";
           check((await evaluate(`document.querySelector(${JSON.stringify(panel)}).innerText`)).includes("No service yet."), "no translation service at first");
           await click(`${panel} button`, "Add a service");
+          // The services built in come first, each with what it needs; one
+          // that takes no requests from a web page can't be chosen here.
+          check(await waitFor(`document.querySelector(${JSON.stringify(panel + " form select")})?.options.length > 3`), "the services are offered");
+          const offered = await evaluate(`[...document.querySelector(${JSON.stringify(panel + " form select")}).options].map(o => o.text + (o.disabled ? ' (off)' : '')).join(' | ')`);
+          check(offered.includes("DeepL (not from this browser) (off)") && offered.includes("Google Cloud Translation") && offered.includes("A service of your own"), "with DeepL left to the desktop app and servers: " + offered);
+          const form = () => evaluate(`document.querySelector(${JSON.stringify(panel + " form")}).innerText`);
+          check((await form()).includes("Key") && (await form()).includes("Get a key") && !(await form()).includes("Header that signs requests"), "a service built in asks for its key and says where to get one");
+          const pick = (v) => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(panel + " form select")}); el.value = ${JSON.stringify(v)}; el.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+          await pick("openai");
+          await sleep(200);
+          check((await form()).includes("Model") && (await form()).includes("List the models"), "a language model asks for its model too");
+          await pick("own");
+          await sleep(200);
+          check((await form()).includes("Header that signs requests"), "and a service of one's own for its address and header");
           const fill = (i, v) => evaluate(`(() => { const el = document.querySelectorAll(${JSON.stringify(panel + " form input")})[${i}]; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
           await fill(0, "Echo");
           await fill(1, "ftp://nowhere");

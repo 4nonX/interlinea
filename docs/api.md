@@ -1709,16 +1709,37 @@ Access: signed in.
 - Answer: 200 OK: list of [ProviderView](#providerview)
 - Errors: 401, 403 (see [Error](#error))
 
+### `POST /api/providers/models`
+
+Asks a language model service which models the key may use, for choosing one while a service is set up.
+
+Without key, the key kept for the service of the name is used.
+
+Access: administrators.
+
+- Body: [ModelsRequest](#modelsrequest)
+- Answer: 200 OK: {`models`: list of string}
+- Errors: 401, 403, 422 (see [Error](#error))
+
+### `GET /api/providers/services`
+
+Lists the translation services built in: for each, its name, what it needs to be set up (a key, a region, a model, an address) and where a key is made.
+
+Access: signed in.
+
+- Answer: 200 OK: list of [mt.Info](#mtinfo)
+- Errors: 401, 403 (see [Error](#error))
+
 ### `PUT /api/providers/{name}`
 
-Adds a service or changes the one of the name: its kind ("translate", the default, or "check" for a grammar service), its address, and a header sent with each request to sign it.
+Adds a service or changes the one of the name: its kind ("translate", the default, or "check" for a grammar service) and which service it is.
 
-Without headerValue, the service keeps the value it has.
+A built-in one (service "deepl", "google", "microsoft", "openai", "anthropic") takes its key in headerValue, and a model or a region where it needs one; one of one's own ("own", the default) takes its address and a header sent with each request to sign it. Without headerValue, the service keeps the key or value it has.
 
 Access: administrators.
 
 - Parameters: `name` (path)
-- Body: {`headerName`: string, `headerValue`: string or null, `kind`: string, `url`: string}
+- Body: {`headerName`: string, `headerValue`: string or null, `kind`: string, `model`: string, `region`: string, `service`: [mt.Service](#mtservice), `url`: string}
 - Answer: 200 OK: [ProviderView](#providerview)
 - Errors: 401, 403, 404, 422 (see [Error](#error))
 
@@ -2074,6 +2095,15 @@ memoryFileInspection is what a memory file holds.
 | `targetLang` | string |  |
 | `units` | integer |  |
 
+### ModelsRequest
+
+| Field | Type | Description |
+|---|---|---|
+| `key` | string |  |
+| `name` | string | Name names a service whose key is kept, when Key is empty. |
+| `service` | [mt.Service](#mtservice) | Service, URL, Key and Region are the settings being made. |
+| `url` | string |  |
+
 ### NewTermbase
 
 | Field | Type | Description |
@@ -2194,9 +2224,12 @@ projectPreview is what a project would be in one target language.
 | `headerName` | string |  |
 | `host` | string | Host is where the service is, without the rest of its address. |
 | `kind` | string | Kind is "translate" for a translation service and "check" for a grammar service. |
+| `model` | string | Model is the model a language model is asked with. |
 | `name` | string |  |
+| `region` | string |  |
+| `service` | [mt.Service](#mtservice) | Service is which service it is: "own" for one of one's own, or one of those GET /api/providers/services lists. |
 | `signed` | boolean |  |
-| `url` | string | URL, HeaderName and Signed (a header's value is kept) are for administrators. |
+| `url` | string | URL, HeaderName, Region and Signed (a key or a header's value is kept) are for administrators. |
 
 ### QaRequest
 
@@ -2654,6 +2687,29 @@ Guess is another language the text may be in.
 Reason says why there is a guess or none.
 
 One of `empty`, `mixed`, `ok`, `short`.
+
+### mt.Info
+
+Info describes a service for the apps: what to ask for to set it up.
+
+| Field | Type | Description |
+|---|---|---|
+| `browser` | boolean | Browser is true when a web page may ask the service itself; one that does not allow it is asked by a team server or the desktop app. |
+| `header` | boolean |  |
+| `key` | boolean | Key, Region, Model, URL and Header say what the service needs: a key; the region of the key; a model, chosen from those the service lists for the key; an address (for OpenAI, optional: another service that speaks its API); a header that signs requests. |
+| `model` | boolean |  |
+| `name` | string |  |
+| `note` | string |  |
+| `region` | boolean |  |
+| `service` | [mt.Service](#mtservice) |  |
+| `signup` | string | Signup is where a key is made. |
+| `url` | boolean |  |
+
+### mt.Service
+
+Service is a kind of translation service.
+
+One of `anthropic`, `deepl`, `google`, `microsoft`, `openai`, `own`.
 
 ### project.Analysis
 

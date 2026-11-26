@@ -98,7 +98,7 @@ func TestTranslationServices(t *testing.T) {
 	// With a wrong key the service refuses, and its answer is passed on in words.
 	wrong := "nope"
 	te.call("PUT", "/api/providers/Shout", te.admin, map[string]any{"url": svc.URL, "headerName": "X-Api-Key", "headerValue": wrong}, 200, &saved)
-	if r := te.do("POST", "/api/providers/Shout/translate", te.ben, ask); r.status != 502 || !strings.Contains(r.err().Message, "Shout did not translate: it answered 401") || strings.Contains(string(r.body), wrong) {
+	if r := te.do("POST", "/api/providers/Shout/translate", te.ben, ask); r.status != 502 || !strings.Contains(r.err().Message, "Shout did not translate: the key was not accepted") || strings.Contains(string(r.body), wrong) {
 		t.Fatalf("a refusing service: %d %s", r.status, r.body)
 	}
 	for field, bad := range map[string]map[string]any{

@@ -4,16 +4,101 @@
 // work on this computer the browser asks, with the key kept in the browser.
 
 import type { CoreRun } from "./model";
+import { core, loadCore, unwrap } from "../core";
+
+/** Which translation service it is: one of one's own, or one built in. */
+export type MtService = "own" | "deepl" | "google" | "microsoft" | "openai" | "anthropic";
+
+/** What a service built in needs to be set up (mt.Info). */
+export interface MtInfo {
+  service: MtService;
+  name: string;
+  key?: boolean;
+  region?: boolean;
+  model?: boolean;
+  url?: boolean;
+  header?: boolean;
+  /** A web page may ask it itself. */
+  browser?: boolean;
+  signup?: string;
+  note: string;
+}
 
 /** A service kept in this browser. */
 export interface LocalProvider {
   name: string;
   /** What it is for: suggesting translations (the default) or checking grammar. */
   kind?: "translate" | "check";
+  /** Which service it is; one of one's own when not given. */
+  service?: MtService;
+  /** The address of a service of one's own, or of one that speaks the OpenAI API. */
   url: string;
-  /** A header sent with each request, which signs it at the service. */
+  /** A header sent with each request, which signs it at a service of one's own. */
   headerName: string;
+  /** The key: the header's value, or the key of a service built in. */
   headerValue: string;
+  model?: string;
+  /** The region of a Microsoft Translator key. */
+  region?: string;
+}
+
+/** What package mt is asked with, for a service kept here or being set up. */
+export interface MtSettings {
+  service: MtService;
+  url?: string;
+  key?: string;
+  headerName?: string;
+  model?: string;
+  region?: string;
+}
+
+export const settingsOf = (p: LocalProvider): MtSettings => ({
+  service: p.service ?? "own",
+  url: p.url,
+  key: p.headerValue,
+  headerName: p.headerName,
+  model: p.model,
+  region: p.region,
+});
+
+interface MtRequest {
+  method: string;
+  url: string;
+  header: Record<string, string>;
+  body?: string;
+}
+
+const coreNow = async () => core() ?? (await loadCore());
+
+/** The services built in, as the core lists them. */
+export async function mtServices(): Promise<MtInfo[]> {
+  return JSON.parse(unwrap((await coreNow()).mtServices())) as MtInfo[];
+}
+
+/** What is wrong with settings, by field. */
+export async function mtProblems(s: MtSettings): Promise<{ field: string; message: string }[]> {
+  return JSON.parse(unwrap((await coreNow()).mtCheck(JSON.stringify(s))));
+}
+
+async function send(r: MtRequest, name: string, what: string): Promise<{ status: number; body: string }> {
+  let res: Response;
+  try {
+    res = await fetch(r.url, { method: r.method, headers: r.header, body: r.method === "GET" ? undefined : r.body });
+  } catch {
+    throw new Error(
+      `${name} did not ${what}: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.`,
+    );
+  }
+  return { status: res.status, body: await res.text().catch(() => "") };
+}
+
+/** The models a key may use, asked from this browser; null for a service without models. */
+export async function localModels(s: MtSettings): Promise<string[] | null> {
+  const c = await coreNow();
+  const raw = unwrap(c.mtModels(JSON.stringify(s)));
+  if (!raw) return null;
+  const { status, body } = await send(JSON.parse(raw) as MtRequest, "The service", "list its models");
+  return JSON.parse(unwrap(c.mtModelsAnswer(JSON.stringify(s), status, body))) as string[];
 }
 
 export interface Suggestion {
@@ -103,17 +188,15 @@ export function providerProblem(p: { name: string; url: string; headerName: stri
 
 /** Asks a service kept in this browser for the translation of one segment. */
 export async function askLocalProvider(p: LocalProvider, sourceLang: string, targetLang: string, source: CoreRun[]): Promise<Suggestion> {
-  const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
-  if (p.headerName) headers[p.headerName] = p.headerValue;
-  let res: Response;
-  try {
-    res = await fetch(p.url, { method: "POST", headers, body: JSON.stringify({ sourceLang, targetLang, segments: [{ id: "1", text: markup(source) }] }) });
-  } catch {
-    throw new Error(`${p.name} did not translate: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.`);
-  }
-  if (!res.ok) throw new Error(`${p.name} did not translate: it answered ${res.status} ${(await res.text().catch(() => "")).trim().slice(0, 200)}.`);
-  const body = (await res.json().catch(() => null)) as { translations?: { id: string; text: string }[] } | null;
-  const t = body?.translations?.find((x) => x.id === "1");
+  const c = await coreNow();
+  const settings = JSON.stringify(settingsOf(p));
+  const segments = JSON.stringify([{ id: "1", text: markup(source) }]);
+  const ask = c.mtTranslate(settings, sourceLang, targetLang, segments);
+  if (!ask.ok) throw new Error(`${p.name} did not translate: ${ask.error}.`);
+  const { status, body } = await send(JSON.parse(ask.value) as MtRequest, p.name, "translate");
+  const got = c.mtAnswer(settings, segments, status, body);
+  if (!got.ok) throw new Error(`${p.name} did not translate: ${got.error}.`);
+  const t = (JSON.parse(got.value) as { id: string; text: string }[]).find((x) => x.id === "1");
   if (!t) throw new Error(`${p.name} did not translate: its answer has no translation of what was asked.`);
   return suggestionOf(t.text, source);
 }

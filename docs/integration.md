@@ -1,6 +1,7 @@
 # Connecting assistants, translation services and other programs
 
-Interlinea asks a translation service of your choice for suggestions, and
+Interlinea asks a translation service of your choice for suggestions
+(DeepL, Google, Microsoft, OpenAI, Claude, or one of your own), and
 has two doors for other programs to come in. Both are open on the team
 server and on the core the desktop app runs on your computer, and both work
 as a person: a program has that person's rights and no more, and what it
@@ -78,21 +79,50 @@ reason in words, so an assistant can read it and act on it: a segment that
 is locked or assigned to someone else, a translation saved by someone else
 in the meantime, a project the person has no access to.
 
+## Translation services
+
+The editor asks a translation service for a suggestion when you ask for
+one. A service is added in Settings under Translation services: choose it,
+paste the key of your own account, and give it a name. The services built
+in:
+
+| Service | What it needs |
+|---|---|
+| DeepL | a key of the free or the paid API ([deepl.com/pro-api](https://www.deepl.com/pro-api)); a free key ends in `:fx` |
+| Google Cloud Translation | an API key of a Google Cloud project with the Cloud Translation API on |
+| Microsoft Translator | a key of an Azure Translator resource, and its region unless the key is global |
+| OpenAI or a compatible service | a key, and a model chosen from those the key may use; with an address, any service that speaks the same API (Mistral, a model run on your own computer) |
+| Anthropic (Claude) | a key, and a model chosen from those the key may use |
+
+"List the models" asks the service which models the key may use, so the
+list is always the service's own. Tags are kept: DeepL, Google and
+Microsoft get them as markup they keep, and a language model is asked to
+keep them as they are. A translation that loses a tag is taken without
+tags and marked, so the translator puts them in by hand.
+
+On a team server an administrator adds the services; the server sends the
+requests, so the key stays there and no app ever gets it. For work on your
+own computer the desktop app's core sends them. In the web app without a
+server the browser sends them itself, with the key kept in the browser; a
+service must allow requests from a web page for that, which DeepL does not,
+so DeepL is added in the desktop app or on a team server.
+
+Over the API, `GET /api/providers/services` lists the services built in
+and what each needs, and `POST /api/providers/models` lists the models a
+key may use (administrators).
+
 ## A translation service of your own
 
-The editor can ask any machine translation engine or language model for a
-suggestion, as long as it answers at an address the way described here. A
-service that speaks another protocol needs a small program in front of it
-that takes this request and gives this answer.
+The editor can also ask any machine translation engine or language model
+that answers at an address the way described here. A service that speaks
+another protocol needs a small program in front of it that takes this
+request and gives this answer.
 
-A service is added in Settings under Translation services: a name, the
-address, and optionally a header that signs each request (for example
-`Authorization` with the value `Bearer <key>`). On a team server an
-administrator adds the services; the server sends the requests, so the key
-stays there and no app ever gets it. For work on your own computer the
-desktop app's core sends them. In the web app without a server the browser
-sends them itself, so the service must allow requests from the page (CORS),
-and the key is kept in the browser.
+Such a service is added as "A service of your own": a name, the address,
+and optionally a header that signs each request (for example
+`Authorization` with the value `Bearer <key>`). It is sent from where the
+built-in services are sent from, as above; from the web app without a
+server, the service must allow requests from the page (CORS).
 
 The request is a POST with this JSON body:
 

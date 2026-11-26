@@ -6,6 +6,7 @@ import type { CoreEntry } from "./termio";
 import type { SegmentIssue, CoreRun } from "./editor/model";
 import type { CoreReport } from "./project";
 import type { MemoryImport } from "./core";
+import type { MtService } from "./editor/provider";
 
 /** An account, as the server shows it. */
 export interface ServerUser {
@@ -274,9 +275,13 @@ export interface CoreSegment {
 export interface ServerProvider {
   name: string;
   kind: "translate" | "check";
+  /** Which service it is: "own", or one of those built in. */
+  service: MtService;
   host: string;
+  model?: string;
   url?: string;
   headerName?: string;
+  region?: string;
   signed?: boolean;
 }
 
@@ -627,8 +632,12 @@ export function client(conn: Connection) {
       send<StoredSegment>("PUT", `${p(id)}/segments?${q({ file, lang, segment })}`, { target, status }, version),
     /** The translation services the server can ask; administrators also get each one's address. */
     providers: () => get<ServerProvider[]>("/api/providers"),
-    saveProvider: (name: string, p: { kind?: "translate" | "check"; url: string; headerName: string; headerValue?: string }) =>
-      send<ServerProvider>("PUT", `/api/providers/${encodeURIComponent(name)}`, p),
+    saveProvider: (
+      name: string,
+      p: { kind?: "translate" | "check"; service?: MtService; url: string; headerName: string; headerValue?: string; model?: string; region?: string },
+    ) => send<ServerProvider>("PUT", `/api/providers/${encodeURIComponent(name)}`, p),
+    /** The models a language model's key may use; without key, the key kept for the service of the name. */
+    providerModels: (p: { service: MtService; url?: string; key?: string; name?: string }) => send<{ models: string[] }>("POST", "/api/providers/models", p),
     deleteProvider: (name: string) => send<void>("DELETE", `/api/providers/${encodeURIComponent(name)}`),
     /** Asks a service for the translation of segments; their text leaves the server for the service. */
     providerCheck: (name: string, lang: string, text: string) =>

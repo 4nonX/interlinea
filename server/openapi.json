@@ -667,6 +667,29 @@
         },
         "type": "object"
       },
+      "ModelsRequest": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "description": "Name names a service whose key is kept, when Key is empty.",
+            "type": "string"
+          },
+          "service": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/mt.Service"
+              }
+            ],
+            "description": "Service, URL, Key and Region are the settings being made."
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "NewTermbase": {
         "properties": {
           "definition": {
@@ -926,14 +949,29 @@
             "description": "Kind is \"translate\" for a translation service and \"check\" for a grammar service.",
             "type": "string"
           },
+          "model": {
+            "description": "Model is the model a language model is asked with.",
+            "type": "string"
+          },
           "name": {
             "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "service": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/mt.Service"
+              }
+            ],
+            "description": "Service is which service it is: \"own\" for one of one's own, or one of those GET /api/providers/services lists."
           },
           "signed": {
             "type": "boolean"
           },
           "url": {
-            "description": "URL, HeaderName and Signed (a header's value is kept) are for administrators.",
+            "description": "URL, HeaderName, Region and Signed (a key or a header's value is kept) are for administrators.",
             "type": "string"
           }
         },
@@ -2003,6 +2041,57 @@
           "mixed",
           "ok",
           "short"
+        ],
+        "type": "string"
+      },
+      "mt.Info": {
+        "description": "Info describes a service for the apps: what to ask for to set it up.",
+        "properties": {
+          "browser": {
+            "description": "Browser is true when a web page may ask the service itself; one that does not allow it is asked by a team server or the desktop app.",
+            "type": "boolean"
+          },
+          "header": {
+            "type": "boolean"
+          },
+          "key": {
+            "description": "Key, Region, Model, URL and Header say what the service needs: a key; the region of the key; a model, chosen from those the service lists for the key; an address (for OpenAI, optional: another service that speaks its API); a header that signs requests.",
+            "type": "boolean"
+          },
+          "model": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "region": {
+            "type": "boolean"
+          },
+          "service": {
+            "$ref": "#/components/schemas/mt.Service"
+          },
+          "signup": {
+            "description": "Signup is where a key is made.",
+            "type": "string"
+          },
+          "url": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "mt.Service": {
+        "description": "Service is a kind of translation service.",
+        "enum": [
+          "anthropic",
+          "deepl",
+          "google",
+          "microsoft",
+          "openai",
+          "own"
         ],
         "type": "string"
       },
@@ -9752,6 +9841,92 @@
         ]
       }
     },
+    "/api/providers/models": {
+      "post": {
+        "description": "Without key, the key kept for the service of the name is used.\n\nAccess: administrators.",
+        "operationId": "listModels",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "models": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Asks a language model service which models the key may use, for choosing one while a service is set up.",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
+    "/api/providers/services": {
+      "get": {
+        "description": "Access: signed in.",
+        "operationId": "listServices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/mt.Info"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Lists the translation services built in: for each, its name, what it needs to be set up (a key, a region, a model, an address) and where a key is made.",
+        "tags": [
+          "Other"
+        ]
+      }
+    },
     "/api/providers/{name}": {
       "delete": {
         "description": "Access: administrators.",
@@ -9793,7 +9968,7 @@
         ]
       },
       "put": {
-        "description": "Without headerValue, the service keeps the value it has.\n\nAccess: administrators.",
+        "description": "A built-in one (service \"deepl\", \"google\", \"microsoft\", \"openai\", \"anthropic\") takes its key in headerValue, and a model or a region where it needs one; one of one's own (\"own\", the default) takes its address and a header sent with each request to sign it. Without headerValue, the service keeps the key or value it has.\n\nAccess: administrators.",
         "operationId": "saveProvider",
         "parameters": [
           {
@@ -9826,6 +10001,15 @@
                   },
                   "kind": {
                     "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "service": {
+                    "$ref": "#/components/schemas/mt.Service"
                   },
                   "url": {
                     "type": "string"
@@ -9864,7 +10048,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Adds a service or changes the one of the name: its kind (\"translate\", the default, or \"check\" for a grammar service), its address, and a header sent with each request to sign it.",
+        "summary": "Adds a service or changes the one of the name: its kind (\"translate\", the default, or \"check\" for a grammar service) and which service it is.",
         "tags": [
           "Other"
         ]

@@ -94,6 +94,14 @@ export interface CoreApi {
   tmInspect(bytes: Uint8Array): Res<string>;
   tmExportTMX(name: string): Res<Uint8Array>;
   tmExportWordfast(name: string): Res<Uint8Array>;
+  // Translation services (package mt): the core builds each request and
+  // reads each answer; the page sends the request.
+  mtServices(): Res<string>;
+  mtTranslate(settings: string, src: string, tgt: string, segments: string): Res<string>;
+  mtAnswer(settings: string, segments: string, status: number, body: string): Res<string>;
+  mtModels(settings: string): Res<string>;
+  mtModelsAnswer(settings: string, status: number, body: string): Res<string>;
+  mtCheck(settings: string): Res<string>;
   // Termbase functions: see termio.ts.
   xliffDetect(bytes: Uint8Array): Res<string>;
   xliffExtract(bytes: Uint8Array): Res<string>;

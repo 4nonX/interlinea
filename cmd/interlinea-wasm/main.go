@@ -12,8 +12,8 @@
 //
 // plus translation memory (tm*, see tm.go), termbase (term*, see
 // term.go), XLIFF, package, spelling and QA (spell*, qa*, see qa.go)
-// functions, and project setups, analysis and pre-translation (see
-// project.go).
+// functions, project setups, analysis and pre-translation (see
+// project.go), and translation services (mt*, see mt.go).
 //
 // Build: make wasm
 package main
@@ -200,6 +200,9 @@ func main() {
 		api[k] = v
 	}
 	for k, v := range qaFuncs() {
+		api[k] = v
+	}
+	for k, v := range mtFuncs() {
 		api[k] = v
 	}
 	for k, v := range projectFuncs() {

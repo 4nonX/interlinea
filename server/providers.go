@@ -1,41 +1,31 @@
 package server
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/langtag"
+	"github.com/4nonX/interlinea/mt"
 	"github.com/4nonX/interlinea/project/projectdb"
 )
 
-// Translation services: any machine translation engine or language model
-// behind an address that answers the contract below. The server sends the
-// request, so the service's key stays here and never reaches an app.
-//
-// The contract. A request is a POST with a JSON body:
-//
-//	{"sourceLang": "de-DE", "targetLang": "en-GB",
-//	 "segments": [{"id": "1", "text": "Der <1>Mieter</1> zahlt."}]}
-//
-// and the answer, with status 200:
-//
-//	{"translations": [{"id": "1", "text": "The <1>tenant</1> pays."}]}
-//
-// In a text, <1>…</1> is a pair of tags and <2/> a tag on its own; a <
-// that is text is &lt; and an & is &amp;. A translation should keep the
-// tags; one that does not is taken without them.
+// Translation services: the services built in (DeepL, Google Cloud
+// Translation, Microsoft Translator, a language model that speaks the
+// OpenAI API, Anthropic's Claude), each with the key of the person's own
+// account, and services of one's own at any address that answers the
+// contract in docs/integration.md. Package mt builds each service's
+// request and reads its answer; the server sends the request, so the key
+// stays here and never reaches an app.
 
 func (s *Server) providerRoutes() {
 	s.handle("GET /api/providers", s.signedIn(s.listProviders))
+	s.handle("GET /api/providers/services", s.signedIn(s.listServices))
+	s.handle("POST /api/providers/models", s.admin(s.listModels))
 	s.handle("PUT /api/providers/{name}", s.admin(s.saveProvider))
 	s.handle("DELETE /api/providers/{name}", s.admin(s.deleteProvider))
 	s.handle("POST /api/providers/{name}/translate", s.signedIn(s.providerTranslate))
@@ -47,24 +37,87 @@ type providerView struct {
 	// Kind is "translate" for a translation service and "check" for a
 	// grammar service.
 	Kind string `json:"kind"`
+	// Service is which service it is: "own" for one of one's own, or one
+	// of those GET /api/providers/services lists.
+	Service mt.Service `json:"service"`
 	// Host is where the service is, without the rest of its address.
 	Host string `json:"host"`
-	// URL, HeaderName and Signed (a header's value is kept) are for
-	// administrators.
+	// Model is the model a language model is asked with.
+	Model string `json:"model,omitempty"`
+	// URL, HeaderName, Region and Signed (a key or a header's value is
+	// kept) are for administrators.
 	URL        string `json:"url,omitempty"`
 	HeaderName string `json:"headerName,omitempty"`
+	Region     string `json:"region,omitempty"`
 	Signed     bool   `json:"signed,omitempty"`
 }
 
 func viewProvider(p projectdb.Provider, admin bool) providerView {
-	v := providerView{Name: p.Name, Kind: p.Kind}
-	if u, err := url.Parse(p.URL); err == nil {
-		v.Host = u.Host
+	v := providerView{Name: p.Name, Kind: p.Kind, Service: p.Service, Host: p.Settings().Host(), Model: p.Model}
+	if v.Service == "" {
+		v.Service = mt.Own
 	}
 	if admin {
-		v.URL, v.HeaderName, v.Signed = p.URL, p.HeaderName, p.HeaderValue != ""
+		v.URL, v.HeaderName, v.Region, v.Signed = p.URL, p.HeaderName, p.Region, p.HeaderValue != ""
 	}
 	return v
+}
+
+// listServices lists the translation services built in: for each, its
+// name, what it needs to be set up (a key, a region, a model, an address)
+// and where a key is made.
+//
+// Access: signed in.
+func (s *Server) listServices(w http.ResponseWriter, r *http.Request, me session) {
+	writeJSON(w, http.StatusOK, mt.Services)
+}
+
+type modelsRequest struct {
+	// Service, URL, Key and Region are the settings being made.
+	Service mt.Service `json:"service"`
+	URL     string     `json:"url"`
+	Key     string     `json:"key"`
+	// Name names a service whose key is kept, when Key is empty.
+	Name string `json:"name"`
+}
+
+// listModels asks a language model service which models the key may use,
+// for choosing one while a service is set up. Without key, the key kept
+// for the service of the name is used.
+//
+// Access: administrators.
+func (s *Server) listModels(w http.ResponseWriter, r *http.Request, me session) {
+	var req modelsRequest
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	set := mt.Settings{Service: req.Service, URL: req.URL, Key: req.Key}
+	if set.Key == "" && req.Name != "" {
+		if p, err := s.cfg.Projects.Provider(r.Context(), req.Name); err == nil && p.Service == req.Service {
+			set.Key = p.HeaderValue
+		}
+	}
+	ask, ok, err := set.Models()
+	if !ok {
+		invalid(w, "service", "This service has no models to choose from.")
+		return
+	}
+	if err != nil {
+		invalid(w, "key", "To list the models: "+err.Error()+".")
+		return
+	}
+	status, body, err := mt.Do(r.Context(), s.providerClient(), ask)
+	var models []string
+	if err == nil {
+		models, err = set.ModelsAnswer(status, body)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "provider", fmt.Sprintf("The models could not be listed: %v.", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Models []string `json:"models"`
+	}{models})
 }
 
 // listProviders lists the services: the translation services the editor
@@ -87,22 +140,28 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request, me sessio
 }
 
 // saveProvider adds a service or changes the one of the name: its kind
-// ("translate", the default, or "check" for a grammar service), its
-// address, and a header sent with each request to sign it. Without
-// headerValue, the service keeps the value it has.
+// ("translate", the default, or "check" for a grammar service) and which
+// service it is. A built-in one (service "deepl", "google", "microsoft",
+// "openai", "anthropic") takes its key in headerValue, and a model or a
+// region where it needs one; one of one's own ("own", the default) takes
+// its address and a header sent with each request to sign it. Without
+// headerValue, the service keeps the key or value it has.
 //
 // Access: administrators.
 func (s *Server) saveProvider(w http.ResponseWriter, r *http.Request, me session) {
 	var req struct {
-		Kind        string  `json:"kind"`
-		URL         string  `json:"url"`
-		HeaderName  string  `json:"headerName"`
-		HeaderValue *string `json:"headerValue"`
+		Kind        string     `json:"kind"`
+		Service     mt.Service `json:"service"`
+		URL         string     `json:"url"`
+		HeaderName  string     `json:"headerName"`
+		HeaderValue *string    `json:"headerValue"`
+		Model       string     `json:"model"`
+		Region      string     `json:"region"`
 	}
 	if !readJSON(w, r, &req, maxBody) {
 		return
 	}
-	p := projectdb.Provider{Name: r.PathValue("name"), Kind: req.Kind, URL: req.URL, HeaderName: req.HeaderName}
+	p := projectdb.Provider{Name: r.PathValue("name"), Kind: req.Kind, Service: req.Service, URL: req.URL, HeaderName: req.HeaderName, Model: req.Model, Region: req.Region}
 	if req.HeaderValue != nil {
 		p.HeaderValue = *req.HeaderValue
 	}
@@ -126,7 +185,7 @@ func (s *Server) deleteProvider(w http.ResponseWriter, r *http.Request, me sessi
 }
 
 // maxProviderSegments is how many segments one request may ask for.
-const maxProviderSegments = 50
+const maxProviderSegments = mt.MaxSegments
 
 type providerRequest struct {
 	SourceLang string `json:"sourceLang"`
@@ -214,64 +273,30 @@ type wireSegment struct {
 }
 
 func askProvider(ctx context.Context, client *http.Client, p projectdb.Provider, src, tgt string, req providerRequest) ([]providerTranslation, error) {
-	body := struct {
-		SourceLang string        `json:"sourceLang"`
-		TargetLang string        `json:"targetLang"`
-		Segments   []wireSegment `json:"segments"`
-	}{SourceLang: src, TargetLang: tgt}
+	set := p.Settings()
+	if set.Service == "" {
+		set.Service = mt.Own
+	}
+	segs := make([]mt.Segment, len(req.Segments))
 	sources := map[string]content.Content{}
-	for _, sg := range req.Segments {
-		body.Segments = append(body.Segments, wireSegment{sg.ID, markup(sg.Source)})
+	for i, sg := range req.Segments {
+		segs[i] = mt.Segment{ID: sg.ID, Text: markup(sg.Source)}
 		sources[sg.ID] = sg.Source
 	}
-	// The tags are written as they are, not as escapes of < and >.
-	var raw bytes.Buffer
-	enc := json.NewEncoder(&raw)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(body); err != nil {
-		return nil, err
-	}
-	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, p.URL, &raw)
+	ask, err := set.Translate(src, tgt, segs)
 	if err != nil {
 		return nil, err
 	}
-	hr.Header.Set("Content-Type", "application/json")
-	hr.Header.Set("Accept", "application/json")
-	if p.HeaderName != "" {
-		hr.Header.Set(p.HeaderName, p.HeaderValue)
-	}
-	res, err := client.Do(hr)
-	if err != nil {
-		// What went wrong, without the address's query, which may hold a key.
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			return nil, fmt.Errorf("its address could not be reached (%v)", ue.Err)
-		}
-		return nil, err
-	}
-	defer res.Body.Close()
-	answer, err := io.ReadAll(io.LimitReader(res.Body, maxBody+1))
+	status, answer, err := mt.Do(ctx, client, ask)
 	if err != nil {
 		return nil, err
 	}
-	if len(answer) > maxBody {
-		return nil, fmt.Errorf("its answer is too large")
-	}
-	if res.StatusCode != http.StatusOK {
-		said := strings.TrimSpace(string(answer))
-		if len(said) > 200 {
-			said = said[:200] + "…"
-		}
-		return nil, fmt.Errorf("it answered %d %s", res.StatusCode, said)
-	}
-	var got struct {
-		Translations []wireSegment `json:"translations"`
-	}
-	if err := json.Unmarshal(answer, &got); err != nil {
-		return nil, fmt.Errorf("its answer is not the JSON the contract asks for")
+	got, err := set.Answer(segs, status, answer)
+	if err != nil {
+		return nil, err
 	}
 	out := []providerTranslation{}
-	for _, t := range got.Translations {
+	for _, t := range got {
 		source, ok := sources[t.ID]
 		if !ok {
 			continue

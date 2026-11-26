@@ -1,81 +1,228 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { useStore } from "../store";
 import { useRemote } from "../remote";
 import { ApiError, type ServerProvider } from "../server";
-import { providerProblem } from "../editor/provider";
+import { localModels, mtProblems, mtServices, providerProblem, type MtInfo, type MtService } from "../editor/provider";
 import { fmtDate } from "../format";
 import { ConfirmButton } from "./TermbaseDialogs";
 
 const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 interface Draft {
+  service: MtService;
   name: string;
   url: string;
   headerName: string;
   headerValue: string;
+  model: string;
+  region: string;
 }
 
-const EMPTY: Draft = { name: "", url: "", headerName: "", headerValue: "" };
+const EMPTY: Draft = { service: "own", name: "", url: "", headerName: "", headerValue: "", model: "", region: "" };
 
 type Kind = "translate" | "check";
 
-/** The form for a service: its name, address, and the header that signs requests. */
-function ProviderForm({ kind, onSave, taken }: { kind: Kind; onSave: (d: Draft) => Promise<void>; taken: (name: string) => boolean }) {
+/** Where the form saves: this browser, or a team server (whose admin may list models with its kept keys). */
+interface Target {
+  /** Lists the models a key may use; null for a service without models. */
+  models: (d: Draft) => Promise<string[] | null>;
+  /** Services that can't be asked from here, with why. */
+  unavailable?: (i: MtInfo) => string;
+}
+
+/**
+ * The form for a service. A translation service is one of those built in,
+ * set up with the key of one's own account (and a model or a region where
+ * it needs one), or a service of one's own at an address; a grammar
+ * service is one of one's own.
+ */
+function ProviderForm({ kind, onSave, taken, target }: { kind: Kind; onSave: (d: Draft) => Promise<void>; taken: (name: string) => boolean; target: Target }) {
   const [open, setOpen] = useState(false);
+  const [services, setServices] = useState<MtInfo[]>([]);
   const [d, setD] = useState<Draft>(EMPTY);
   const [problem, setProblem] = useState("");
+  const [wrong, setWrong] = useState("");
+  const [models, setModels] = useState<string[] | null>(null);
+  const [listing, setListing] = useState(false);
+  const check = kind === "check";
+  useEffect(() => {
+    if (!open || check) return;
+    let live = true;
+    void mtServices().then((list) => {
+      if (!live) return;
+      setServices(list);
+      const first = list.find((i) => !target.unavailable?.(i)) ?? list[0];
+      if (first) setD((x) => (x.name ? x : { ...x, service: first.service, name: first.service === "own" ? "" : first.name }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, check, target]);
+  const info = services.find((i) => i.service === d.service);
+  // What package mt finds wrong, and the name's own problems.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    const nameWrong = !d.name.trim() || /[/?#]/.test(d.name) ? "Give the service a name, without / ? or #." : taken(d.name.trim()) ? "A service with this name is there already." : "";
+    if (check || d.service === "own") {
+      setWrong(nameWrong || providerProblem(d));
+      return;
+    }
+    void mtProblems({ service: d.service, url: d.url, key: d.headerValue, model: d.model, region: d.region }).then((p) => {
+      if (live) setWrong(nameWrong || (p[0]?.message ?? ""));
+    });
+    return () => {
+      live = false;
+    };
+  }, [open, check, d, taken]);
   if (!open)
     return (
       <button type="button" className="btn btn-small" onClick={() => setOpen(true)}>
         <Plus size={14} aria-hidden="true" />
-        {kind === "check" ? "Add a grammar service" : "Add a service"}
+        {check ? "Add a grammar service" : "Add a service"}
       </button>
     );
-  const wrong = providerProblem(d) || (taken(d.name.trim()) ? "A service with this name is there already." : "");
+  const own = check || d.service === "own";
+  const choose = (service: MtService) => {
+    const i = services.find((x) => x.service === service);
+    const named = services.some((x) => x.name === d.name) || !d.name;
+    setD({ ...EMPTY, service, name: named && i && service !== "own" ? i.name : named ? "" : d.name });
+    setModels(null);
+    setProblem("");
+  };
+  async function listModels() {
+    setListing(true);
+    setProblem("");
+    try {
+      const list = await target.models(d);
+      setModels(list ?? []);
+      if (list?.length && !d.model) setD((x) => ({ ...x, model: list[0]! }));
+    } catch (err) {
+      setProblem(text(err));
+    } finally {
+      setListing(false);
+    }
+  }
   async function save(e: FormEvent) {
     e.preventDefault();
     if (wrong) return;
     try {
-      await onSave({ name: d.name.trim(), url: d.url.trim(), headerName: d.headerName.trim(), headerValue: d.headerValue });
+      await onSave({ ...d, name: d.name.trim(), url: d.url.trim(), headerName: d.headerName.trim(), model: d.model.trim(), region: d.region.trim() });
       setD(EMPTY);
       setProblem("");
+      setModels(null);
       setOpen(false);
     } catch (err) {
       setProblem(text(err));
     }
   }
+  const unavailable = info ? target.unavailable?.(info) : "";
   return (
-    <form className="dialog-form provider-form" aria-label={kind === "check" ? "A grammar service" : "A translation service"} onSubmit={save}>
+    <form className="dialog-form provider-form" aria-label={check ? "A grammar service" : "A translation service"} onSubmit={save}>
+      {!check && (
+        <label className="field">
+          <span className="field-label">Service</span>
+          <select value={d.service} onChange={(e) => choose(e.target.value as MtService)}>
+            {services.map((i) => (
+              <option key={i.service} value={i.service} disabled={!!target.unavailable?.(i)}>
+                {i.name}
+                {target.unavailable?.(i) ? " (not from this browser)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {info && !check && (
+        <p className="help">
+          {info.note}{" "}
+          {info.signup && (
+            <a href={info.signup} target="_blank" rel="noreferrer noopener">
+              Get a key
+            </a>
+          )}
+        </p>
+      )}
+      {unavailable && (
+        <p className="error" role="alert">
+          {unavailable}
+        </p>
+      )}
       <div className="field-grid">
         <label className="field">
           <span className="field-label">Name</span>
           <input value={d.name} onChange={(e) => setD({ ...d, name: e.target.value })} />
         </label>
-        <label className="field">
-          <span className="field-label">Address requests are sent to</span>
-          <input type="url" placeholder={kind === "check" ? "https://…/v2/check" : "https://"} value={d.url} onChange={(e) => setD({ ...d, url: e.target.value })} />
-        </label>
-        <label className="field">
-          <span className="field-label">
-            Header that signs requests <span className="optional">optional</span>
-          </span>
-          <input placeholder="Authorization" value={d.headerName} onChange={(e) => setD({ ...d, headerName: e.target.value })} />
-        </label>
-        <label className="field">
-          <span className="field-label">
-            Its value <span className="optional">optional</span>
-          </span>
-          <input type="password" autoComplete="off" placeholder="Bearer …" value={d.headerValue} onChange={(e) => setD({ ...d, headerValue: e.target.value })} />
-        </label>
+        {(own || info?.url) && (
+          <label className="field">
+            <span className="field-label">
+              {own ? "Address requests are sent to" : "Address of a service that speaks the same API"}
+              {!own && <span className="optional"> optional</span>}
+            </span>
+            <input
+              type="url"
+              placeholder={check ? "https://…/v2/check" : own ? "https://" : "https://api.openai.com/v1"}
+              value={d.url}
+              onChange={(e) => setD({ ...d, url: e.target.value })}
+            />
+          </label>
+        )}
+        {own ? (
+          <>
+            <label className="field">
+              <span className="field-label">
+                Header that signs requests <span className="optional">optional</span>
+              </span>
+              <input placeholder="Authorization" value={d.headerName} onChange={(e) => setD({ ...d, headerName: e.target.value })} />
+            </label>
+            <label className="field">
+              <span className="field-label">
+                Its value <span className="optional">optional</span>
+              </span>
+              <input type="password" autoComplete="off" placeholder="Bearer …" value={d.headerValue} onChange={(e) => setD({ ...d, headerValue: e.target.value })} />
+            </label>
+          </>
+        ) : (
+          <label className="field">
+            <span className="field-label">Key</span>
+            <input type="password" autoComplete="off" value={d.headerValue} onChange={(e) => setD({ ...d, headerValue: e.target.value })} />
+          </label>
+        )}
+        {!own && info?.region && (
+          <label className="field">
+            <span className="field-label">
+              Region of the key <span className="optional">optional for a global key</span>
+            </span>
+            <input placeholder="westeurope" value={d.region} onChange={(e) => setD({ ...d, region: e.target.value })} />
+          </label>
+        )}
+        {!own && info?.model && (
+          <div className="field">
+            <label className="field-label" htmlFor="provider-model">
+              Model
+            </label>
+            <div className="row row-nowrap">
+              <input id="provider-model" className="grow" list="provider-models" value={d.model} onChange={(e) => setD({ ...d, model: e.target.value })} />
+              <button type="button" className="btn btn-small" disabled={!d.headerValue || listing} onClick={() => void listModels()}>
+                {listing ? "Listing…" : "List the models"}
+              </button>
+            </div>
+            <datalist id="provider-models">
+              {(models ?? []).map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
+            {models && <span className="help">{models.length ? `${models.length} models the key may use; type to find one.` : "The key may use no model."}</span>}
+          </div>
+        )}
       </div>
-      {((wrong && d.name && d.url) || problem) && (
+      {((wrong && d.name && (own ? d.url : d.headerValue)) || problem) && (
         <p className="error" role="alert">
           {problem || wrong}
         </p>
       )}
       <div className="row">
-        <button type="submit" className="btn btn-primary btn-small" disabled={!!wrong}>
+        <button type="submit" className="btn btn-primary btn-small" disabled={!!wrong || !!unavailable}>
           Add the service
         </button>
         <button type="button" className="btn btn-quiet btn-small" onClick={() => setOpen(false)}>
@@ -132,10 +279,31 @@ function Services({ kind }: { kind: Kind }) {
   useEffect(() => {
     void load();
   }, [load]);
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  useEffect(() => {
+    void mtServices().then((list) => setLabels(Object.fromEntries(list.map((i) => [i.service, i.name]))));
+  }, []);
+  // Where a service is: the address of one's own, or the service built in and its model.
+  const where = (service: MtService | undefined, host: string, model?: string) =>
+    !service || service === "own" ? host : `${labels[service] ?? service}${model ? `, ${model}` : ""}`;
+  const here: Target = useMemo(
+    () => ({
+      models: (d) => localModels({ service: d.service, url: d.url, key: d.headerValue }),
+      unavailable: (i) =>
+        i.browser ? "" : `${i.name} does not take requests from a web page. Add it in the desktop app, or on a team server, which asks it for you.`,
+    }),
+    [],
+  );
+  const there: Target = useMemo(
+    () => ({
+      models: async (d) => (api ? (await api.providerModels({ service: d.service, url: d.url, key: d.headerValue })).models : null),
+    }),
+    [api],
+  );
   const admin = !!r.conn?.user.admin;
   const host = r.conn ? new URL(r.conn.url).host : "";
   const check = kind === "check";
-  const here = state.providers.filter((p) => (p.kind === "check") === check);
+  const local = state.providers.filter((p) => (p.kind === "check") === check);
   const id = check ? "s-grammar" : "s-mt";
   return (
     <section className="panel" aria-labelledby={id}>
@@ -150,13 +318,14 @@ function Services({ kind }: { kind: Kind }) {
         </p>
       ) : (
         <p className="help">
-          Machine translation or a language model of your choice, asked for a suggestion in the editor when you ask for one. Any service works that answers at
-          an address as the integration guide describes. A segment you ask a suggestion for is sent to the service; nothing is sent on its own.
+          Machine translation or a language model of your choice, asked for a suggestion in the editor when you ask for one: DeepL, Google, Microsoft, OpenAI
+          or Claude with the key of your own account, or a service of your own that answers as the integration guide describes. A segment you ask a suggestion
+          for is sent to the service; nothing is sent on its own.
         </p>
       )}
       {api && <h3 className="field-label">In this browser</h3>}
       <ProviderList
-        items={here.map((p) => ({ name: p.name, where: hostOf(p.url) }))}
+        items={local.map((p) => ({ name: p.name, where: where(p.service, hostOf(p.url), p.model) }))}
         onDelete={(name) => {
           dispatch({ type: "deleteProvider", name });
           notify(`Deleted the service ${name}`);
@@ -165,6 +334,7 @@ function Services({ kind }: { kind: Kind }) {
       <ProviderForm
         kind={kind}
         taken={(name) => state.providers.some((p) => p.name.toLowerCase() === name.toLowerCase())}
+        target={here}
         onSave={async (d) => {
           dispatch({ type: "saveProvider", provider: { ...d, kind } });
           notify(`Added the service ${d.name}`);
@@ -175,7 +345,7 @@ function Services({ kind }: { kind: Kind }) {
         <>
           <h3 className="field-label">On {host}</h3>
           <ProviderList
-            items={onServer.filter((p) => (p.kind === "check") === check).map((p) => ({ name: p.name, where: p.host }))}
+            items={onServer.filter((p) => (p.kind === "check") === check).map((p) => ({ name: p.name, where: where(p.service, p.host, p.model) }))}
             onDelete={
               admin
                 ? (name) =>
@@ -193,9 +363,18 @@ function Services({ kind }: { kind: Kind }) {
             <ProviderForm
               kind={kind}
               taken={(name) => onServer.some((p) => p.name.toLowerCase() === name.toLowerCase())}
+              target={there}
               onSave={async (d) => {
                 try {
-                  await api.saveProvider(d.name, { kind, url: d.url, headerName: d.headerName, headerValue: d.headerValue });
+                  await api.saveProvider(d.name, {
+                    kind,
+                    service: kind === "check" ? "own" : d.service,
+                    url: d.url,
+                    headerName: d.headerName,
+                    headerValue: d.headerValue,
+                    model: d.model,
+                    region: d.region,
+                  });
                 } catch (e) {
                   throw e instanceof ApiError ? new Error(e.message) : e;
                 }

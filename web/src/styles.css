@@ -792,6 +792,17 @@ input[type="radio"] {
   gap: var(--s2);
 }
 
+/* A field with its button beside it, on one line. */
+.row-nowrap {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.row-nowrap > .grow {
+  flex: 1;
+  min-width: 0;
+}
+
 .check {
   display: flex;
   align-items: flex-start;

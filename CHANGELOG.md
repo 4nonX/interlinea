@@ -7,6 +7,20 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Translation services
+
+- DeepL, Google Cloud Translation, Microsoft Translator, OpenAI (and any
+  service that speaks its API, such as Mistral or a model run at home) and
+  Anthropic's Claude are built in: choose one in Settings, paste the key
+  of your own account, and the editor asks it for suggestions. A language
+  model's model is chosen from the list the service gives for the key.
+  Tags are kept. A service of your own at an address still works as
+  before.
+- On a team server the server asks the services, so keys stay there; on
+  your computer the desktop app's core does. The web app on its own asks
+  them from the browser, except DeepL, which takes no requests from a web
+  page.
+
 ## [0.3.0] - 2026-11-26
 
 ### Bilingual files

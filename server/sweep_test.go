@@ -38,7 +38,8 @@ func TestEveryRouteRefusesSomeoneWithoutGrants(t *testing.T) {
 		"GET /api/memories": true, "GET /api/termbases": true, "GET /api/projects": true,
 		"GET /api/templates": true, "GET /api/providers": true, "GET /api/qa/kinds": true,
 		"GET /api/dictionaries": true, "GET /api/projects/defaults": true, "GET /api/export-presets": true,
-		"POST /mcp": true, "POST /api/align": true, "POST /api/files/inspect": true,
+		"GET /api/providers/services": true,
+		"POST /mcp":                   true, "POST /api/align": true, "POST /api/files/inspect": true,
 		"POST /api/memoryfiles/inspect": true, "POST /api/termfiles/inspect": true,
 	}
 	skip := map[string]bool{
