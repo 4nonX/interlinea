@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A security problem
+    url: https://github.com/4nonX/interlinea/security/advisories/new
+    about: Report it privately, not in an open issue (SECURITY.md).
+  - name: Help with installing and using Interlinea
+    url: https://interlinea.dev/docs/
+    about: The help pages and the manual.

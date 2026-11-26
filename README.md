@@ -10,6 +10,8 @@ app, in the browser, and on a team server that a team shares.
 [![Qt](https://img.shields.io/badge/Qt-6-41CD52?style=flat-square&logo=qt&logoColor=white)](docs/desktop.md)
 [![CI](https://github.com/4nonX/interlinea/actions/workflows/ci.yml/badge.svg)](https://github.com/4nonX/interlinea/actions/workflows/ci.yml)
 
+Downloads, help and documentation: **[interlinea.dev](https://interlinea.dev)**.
+
 ![The translation editor](docs/screenshots/editor.png)
 
 Interlinea opens the files translators are sent, including the bilingual
@@ -84,7 +86,9 @@ written.
 
 ## Install
 
-Every [release](https://github.com/4nonX/interlinea/releases) has the
+[interlinea.dev](https://interlinea.dev) has the downloads of the newest
+release, help with installing and the documentation. Every
+[release](https://github.com/4nonX/interlinea/releases) has the
 installers, with their checksums in `SHA256SUMS`;
 [CHANGELOG.md](CHANGELOG.md) says what each release brought.
 
@@ -92,8 +96,8 @@ installers, with their checksums in `SHA256SUMS`;
 
 | System | Download | |
 |---|---|---|
-| Windows | `Interlinea-<version>-windows-x64-setup.exe` | installs for you, without administrator rights; the portable zip needs no installing |
-| macOS | `Interlinea-<version>-macos-universal.dmg` | drag the app to Applications; it is not signed with a developer certificate, so open it the first time with a right click and Open |
+| Windows | `Interlinea-<version>-windows-x64-setup.exe` | installs for you, without administrator rights; the portable zip needs no installing. It is not signed yet, so SmartScreen may stop it: More info, then Run anyway |
+| macOS | `Interlinea-<version>-macos-universal.dmg` | drag the app to Applications; it is not notarized by Apple yet, so the first start is refused: open System Settings, Privacy & Security, and click Open Anyway (on macOS 14 and earlier a right click on the app and Open does the same) |
 | Linux | `Interlinea-<version>-linux-x86_64.AppImage` | make it executable and start it |
 
 **Team server, with Docker**

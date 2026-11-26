@@ -1,0 +1,58 @@
+name: A file back in Trados, memoQ or another tool
+description: Say how a file Interlinea saved fared in the program it came from, whether it worked or not.
+title: "Round trip: "
+labels: ["round trip"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Interlinea writes bilingual files and packages back the way the programs that made them expect. Some of that has only been checked against the formats' descriptions and sample files, not in the programs themselves: the memoQ delivery package (.mqback) above all. A report from a real delivery, good or bad, is what settles it.
+
+        Attach files only if you may share them. A client's document usually can't be; then describe it.
+  - type: dropdown
+    id: format
+    attributes:
+      label: What Interlinea saved
+      options:
+        - Trados return package (.sdlrpx)
+        - SDLXLIFF
+        - memoQ delivery package (.mqback)
+        - memoQ XLIFF (.mqxliff or .mqxlz)
+        - Phrase MXLIFF
+        - Wordfast TXML
+        - TagEditor TTX
+        - XLIFF 1.2 or 2.x
+        - A review table (DOCX or RTF)
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: program
+    attributes:
+      label: The program it went back into, and its version
+      placeholder: Trados Studio 2024 SR1, memoQ 11
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: How it went
+      options:
+        - It was taken as it should be
+        - It was taken, but something was wrong
+        - It was refused
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened
+      description: The program's message if it refused the file, or what was wrong in it (missing segments, states, tags, formatting).
+  - type: input
+    id: version
+    attributes:
+      label: Interlinea's version
+      description: Settings, About Interlinea.
+      placeholder: "0.4.0"
+    validations:
+      required: true

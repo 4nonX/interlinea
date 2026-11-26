@@ -7,6 +7,46 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Alignment
+
+- Where a translation has its sections in another order than the
+  document, the review moves them into the document's order: a handle
+  beside each segment drags it, Alt+Up and Alt+Down move it one place, and
+  Shift+click on handles marks several to move together. The sentences
+  are paired again in the new order around the pairs already confirmed,
+  and a move is undone like a change of the lines. In the browser client
+  and the desktop app.
+- `POST /api/align` and the core's align function take the order each
+  side is read in.
+
+### Desktop app
+
+- The app's ID is dev.interlinea.Interlinea, on the project's own
+  domain: the bundle ID on macOS, the desktop entry on Linux and the name
+  sign-ins are kept under in the keychain. Sign-ins and, on macOS, the
+  settings kept under the old ID come along on the first start.
+- Interlinea.exe carries its product name and version in its file
+  properties.
+
+### Releases
+
+- The release workflow signs the Windows programs through SignPath and
+  signs and notarizes the macOS app with a Developer ID once those are set
+  up ([docs/signing.md](docs/signing.md)); until then it builds them
+  unsigned as before. The release notes describe the first-start warning
+  only for files that are not signed.
+- interlinea.dev: the downloads, help pages and the documentation, built
+  from `site/` and `docs/`.
+
+### Changed
+
+- Files are checked out exactly as they are kept, whatever
+  `core.autocrlf` says.
+- README: the first start on macOS 15 goes through Privacy & Security,
+  Open Anyway.
+- SECURITY.md says how to report a security problem privately; issue
+  forms for bugs and for files back in Trados, memoQ and other tools.
+
 ## [0.4.0] - 2026-11-26
 
 ### Subtitles

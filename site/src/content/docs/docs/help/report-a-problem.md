@@ -24,6 +24,7 @@ free GitHub account to open one.
 Search the [open issues](https://github.com/4nonX/interlinea/issues)
 first; if yours is there, add what you know to it.
 
-A security problem should not be described in an open issue. Open one
-that only says you found a security problem, and a private way to send
-the details will be arranged.
+A security problem goes privately to the maintainers, not into an open
+issue: use [report a vulnerability](https://github.com/4nonX/interlinea/security/advisories/new)
+on GitHub. [SECURITY.md](https://github.com/4nonX/interlinea/blob/main/SECURITY.md)
+says what to put in the report.

@@ -37,7 +37,8 @@ is to save each document with **Save XLIFF** and send the MQXLIFF files:
 memoQ's import of bilingual files takes them, and that is documented.
 
 If your client confirms that a delivery package worked, or did not, please
-[tell us](/docs/help/report-a-problem/).
+[say so on GitHub](https://github.com/4nonX/interlinea/issues/new?template=round-trip.yml);
+the same form takes reports of any other file back in its program.
 
 ## Subtitles
 

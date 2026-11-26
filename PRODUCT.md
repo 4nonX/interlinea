@@ -61,15 +61,26 @@ managing a database schema.
 
 ## Capabilities and Constraints
 
-- Confirmed in code: segmentation (SRX), fuzzy matching, TMX, translation
-  memories (in-memory and SQLite), CLI.
+- Built and released (0.4.0): the editor with memories, termbases, checks,
+  spelling and machine translation; projects with analysis, assignments
+  and review; document, subtitle, software and bilingual formats, Trados
+  and memoQ packages back as packages; termbases with project termbases,
+  review and merge; printed glossaries; alignment; the command line; the
+  desktop app, the browser client and the team server with sign-in,
+  roles, a live feed, an API and an MCP endpoint.
 - Terminology model: concept-oriented (concept, language, term), TBX
   compatible underneath.
 - Git vocabulary is switchable: plain translator words by default
   ("project changes", "merge into master", "history", "update from master"),
   literal git terms (branch, commit, merge, pull, diff, revert) as an expert
   setting. Same mechanics either way.
-- Undecided: licence; exact server sync and offline behaviour.
+- Licence: GNU AGPL 3.0 only (LICENSE, NOTICE).
+- Server projects are worked on live on the server: translations are saved
+  there as they are typed and confirmed, and a translation that can't be
+  saved stays marked "Not saved" on its segment. There is no offline copy
+  of a server project; local projects work without a network.
+- Not yet: signed Windows installers and a notarized macOS app; memoQ
+  delivery packages tried in memoQ itself.
 
 ## Brand Commitments
 
@@ -78,9 +89,9 @@ managing a database schema.
 
 ## Evidence on Hand
 
-No customers, testimonials, benchmarks or screenshots exist yet. Do not
-invent any. Measured figures exist only in the README (import and lookup
-speed on a test VM).
+No customers, testimonials or benchmarks exist yet. Do not invent any.
+Screenshots of the app are in docs/screenshots, made by the tests. The
+website is interlinea.dev, built from site/.
 
 ## Product Principles
 

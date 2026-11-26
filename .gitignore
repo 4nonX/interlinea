@@ -14,7 +14,8 @@ go.work.sum
 /.claude/skills/
 /.agents/
 
-# Prototype
+# Prototype: early sketches, kept out of the repository
+/prototype/
 node_modules/
 /web/dist/
 /web/public/core/

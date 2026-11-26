@@ -1,0 +1,29 @@
+name: Something does not work
+description: A bug in the desktop app, the browser client, the team server or the command line.
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you did, what you expected, and what happened instead
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Interlinea's version
+      description: Settings, About Interlinea.
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Where
+      description: Windows, macOS or Linux and its version, or the browser and its version, or the team server's system.
+    validations:
+      required: true
+  - type: textarea
+    id: file
+    attributes:
+      label: The file, if it is about one
+      description: The file you were sent, not the translated one, if you may share it. Otherwise which program made it and what is in it (tables, tracked changes, a package with 12 files).

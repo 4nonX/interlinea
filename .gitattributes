@@ -1,3 +1,9 @@
+# Files are checked out exactly as they are kept, whatever core.autocrlf
+# says: the tests read their files byte for byte, some of them with CRLF
+# line ends on purpose, and a checkout that converted line ends would show
+# every file as changed.
+* -text
+
 # Written by cmd/interlinea-apidoc, compared byte for byte in CI.
 server/openapi.json text eol=lf
 docs/api.md text eol=lf
