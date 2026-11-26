@@ -46,12 +46,63 @@ private:
     QString m_text;
 };
 
+// The handle beside a segment, to move it, with the segments marked with
+// it, to another place in the order its text is read in: dragged with the
+// mouse, or moved with Alt+Up and Alt+Down. A click marks the segment;
+// Shift with a click or an arrow marks the run up to another.
+class AlignGrip : public QWidget {
+    Q_OBJECT
+public:
+    AlignGrip(int side, int index, QWidget *parent);
+    int side() const { return m_side; }
+    int index() const { return m_index; }
+    void setMarked(bool on);
+    bool marked() const { return property("marked").toBool(); }
+    // Where it is read, when that is not where its document has it.
+    void setPlace(const QString &place);
+    QSize sizeHint() const override { return QSize(20, 20); }
+
+signals:
+    void clicked(bool extend);
+    // Alt+Up or Alt+Down: one place up (-1) or down (+1).
+    void nudged(int by);
+    // Shift+Up or Shift+Down: the run marked reaches one further.
+    void extended(int by);
+    // Dragged over a place, let go there, or let go of without moving.
+    void dragged(const QPoint &globalPos);
+    void dropped(const QPoint &globalPos);
+
+protected:
+    void paintEvent(QPaintEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void mouseMoveEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void keyPressEvent(QKeyEvent *e) override;
+    void enterEvent(QEnterEvent *e) override;
+    void leaveEvent(QEvent *e) override;
+
+private:
+    int m_side;
+    int m_index;
+    QString m_place;
+    QPoint m_pressAt;
+    bool m_pressed = false;
+    bool m_dragging = false;
+};
+
 // The two texts side by side, with the lines between them.
 class AlignBoard : public QWidget {
     Q_OBJECT
 public:
     explicit AlignBoard(QWidget *parent);
+    // The segments and their handles, by the segments' positions in the
+    // documents, whatever order they are shown in.
     QList<AlignSegment *> segments[2];
+    QList<AlignGrip *> grips[2];
+    // Where a dragged run would go: a line across that side above the
+    // segment it would go before, or below the last; no side while none.
+    int dropSide = -1;
+    int dropY = 0;
     // The lines, as (segment of the document, segment of the translation),
     // and those of pairs that need a look.
     QList<QPair<int, int>> lines;
@@ -135,6 +186,18 @@ public:
     bool canRedo() const { return !m_future.isEmpty(); }
     // Pairs everything again around the units that are the translator's own.
     void pairAgain();
+    // The order the segments of a side are read in, by their positions in
+    // the document; the documents' own order until a section is moved.
+    QList<int> order(Side side) const { return m_order[side]; }
+    // Moves segments of a side, a run read one after the other, before the
+    // segment `before` (or last, with -1); what was paired for the
+    // translator is paired again in the new order around what is checked.
+    void move(Side side, const QList<int> &items, int before);
+    // Moves a segment, with the run it is marked in, one place up (-1) or down (+1).
+    void nudge(Side side, int index, int by);
+    // Marks a segment to be moved, or with extend the run up to it.
+    void mark(Side side, int index, bool extend);
+    QList<int> marked(Side side) const { return m_runSide == side ? m_run : QList<int>(); }
     // The lines that are the translator's own, as lines() gives them.
     QStringList mineLines() const;
     int checkedCount() const { return int(fixedUnits().size()); }
@@ -171,12 +234,20 @@ private:
         QList<int> source;
         QList<int> target;
     };
-    // The lines and what they were paired from, to go back to.
+    // The lines, what they were paired from and the order read, to go back to.
     struct Snap {
         QList<QPair<int, int>> links;
         QList<QPair<int, int>> mine;
         QHash<QString, int> scores;
+        QList<int> sourceOrder;
+        QList<int> targetOrder;
     };
+    Snap snap() const { return {m_links, m_mine, m_scores, m_order[Source], m_order[Target]}; }
+    QList<int> movingFrom(Side side, int index) const;
+    QList<int> asRead(Side side, QList<int> which) const;
+    QJsonArray fixedArray() const;
+    void dragTo(Side side, const QPoint &globalPos);
+    void dropAt(Side side, const QPoint &globalPos);
     void init();
     void askToLeave(bool close);
     void otherDocuments();
@@ -186,7 +257,7 @@ private:
     void updateStart();
     void render();
     void refresh();
-    void request(const QJsonArray &fixed);
+    void request(const QJsonArray &fixed, const QList<int> &sourceOrder = {}, const QList<int> &targetOrder = {});
     void draw(const QPair<int, int> &line);
     void own(Side side, int index);
     QList<Unit> fixedUnits() const;
@@ -226,6 +297,20 @@ private:
     QList<QPair<int, int>> m_links;
     QList<QPair<int, int>> m_mine;
     QHash<QString, int> m_scores;
+    QList<int> m_order[2];
+    // Asked for with the pairing under way, and taken once it is there.
+    QList<int> m_pendingOrder[2];
+    // The run marked to be moved, on one side, and where it was begun.
+    int m_runSide = -1;
+    QList<int> m_run;
+    int m_runAnchor = -1;
+    // What is dragged, and the segment it would go before (-1: last; -2: nowhere).
+    int m_dragSide = -1;
+    QList<int> m_dragItems;
+    int m_dropBefore = -2;
+    // The handle to give the keyboard back to once a move is shown.
+    int m_focusSide = -1;
+    int m_focus = -1;
     int m_pickedSide = -1;
     int m_picked = -1;
     bool m_overwrite = false;

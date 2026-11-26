@@ -139,3 +139,56 @@ export function joined(segments: CoreRun[][], which: number[]): CoreRun[] {
   }
   return out;
 }
+
+/** The order the review reads each side in, by the segments' positions in the documents. */
+export interface Order {
+  source: number[];
+  target: number[];
+}
+
+/** The documents' own order, for documents of these lengths. */
+export function documentOrder(a: Alignment): Order {
+  return { source: a.source.map((_, i) => i), target: a.target.map((_, i) => i) };
+}
+
+/** Whether an order is the documents' own. */
+export function inDocumentOrder(o: Order): boolean {
+  return o.source.every((s, k) => s === k) && o.target.every((t, k) => t === k);
+}
+
+/**
+ * Moves segments of one side, a run read one after the other, so that
+ * they are read before the segment `before`, or last when it is null.
+ */
+export function moved(order: number[], run: number[], before: number | null): number[] {
+  if (before !== null && run.includes(before)) return order;
+  const rest = order.filter((i) => !run.includes(i));
+  const inRun = order.filter((i) => run.includes(i));
+  const at = before === null ? rest.length : rest.indexOf(before);
+  if (at < 0) return order;
+  return [...rest.slice(0, at), ...inRun, ...rest.slice(at)];
+}
+
+/** A run moved one place up (-1) or down (+1), past the segment next to it. */
+export function nudged(order: number[], run: number[], by: -1 | 1): number[] {
+  const at = order.map((i, k) => (run.includes(i) ? k : -1)).filter((k) => k >= 0);
+  const first = at[0];
+  const last = at[at.length - 1];
+  if (first === undefined || last === undefined) return order;
+  if (by < 0) return first === 0 ? order : moved(order, run, order[first - 1] ?? null);
+  return last === order.length - 1 ? order : moved(order, run, order[last + 2] ?? null);
+}
+
+/** Segments put in the order the review reads them in. */
+export function asRead(which: number[], order: number[]): number[] {
+  const at = new Map(order.map((i, k) => [i, k]));
+  return [...which].sort((a, b) => (at.get(a) ?? a) - (at.get(b) ?? b));
+}
+
+/** The run of segments read one after the other from one to the other, both included. */
+export function runBetween(order: number[], a: number, b: number): number[] {
+  const i = order.indexOf(a);
+  const j = order.indexOf(b);
+  if (i < 0 || j < 0) return [b];
+  return order.slice(Math.min(i, j), Math.max(i, j) + 1);
+}

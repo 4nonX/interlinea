@@ -1671,7 +1671,7 @@ Access: signed in; each event is sent only to those who may see it.
 
 Pairs the segments of a document with those of its translation, so that translations done before can be put into a memory (POST /api/memories/{name}/units/batch).
 
-The two documents may be of different formats. The answer has the segments of both documents and the pairs made of them; a review joins and splits them otherwise. Sent again with the pairs the review fixed, the rest is paired around them. Nothing is kept.
+The two documents may be of different formats. The answer has the segments of both documents and the pairs made of them; a review joins and splits them otherwise. Sent again with the pairs the review fixed, the rest is paired around them; sent with an order, where the review moved sections of one side, the segments are paired as read in that order. Nothing is kept.
 
 Access: signed in.
 
@@ -1844,6 +1844,7 @@ access is what someone may do in a project.
 | Field | Type | Description |
 |---|---|---|
 | `fixed` | list of [align.Fixed](#alignfixed) | Fixed are pairs made or checked by hand, by the positions of their segments in an earlier answer for the same documents: they stay, and the rest is paired again around them. |
+| `order` | [align.Order](#alignorder) | Order is the order the review reads each side in, by the positions of the segments in the documents; a side not given keeps its document's order. Fixed and the answer name segments by their positions in the documents either way. |
 | `source` | [AlignedFile](#alignedfile) |  |
 | `target` | [AlignedFile](#alignedfile) |  |
 
@@ -2429,6 +2430,15 @@ unitView is a memory unit as the API shows it.
 ### align.Fixed
 
 Fixed is a pair someone made or checked by hand: these segments of the document belong to these of the translation, whatever their lengths say.
+
+| Field | Type | Description |
+|---|---|---|
+| `source` | list of integer |  |
+| `target` | list of integer |  |
+
+### align.Order
+
+Order is the order a review reads the segments of each side in, by their positions in the documents. Where a translation has its sections in another order than the document, moving them into the document's order lets them be paired. A side left empty keeps the order of its document.
 
 | Field | Type | Description |
 |---|---|---|

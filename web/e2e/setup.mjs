@@ -388,7 +388,7 @@ export default () =>
             const p = l.getPointAtLength(0), q = l.getPointAtLength(n), nearP = l.getPointAtLength(4), nearQ = l.getPointAtLength(n - 4);
             const a = document.querySelector(${JSON.stringify(seg("source", 0))}).getBoundingClientRect();
             const b = document.querySelector(${JSON.stringify(seg("target", 0))}).getBoundingClientRect();
-            const s = document.querySelector('dialog[open] svg').getBoundingClientRect();
+            const s = document.querySelector('dialog[open] svg.align-lines').getBoundingClientRect();
             return l.tagName === 'path' && Math.abs(p.x + s.left - a.right) < 2 && Math.abs(q.x + s.left - b.left) < 2 && Math.abs(p.y + s.top - (a.top + a.height / 2)) < 2 && Math.abs(q.y + s.top - (b.top + b.height / 2)) < 2;
           })()`),
           "alignment: a line runs from the sentence to its translation",
@@ -488,6 +488,75 @@ export default () =>
         await click("dialog[open] button", "Pair the sentences");
         check(await waitFor("(document.querySelector('dialog[open] [role=alert]')?.innerText ?? '').includes('Styleguide.pdf could not be read')", 10000), "alignment: a file that can't be read says so");
         await click("dialog[open] button", "Cancel");
+        await sleep(150);
+      }
+
+      // A translation with a section in another place: the section is moved
+      // into the document's order, by the keyboard and by dragging its
+      // handle, and the sentences are paired again in that order.
+      {
+        const panel = "section[aria-labelledby=localmem-title]";
+        const lines = () => evaluate("[...document.querySelectorAll('dialog[open] svg [data-line]')].map(g => g.dataset.line).sort().join(' ')");
+        const readOrder = (side) => evaluate(`[...document.querySelectorAll('dialog[open] [data-side=${side}]')].map(b => b.dataset.i).join(' ')`);
+        const grip = (side, i) => `dialog[open] [data-row=${side}] [data-grip="${i}"]`;
+        const altKey = (side, i, k) =>
+          evaluate(`document.querySelector(${JSON.stringify(grip(side, i))}).dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, altKey: true, bubbles: true }))`);
+        const settled = (want) => waitFor(`[...document.querySelectorAll('dialog[open] svg [data-line]')].map(g => g.dataset.line).sort().join(' ') === ${JSON.stringify(want)}`, 20000);
+        await click(`${panel} button`, "Align documents");
+        await waitFor("document.querySelectorAll('dialog[open] input[type=file]').length === 2");
+        await setFile("dialog[open] label:nth-of-type(1) input[type=file]", `${fixtures}/align/Mietvertrag_de.txt`);
+        await setFile("dialog[open] label:nth-of-type(2) input[type=file]", `${fixtures}/align/Mietvertrag_fr_umgestellt.txt`);
+        await click("dialog[open] button", "Pair the sentences");
+        check(await waitFor("document.querySelectorAll('dialog[open] svg [data-line]').length > 0", 20000), "moving sections: the documents are paired");
+        check((await readOrder("target")) === "0 1 2 3", "moving sections: the translation is read in its own order at first");
+        check(
+          await evaluate("document.querySelectorAll('dialog[open] .align-grip').length === 9 && [...document.querySelectorAll('dialog[open] .align-grip')].every(g => g.getAttribute('aria-label').startsWith('Move '))"),
+          "moving sections: every segment has a handle to move it",
+        );
+        // The last section of the translation came first; Alt+Down three times takes it to the end.
+        for (let n = 0; n < 3; n++) {
+          await altKey("target", 0, "ArrowDown");
+          await waitFor(`document.querySelectorAll('dialog[open] [data-side=target]')[${n + 1}]?.dataset.i === '0'`, 20000);
+        }
+        check((await readOrder("target")) === "1 2 3 0", "moving sections: Alt+Down moves a section one place at a time: " + (await readOrder("target")));
+        check(await settled("0|1 1|2 2|3 3|3 4|0"), "moving sections: in the document's order the sentences pair again: " + (await lines()));
+        check((await evaluate("document.querySelector('dialog[open] .sr-only[role=status]')?.textContent ?? ''")) === "Translation 1 moved to place 4.", "moving sections: the move is said to screen readers");
+        check(await evaluate(`document.querySelector(${JSON.stringify(grip("target", 0))}).closest('.align-row').classList.contains('is-moved')`), "moving sections: a segment read elsewhere than its document has it is marked");
+        // Undone, it is back where it was; then it is dragged to the end by its handle.
+        for (let n = 0; n < 3; n++) {
+          await key("z", "KeyZ", 90, 2);
+          await sleep(150);
+        }
+        check((await readOrder("target")) === "0 1 2 3", "moving sections: moves are undone like the lines: " + (await readOrder("target")));
+        const at = await evaluate(`(() => {
+          const g = document.querySelector(${JSON.stringify(grip("target", 0))});
+          g.scrollIntoView({ block: 'center' });
+          const r = g.getBoundingClientRect();
+          const last = document.querySelector('dialog[open] [data-side=target][data-i="3"]').getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2, to: last.bottom - 4 };
+        })()`);
+        await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y });
+        await send("Input.dispatchMouseEvent", { type: "mousePressed", x: at.x, y: at.y, button: "left", buttons: 1, clickCount: 1 });
+        for (let k = 1; k <= 8; k++) {
+          await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: at.x, y: at.y + ((at.to - at.y) * k) / 8, button: "left", buttons: 1 });
+          await sleep(40);
+        }
+        check(await evaluate("document.querySelectorAll('dialog[open] .align-row.is-drop-after, dialog[open] .align-row.is-drop-before').length === 1"), "moving sections: while dragging, a line shows where it would go");
+        await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: at.x, y: at.to, button: "left", buttons: 0, clickCount: 1 });
+        check(await waitFor("[...document.querySelectorAll('dialog[open] [data-side=target]')].map(b => b.dataset.i).join(' ') === '1 2 3 0'", 20000), "moving sections: dragging the handle moves it: " + (await readOrder("target")));
+        check(await settled("0|1 1|2 2|3 3|3 4|0"), "moving sections: and pairs again: " + (await lines()));
+        check(!(await evaluate(`document.querySelector(${JSON.stringify(grip("target", 0))}).getAttribute('aria-pressed') === 'true'`)), "moving sections: the drag marks nothing");
+        // Shift+click on handles marks a run, which moves as one.
+        await evaluate(`document.querySelector(${JSON.stringify(grip("source", 0))}).click()`);
+        await evaluate(`document.querySelector(${JSON.stringify(grip("source", 1))}).dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))`);
+        check(await evaluate("[...document.querySelectorAll('dialog[open] [data-row=source] .align-grip[aria-pressed=true]')].map(g => g.dataset.grip).join(' ') === '0 1'"), "moving sections: Shift+click marks several");
+        await altKey("source", 1, "ArrowDown");
+        check(await waitFor("[...document.querySelectorAll('dialog[open] [data-side=source]')].map(b => b.dataset.i).join(' ') === '2 0 1 3 4'", 20000), "moving sections: the run moves as one: " + (await readOrder("source")));
+        await key("z", "KeyZ", 90, 2);
+        check(await waitFor("[...document.querySelectorAll('dialog[open] [data-side=source]')].map(b => b.dataset.i).join(' ') === '0 1 2 3 4'"), "moving sections: and back");
+        await click("dialog[open] button", "Cancel");
+        await sleep(150);
+        if (await evaluate("[...document.querySelectorAll('dialog[open] button')].some(b => b.textContent.trim() === 'Close')")) await click("dialog[open] button", "Close");
         await sleep(150);
       }
 

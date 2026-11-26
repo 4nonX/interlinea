@@ -31,6 +31,11 @@ type alignRequest struct {
 	// segments in an earlier answer for the same documents: they stay, and
 	// the rest is paired again around them.
 	Fixed []align.Fixed `json:"fixed,omitempty"`
+	// Order is the order the review reads each side in, by the positions
+	// of the segments in the documents; a side not given keeps its
+	// document's order. Fixed and the answer name segments by their
+	// positions in the documents either way.
+	Order align.Order `json:"order,omitempty"`
 }
 
 // alignFiles pairs the segments of a document with those of its
@@ -38,7 +43,9 @@ type alignRequest struct {
 // (POST /api/memories/{name}/units/batch). The two documents may be of
 // different formats. The answer has the segments of both documents and
 // the pairs made of them; a review joins and splits them otherwise. Sent
-// again with the pairs the review fixed, the rest is paired around them.
+// again with the pairs the review fixed, the rest is paired around them;
+// sent with an order, where the review moved sections of one side, the
+// segments are paired as read in that order.
 // Nothing is kept.
 //
 // Access: signed in.
@@ -81,7 +88,11 @@ func (s *Server) alignFiles(w http.ResponseWriter, r *http.Request, me session) 
 		invalid(w, "fixed", msg)
 		return
 	}
-	writeJSON(w, http.StatusOK, align.Documents(src, tgt, req.Fixed))
+	if msg := align.CheckOrder(req.Order, len(src), len(tgt)); msg != "" {
+		invalid(w, "order", msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, align.DocumentsInOrder(src, tgt, req.Fixed, req.Order))
 }
 
 // maxUnitBatch is how many units one request may add.

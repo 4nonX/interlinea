@@ -64,6 +64,30 @@ static QLabel *label(QWidget *root, const QString &text)
 }
 
 // What a cell says to a screen reader, which is what it shows.
+// Waits until the segments of an alignment's board keep their places: the
+// board is laid out over a few turns of the event loop, the wrapped texts
+// growing as their width is known.
+static bool settled(AlignBoard *board)
+{
+    const auto places = [board] {
+        QList<QRect> out;
+        for (int s = 0; s < 2; ++s) {
+            for (const AlignSegment *seg : board->segments[s])
+                out << (seg ? seg->geometry() : QRect());
+        }
+        return out;
+    };
+    QList<QRect> last = places();
+    int same = 0;
+    for (int tries = 0; tries < 100 && same < 3; ++tries) {
+        QTest::qWait(20);
+        const QList<QRect> now = places();
+        same = now == last ? same + 1 : 0;
+        last = now;
+    }
+    return same >= 3 && board->segments[0].value(0) && board->segments[0].at(0)->width() > 100;
+}
+
 static QString cell(QTableWidget *table, int row, int column)
 {
     return table && table->item(row, column) ? table->item(row, column)->data(Qt::AccessibleTextRole).toString() : QString();
@@ -494,7 +518,7 @@ private slots:
         // A line runs from the sentence to its translation.
         AlignBoard *board = al->board();
         QVERIFY(board);
-        QTRY_VERIFY(board->segments[0].at(0)->width() > 100);
+        QVERIFY(settled(board));
         auto *s0 = board->segments[0].at(0);
         auto *t0 = board->segments[1].at(0);
         QLineF line = board->place({0, 0});
@@ -533,7 +557,7 @@ private slots:
         QCOMPARE(al->mineLines().join(' '), QStringLiteral("1|1"));
         board = al->board();
         go = al->findChild<QPushButton *>(QStringLiteral("save"));
-        QTRY_VERIFY(board->segments[0].at(0)->width() > 100);
+        QVERIFY(settled(board));
         s0 = board->segments[0].at(0);
         t0 = board->segments[1].at(0);
         // A line drawn by hand is the translator's own, with the unit it joins.
@@ -605,6 +629,77 @@ private slots:
         QCOMPARE(cell(table, 0, 1), QStringLiteral("Il est exigible au début du bail et le bailleur le place séparément de son patrimoine."));
         page.search(here, QStringLiteral("Werktag"));
         QTRY_VERIFY_WITH_TIMEOUT(page.found(here).isEmpty() && page.findChild<QLabel *>(QStringLiteral("noUnits")), 10000);
+
+        // A translation with a section in another place: the section is
+        // moved into the document's order, from the keyboard and by dragging
+        // its handle, and the sentences are paired again in that order.
+        {
+            AlignmentDialog *mv = page.alignDialog(here);
+            QVERIFY(mv);
+            mv->setFile(AlignmentDialog::Source, fixtures + QStringLiteral("/align/Mietvertrag_de.txt"));
+            mv->setFile(AlignmentDialog::Target, fixtures + QStringLiteral("/align/Mietvertrag_fr_umgestellt.txt"));
+            QSignalSpy movedSpy(mv, &AlignmentDialog::paired);
+            mv->findChild<QPushButton *>(QStringLiteral("save"))->click();
+            QTRY_COMPARE_WITH_TIMEOUT(movedSpy.size(), 1, 20000);
+            QCOMPARE(mv->order(AlignmentDialog::Target), (QList<int>{0, 1, 2, 3}));
+            AlignBoard *mb = mv->board();
+            QCOMPARE(mb->grips[0].size(), 5);
+            QCOMPARE(mb->grips[1].size(), 4);
+            QCOMPARE(mb->grips[1].at(0)->accessibleName(), QStringLiteral("Move translation 1"));
+            QVERIFY(mv->findChild<QLabel *>(QStringLiteral("moveHelp")));
+            // The handle is on the outer side, the point where lines begin on the inner.
+            QVERIFY(settled(mb));
+            QVERIFY(mb->grips[0].at(0)->geometry().right() < mb->segments[0].at(0)->geometry().left());
+            QVERIFY(mb->grips[1].at(0)->geometry().left() > mb->segments[1].at(0)->geometry().right());
+            // The last section came first; Alt+Down three times takes it to the end.
+            for (int n = 0; n < 3; ++n) {
+                QTest::keyClick(mv->board()->grips[1].at(0), Qt::Key_Down, Qt::AltModifier);
+                QTRY_COMPARE_WITH_TIMEOUT(movedSpy.size(), n + 2, 20000);
+            }
+            QCOMPARE(mv->order(AlignmentDialog::Target), (QList<int>{1, 2, 3, 0}));
+            QCOMPARE(mv->lines().join(' '), QStringLiteral("0|1 1|2 2|3 3|3 4|0"));
+            QCOMPARE(mv->board()->grips[1].at(0)->accessibleDescription(), QStringLiteral("Place 4 of 4"));
+            QTRY_VERIFY(mv->board()->grips[1].at(0)->hasFocus() || !mv->isActiveWindow());
+            // Shown in the order read: the moved section is below the others.
+            mb = mv->board();
+            QTRY_VERIFY(mb->segments[1].at(0)->geometry().top() > mb->segments[1].at(3)->geometry().top());
+            // Undone, it is back where it was.
+            for (int n = 0; n < 3; ++n)
+                mv->undo();
+            QCOMPARE(mv->order(AlignmentDialog::Target), (QList<int>{0, 1, 2, 3}));
+            // Dragged by its handle to below the last, it moves as well.
+            mb = mv->board();
+            QVERIFY(settled(mb));
+            AlignGrip *g = mb->grips[1].at(0);
+            const QPoint start = g->rect().center();
+            const QPoint below = g->mapFromGlobal(mb->mapToGlobal(QPoint(mb->segments[1].at(3)->geometry().center().x(), mb->segments[1].at(3)->geometry().bottom() - 2)));
+            QTest::mousePress(g, Qt::LeftButton, {}, start);
+            for (int k = 1; k <= 6; ++k) {
+                QMouseEvent move(QEvent::MouseMove, QPointF(start + (below - start) * k / 6), g->mapToGlobal(QPointF(start + (below - start) * k / 6)), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+                QApplication::sendEvent(g, &move);
+            }
+            QCOMPARE(mb->dropSide, 1);
+            QTest::mouseRelease(g, Qt::LeftButton, {}, below);
+            QTRY_COMPARE_WITH_TIMEOUT(mv->order(AlignmentDialog::Target), (QList<int>{1, 2, 3, 0}), 20000);
+            QCOMPARE(mv->lines().join(' '), QStringLiteral("0|1 1|2 2|3 3|3 4|0"));
+            QVERIFY(mv->marked(AlignmentDialog::Target).isEmpty());
+            // Shift+click on handles marks a run, which moves as one.
+            mb = mv->board();
+            QTest::mouseClick(mb->grips[0].at(0), Qt::LeftButton);
+            QTest::mouseClick(mb->grips[0].at(1), Qt::LeftButton, Qt::ShiftModifier);
+            QCOMPARE(mv->marked(AlignmentDialog::Source), (QList<int>{0, 1}));
+            QVERIFY(mb->grips[0].at(0)->marked() && mb->grips[0].at(1)->marked() && !mb->grips[0].at(2)->marked());
+            const int before = int(movedSpy.size());
+            mv->nudge(AlignmentDialog::Source, 1, 1);
+            QTRY_COMPARE_WITH_TIMEOUT(movedSpy.size(), before + 1, 20000);
+            QCOMPARE(mv->order(AlignmentDialog::Source), (QList<int>{2, 0, 1, 3, 4}));
+            mv->undo();
+            QCOMPARE(mv->order(AlignmentDialog::Source), (QList<int>{0, 1, 2, 3, 4}));
+            // Closing with work asks first, and closes on leaving.
+            mv->reject();
+            mv->leave();
+            QTRY_VERIFY(!mv->isVisible());
+        }
 
         // From the page, documents are aligned into a memory chosen in the
         // dialog or made for them; what is done to the lines can be undone.

@@ -128,7 +128,11 @@ and delete its units.
 Align documents makes memory units from a document and its translation:
 the sentences are paired by their lengths, with numbers as anchors, and
 you check the pairs, draw the ones that are wrong and confirm them before
-they go into the memory.
+they go into the memory. Where the translation has its sections in another
+order than the document, drag them by the handle beside them into the
+document's order (Alt+Up and Alt+Down do the same, and Shift+click on the
+handles marks several to move together): the sentences are paired again
+in the new order, around the pairs already confirmed.
 
 ![Aligning a document with its translation](screenshots/desktop-align.png)
 

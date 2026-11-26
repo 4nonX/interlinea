@@ -139,11 +139,13 @@ func merge(_ js.Value, args []js.Value) (out any) {
 
 // alignFiles pairs the segments of a document with those of its
 // translation: align(sourceName, sourceBytes, sourceLang, targetName,
-// targetBytes, targetLang, fixed?). The names tell the formats; fixed is
-// JSON [{source: [positions], target: [positions]}], pairs that stay.
+// targetBytes, targetLang, fixed?, order?). The names tell the formats;
+// fixed is JSON [{source: [positions], target: [positions]}], pairs that
+// stay; order is JSON {source: [positions], target: [positions]}, the
+// order each side is read in.
 func alignFiles(args []js.Value) (any, error) {
-	if len(args) != 6 && len(args) != 7 {
-		return nil, fmt.Errorf("align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang, fixed)")
+	if len(args) < 6 || len(args) > 8 {
+		return nil, fmt.Errorf("align(sourceName, sourceBytes, sourceLang, targetName, targetBytes, targetLang, fixed, order)")
 	}
 	read := func(i int) ([]align.Segment, error) {
 		name := args[i].String()
@@ -169,7 +171,7 @@ func alignFiles(args []js.Value) (any, error) {
 		return nil, err
 	}
 	var fixed []align.Fixed
-	if len(args) == 7 && args[6].String() != "" {
+	if len(args) >= 7 && args[6].String() != "" {
 		if err := json.Unmarshal([]byte(args[6].String()), &fixed); err != nil {
 			return nil, err
 		}
@@ -177,7 +179,16 @@ func alignFiles(args []js.Value) (any, error) {
 			return nil, fmt.Errorf("%s", msg)
 		}
 	}
-	return jsonOut(align.Documents(src, tgt, fixed))
+	var order align.Order
+	if len(args) == 8 && args[7].String() != "" {
+		if err := json.Unmarshal([]byte(args[7].String()), &order); err != nil {
+			return nil, err
+		}
+		if msg := align.CheckOrder(order, len(src), len(tgt)); msg != "" {
+			return nil, fmt.Errorf("%s", msg)
+		}
+	}
+	return jsonOut(align.DocumentsInOrder(src, tgt, fixed, order))
 }
 
 func main() {

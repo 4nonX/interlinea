@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { LANGUAGES, lang, type LangCode } from "../data";
 import { alignDocuments, loadCore, type Alignment } from "../core";
 import { coreToRuns, plain, type CoreRun } from "../editor/model";
-import { confirm, draw, fixedOf, joined, linkKey, linksOf, needsLook, scoresOf, toggle, unchecked, unitsOf, type Link, type Unit } from "../align";
+import { asRead, confirm, documentOrder, draw, fixedOf, inDocumentOrder, joined, linkKey, linksOf, moved, needsLook, nudged, runBetween, scoresOf, toggle, unchecked, unitsOf, type Link, type Order, type Unit } from "../align";
 import { fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { Modal } from "./TermbaseDialogs";
@@ -46,10 +46,29 @@ export interface AlignChoice {
   make: (name: string, sourceLang: LangCode, targetLang: LangCode) => Promise<AlignInto>;
 }
 
-/** The lines and what they were paired from, to go back to. */
+/** The lines, what they were paired from and the order read, to go back to. */
 interface Snap {
   result: Alignment;
   links: Link[];
+  order: Order;
+}
+
+/** Segments of one side marked to be moved together, read one after the other. */
+interface Run {
+  side: Side;
+  items: number[];
+  /** Where a Shift+click or Shift+arrow extends it from. */
+  anchor: number;
+}
+
+/** A move under way: what is dragged and where it would go. */
+interface Drag {
+  side: Side;
+  items: number[];
+  y: number;
+  moving: boolean;
+  /** The segment it would go before, or null for last. */
+  before: number | null | undefined;
 }
 
 const NEW = "\u0000new";
@@ -101,6 +120,11 @@ export function AlignDocuments({
   const [problem, setProblem] = useState("");
   const [result, setResult] = useState<Alignment | null>(null);
   const [links, setLinks] = useState<Link[]>([]);
+  const [order, setOrder] = useState<Order>({ source: [], target: [] });
+  const [run, setRun] = useState<Run | null>(null);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  // Said to screen readers when segments move.
+  const [moveNote, setMoveNote] = useState("");
   const [picked, setPicked] = useState<Pick | null>(null);
   const [overwrite, setOverwrite] = useState(false);
   const [places, setPlaces] = useState<Places | null>(null);
@@ -108,16 +132,23 @@ export function AlignDocuments({
   const scroller = useRef<HTMLDivElement>(null);
   // Where a line is being pulled from.
   const pulling = useRef<Pick | null>(null);
+  // Whether the pointer was just dragging a segment, so its click is not a choice.
+  const dragged = useRef(false);
   const scores = useMemo(() => (result ? scoresOf(result) : new Map<string, number>()), [result]);
 
   const measure = useCallback(() => {
     const b = board.current;
     if (!b) return;
     const top = b.getBoundingClientRect().top;
-    const mid = (side: Side) => [...b.querySelectorAll<HTMLElement>(`[data-side=${side}]`)].map((el) => {
-      const r = el.getBoundingClientRect();
-      return r.top - top + r.height / 2;
-    });
+    // By the segments' positions in the documents, whatever order they are read in.
+    const mid = (side: Side) => {
+      const out: number[] = [];
+      for (const el of b.querySelectorAll<HTMLElement>(`[data-side=${side}]`)) {
+        const r = el.getBoundingClientRect();
+        out[Number(el.dataset.i)] = r.top - top + r.height / 2;
+      }
+      return out;
+    };
     const edge = (side: Side) => b.querySelector<HTMLElement>(`.align-column[data-column=${side}]`)?.getBoundingClientRect();
     const left = b.getBoundingClientRect().left;
     setPlaces({ source: mid("source"), target: mid("target"), x1: (edge("source")?.right ?? 0) - left, x2: (edge("target")?.left ?? 0) - left, height: b.scrollHeight });
@@ -128,9 +159,9 @@ export function AlignDocuments({
     const ro = new ResizeObserver(measure);
     ro.observe(board.current);
     return () => ro.disconnect();
-  }, [result, measure]);
+  }, [result, order, measure]);
 
-  async function pair(fixed: Unit[] = []) {
+  async function pair(fixed: Unit[] = [], ord?: Order) {
     if (!source || !target) return;
     setBusy(true);
     setProblem("");
@@ -141,13 +172,16 @@ export function AlignDocuments({
         { name: source.name, bytes: new Uint8Array(await source.arrayBuffer()), lang: sourceLang },
         { name: target.name, bytes: new Uint8Array(await target.arrayBuffer()), lang: targetLang },
         fixed,
+        ord && !inDocumentOrder(ord) ? ord : undefined,
       );
       // Paired again, the lines before can be gone back to; paired anew, there is nothing before.
-      setPast(fixed.length && result ? [...past, { result, links }] : []);
+      setPast(result && (fixed.length || ord) ? [...past, { result, links, order }] : []);
       setFuture([]);
       setResult(a);
       setLinks(linksOf(a));
+      setOrder(ord ?? documentOrder(a));
       setPicked(null);
+      setRun(null);
     } catch (err) {
       setProblem(text(err));
     } finally {
@@ -158,18 +192,38 @@ export function AlignDocuments({
   // A change of the lines, which can be undone.
   const change = (next: Link[]) => {
     if (!result) return;
-    setPast([...past, { result, links }]);
+    setPast([...past, { result, links, order }]);
     setFuture([]);
     setLinks(next);
+  };
+  // Segments moved: they are read in the new order, and what was paired
+  // for the translator is paired again in it around what is checked.
+  const move = (side: Side, next: number[], items: number[]) => {
+    if (!result || busy) return;
+    const cur = order[side];
+    if (next.every((x, k) => x === cur[k])) return;
+    const ord = { ...order, [side]: next };
+    const n = fmtNum((items[0] ?? 0) + 1);
+    const at = fmtNum(next.indexOf(items[0] ?? -1) + 1);
+    setMoveNote(
+      items.length > 1
+        ? tl("{count} segments moved to place {at}.", { count: fmtNum(items.length), at })
+        : side === "source"
+          ? tl("Sentence {n} moved to place {at}.", { n, at })
+          : tl("Translation {n} moved to place {at}.", { n, at }),
+    );
+    void pair(fixedOf(links), ord);
   };
   const step = (from: Snap[], setFrom: (s: Snap[]) => void, to: Snap[], setTo: (s: Snap[]) => void) => {
     const snap = from[from.length - 1];
     if (!snap || !result) return;
     setFrom(from.slice(0, -1));
-    setTo([...to, { result, links }]);
+    setTo([...to, { result, links, order }]);
     setResult(snap.result);
     setLinks(snap.links);
+    setOrder(snap.order);
     setPicked(null);
+    setRun(null);
   };
   const undo = () => step(past, setPast, future, setFuture);
   const redo = () => step(future, setFuture, past, setPast);
@@ -302,34 +356,137 @@ export function AlignDocuments({
     if (y !== undefined) s.scrollTop = Math.max(0, y - s.clientHeight / 2);
   }
 
+  // A handle chosen marks its segment to be moved; with Shift, the run up to it.
+  function mark(side: Side, i: number, extend: boolean) {
+    if (extend && run && run.side === side) setRun({ side, items: runBetween(order[side], run.anchor, i), anchor: run.anchor });
+    else if (run && run.side === side && run.items.length === 1 && run.items[0] === i) setRun(null);
+    else setRun({ side, items: [i], anchor: i });
+  }
+  const movingFrom = (side: Side, i: number) => (run && run.side === side && run.items.includes(i) ? asRead(run.items, order[side]) : [i]);
+
+  // Where a dragged run would go: before the first segment whose middle is below the pointer.
+  function dropPlace(side: Side, items: number[], clientY: number): number | null {
+    const b = board.current;
+    if (!b) return null;
+    for (const i of order[side]) {
+      if (items.includes(i)) continue;
+      const el = b.querySelector<HTMLElement>(`[data-side=${side}][data-i="${i}"]`);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (clientY < r.top + r.height / 2) return i;
+    }
+    return null;
+  }
+
   const column = (side: Side) => {
     const segments = side === "source" ? result.source : result.target;
     const what = side === "source" ? tl("Sentence") : tl("Translation");
+    const read = order[side].length === segments.length ? order[side] : segments.map((_, i) => i);
+    const dropping = drag && drag.moving && drag.side === side && drag.before !== undefined ? drag.before : undefined;
     return (
       <div className="align-column" data-column={side} lang={side === "source" ? sourceLang : targetLang}>
-        {segments.map((runs, i) => {
+        {read.map((i, k) => {
+          const runs = segments[i] ?? [];
           const on = picked?.side === side && picked.i === i;
           const lone = !paired[side].has(i);
+          const marked = run?.side === side && run.items.includes(i);
+          const carried = drag?.moving && drag.side === side && drag.items.includes(i);
+          const row = `align-row${marked ? " is-marked" : ""}${carried ? " is-carried" : ""}${dropping === i ? " is-drop-before" : ""}${dropping === null && k === read.length - 1 ? " is-drop-after" : ""}${i !== k ? " is-moved" : ""}`;
           return (
-            <button
-              key={i}
-              type="button"
-              className={`align-seg${on ? " is-picked" : ""}${lone ? " is-alone" : ""}`}
-              data-side={side}
-              data-i={i}
-              aria-pressed={on}
-              aria-label={`${what} ${i + 1}${lone ? tl(", no pair") : ""}: ${plain(coreToRuns(runs))}`}
-              onClick={() => choose({ side, i })}
-              onPointerDown={() => {
-                pulling.current = { side, i };
-              }}
-            >
-              <span className="align-n" aria-hidden="true">
-                {i + 1}
-              </span>
-              <span>{plain(coreToRuns(runs))}</span>
-              <span className="align-port" aria-hidden="true" />
-            </button>
+            <div key={i} className={row} data-row={side}>
+              <button
+                type="button"
+                className="align-grip"
+                aria-label={side === "source" ? tl("Move sentence {n}", { n: fmtNum(i + 1) }) : tl("Move translation {n}", { n: fmtNum(i + 1) })}
+                aria-pressed={marked}
+                aria-describedby="align-move-help"
+                title={tl("Drag to move. Shift+click marks several. Alt+Up and Alt+Down move.")}
+                onClick={(e) => {
+                  // The click that ends a drag marks nothing.
+                  if (dragged.current) {
+                    dragged.current = false;
+                    return;
+                  }
+                  mark(side, i, e.shiftKey);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                  const by = e.key === "ArrowUp" ? -1 : 1;
+                  if (e.altKey) {
+                    e.preventDefault();
+                    const items = movingFrom(side, i);
+                    move(side, nudged(order[side], items, by), items);
+                  } else if (e.shiftKey) {
+                    e.preventDefault();
+                    const next = read[k + by];
+                    if (next === undefined) return;
+                    const anchor = run && run.side === side ? run.anchor : i;
+                    setRun({ side, items: runBetween(order[side], anchor, next), anchor });
+                    board.current?.querySelector<HTMLElement>(`[data-row=${side}] [data-grip="${next}"]`)?.focus();
+                  }
+                }}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.stopPropagation();
+                  try {
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                  } catch {
+                    // A pointer the page did not see begin cannot be captured; the drag still works over the handle.
+                  }
+                  setDrag({ side, items: movingFrom(side, i), y: e.clientY, moving: false, before: undefined });
+                }}
+                onPointerMove={(e) => {
+                  if (!drag) return;
+                  const moving = drag.moving || Math.abs(e.clientY - drag.y) > 4;
+                  if (!moving) return;
+                  // Near the edge of the view, the view scrolls along.
+                  const sc = scroller.current;
+                  if (sc) {
+                    const r = sc.getBoundingClientRect();
+                    if (e.clientY < r.top + 36) sc.scrollTop -= 14;
+                    else if (e.clientY > r.bottom - 36) sc.scrollTop += 14;
+                  }
+                  setDrag({ ...drag, moving, before: dropPlace(side, drag.items, e.clientY) });
+                }}
+                onPointerUp={(e) => {
+                  const d = drag;
+                  setDrag(null);
+                  if (!d || !d.moving) return;
+                  e.preventDefault();
+                  dragged.current = true;
+                  if (d.before !== undefined) move(side, moved(order[side], d.items, d.before), d.items);
+                }}
+                onPointerCancel={() => setDrag(null)}
+                data-grip={i}
+              >
+                <svg viewBox="0 0 8 14" aria-hidden="true">
+                  <circle cx="2" cy="2" r="1.2" />
+                  <circle cx="6" cy="2" r="1.2" />
+                  <circle cx="2" cy="7" r="1.2" />
+                  <circle cx="6" cy="7" r="1.2" />
+                  <circle cx="2" cy="12" r="1.2" />
+                  <circle cx="6" cy="12" r="1.2" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className={`align-seg${on ? " is-picked" : ""}${lone ? " is-alone" : ""}`}
+                data-side={side}
+                data-i={i}
+                aria-pressed={on}
+                aria-label={`${what} ${i + 1}${lone ? tl(", no pair") : ""}: ${plain(coreToRuns(runs))}`}
+                onClick={() => choose({ side, i })}
+                onPointerDown={() => {
+                  pulling.current = { side, i };
+                }}
+              >
+                <span className="align-n" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span>{plain(coreToRuns(runs))}</span>
+                <span className="align-port" aria-hidden="true" />
+              </button>
+            </div>
           );
         })}
       </div>
@@ -348,6 +505,7 @@ export function AlignDocuments({
       setResult(null);
       setPast([]);
       setFuture([]);
+      setRun(null);
     }
   };
 
@@ -358,6 +516,12 @@ export function AlignDocuments({
           {tlx("{length} from {length2} and {length3}. {x}{x2}{x3}{x4}", { length: plural(units.length, "unit", "units"), length2: fmtNum(result.source.length), length3: plural(result.target.length, "segment", "segments"), x: fixed.length > 0 && (fixed.length === 1 ? tl("1 unit is checked. ") : tl("{n} units are checked. ", { n: fmtNum(fixed.length) })), x2: alone > 0 && (alone === 1 ? tl("1 segment has no pair and is left out. ") : tl("{n} segments have no pair and are left out. ", { n: fmtNum(alone) })), x3: look.length > 0 && (look.length === 1 ? tl("1 pair needs a look: the lengths or numbers do not fit.") : tl("{n} pairs need a look: the lengths or numbers do not fit.", { n: fmtNum(look.length) })), x4: alone === 0 && look.length === 0 && tl("All of them fit.") })}</p>
         <p className="help">
           {tl("A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means nothing is joined there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same takes a line away, as does choosing the line. Sentences joined by lines become one unit. A dotted line was paired for you; one you draw or confirm is solid, and stays when the rest is paired again around it.")}
+        </p>
+        <p className="help" id="align-move-help">
+          {tl("Where the translation has its sections in another order than the document, drag them by the handle beside them into the document's order, or move them with Alt+Up and Alt+Down. Shift+click on handles marks several to move together. What was paired for you is paired again in the new order.")}
+        </p>
+        <p className="sr-only" role="status" aria-live="polite">
+          {moveNote}
         </p>
         <div className="align-head">
           <LangChip code={sourceLang} />
@@ -383,7 +547,7 @@ export function AlignDocuments({
             <button type="button" className="btn btn-quiet btn-small" disabled={links.every((l) => l.mine)} onClick={() => change(links.map((l) => ({ ...l, mine: true })))}>
               {tl("Confirm all")}
             </button>
-            <button type="button" className="btn btn-quiet btn-small" disabled={busy || fixed.length === 0 || (fixed.length === units.length && alone === 0)} onClick={() => void pair(fixed)}>
+            <button type="button" className="btn btn-quiet btn-small" disabled={busy || fixed.length === 0 || (fixed.length === units.length && alone === 0)} onClick={() => void pair(fixed, order)}>
               {busy ? tl("Pairing…") : tl("Pair the rest again")}
             </button>
             <button type="button" className="btn btn-quiet btn-small" disabled={alone === 0 && look.length === 0} onClick={next}>
@@ -468,7 +632,7 @@ export function AlignDocuments({
             onClick={() => {
               setBusy(true);
               setProblem("");
-              const send = units.map((u) => ({ source: joined(result.source, u.source), target: joined(result.target, u.target) }));
+              const send = units.map((u) => ({ source: joined(result.source, asRead(u.source, order.source)), target: joined(result.target, asRead(u.target, order.target)) }));
               (async () => {
                 const to = existing ?? made.current ?? (made.current = await choice!.make(name, sourceLang, targetLang));
                 await to.add(send, overwrite);

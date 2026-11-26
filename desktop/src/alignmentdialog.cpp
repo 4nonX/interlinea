@@ -202,6 +202,142 @@ void AlignSegment::leaveEvent(QEvent *e)
         parentWidget()->update();
 }
 
+AlignGrip::AlignGrip(int side, int index, QWidget *parent)
+    : QWidget(parent)
+    , m_side(side)
+    , m_index(index)
+{
+    setObjectName(QStringLiteral("grip:%1:%2").arg(side == 0 ? QStringLiteral("source") : QStringLiteral("target")).arg(index));
+    setFocusPolicy(Qt::StrongFocus);
+    setCursor(Qt::OpenHandCursor);
+    setFixedWidth(20);
+    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    setAccessibleName(side == 0 ? tr("Move sentence %1").arg(index + 1) : tr("Move translation %1").arg(index + 1));
+    setToolTip(tr("Drag to move. Shift+click marks several. Alt+Up and Alt+Down move."));
+    setMarked(false);
+}
+
+void AlignGrip::setMarked(bool on)
+{
+    setProperty("marked", on);
+    QStringList says;
+    if (on)
+        says << tr("Marked to move");
+    if (!m_place.isEmpty())
+        says << m_place;
+    setAccessibleDescription(says.join(QStringLiteral(". ")));
+    update();
+}
+
+void AlignGrip::setPlace(const QString &place)
+{
+    m_place = place;
+    setMarked(marked());
+}
+
+void AlignGrip::paintEvent(QPaintEvent *)
+{
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+    const bool lit = marked() || hasFocus() || underMouse();
+    if (lit) {
+        p.setPen(Qt::NoPen);
+        p.setBrush(marked() ? Theme::color("accentWeak") : Theme::color("surface"));
+        p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+    }
+    if (hasFocus()) {
+        p.setPen(QPen(Theme::color("accent"), 2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 4, 4);
+    }
+    // Six dots, two by three, in the middle.
+    p.setPen(Qt::NoPen);
+    p.setBrush(marked() ? Theme::color("accentText") : lit ? Theme::color("text") : Theme::color("text3"));
+    const QPointF c = QRectF(rect()).center();
+    for (int row = -1; row <= 1; ++row) {
+        for (int col : {-1, 1})
+            p.drawEllipse(QPointF(c.x() + col * 2.5, c.y() + row * 5), 1.3, 1.3);
+    }
+}
+
+void AlignGrip::mousePressEvent(QMouseEvent *e)
+{
+    if (e->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(e);
+        return;
+    }
+    e->accept();
+    setFocus(Qt::MouseFocusReason);
+    m_pressed = true;
+    m_dragging = false;
+    m_pressAt = e->position().toPoint();
+}
+
+void AlignGrip::mouseMoveEvent(QMouseEvent *e)
+{
+    if (!m_pressed) {
+        QWidget::mouseMoveEvent(e);
+        return;
+    }
+    e->accept();
+    if (!m_dragging && qAbs(e->position().toPoint().y() - m_pressAt.y()) <= 4)
+        return;
+    if (!m_dragging)
+        setCursor(Qt::ClosedHandCursor);
+    m_dragging = true;
+    emit dragged(e->globalPosition().toPoint());
+}
+
+void AlignGrip::mouseReleaseEvent(QMouseEvent *e)
+{
+    if (e->button() != Qt::LeftButton || !m_pressed) {
+        QWidget::mouseReleaseEvent(e);
+        return;
+    }
+    e->accept();
+    const bool dragging = m_dragging;
+    m_pressed = false;
+    m_dragging = false;
+    setCursor(Qt::OpenHandCursor);
+    if (dragging)
+        emit dropped(e->globalPosition().toPoint());
+    else if (rect().contains(e->position().toPoint()))
+        emit clicked(e->modifiers().testFlag(Qt::ShiftModifier));
+}
+
+void AlignGrip::keyPressEvent(QKeyEvent *e)
+{
+    const int by = e->key() == Qt::Key_Up ? -1 : e->key() == Qt::Key_Down ? 1 : 0;
+    if (by && e->modifiers().testFlag(Qt::AltModifier)) {
+        e->accept();
+        emit nudged(by);
+        return;
+    }
+    if (by && e->modifiers().testFlag(Qt::ShiftModifier)) {
+        e->accept();
+        emit extended(by);
+        return;
+    }
+    if (e->key() == Qt::Key_Space || e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
+        e->accept();
+        emit clicked(e->modifiers().testFlag(Qt::ShiftModifier));
+        return;
+    }
+    QWidget::keyPressEvent(e);
+}
+
+void AlignGrip::enterEvent(QEnterEvent *e)
+{
+    QWidget::enterEvent(e);
+    update();
+}
+
+void AlignGrip::leaveEvent(QEvent *e)
+{
+    QWidget::leaveEvent(e);
+    update();
+}
+
 AlignBoard::AlignBoard(QWidget *parent)
     : QWidget(parent)
 {
@@ -311,6 +447,21 @@ void AlignBoard::paintEvent(QPaintEvent *e)
             p.setBrush(seg->alone() && !lit ? Theme::color("surface") : ink);
             p.drawEllipse(c, PortRadius - 1, PortRadius - 1);
         }
+    }
+    // Where a dragged run would go: a line across its side.
+    if (dropSide >= 0) {
+        int left = width(), right = 0;
+        for (const AlignSegment *seg : segments[dropSide]) {
+            left = qMin(left, seg->geometry().left());
+            right = qMax(right, seg->geometry().right());
+        }
+        for (const AlignGrip *g : grips[dropSide]) {
+            left = qMin(left, g->geometry().left());
+            right = qMax(right, g->geometry().right());
+        }
+        p.setPen(Qt::NoPen);
+        p.setBrush(Theme::color("accent"));
+        p.drawRoundedRect(QRectF(left, dropY - 1.5, right - left + 1, 3), 1.5, 1.5);
     }
 }
 
@@ -621,7 +772,7 @@ void AlignmentDialog::pair()
     request({});
 }
 
-void AlignmentDialog::pairAgain()
+QJsonArray AlignmentDialog::fixedArray() const
 {
     QJsonArray fixed;
     for (const Unit &u : fixedUnits()) {
@@ -632,12 +783,162 @@ void AlignmentDialog::pairAgain()
             b.append(i);
         fixed.append(QJsonObject{{QStringLiteral("source"), a}, {QStringLiteral("target"), b}});
     }
-    if (m_hasResult && !fixed.isEmpty())
-        request(fixed);
+    return fixed;
 }
 
-// Sends both files to be paired, around the pairs that are fixed.
-void AlignmentDialog::request(const QJsonArray &fixed)
+void AlignmentDialog::pairAgain()
+{
+    const QJsonArray fixed = fixedArray();
+    if (m_hasResult && !fixed.isEmpty())
+        request(fixed, m_order[Source], m_order[Target]);
+}
+
+namespace {
+
+QList<int> movedIn(const QList<int> &order, const QList<int> &run, int before)
+{
+    if (before >= 0 && run.contains(before))
+        return order;
+    QList<int> rest, inRun;
+    for (int i : order)
+        (run.contains(i) ? inRun : rest) << i;
+    const int at = before < 0 ? int(rest.size()) : int(rest.indexOf(before));
+    if (at < 0)
+        return order;
+    QList<int> out = rest.mid(0, at);
+    out << inRun << rest.mid(at);
+    return out;
+}
+
+bool inDocumentOrder(const QList<int> &order)
+{
+    for (int k = 0; k < order.size(); ++k) {
+        if (order.at(k) != k)
+            return false;
+    }
+    return true;
+}
+
+QJsonArray intArray(const QList<int> &a)
+{
+    QJsonArray out;
+    for (int i : a)
+        out.append(i);
+    return out;
+}
+
+} // namespace
+
+QList<int> AlignmentDialog::asRead(Side side, QList<int> which) const
+{
+    const QList<int> &order = m_order[side];
+    std::sort(which.begin(), which.end(), [&order](int a, int b) { return order.indexOf(a) < order.indexOf(b); });
+    return which;
+}
+
+QList<int> AlignmentDialog::movingFrom(Side side, int index) const
+{
+    return m_runSide == side && m_run.contains(index) ? asRead(side, m_run) : QList<int>{index};
+}
+
+void AlignmentDialog::move(Side side, const QList<int> &items, int before)
+{
+    if (!m_hasResult || m_busy || items.isEmpty())
+        return;
+    const QList<int> next = movedIn(m_order[side], items, before);
+    if (next == m_order[side])
+        return;
+    m_focusSide = side;
+    m_focus = items.first();
+    request(fixedArray(), side == Source ? next : m_order[Source], side == Target ? next : m_order[Target]);
+}
+
+void AlignmentDialog::nudge(Side side, int index, int by)
+{
+    if (!m_hasResult || index < 0 || index >= m_order[side].size())
+        return;
+    const QList<int> items = movingFrom(side, index);
+    const QList<int> &order = m_order[side];
+    const int first = int(order.indexOf(items.first()));
+    const int last = int(order.indexOf(items.last()));
+    if (by < 0 && first > 0)
+        move(side, items, order.at(first - 1));
+    else if (by > 0 && last < order.size() - 1)
+        move(side, items, last + 2 < order.size() ? order.at(last + 2) : -1);
+}
+
+void AlignmentDialog::mark(Side side, int index, bool extend)
+{
+    if (!m_hasResult || index < 0 || index >= m_order[side].size())
+        return;
+    if (extend && m_runSide == side) {
+        const QList<int> &order = m_order[side];
+        const int a = int(order.indexOf(m_runAnchor));
+        const int b = int(order.indexOf(index));
+        m_run = order.mid(qMin(a, b), qAbs(a - b) + 1);
+    } else if (m_runSide == side && m_run == QList<int>{index}) {
+        m_runSide = -1;
+        m_run.clear();
+        m_runAnchor = -1;
+    } else {
+        m_runSide = side;
+        m_run = {index};
+        m_runAnchor = index;
+    }
+    refresh();
+}
+
+// Where a dragged run would go: before the first segment, not in it, whose
+// middle is below the pointer.
+void AlignmentDialog::dragTo(Side side, const QPoint &globalPos)
+{
+    if (!m_board || !m_scroll)
+        return;
+    // Near the edge of the view, the view scrolls along.
+    const QPoint inView = m_scroll->viewport()->mapFromGlobal(globalPos);
+    QScrollBar *bar = m_scroll->verticalScrollBar();
+    if (inView.y() < 36)
+        bar->setValue(bar->value() - 14);
+    else if (inView.y() > m_scroll->viewport()->height() - 36)
+        bar->setValue(bar->value() + 14);
+    const int y = m_board->mapFromGlobal(globalPos).y();
+    m_dropBefore = -1;
+    int lastBottom = 0;
+    for (int i : m_order[side]) {
+        if (m_dragItems.contains(i))
+            continue;
+        const QRect r = m_board->segments[side].at(i)->geometry();
+        if (y < r.center().y()) {
+            m_dropBefore = i;
+            m_board->dropY = r.top() - S2 / 2;
+            break;
+        }
+        lastBottom = r.bottom() + 1;
+    }
+    if (m_dropBefore == -1)
+        m_board->dropY = lastBottom + S2 / 2;
+    m_board->dropSide = side;
+    m_board->update();
+}
+
+void AlignmentDialog::dropAt(Side side, const QPoint &globalPos)
+{
+    dragTo(side, globalPos);
+    const QList<int> items = m_dragItems;
+    const int before = m_dropBefore;
+    m_dragSide = -1;
+    m_dragItems.clear();
+    m_dropBefore = -2;
+    if (m_board) {
+        m_board->dropSide = -1;
+        m_board->update();
+    }
+    move(side, items, before);
+}
+
+// Sends both files to be paired, around the pairs that are fixed, with
+// each side read in the order given (none: the documents' own).
+void AlignmentDialog::request(const QJsonArray &fixed, const QList<int> &sourceOrder, const QList<int> &targetOrder)
 {
     if (m_busy || m_paths[Source].isEmpty() || m_paths[Target].isEmpty() || !destinationProblem().isEmpty())
         return;
@@ -656,6 +957,10 @@ void AlignmentDialog::request(const QJsonArray &fixed)
     }
     if (!fixed.isEmpty())
         body.insert(QStringLiteral("fixed"), fixed);
+    if (!inDocumentOrder(sourceOrder) || !inDocumentOrder(targetOrder))
+        body.insert(QStringLiteral("order"), QJsonObject{{QStringLiteral("source"), intArray(sourceOrder)}, {QStringLiteral("target"), intArray(targetOrder)}});
+    m_pendingOrder[Source] = sourceOrder;
+    m_pendingOrder[Target] = targetOrder;
     m_busy = true;
     setError(QString());
     if (m_hasResult)
@@ -686,6 +991,19 @@ void AlignmentDialog::request(const QJsonArray &fixed)
         }
         self->m_segments[Source] = o.value(QLatin1String("source")).toArray();
         self->m_segments[Target] = o.value(QLatin1String("target")).toArray();
+        // Read in the order asked for, or the documents' own.
+        for (int s = 0; s < 2; ++s) {
+            QList<int> &order = self->m_order[s];
+            order = self->m_pendingOrder[s];
+            if (order.size() != self->m_segments[s].size()) {
+                order.clear();
+                for (int i = 0; i < self->m_segments[s].size(); ++i)
+                    order << i;
+            }
+        }
+        self->m_runSide = -1;
+        self->m_run.clear();
+        self->m_runAnchor = -1;
         self->m_links.clear();
         self->m_mine.clear();
         self->m_scores.clear();
@@ -755,25 +1073,35 @@ QStringList AlignmentDialog::lines() const
 // Keeps the lines as they are, to go back to after the change that follows.
 void AlignmentDialog::remember()
 {
-    m_past.append({m_links, m_mine, m_scores});
+    m_past.append(snap());
     m_future.clear();
 }
 
 void AlignmentDialog::restore(const Snap &snap)
 {
+    const bool reordered = snap.sourceOrder != m_order[Source] || snap.targetOrder != m_order[Target];
     m_links = snap.links;
     m_mine = snap.mine;
     m_scores = snap.scores;
+    m_order[Source] = snap.sourceOrder;
+    m_order[Target] = snap.targetOrder;
     m_picked = -1;
     m_pickedSide = -1;
-    refresh();
+    m_runSide = -1;
+    m_run.clear();
+    m_runAnchor = -1;
+    // The segments are shown in another order: the board is laid out anew.
+    if (reordered)
+        render();
+    else
+        refresh();
 }
 
 void AlignmentDialog::undo()
 {
     if (!m_hasResult || m_busy || m_past.isEmpty())
         return;
-    m_future.append({m_links, m_mine, m_scores});
+    m_future.append(snap());
     restore(m_past.takeLast());
 }
 
@@ -781,7 +1109,7 @@ void AlignmentDialog::redo()
 {
     if (!m_hasResult || m_busy || m_future.isEmpty())
         return;
-    m_past.append({m_links, m_mine, m_scores});
+    m_past.append(snap());
     restore(m_future.takeLast());
 }
 
@@ -1075,7 +1403,7 @@ void AlignmentDialog::sendUnits()
 {
     QJsonArray body;
     for (const Unit &u : units())
-        body.append(QJsonObject{{QStringLiteral("source"), joined(Source, u.source)}, {QStringLiteral("target"), joined(Target, u.target)}});
+        body.append(QJsonObject{{QStringLiteral("source"), joined(Source, asRead(Source, u.source))}, {QStringLiteral("target"), joined(Target, asRead(Target, u.target))}});
     QUrlQuery query;
     if (m_overwrite)
         query.addQueryItem(QStringLiteral("policy"), QStringLiteral("overwrite"));
@@ -1104,6 +1432,8 @@ void AlignmentDialog::refresh()
     for (int s = 0; s < 2; ++s) {
         for (int i = 0; i < m_board->segments[s].size(); ++i)
             m_board->segments[s].at(i)->setState(m_pickedSide == s && m_picked == i, alone(Side(s), i));
+        for (int i = 0; i < m_board->grips[s].size(); ++i)
+            m_board->grips[s].at(i)->setMarked(m_runSide == s && m_run.contains(i));
     }
     const QList<Unit> us = units();
     m_board->lines = m_links;
@@ -1244,6 +1574,13 @@ void AlignmentDialog::render()
                            "help", this);
     help->setWordWrap(true);
     body()->addWidget(help);
+    auto *moveHelp = Web::text(tr("Where the translation has its sections in another order than the document, drag them by the handle beside them into the "
+                                  "document's order, or move them with Alt+Up and Alt+Down. Shift+click on handles marks several to move together. What was paired "
+                                  "for you is paired again in the new order."),
+                               "help", this);
+    moveHelp->setObjectName(QStringLiteral("moveHelp"));
+    moveHelp->setWordWrap(true);
+    body()->addWidget(moveHelp);
 
     auto *head = new QWidget(this);
     auto *hl = new QHBoxLayout(head);
@@ -1294,11 +1631,65 @@ void AlignmentDialog::render()
         auto *col = new QVBoxLayout;
         col->setContentsMargins(0, 0, 0, 0);
         col->setSpacing(S2);
-        for (int i = 0; i < m_segments[s].size(); ++i) {
+        const int n = int(m_segments[s].size());
+        m_board->segments[s] = QList<AlignSegment *>(n, nullptr);
+        m_board->grips[s] = QList<AlignGrip *>(n, nullptr);
+        QList<int> order = m_order[s];
+        if (order.size() != n) {
+            order.clear();
+            for (int i = 0; i < n; ++i)
+                order << i;
+            m_order[s] = order;
+        }
+        for (int k = 0; k < n; ++k) {
+            const int i = order.at(k);
             auto *seg = new AlignSegment(s, i, text(Side(s), i), m_board);
-            m_board->segments[s] << seg;
-            col->addWidget(seg);
+            auto *grip = new AlignGrip(s, i, m_board);
+            m_board->segments[s][i] = seg;
+            m_board->grips[s][i] = grip;
+            // The handle on the outer side, the point where lines begin on the inner.
+            auto *row = new QHBoxLayout;
+            row->setContentsMargins(0, 0, 0, 0);
+            row->setSpacing(4);
+            if (s == Source) {
+                row->addWidget(grip);
+                row->addWidget(seg, 1);
+            } else {
+                row->addWidget(seg, 1);
+                row->addWidget(grip);
+            }
+            col->addLayout(row);
+            // A segment read in another place than its document has it: its handle says where.
+            if (i != k)
+                grip->setPlace(tr("Place %1 of %2").arg(k + 1).arg(n));
             const Side side = Side(s);
+            connect(grip, &AlignGrip::clicked, this, [this, side, i](bool extend) { mark(side, i, extend); });
+            connect(grip, &AlignGrip::nudged, this, [this, side, i](int by) { nudge(side, i, by); });
+            connect(grip, &AlignGrip::extended, this, [this, side, k](int by) {
+                const int to = k + by;
+                if (to < 0 || to >= m_order[side].size())
+                    return;
+                const int next = m_order[side].at(to);
+                if (m_runSide != side)
+                    mark(side, m_order[side].at(k), false);
+                mark(side, next, true);
+                if (m_board && m_board->grips[side].value(next))
+                    m_board->grips[side].at(next)->setFocus(Qt::OtherFocusReason);
+            });
+            connect(grip, &AlignGrip::dragged, this, [this, side, i](const QPoint &global) {
+                if (m_dragSide != side) {
+                    m_dragSide = side;
+                    m_dragItems = movingFrom(side, i);
+                }
+                dragTo(side, global);
+            });
+            connect(grip, &AlignGrip::dropped, this, [this, side, i](const QPoint &global) {
+                if (m_dragSide != side) {
+                    m_dragSide = side;
+                    m_dragItems = movingFrom(side, i);
+                }
+                dropAt(side, global);
+            });
             connect(seg, &AlignSegment::chosen, this, [this, side, i] { choose(side, i); });
             connect(seg, &AlignSegment::pulledTo, this, [this, side, i](const QPoint &global) {
                 if (!m_board)
@@ -1328,6 +1719,18 @@ void AlignmentDialog::render()
     body()->addWidget(both);
     refresh();
     fitHeight();
+    // After a move, the keyboard is back on the handle that was moved.
+    if (m_focusSide >= 0) {
+        if (AlignGrip *g = m_board->grips[m_focusSide].value(m_focus)) {
+            QPointer<AlignGrip> grip(g);
+            QTimer::singleShot(0, this, [grip] {
+                if (grip)
+                    grip->setFocus(Qt::OtherFocusReason);
+            });
+        }
+        m_focusSide = -1;
+        m_focus = -1;
+    }
 }
 
 // The dialog keeps its width and is as high as what it holds.

@@ -12,6 +12,7 @@
 package align
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -438,7 +439,48 @@ type Result struct {
 // Documents aligns two documents, around the pairs that are fixed if there
 // are any, and keeps their segments with the pairs.
 func Documents(source, target []Segment, fixed []Fixed) Result {
-	r := Result{Source: make([]content.Content, len(source)), Target: make([]content.Content, len(target)), Pairs: Realign(source, target, fixed)}
+	return DocumentsInOrder(source, target, fixed, Order{})
+}
+
+// Order is the order a review reads the segments of each side in, by their
+// positions in the documents. Where a translation has its sections in
+// another order than the document, moving them into the document's order
+// lets them be paired. A side left empty keeps the order of its document.
+type Order struct {
+	Source []int `json:"source,omitempty"`
+	Target []int `json:"target,omitempty"`
+}
+
+// CheckOrder says what is wrong with an order for documents of ns and nt
+// segments, or nothing. Each side it gives names every segment once.
+func CheckOrder(o Order, ns, nt int) string {
+	check := func(order []int, n int, what string) string {
+		if len(order) == 0 {
+			return ""
+		}
+		if len(order) != n {
+			return fmt.Sprintf("The order of the %s names %d segments; it has %d.", what, len(order), n)
+		}
+		seen := make([]bool, n)
+		for _, i := range order {
+			if i < 0 || i >= n || seen[i] {
+				return fmt.Sprintf("The order of the %s names a segment that is not there, or twice.", what)
+			}
+			seen[i] = true
+		}
+		return ""
+	}
+	if msg := check(o.Source, ns, "document"); msg != "" {
+		return msg
+	}
+	return check(o.Target, nt, "translation")
+}
+
+// DocumentsInOrder aligns two documents as Documents does, reading the
+// segments of each side in the order given. The pairs name the segments by
+// their positions in the documents, and join them in the order read.
+func DocumentsInOrder(source, target []Segment, fixed []Fixed, order Order) Result {
+	r := Result{Source: make([]content.Content, len(source)), Target: make([]content.Content, len(target)), Pairs: realignInOrder(source, target, fixed, order)}
 	for i, s := range source {
 		r.Source[i] = s.Content
 	}
@@ -568,6 +610,66 @@ func Realign(source, target []Segment, fixed []Fixed) []Pair {
 		out = append(out, Pair{})
 		copy(out[at+1:], out[at:])
 		out[at] = fixedPair(f)
+	}
+	return out
+}
+
+// realignInOrder pairs the segments read in the given order: the sides
+// are put in that order, paired, and the positions in the pairs put back.
+func realignInOrder(source, target []Segment, fixed []Fixed, order Order) []Pair {
+	so, to := order.Source, order.Target
+	if len(so) == 0 && len(to) == 0 {
+		return Realign(source, target, fixed)
+	}
+	if len(so) == 0 {
+		so = identity(len(source))
+	}
+	if len(to) == 0 {
+		to = identity(len(target))
+	}
+	src, tgt := reorder(source, so), reorder(target, to)
+	sAt, tAt := positions(so), positions(to)
+	fs := make([]Fixed, len(fixed))
+	for i, f := range fixed {
+		fs[i] = Fixed{Source: mapped(f.Source, sAt), Target: mapped(f.Target, tAt)}
+	}
+	pairs := Realign(src, tgt, fs)
+	for i := range pairs {
+		pairs[i].SourceSegments = mapped(pairs[i].SourceSegments, so)
+		pairs[i].TargetSegments = mapped(pairs[i].TargetSegments, to)
+	}
+	return pairs
+}
+
+func identity(n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = i
+	}
+	return out
+}
+
+func reorder(segs []Segment, order []int) []Segment {
+	out := make([]Segment, len(order))
+	for k, i := range order {
+		out[k] = segs[i]
+	}
+	return out
+}
+
+// positions returns where each segment is read: the inverse of an order.
+func positions(order []int) []int {
+	out := make([]int, len(order))
+	for k, i := range order {
+		out[i] = k
+	}
+	return out
+}
+
+func mapped(idx []int, by []int) []int {
+	out := make([]int, len(idx))
+	for k, i := range idx {
+		out[k] = by[i]
 	}
 	return out
 }

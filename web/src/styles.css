@@ -3026,6 +3026,95 @@ table[aria-label="Units found"] .cell-action .row {
   background: var(--accent);
 }
 
+/* Each segment has a handle on its outer side, to move it, and the
+   segments it is marked with, to another place in the reading order. */
+.align-row {
+  position: relative;
+  display: flex;
+  gap: var(--s1);
+  align-items: stretch;
+}
+
+.align-row[data-row="target"] {
+  flex-direction: row-reverse;
+}
+
+.align-grip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-3);
+  cursor: grab;
+  touch-action: none;
+}
+
+.align-grip svg {
+  width: 8px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.align-grip:hover,
+.align-grip:focus-visible {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.align-grip:active {
+  cursor: grabbing;
+}
+
+.align-grip[aria-pressed="true"] {
+  color: var(--accent-text);
+  background: var(--accent-weak);
+}
+
+.align-row.is-marked > .align-seg {
+  border-color: var(--accent);
+  border-style: solid;
+}
+
+.align-row.is-carried {
+  opacity: 0.45;
+}
+
+/* Where a dragged segment would go: a line between two segments. */
+.align-row.is-drop-before::before,
+.align-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.align-row.is-drop-before::before {
+  top: calc(-1 * var(--s2) / 2 - 2px);
+}
+
+.align-row.is-drop-after::after {
+  bottom: calc(-1 * var(--s2) / 2 - 2px);
+}
+
+/* A segment read in another place than its document has it. */
+.align-row.is-moved .align-n {
+  color: var(--accent-text);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .align-row {
+    transition: opacity 0.15s ease;
+  }
+}
+
 .align-n {
   min-width: 1.75em;
   color: var(--text-3);
@@ -3460,6 +3549,16 @@ g:hover > .align-line {
 
 /* Windows high contrast: keep selection and state visible without colour. */
 @media (forced-colors: active) {
+  .align-row.is-drop-before::before,
+  .align-row.is-drop-after::after {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .align-grip[aria-pressed="true"] {
+    outline: 2px solid Highlight;
+  }
+
   .rail li a[aria-current="page"],
   .tb-link[aria-current="page"],
   .entry-row[aria-current="true"],

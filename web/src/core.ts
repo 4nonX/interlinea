@@ -65,6 +65,7 @@ export interface CoreApi {
     target: Uint8Array,
     targetLang: string,
     fixed?: string,
+    order?: string,
   ): Res<string>;
   merge(
     bytes: Uint8Array,
@@ -181,9 +182,11 @@ export function alignDocuments(
   source: { name: string; bytes: Uint8Array; lang: string },
   target: { name: string; bytes: Uint8Array; lang: string },
   fixed: { source: number[]; target: number[] }[] = [],
+  /** The order each side is read in, by the segments' positions in the documents; none keeps the documents' order. */
+  order?: { source: number[]; target: number[] },
 ): Alignment {
   return JSON.parse(
-    unwrap(c.align(source.name, source.bytes, source.lang, target.name, target.bytes, target.lang, fixed.length ? JSON.stringify(fixed) : "")),
+    unwrap(c.align(source.name, source.bytes, source.lang, target.name, target.bytes, target.lang, fixed.length ? JSON.stringify(fixed) : "", order ? JSON.stringify(order) : "")),
   ) as Alignment;
 }
 

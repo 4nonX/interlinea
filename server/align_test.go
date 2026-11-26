@@ -47,6 +47,25 @@ func TestAlignFiles(t *testing.T) {
 		t.Fatalf("a fixed pair of a segment that is not there: %d %s", r.status, r.body)
 	}
 
+	// Sent with the order a review reads the translation in, the segments
+	// are paired as read; the answer names them by their documents' positions.
+	moved := req
+	moved.Fixed = nil
+	moved.Target.Data = []byte("<html><body><h1>Lease</h1><p>The tenancy begins on 1 March 2026 and runs for an indefinite period.</p><p>The tenant pays the rent by the third working day of each month. The deposit is EUR 2,400.00.</p></body></html>")
+	moved.Order = align.Order{Target: []int{0, 2, 3, 1}}
+	var mo align.Result
+	te.call("POST", "/api/align", te.ben, moved, 200, &mo)
+	if got := fmt.Sprint(mo.Pairs[1].TargetSegments, mo.Pairs[2].TargetSegments, mo.Pairs[3].TargetSegments); got != "[2] [3] [1]" {
+		t.Fatalf("in the order read: %s %+v", got, mo.Pairs)
+	}
+	if mo.Target[1].Plain() != "The tenancy begins on 1 March 2026 and runs for an indefinite period." {
+		t.Errorf("the segments stay in the document's order: %q", mo.Target[1].Plain())
+	}
+	moved.Order = align.Order{Target: []int{0, 1, 1, 3}}
+	if r := te.do("POST", "/api/align", te.ben, moved); r.status != 422 || r.err().Problems[0].Field != "order" {
+		t.Fatalf("an order naming a segment twice: %d %s", r.status, r.body)
+	}
+
 	// What can't be aligned says which file and why.
 	for field, change := range map[string]func(*alignRequest){
 		"source.name": func(r *alignRequest) { r.Source.Name = " " },

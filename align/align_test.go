@@ -242,3 +242,60 @@ func TestRealign(t *testing.T) {
 		t.Error(msg)
 	}
 }
+
+// A translation with its two halves in the other order pairs when the
+// review reads them in the document's order again.
+func TestInOrder(t *testing.T) {
+	moved := append(append([]string{}, english[3:]...), english[:3]...)
+	order := Order{Target: []int{3, 4, 5, 0, 1, 2}}
+	r := DocumentsInOrder(segs("", german...), segs("", moved...), nil, order)
+	if got := show(r.Pairs); got != "[0]=[3] [1]=[4] [2]=[5] [3]=[0] [4]=[1] [5]=[2]" {
+		t.Fatal(got)
+	}
+	for i, p := range r.Pairs {
+		if p.Score < 60 {
+			t.Errorf("pair %d scores %d", i, p.Score)
+		}
+		if p.Target.Plain() != english[i] {
+			t.Errorf("pair %d: %q", i, p.Target.Plain())
+		}
+	}
+	// The segments stay in the order of the documents.
+	if r.Target[0].Plain() != english[3] {
+		t.Errorf("target 0: %q", r.Target[0].Plain())
+	}
+	// A pair fixed by the positions in the documents stays, in order too.
+	r = DocumentsInOrder(segs("", german...), segs("", moved...), []Fixed{{Source: []int{1, 2}, Target: []int{4, 5}}}, order)
+	if got := show(r.Pairs); got != "[0]=[3] [1 2]=[4 5] [3]=[0] [4]=[1] [5]=[2]" {
+		t.Fatal(got)
+	}
+	if !r.Pairs[1].Fixed || r.Pairs[1].Target.Plain() != english[1]+" "+english[2] {
+		t.Errorf("fixed pair: %+v", r.Pairs[1])
+	}
+	// Read in another order, the segments of a pair are joined as read.
+	r = DocumentsInOrder(segs("", german...), segs("", english...), []Fixed{{Source: []int{0}, Target: []int{0, 1}}}, Order{Target: []int{1, 0, 2, 3, 4, 5}})
+	if got := r.Pairs[0].Target.Plain(); got != english[1]+" "+english[0] {
+		t.Errorf("joined as read: %q", got)
+	}
+	// No order is the documents' own.
+	if a, b := show(Documents(segs("", german...), segs("", english...), nil).Pairs), show(DocumentsInOrder(segs("", german...), segs("", english...), nil, Order{}).Pairs); a != b {
+		t.Errorf("%s != %s", a, b)
+	}
+}
+
+func TestCheckOrder(t *testing.T) {
+	for _, c := range []struct {
+		o    Order
+		want string
+	}{
+		{Order{}, ""},
+		{Order{Source: []int{1, 0, 2}, Target: []int{0, 1}}, ""},
+		{Order{Source: []int{0, 1}}, "The order of the document names 2 segments; it has 3."},
+		{Order{Source: []int{0, 0, 2}}, "The order of the document names a segment that is not there, or twice."},
+		{Order{Target: []int{0, 2}}, "The order of the translation names a segment that is not there, or twice."},
+	} {
+		if got := CheckOrder(c.o, 3, 2); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.o, got, c.want)
+		}
+	}
+}
