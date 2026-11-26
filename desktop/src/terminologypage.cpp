@@ -2406,16 +2406,18 @@ void TerminologyPage::putDefinition(const QJsonObject &definition, const QString
         return;
     const int reading = m_reading;
     onResult(c->api()->put(path(QStringLiteral("/definition")), definition), this, [this, reading, done](const ApiResult &r) {
-        if (reading != m_reading)
-            return;
+        // What was saved, or why not, is said even when the page is being
+        // read again meanwhile (another change came in): that read shows it.
         if (!r.ok()) {
             notify(r.error.message);
             return;
         }
-        const QJsonObject def = r.object().value(QLatin1String("definition")).toObject();
-        m_detail.insert(QLatin1String("definition"), def);
         if (!done.isEmpty())
             notify(done);
+        if (reading != m_reading)
+            return;
+        const QJsonObject def = r.object().value(QLatin1String("definition")).toObject();
+        m_detail.insert(QLatin1String("definition"), def);
         showHead();
         showEntries();
         showDetail();
