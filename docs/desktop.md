@@ -63,8 +63,6 @@ browser client's editor:
 
 ![The editor in the browser client](screenshots/editor.png)
 
-![The project list](screenshots/projects.png)
-
 1. **Core.** `cmd/interlinea-core`: the server code in local mode (one
    account, loopback only, Host check against DNS rebinding, a handshake on
    standard output, shutdown with the app). File routes: extract and merge
@@ -128,8 +126,7 @@ platform's own style alone.
 
 | | |
 |---|---|
-| ![Files of a project](screenshots/project-files.png) | ![Analysis of a project](screenshots/project-analysis.png) |
-| ![New project from documents](screenshots/new-project.png) | ![The project list in the dark variant](screenshots/projects-dark.png) |
+| ![New project: the memories for each language](screenshots/desktop-new-project.png) | ![Review of a merge request in the dark variant](screenshots/desktop-merge-review-dark.png) |
 
 ## Tests
 
@@ -150,8 +147,9 @@ files, fills them from memories, runs the analysis, saves translated files
 and return packages, and checks that each step shows in the app. CI runs it
 on Linux against a server it starts.
 
-`INTERLINEA_SCREENSHOTS=<folder>` makes `tst_projects` save the
-screenshots of the project page and the New project page used here.
+`INTERLINEA_SCREENSHOTS=<folder>` makes the tests save every page they
+reach, which is where the desktop screenshots here come from;
+`INTERLINEA_THEME=dark` takes them in the dark variant.
 
 ## Conventions
 

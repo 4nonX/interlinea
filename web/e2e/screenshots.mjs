@@ -6,7 +6,7 @@ import { start } from "./harness.mjs";
 
 const dir = resolve(process.argv[2] ?? "../docs/screenshots");
 const h = await start();
-const { send, open, waitFor, sleep, finish } = h;
+const { send, open, waitFor, sleep, click, finish } = h;
 
 const shot = async (name) => {
   const { data } = await send("Page.captureScreenshot", { format: "png" });
@@ -38,6 +38,34 @@ try {
     throw new Error("terminology did not open");
   await sleep(1500);
   await shot("terminology.png");
+
+  // A glossary of the termbase, at the step that lays it out.
+  await click(".pane-tools button", "Export");
+  await sleep(300);
+  await click("dialog label.choice", ".pdf");
+  await click("dialog button", "Continue");
+  await sleep(200);
+  await click("dialog button", "Continue");
+  await sleep(600);
+  await shot("glossary-export.png");
+  await click("dialog button", "Cancel");
+  await sleep(300);
+
+  // The review of what the project termbase changed, before it goes into
+  // the master.
+  await open("/merge/p-hofmann", { reload: false, wait: 500 });
+  if (!(await waitFor("document.querySelector('main')?.innerText.length > 200", 15000)))
+    throw new Error("the merge review did not open");
+  await sleep(1500);
+  await shot("merge-review.png");
+
+  // The projects, and the memories with their units.
+  await open("/projects", { reload: false, wait: 500 });
+  await sleep(1500);
+  await shot("projects.png");
+  await open("/memories", { reload: false, wait: 500 });
+  await sleep(1500);
+  await shot("memories.png");
 } finally {
   finish();
 }
