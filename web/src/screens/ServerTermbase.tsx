@@ -17,10 +17,11 @@ import {
   type TermbaseDetail,
 } from "../server";
 import type { CoreEntry } from "../termio";
-import { fmtTime, plural } from "../format";
+import { fmtTime, listOf, plural } from "../format";
 import { InLang, LangChip, StatusBadge } from "../components/ui";
 import { ConfirmButton, Modal } from "./TermbaseDialogs";
 import { AccessPanel } from "./AccessPanel";
+import { tl, tlx } from "../i18n";
 
 /**
  * Whether the signed-in person may do something in a termbase. On this
@@ -100,7 +101,7 @@ export function ReadStoreEntry({ tb, entry }: { tb: Termbase; entry: Entry }) {
       live = false;
     };
   }, [r.api, tb.name, id, entry.version]);
-  return core ? <ReadEntry entry={core} /> : <p className="muted">Loading the entry…</p>;
+  return core ? <ReadEntry entry={core} /> : <p className="muted">{tl("Loading the entry…")}</p>;
 }
 
 /** The versions of an entry on the server, newest first; an earlier one is restored. */
@@ -126,13 +127,13 @@ export function ServerHistory({ tb, entry }: { tb: Termbase; entry: Entry }) {
         {problem}
       </p>
     );
-  if (!versions) return <p className="muted">Loading the history…</p>;
+  if (!versions) return <p className="muted">{tl("Loading the history…")}</p>;
   const newest = versions[versions.length - 1]?.version;
   return (
     <ol className="history">
       {[...versions].reverse().map((v) => (
         <li key={v.version}>
-          <div className="history-summary">{v.summary || "Changed"}</div>
+          <div className="history-summary">{v.summary || tl("Changed")}</div>
           <div className="history-meta">
             {v.by ? `${v.by}, ` : ""}
             {fmtTime(v.at)}
@@ -141,16 +142,16 @@ export function ServerHistory({ tb, entry }: { tb: Termbase; entry: Entry }) {
           {v.version !== newest && may(tb, "edit") && (
             <ConfirmButton
               plain
-              label="Restore this version"
-              confirm="Set the entry back to this version? What it is now stays in the history."
-              action="Restore"
+              label={tl("Restore this version")}
+              confirm={tl("Set the entry back to this version? What it is now stays in the history.")}
+              action={tl("Restore")}
               onConfirm={() =>
                 void r.api!.revertEntry(tb.name, id, v.version).then(
                   async () => {
-                    notify(`Restored the version of ${fmtTime(v.at)}`);
+                    notify(tl("Restored the version of {at}", { at: fmtTime(v.at) }));
                     await r.openTermbase(tb.name);
                   },
-                  (e) => notify(`The version was not restored: ${errorText(e)}`),
+                  (e) => notify(tl("The version was not restored: {e}", { e: errorText(e) })),
                 )
               }
             />
@@ -189,16 +190,16 @@ export function ServerDeleted({ tb }: { tb: Termbase }) {
         {problem}
       </p>
     );
-  if (!gone) return <p className="muted pane-pad">Loading…</p>;
+  if (!gone) return <p className="muted pane-pad">{tl("Loading…")}</p>;
   if (gone.length === 0)
     return (
       <div className="empty">
-        <p className="empty-title">Nothing deleted</p>
-        <p>Entries you delete are kept here and can be brought back.</p>
+        <p className="empty-title">{tl("Nothing deleted")}</p>
+        <p>{tl("Entries you delete are kept here and can be brought back.")}</p>
       </div>
     );
   return (
-    <ul className="deleted-list" aria-label={`Deleted entries of ${tb.name}`}>
+    <ul className="deleted-list" aria-label={tl("Deleted entries of {name}", { name: tb.name })}>
       {gone.map((d) => (
         <li key={d.entryId} className="deleted-entry">
           <dl className="mr-terms">
@@ -214,10 +215,7 @@ export function ServerDeleted({ tb }: { tb: Termbase }) {
               ))}
           </dl>
           <p className="history-meta">
-            Deleted {fmtTime(d.at)}
-            {d.by ? ` by ${d.by}` : ""}
-            {d.summary && d.summary !== "Deleted" ? `. ${d.summary}` : ""}
-          </p>
+            {(d.by ? tl("Deleted {at} by {by}", { at: fmtTime(d.at), by: d.by }) : tl("Deleted {at}", { at: fmtTime(d.at) })) + (d.summary && d.summary !== "Deleted" ? `. ${d.summary}` : "")}</p>
           {may(tb, "edit") && (
             <button
               type="button"
@@ -226,15 +224,15 @@ export function ServerDeleted({ tb }: { tb: Termbase }) {
                 void r.api!.restoreEntry(tb.name, d.entryId).then(
                   async (e) => {
                     const head = headOf(e, tb.languages[0]);
-                    notify(head ? `Brought back “${head}”` : "Brought the entry back");
+                    notify(head ? tl("Brought back “{head}”", { head }) : tl("Brought the entry back"));
                     await r.openTermbase(tb.name);
                     await load();
                   },
-                  (e) => notify(`The entry was not brought back: ${errorText(e)}`),
+                  (e) => notify(tl("The entry was not brought back: {e}", { e: errorText(e) })),
                 )
               }
             >
-              Bring back
+              {tl("Bring back")}
             </button>
           )}
         </li>
@@ -310,11 +308,11 @@ export function ServerMasterList({
     <>
       <p className="help pane-bar">
         {edit
-          ? "The master's entries this project uses as they are. Change one for this project only, or leave it out."
-          : "The master's entries this project uses as they are."}
+          ? tl("The master's entries this project uses as they are. Change one for this project only, or leave it out.")
+          : tl("The master's entries this project uses as they are.")}
       </p>
-      {masters.length === 0 && <p className="muted pane-pad">The masters have no entries the project does not have itself.</p>}
-      <ul className="entry-list entry-list-fit" aria-label={`Entries of the masters of ${tb.name}`}>
+      {masters.length === 0 && <p className="muted pane-pad">{tl("The masters have no entries the project does not have itself.")}</p>}
+      <ul className="entry-list entry-list-fit" aria-label={tl("Entries of the masters of {name}", { name: tb.name })}>
         {masters.map((e) => {
           const parts = tb.languages
             .map((l) => e.languages.find((x) => x.lang === l)?.terms.map((t) => t.text).join(", ") ?? "")
@@ -323,10 +321,10 @@ export function ServerMasterList({
             <li key={masterKey(e)}>
               <button type="button" className="entry-row" aria-current={masterKey(e) === selected ? "true" : undefined} onClick={() => onSelect(masterKey(e))}>
                 <span className="entry-head">
-                  <span className="entry-term">{parts[0] ?? "No term"}</span>
+                  <span className="entry-term">{parts[0] ?? tl("No term")}</span>
                 </span>
                 {parts.length > 1 && <span className="entry-other">{parts.slice(1).join(" · ")}</span>}
-                <span className="tb-count">In {e.termbase}</span>
+                <span className="tb-count">{tl("In")}{" "}{e.termbase}</span>
               </button>
             </li>
           );
@@ -335,17 +333,15 @@ export function ServerMasterList({
       {removals.length > 0 && (
         <section className="left-out" aria-labelledby="left-out-title">
           <h3 id="left-out-title" className="tb-group-title">
-            Left out of this project
+            {tl("Left out of this project")}
           </h3>
-          <p className="history-meta">Merging asks the master's reviewers to delete these there.</p>
+          <p className="history-meta">{tl("Merging asks the master's reviewers to delete these there.")}</p>
           <ul>
             {removals.map((x) => (
               <li key={`${x.termbase}\n${x.entryId}`}>
                 <span className="entry-term">{x.head}</span>
                 <span className="history-meta">
-                  In {x.termbase}, left out {fmtTime(x.at)}
-                  {x.by ? ` by ${x.by}` : ""}
-                </span>
+                  {(x.by ? tl("In {termbase}, left out {at} by {by}", { termbase: x.termbase, at: fmtTime(x.at), by: x.by }) : tl("In {termbase}, left out {at}", { termbase: x.termbase, at: fmtTime(x.at) }))}</span>
                 {edit && (
                   <button
                     type="button"
@@ -353,14 +349,14 @@ export function ServerMasterList({
                     onClick={() =>
                       void r.api!.bringBack(tb.name, x.termbase, x.entryId).then(
                         async () => {
-                          notify("Brought the entry back into the project");
+                          notify(tl("Brought the entry back into the project"));
                           await reload();
                         },
                         (e) => notify(errorText(e)),
                       )
                     }
                   >
-                    Bring back
+                    {tl("Bring back")}
                   </button>
                 )}
               </li>
@@ -394,22 +390,19 @@ export function ServerMasterDetail({
       <div className="pane-head">
         <div className="pane-head-row">
           <h2 id="master-entry-title" className="pane-title">
-            {head || "Entry"}
+            {head || tl("Entry")}
           </h2>
         </div>
         <div className="pane-sub">
           <span>
-            In {entry.termbase}
-            {changed ? `, last changed ${fmtTime(changed)}` : ""}
-          </span>
+            {tlx("In {termbase}{x}", { termbase: entry.termbase, x: changed ? tl(", last changed {changed}", { changed: fmtTime(changed) }) : "" })}</span>
         </div>
       </div>
       <div className="detail-body">
         {may(tb, "edit") && (
           <>
             <p className="notice-plain">
-              This is the master's entry. To change it, take it into the project: your version is used here and goes to the master's reviewers when you
-              merge.
+              {tl("This is the master's entry. To change it, take it into the project: your version is used here and goes to the master's reviewers when you merge.")}
             </p>
             <div className="row-start">
               <button
@@ -418,7 +411,7 @@ export function ServerMasterDetail({
                 onClick={() =>
                   void r.api!.overrideEntry(tb.name, entry.termbase, entry.id ?? "").then(
                     async (copy) => {
-                      notify("Took the entry into the project");
+                      notify(tl("Took the entry into the project"));
                       const id = await r.openTermbase(tb.name);
                       await reload();
                       onTaken();
@@ -428,16 +421,16 @@ export function ServerMasterDetail({
                   )
                 }
               >
-                <Pencil size={14} aria-hidden="true" /> Change in this project
+                <Pencil size={14} aria-hidden="true" />{" "}{tl("Change in this project")}
               </button>
               <ConfirmButton
-                label="Leave out of this project"
-                confirm="Leave this entry out of the project? Merging asks the master's reviewers to delete it there."
-                action="Leave out"
+                label={tl("Leave out of this project")}
+                confirm={tl("Leave this entry out of the project? Merging asks the master's reviewers to delete it there.")}
+                action={tl("Leave out")}
                 onConfirm={() =>
                   void r.api!.leaveOut(tb.name, entry.termbase, entry.id ?? "").then(
                     async () => {
-                      notify("Left the entry out of the project");
+                      notify(tl("Left the entry out of the project"));
                       await reload();
                     },
                     (e) => notify(errorText(e)),
@@ -520,7 +513,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
     try {
       await api.renameTermbase(current, to);
       setProblem("");
-      notify(`Renamed to “${to}”`);
+      notify(tl("Renamed to “{to}”", { to }));
       setCurrent(to);
       const id = await r.openTermbase(to);
       window.location.hash = `#/terminology/${id}`;
@@ -532,13 +525,13 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
 
   if (!detail)
     return (
-      <Modal title="Termbase settings" onClose={onClose} wide>
+      <Modal title={tl("Termbase settings")} onClose={onClose} wide>
         {problem ? (
           <p className="error" role="alert">
             {problem}
           </p>
         ) : (
-          <p className="muted">Loading…</p>
+          <p className="muted">{tl("Loading…")}</p>
         )}
       </Modal>
     );
@@ -560,9 +553,9 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
   const based = detail.projects ?? [];
 
   return (
-    <Modal title="Termbase settings" onClose={onClose} wide>
+    <Modal title={tl("Termbase settings")} onClose={onClose} wide>
       <label className="field">
-        <span className="field-label">Name</span>
+        <span className="field-label">{tl("Name")}</span>
         <input value={name} onChange={(e) => setName(e.target.value)} onBlur={() => void rename()} onKeyDown={(e) => e.key === "Enter" && void rename()} />
       </label>
       {problem && (
@@ -573,10 +566,10 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
 
       <section className="settings-section" aria-labelledby="stb-langs">
         <h3 id="stb-langs" className="settings-title">
-          Languages
+          {tl("Languages")}
         </h3>
         {langs.length === 0 ? (
-          <p className="help">No languages yet. They are added when you add terms or import a file.</p>
+          <p className="help">{tl("No languages yet. They are added when you add terms or import a file.")}</p>
         ) : (
           <ul className="settings-list">
             {langs.map((l) => (
@@ -586,8 +579,8 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
                 </span>
                 <span className="muted">{plural(termsIn(l), "term", "terms")}</span>
                 <ConfirmButton
-                  label={<span aria-label={`Remove ${lang(l).name}`}>Remove</span>}
-                  confirm={termsIn(l) ? `Remove ${lang(l).name} and its ${plural(termsIn(l), "term", "terms")}?` : `Remove ${lang(l).name}?`}
+                  label={<span aria-label={tl("Remove {name}", { name: lang(l).name })}>{tl("Remove")}</span>}
+                  confirm={termsIn(l) ? tl("Remove {name} and its {plural}?", { name: lang(l).name, plural: plural(termsIn(l), "term", "terms") }) : `Remove ${lang(l).name}?`}
                   onConfirm={() => void step(() => api.removeLanguage(current, l), `Removed ${lang(l).name}`)}
                 />
               </li>
@@ -596,7 +589,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
         )}
         <form
           className="role-add"
-          aria-label="Add a language"
+          aria-label={tl("Add a language")}
           onSubmit={(e) => {
             e.preventDefault();
             if (!addLang) return;
@@ -605,8 +598,8 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
             void step(() => api.setDefinition(current, { ...def, languages: [...langs, l] }), `Added ${lang(l).name}`);
           }}
         >
-          <select value={addLang} aria-label="Add a language" onChange={(e) => setAddLang(e.target.value)}>
-            <option value="">Add a language…</option>
+          <select value={addLang} aria-label={tl("Add a language")} onChange={(e) => setAddLang(e.target.value)}>
+            <option value="">{tl("Add a language…")}</option>
             {LANGUAGES.filter((l) => !langs.includes(l.code)).map((l) => (
               <option key={l.code} value={l.code}>
                 {l.name}
@@ -614,26 +607,26 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
             ))}
           </select>
           <button type="submit" className="btn btn-small" disabled={!addLang}>
-            Add
+            {tl("Add")}
           </button>
         </form>
       </section>
 
       <section className="settings-section" aria-labelledby="stb-fields">
         <h3 id="stb-fields" className="settings-title">
-          Fields
+          {tl("Fields")}
         </h3>
         {fields.length === 0 ? (
-          <p className="help">No fields yet: entries hold their terms and each term's status.</p>
+          <p className="help">{tl("No fields yet: entries hold their terms and each term's status.")}</p>
         ) : (
           <table className="table">
             <thead>
               <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Applies to</th>
-                <th scope="col">Values</th>
+                <th scope="col">{tl("Name")}</th>
+                <th scope="col">{tl("Applies to")}</th>
+                <th scope="col">{tl("Values")}</th>
                 <th scope="col">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{tl("Actions")}</span>
                 </th>
               </tr>
             </thead>
@@ -642,11 +635,11 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
                 <ServerField
                   key={f.name}
                   field={f}
-                  onRename={(to) => void step(() => api.renameField(current, f.name, to), `Renamed the field to “${to}”`)}
+                  onRename={(to) => void step(() => api.renameField(current, f.name, to), tl("Renamed the field to “{to}”", { to }))}
                   onChange={(next) =>
                     void step(() => api.setDefinition(current, { ...def, fields: fields.map((x) => (x.name === f.name ? next : x)) }), "")
                   }
-                  onRemove={() => void step(() => api.removeField(current, f.name), `Removed the field “${f.name}”`)}
+                  onRemove={() => void step(() => api.removeField(current, f.name), tl("Removed the field “{name}”", { name: f.name }))}
                 />
               ))}
             </tbody>
@@ -662,7 +655,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
                   ...def,
                   fields: [...fields, { name: f.name, level: LEVEL_TO_CORE[f.level], kind: f.kind, ...(f.kind === "picklist" ? { values: f.values } : {}) }],
                 }),
-              `Added field “${f.name}” to ${current}`,
+              tl("Added field “{name}” to {current}", { name: f.name, current }),
             )
           }
         />
@@ -671,13 +664,13 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
       {detail.kind === "project" ? (
         <section className="settings-section" aria-labelledby="stb-based">
           <h3 id="stb-based" className="settings-title">
-            Based on
+            {tl("Based on")}
           </h3>
-          <p className="help">The termbase shows the entries of these masters under its own, and its new and changed entries are submitted to them.</p>
+          <p className="help">{tl("The termbase shows the entries of these masters under its own, and its new and changed entries are submitted to them.")}</p>
           {[...new Set([...masters, ...upstreams])].map((m) => {
             const on = upstreams.includes(m);
             return (
-              <label key={m} className="check" title={on && upstreams.length === 1 ? "It needs one master at least." : undefined}>
+              <label key={m} className="check" title={on && upstreams.length === 1 ? tl("It needs one master at least.") : undefined}>
                 <input
                   type="checkbox"
                   checked={on}
@@ -685,7 +678,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
                   onChange={(e) =>
                     void step(
                       () => api.setUpstreams(current, e.target.checked ? [...upstreams, m] : upstreams.filter((x) => x !== m)),
-                      e.target.checked ? `Now also based on ${m}` : `No longer based on ${m}`,
+                      e.target.checked ? tl("Now also based on {m}", { m }) : tl("No longer based on {m}", { m }),
                     )
                   }
                 />
@@ -697,11 +690,10 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
       ) : (
         <section className="settings-section" aria-labelledby="stb-review">
           <h3 id="stb-review" className="settings-title">
-            Review
+            {tl("Review")}
           </h3>
           <p className="help">
-            Projects submit their new and changed entries to this master, and its reviewers approve them. These rules say what is merged without waiting
-            for them.
+            {tl("Projects submit their new and changed entries to this master, and its reviewers approve them. These rules say what is merged without waiting for them.")}
           </p>
           <label className="check">
             <input
@@ -710,18 +702,18 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
               onChange={(e) =>
                 void putRules(
                   { ...rules, keepIdentical: e.target.checked ? undefined : true },
-                  e.target.checked ? "Entries the master already has are merged without review" : "Entries the master already has wait for review, too",
+                  e.target.checked ? tl("Entries the master already has are merged without review") : tl("Entries the master already has wait for review, too"),
                 )
               }
             />
-            Entries the master already has as they are need no review
+            {tl("Entries the master already has as they are need no review")}
           </label>
-          <span className="field-label">Fields that need no approval</span>
+          <span className="field-label">{tl("Fields that need no approval")}</span>
           {fields.length === 0 ? (
-            <p className="help">The termbase has no fields yet. A change to notes or sources only could be merged at once.</p>
+            <p className="help">{tl("The termbase has no fields yet. A change to notes or sources only could be merged at once.")}</p>
           ) : (
             <>
-              <div className="row-start" role="group" aria-label="Fields that need no approval">
+              <div className="row-start" role="group" aria-label={tl("Fields that need no approval")}>
                 {fields.map((f) => (
                   <label key={f.name} className="check">
                     <input
@@ -731,7 +723,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
                         const next = e.target.checked ? [...minor, f.name] : minor.filter((m) => m !== f.name);
                         void putRules(
                           { ...rules, minorFields: next.length ? next : undefined },
-                          e.target.checked ? `Changes to ${f.name} only are merged without review` : `Changes to ${f.name} wait for review`,
+                          e.target.checked ? tl("Changes to {name} only are merged without review", { name: f.name }) : tl("Changes to {name} wait for review", { name: f.name }),
                         );
                       }}
                     />
@@ -739,30 +731,30 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
                   </label>
                 ))}
               </div>
-              <p className="help">An entry changed in these fields only is merged at once.</p>
+              <p className="help">{tl("An entry changed in these fields only is merged at once.")}</p>
             </>
           )}
-          <span className="field-label">Trusted authors</span>
+          <span className="field-label">{tl("Trusted authors")}</span>
           {trusted.length === 0 ? (
-            <p className="help">Nobody yet: every entry waits for a reviewer.</p>
+            <p className="help">{tl("Nobody yet: every entry waits for a reviewer.")}</p>
           ) : (
             <ul className="mr-reviewers">
               {trusted.map((t, i) => (
                 <li key={t.author}>
                   <span className="cell-title">{nameOf(t.author)}</span>
                   <span className="cell-sub">
-                    {t.scope.langs?.length ? `entries with terms in ${t.scope.langs.map((l) => lang(l).name).join(", ")}` : "all entries"}
+                    {t.scope.langs?.length ? tl("entries with terms in {join}", { join: t.scope.langs.map((l) => lang(l).name).join(", ") }) : tl("all entries")}
                   </span>
                   <button
                     type="button"
                     className="btn btn-quiet btn-small"
-                    aria-label={`No longer trust ${t.author}`}
+                    aria-label={tl("No longer trust {author}", { author: t.author })}
                     onClick={() => {
                       const next = trusted.filter((_, j) => j !== i);
-                      void putRules({ ...rules, trusted: next.length ? next : undefined }, `The entries of ${t.author} wait for review again`);
+                      void putRules({ ...rules, trusted: next.length ? next : undefined }, tl("The entries of {author} wait for review again", { author: t.author }));
                     }}
                   >
-                    Remove
+                    {tl("Remove")}
                   </button>
                 </li>
               ))}
@@ -770,11 +762,11 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
           )}
           <form
             className="role-add"
-            aria-label="Trust an author"
+            aria-label={tl("Trust an author")}
             onSubmit={(e) => {
               e.preventDefault();
               if (!trustWho) {
-                setProblem("Say whose entries to trust.");
+                setProblem(tl("Say whose entries to trust."));
                 return;
               }
               // One rule an author: a new one replaces the old.
@@ -785,13 +777,13 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
               const who = trustWho;
               setTrustWho("");
               setTrustLang("");
-              void putRules({ ...rules, trusted: next }, `The entries of ${who} are approved without review`);
+              void putRules({ ...rules, trusted: next }, tl("The entries of {who} are approved without review", { who }));
             }}
           >
             <label>
-              <span className="field-label">Author</span>
+              <span className="field-label">{tl("Author")}</span>
               <select value={trustWho} onChange={(e) => setTrustWho(e.target.value)}>
-                <option value="">Choose a person…</option>
+                <option value="">{tl("Choose a person…")}</option>
                 {r.people.map((p) => (
                   <option key={p.username} value={p.username}>
                     {nameOf(p.username)}
@@ -800,58 +792,56 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
               </select>
             </label>
             <label>
-              <span className="field-label">For</span>
+              <span className="field-label">{tl("For")}</span>
               <select value={trustLang} onChange={(e) => setTrustLang(e.target.value)}>
-                <option value="">All entries</option>
+                <option value="">{tl("All entries")}</option>
                 {langs.map((l) => (
                   <option key={l} value={l}>
-                    Terms in {lang(l).name}
-                  </option>
+                    {tlx("Terms in {name}", { name: lang(l).name })}</option>
                 ))}
               </select>
             </label>
             <button type="submit" className="btn btn-small">
-              Trust
+              {tl("Trust")}
             </button>
           </form>
           <p className="help">
-            Their new and changed entries are approved as they are submitted. An entry that conflicts with the master always waits for a reviewer.
+            {tl("Their new and changed entries are approved as they are submitted. An entry that conflicts with the master always waits for a reviewer.")}
           </p>
         </section>
       )}
 
-      <section className="settings-section" aria-label="Who may use it">
-        <AccessPanel key={current} kind="termbase" resource={current} title="Who may use it" embedded />
+      <section className="settings-section" aria-label={tl("Who may use it")}>
+        <AccessPanel key={current} kind="termbase" resource={current} title={tl("Who may use it")} embedded />
       </section>
 
       <section className="settings-section settings-danger" aria-labelledby="stb-delete">
         <h3 id="stb-delete" className="settings-title">
-          Delete termbase
+          {tl("Delete termbase")}
         </h3>
         {based.length > 0 ? (
           <p className="help">
-            {based.join(", ")} {based.length === 1 ? "is" : "are"} based on this termbase. Delete {based.length === 1 ? "it" : "them"}, or base{" "}
-            {based.length === 1 ? "it" : "them"} on another master, first.
+            {based.length === 1 ? tl("{name} is based on this termbase. Delete it, or base it on another master, first.", { name: based[0] }) : tl("{names} are based on this termbase. Delete them, or base them on another master, first.", { names: listOf(based) })}
           </p>
         ) : usedBy.length > 0 ? (
           <p className="help">
-            {usedBy.join(", ")} {usedBy.length === 1 ? "uses" : "use"} this termbase. Remove it from the project first.
+            {usedBy.length === 1 ? tl("{name} uses this termbase. Remove it from the project first.", { name: usedBy[0] }) : tl("{names} use this termbase. Remove it from the projects first.", { names: listOf(usedBy) })}
           </p>
         ) : (
           <>
             <p className="help">
               {detail.kind === "project"
-                ? `Deletes the project's ${plural(entries.length, "entry", "entries")} and their history. The masters keep theirs. Merge what the masters should have first.`
-                : `Deletes ${plural(entries.length, "entry", "entries")} and their history. Export the termbase first if you may need it again.`}
+                ? tl("Deletes the project's {length} and their history. The masters keep theirs. Merge what the masters should have first.", { length: plural(entries.length, "entry", "entries") })
+                : tl("Deletes {length} and their history. Export the termbase first if you may need it again.", { length: plural(entries.length, "entry", "entries") })}
             </p>
             <ConfirmButton
-              label="Delete termbase"
-              confirm={`Delete ${current} for good?`}
-              action="Delete"
+              label={tl("Delete termbase")}
+              confirm={tl("Delete {current} for good?", { current })}
+              action={tl("Delete")}
               onConfirm={() =>
                 void api.deleteTermbase(current).then(
                   () => {
-                    notify(`Deleted ${current}`);
+                    notify(tl("Deleted {current}", { current }));
                     onClose();
                     window.location.hash = "#/terminology";
                     void r.refresh();
@@ -866,7 +856,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
 
       <div className="row">
         <button type="button" className="btn btn-primary btn-small" onClick={onClose}>
-          Done
+          {tl("Done")}
         </button>
       </div>
     </Modal>
@@ -875,7 +865,7 @@ export function ServerTermbaseSettings({ tb, entries, onClose }: { tb: Termbase;
 
 type FieldDef = NonNullable<TermbaseDetail["definition"]["fields"]>[number];
 
-const LEVELS: Record<string, string> = { entry: "Entry", language: "Language", term: "Term" };
+const LEVELS: Record<string, string> = { entry: tl("Entry"), language: tl("Language"), term: tl("Term") };
 
 /** A field of a server termbase: its name, what kind of value it takes, and removing it. */
 function ServerField({ field, onRename, onChange, onRemove }: { field: FieldDef; onRename: (to: string) => void; onChange: (f: FieldDef) => void; onRemove: () => void }) {
@@ -889,19 +879,19 @@ function ServerField({ field, onRename, onChange, onRemove }: { field: FieldDef;
   return (
     <tr>
       <td>
-        <input value={name} aria-label={`Name of ${field.name}`} onChange={(e) => setName(e.target.value)} onBlur={rename} onKeyDown={(e) => e.key === "Enter" && rename()} />
+        <input value={name} aria-label={tl("Name of {name}", { name: field.name })} onChange={(e) => setName(e.target.value)} onBlur={rename} onKeyDown={(e) => e.key === "Enter" && rename()} />
       </td>
       <td>{LEVELS[field.level] ?? field.level}</td>
       <td>
         <div className="settings-kind">
           <KindSelect
-            label={`Values of ${field.name}`}
+            label={tl("Values of {name}", { name: field.name })}
             value={kind}
             onChange={(k) => onChange(k === "picklist" ? { ...field, kind: k, values: field.values ?? [] } : { ...field, kind: k, values: undefined })}
           />
           {kind === "picklist" && (
             <ValuesEditor
-              label={`The values of ${field.name}, one a line`}
+              label={tl("The values of {name}, one a line", { name: field.name })}
               values={field.values ?? []}
               onChange={(values) => {
                 if (values.join("\n") !== (field.values ?? []).join("\n")) onChange({ ...field, values });
@@ -911,7 +901,7 @@ function ServerField({ field, onRename, onChange, onRemove }: { field: FieldDef;
         </div>
       </td>
       <td className="cell-action">
-        <ConfirmButton label={<span aria-label={`Remove ${field.name}`}>Remove</span>} confirm={`Remove “${field.name}” and its values?`} onConfirm={onRemove} />
+        <ConfirmButton label={<span aria-label={tl("Remove {name}", { name: field.name })}>{tl("Remove")}</span>} confirm={tl("Remove “{name}” and its values?", { name: field.name })} onConfirm={onRemove} />
       </td>
     </tr>
   );
@@ -924,7 +914,7 @@ export function ServerBranchNote({ tb }: { tb: Termbase }) {
   return (
     <p className="branch-note">
       <GitBranch size={14} aria-hidden="true" />
-      <span>Based on {masters.join(", ")}. Shows only this project's new and changed entries.</span>
+      <span>{tlx("Based on {join}. Shows only this project's new and changed entries.", { join: masters.join(", ") })}</span>
     </p>
   );
 }

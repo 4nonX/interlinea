@@ -7,4 +7,6 @@ export default defineConfig({
   // The sample Word document is bundled into the page (?inline).
   assetsInclude: ["**/*.docx"],
   plugins: [react()],
+  // The interface translations are in ../i18n, shared with the desktop app.
+  server: { fs: { allow: [".."] } },
 });

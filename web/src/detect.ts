@@ -17,6 +17,7 @@ import {
   XLIFF_FILE,
 } from "./core";
 import { plain } from "./editor/model";
+import { tl } from "./i18n";
 
 export interface Detection {
   /** Best guess, or null when the text gives no usable evidence. */
@@ -328,7 +329,7 @@ export async function readText(file: File): Promise<string | null> {
 }
 
 const unreadable = (e: unknown) =>
-  `${e instanceof Error ? e.message : String(e)} Check that the file still exists and is not open in another program.`;
+  tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) });
 
 /** Reads one bilingual file of a Trados package as a pending document. */
 /** One bilingual file of a Trados package, as a document of the project. */
@@ -402,7 +403,7 @@ async function readPackage(file: File): Promise<PendingDoc[]> {
           file: file.name,
           words: 0,
           text: null,
-          error: "The package has no files to translate.",
+          error: tl("The package has no files to translate."),
         },
       ];
     const docs: PendingDoc[] = [];
@@ -446,7 +447,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
         file: file.name,
         words: 0,
         text: null,
-        error: `${e instanceof Error ? e.message : String(e)} Check that the file still exists and is not open in another program.`,
+        error: tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) }),
       };
     }
     try {
@@ -478,7 +479,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
         file: file.name,
         words: 0,
         text: null,
-        error: `${e instanceof Error ? e.message : String(e)} Check that the file still exists and is not open in another program.`,
+        error: tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) }),
       };
     }
     try {
@@ -511,7 +512,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
       file: file.name,
       words: 0,
       text: null,
-      error: `${e instanceof Error ? e.message : String(e)} Check that the file still exists and is not open in another program.`,
+      error: tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) }),
     };
   }
 }

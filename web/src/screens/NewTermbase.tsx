@@ -22,15 +22,17 @@ import {
   STRUCTURES,
   type FieldDraft,
 } from "./TermbaseFields";
+import { tl, tlx } from "../i18n";
+import { listOf } from "../format";
 
 type Kind = "master" | "project";
 type Step = "start" | "languages" | "fields" | "review";
 
 const STEP_NAME: Record<Step, string> = {
-  start: "Start",
-  languages: "Languages",
-  fields: "Fields",
-  review: "Review",
+  start: tl("Start"),
+  languages: tl("Languages"),
+  fields: tl("Fields"),
+  review: tl("Review"),
 };
 
 /** A field as the core keeps it. */
@@ -79,13 +81,13 @@ export function LanguageChecklist({
   return (
     <div className="lang-pick">
       {chosen.length > 0 && (
-        <ul className="lang-list" aria-label="Chosen languages">
+        <ul className="lang-list" aria-label={tl("Chosen languages")}>
           {chosen.map((c) => (
             <li key={c}>
               <button
                 type="button"
                 className="chip-button"
-                aria-label={`Remove ${lang(c).name}`}
+                aria-label={tl("Remove {name}", { name: lang(c).name })}
                 onClick={() => onChange(chosen.filter((x) => x !== c))}
               >
                 {lang(c).name} ×
@@ -96,17 +98,17 @@ export function LanguageChecklist({
       )}
       <label className="search-field">
         <Search size={14} aria-hidden="true" />
-        <span className="sr-only">Find a language</span>
+        <span className="sr-only">{tl("Find a language")}</span>
         <input
           type="search"
           value={find}
-          placeholder="Find a language, such as German or de-AT"
+          placeholder={tl("Find a language, such as German or de-AT")}
           onChange={(e) => setFind(e.target.value)}
         />
       </label>
       <div className="lang-pick-list" role="group" aria-label={label}>
         {shown.length === 0 ? (
-          <p className="muted">No language is called that.</p>
+          <p className="muted">{tl("No language is called that.")}</p>
         ) : (
           shown.map((l) => (
             <label key={l.code} className="check">
@@ -309,14 +311,14 @@ export function NewTermbaseDialog({
   const stepProblem = (s: Step): string => {
     switch (s) {
       case "start":
-        if (!name.trim()) return "Give the termbase a name.";
+        if (!name.trim()) return tl("Give the termbase a name.");
         if (taken.has(name.trim().toLocaleLowerCase()))
-          return "A termbase with this name is there already.";
+          return tl("A termbase with this name is there already.");
         if (kind === "project" && based.length === 0)
-          return "Choose the masters it is based on.";
+          return tl("Choose the masters it is based on.");
         return "";
       case "languages":
-        return langs.length === 0 ? "Choose its languages, at least one." : "";
+        return langs.length === 0 ? tl("Choose its languages, at least one.") : "";
       case "fields":
         return ownFieldProblems[0] ?? "";
       default:
@@ -347,8 +349,8 @@ export function NewTermbaseDialog({
           });
         notify(
           kind === "project"
-            ? `Created project termbase “${n}”`
-            : `Created master “${n}”`,
+            ? tl("Created project termbase “{n}”", { n })
+            : tl("Created master “{n}”", { n }),
         );
         const id = await r.openTermbase(n);
         onClose();
@@ -372,7 +374,7 @@ export function NewTermbaseDialog({
         infoTypes,
       };
       dispatch({ type: "createMaster", termbase: tb });
-      notify(`Created master “${n}”`);
+      notify(tl("Created master “{n}”", { n }));
       onClose();
       go({ page: "terminology", termbaseId: id });
     } catch (e) {
@@ -383,8 +385,8 @@ export function NewTermbaseDialog({
   };
 
   return (
-    <Modal title="New termbase" onClose={onClose} wide>
-      <ol className="stepper stepper-small" aria-label="Steps">
+    <Modal title={tl("New termbase")} onClose={onClose} wide>
+      <ol className="stepper stepper-small" aria-label={tl("Steps")}>
         {steps.map((s, i) => (
           <li
             key={s}
@@ -405,22 +407,22 @@ export function NewTermbaseDialog({
       {step === "start" && (
         <>
           <div className="field">
-            <label htmlFor="ntb-name">Name</label>
+            <label htmlFor="ntb-name">{tl("Name")}</label>
             <input
               id="ntb-name"
               autoFocus
               value={name}
               placeholder={
                 kind === "project"
-                  ? "For example a case or an order"
-                  : "For example a client or a subject"
+                  ? tl("For example a case or an order")
+                  : tl("For example a client or a subject")
               }
               onChange={(e) => setName(e.target.value)}
             />
           </div>
           {r.api && (
             <fieldset className="field">
-              <legend>Where it is kept</legend>
+              <legend>{tl("Where it is kept")}</legend>
               <label className="check">
                 <input
                   type="radio"
@@ -428,7 +430,7 @@ export function NewTermbaseDialog({
                   checked={loc === "server"}
                   onChange={() => setLoc("server")}
                 />
-                <span>On the team server, for everyone working with it</span>
+                <span>{tl("On the team server, for everyone working with it")}</span>
               </label>
               <label className="check">
                 <input
@@ -437,12 +439,12 @@ export function NewTermbaseDialog({
                   checked={loc === "local"}
                   onChange={() => setLoc("local")}
                 />
-                <span>In this browser</span>
+                <span>{tl("In this browser")}</span>
               </label>
             </fieldset>
           )}
           <fieldset className="field">
-            <legend>What kind of termbase</legend>
+            <legend>{tl("What kind of termbase")}</legend>
             <label className="check">
               <input
                 type="radio"
@@ -451,9 +453,7 @@ export function NewTermbaseDialog({
                 onChange={() => setKind("master")}
               />
               <span>
-                <strong>A master.</strong> A termbase of its own, kept across
-                projects, for a client, a subject or a company. You choose its
-                languages and fields.
+                {tlx("{strong} A termbase of its own, kept across projects, for a client, a subject or a company. You choose its languages and fields.", { strong: <strong>{tl("A master.")}</strong> })}
               </span>
             </label>
             <label className="check">
@@ -465,27 +465,21 @@ export function NewTermbaseDialog({
                 onChange={() => setKind("project")}
               />
               <span>
-                <strong>A project termbase.</strong> Based on masters: it shows
-                their entries, gets their languages and fields, and sends its
-                new and changed entries to them for review.
-                {!canBranch && (
+                {tlx("{strong} Based on masters: it shows their entries, gets their languages and fields, and sends its new and changed entries to them for review.{x}", { strong: <strong>{tl("A project termbase.")}</strong>, x: !canBranch && (
                   <span className="muted">
-                    {" "}
-                    Made on the team server; in this browser a project gets its
-                    termbase with the project.
+                    {" "}{tl("Made on the team server; in this browser a project gets its termbase with the project.")}
                   </span>
-                )}
-              </span>
+                ) })}</span>
             </label>
           </fieldset>
           {kind === "project" && (
             <fieldset className="field">
-              <legend>Based on</legend>
+              <legend>{tl("Based on")}</legend>
               {masters === null ? (
-                <p className="muted">Loading…</p>
+                <p className="muted">{tl("Loading…")}</p>
               ) : masters.length === 0 ? (
                 <p className="help">
-                  There is no master on the server yet. Make one first.
+                  {tl("There is no master on the server yet. Make one first.")}
                 </p>
               ) : (
                 masters.map((m) => (
@@ -511,8 +505,7 @@ export function NewTermbaseDialog({
                 ))
               )}
               <p className="help">
-                The first master chosen comes first where masters have the same
-                entry.
+                {tl("The first master chosen comes first where masters have the same entry.")}
               </p>
             </fieldset>
           )}
@@ -521,15 +514,14 @@ export function NewTermbaseDialog({
 
       {step === "languages" && (
         <div className="field">
-          <span className="field-label">The languages of {name.trim()}</span>
+          <span className="field-label">{tl("The languages of")}{" "}{name.trim()}</span>
           <LanguageChecklist
             chosen={langs}
             onChange={setLangs}
-            label="Languages of the termbase"
+            label={tl("Languages of the termbase")}
           />
           <p className="help">
-            A termbase has no source and target: it has languages, and a project
-            looks up terms in its own. More languages can be added later.
+            {tl("A termbase has no source and target: it has languages, and a project looks up terms in its own. More languages can be added later.")}
           </p>
         </div>
       )}
@@ -538,7 +530,7 @@ export function NewTermbaseDialog({
         <>
           {kind === "master" ? (
             <fieldset className="field">
-              <legend>Start from</legend>
+              <legend>{tl("Start from")}</legend>
               {STRUCTURES.map((s) => (
                 <label key={s.id} className="check">
                   <input
@@ -570,9 +562,9 @@ export function NewTermbaseDialog({
                       )
                     }
                   />
-                  <span>The fields of</span>
+                  <span>{tl("The fields of")}</span>
                   <select
-                    aria-label="The termbase to take the fields from"
+                    aria-label={tl("The termbase to take the fields from")}
                     value={
                       start.startsWith("local:") || start.startsWith("server:")
                         ? start
@@ -582,7 +574,7 @@ export function NewTermbaseDialog({
                       e.target.value && void chooseStart(e.target.value)
                     }
                   >
-                    <option value="">a termbase…</option>
+                    <option value="">{tl("a termbase…")}</option>
                     {loc === "local"
                       ? localSources.map((t) => (
                           <option key={t.id} value={`local:${t.id}`}>
@@ -598,27 +590,23 @@ export function NewTermbaseDialog({
                 </label>
               )}
               <p className="help">
-                Choosing a start sets the fields below; change them as you need.
-                Every term has a status (approved, proposed or forbidden)
-                without a field for it.
+                {tl("Choosing a start sets the fields below; change them as you need. Every term has a status (approved, proposed or forbidden) without a field for it.")}
               </p>
             </fieldset>
           ) : (
             <div className="field">
-              <span className="field-label">From {based.join(" and ")}</span>
+              <span className="field-label">{tl("From")}{" "}{listOf(based)}</span>
               <p className="help">
                 {inherited.languages.length > 0
                   ? `Languages: ${inherited.languages.map((l) => lang(l).name).join(", ")}. `
                   : ""}
                 {inherited.fields.length > 0
                   ? `Fields: ${inherited.fields.map(fieldLine).join("; ")}.`
-                  : "The masters have no fields."}
+                  : tl("The masters have no fields.")}
               </p>
-              <span className="field-label">Fields of its own</span>
+              <span className="field-label">{tl("Fields of its own")}</span>
               <p className="help">
-                Only if the project needs more than the masters have. A field of
-                its own reaches a master with the first entry that uses it, once
-                a reviewer approves the entry.
+                {tl("Only if the project needs more than the masters have. A field of its own reaches a master with the first entry that uses it, once a reviewer approves the entry.")}
               </p>
             </div>
           )}
@@ -628,39 +616,39 @@ export function NewTermbaseDialog({
 
       {step === "review" && (
         <dl className="review-list">
-          <dt>Name</dt>
+          <dt>{tl("Name")}</dt>
           <dd>{name.trim()}</dd>
           {r.api && (
             <>
-              <dt>Kept</dt>
+              <dt>{tl("Kept")}</dt>
               <dd>
-                {loc === "server" ? "On the team server" : "In this browser"}
+                {loc === "server" ? tl("On the team server") : tl("In this browser")}
               </dd>
             </>
           )}
-          <dt>Kind</dt>
+          <dt>{tl("Kind")}</dt>
           <dd>
             {kind === "master"
-              ? "A master"
-              : `A project termbase based on ${based.join(" and ")}`}
+              ? tl("A master")
+              : tl("A project termbase based on {join}", { join: listOf(based) })}
           </dd>
-          <dt>Languages</dt>
+          <dt>{tl("Languages")}</dt>
           <dd>
             {(kind === "master" ? langs : inherited.languages)
               .map((l) => lang(l).name)
-              .join(", ") || "None yet"}
+              .join(", ") || tl("None yet")}
           </dd>
-          <dt>Fields</dt>
+          <dt>{tl("Fields")}</dt>
           <dd>
             {[...(kind === "project" ? inherited.fields : []), ...fields]
               .length === 0 ? (
-              "None: terms and their status"
+              tl("None: terms and their status")
             ) : (
               <ul className="plain-list">
                 {(kind === "project" ? inherited.fields : []).map((f) => (
                   <li key={`i-${f.name}`}>
                     {fieldLine(f)}{" "}
-                    <span className="muted">from the masters</span>
+                    <span className="muted">{tl("from the masters")}</span>
                   </li>
                 ))}
                 {fields.map((f) => (
@@ -683,7 +671,7 @@ export function NewTermbaseDialog({
           className="btn btn-quiet btn-small"
           onClick={onClose}
         >
-          Cancel
+          {tl("Cancel")}
         </button>
         {at > 0 && (
           <button
@@ -691,7 +679,7 @@ export function NewTermbaseDialog({
             className="btn btn-small"
             onClick={() => move(steps[at - 1]!)}
           >
-            Back
+            {tl("Back")}
           </button>
         )}
         {step !== "review" ? (
@@ -702,7 +690,7 @@ export function NewTermbaseDialog({
             title={blocking || undefined}
             onClick={() => move(steps[at + 1]!)}
           >
-            Continue
+            {tl("Continue")}
           </button>
         ) : (
           <button
@@ -711,7 +699,7 @@ export function NewTermbaseDialog({
             disabled={busy}
             onClick={() => void create()}
           >
-            {kind === "project" ? "Create project termbase" : "Create master"}
+            {kind === "project" ? tl("Create project termbase") : tl("Create master")}
           </button>
         )}
       </div>

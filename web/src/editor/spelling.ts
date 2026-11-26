@@ -12,6 +12,7 @@ import { unwrap, type CoreApi, type SpellBundle } from "../core";
 import { load, remove, save } from "../persist";
 import type { LangCode, SpellDictionary } from "../data";
 import { knownLang } from "../setup";
+import { tl } from "../i18n";
 
 const SAVED = "dict:";
 const loaded = new Set<string>();
@@ -149,12 +150,12 @@ export async function findDictionaries(
         bundles = unwrap(c.spellArchive(new Uint8Array(await f.arrayBuffer())));
       } catch (e) {
         problems.push(
-          `${f.name} could not be read: ${e instanceof Error ? e.message : String(e)}`,
+          tl("{name} could not be read: {x}", { name: f.name, x: e instanceof Error ? e.message : String(e) }),
         );
         continue;
       }
       if (!bundles.length)
-        problems.push(`${f.name} has no spelling dictionary.`);
+        problems.push(tl("{name} has no spelling dictionary.", { name: f.name }));
       for (const b of bundles)
         found.push({
           name: b.name,
@@ -184,7 +185,7 @@ export async function findDictionaries(
     });
   }
   for (const [name] of dics)
-    problems.push(`${name}.dic needs ${name}.aff as well.`);
+    problems.push(tl("{name}.dic needs {name}.aff as well.", { name }));
   return { found, problems };
 }
 
@@ -242,11 +243,11 @@ export async function ensureDictionary(
   const r = await fetch(folder() + file);
   if (!r.ok)
     throw new Error(
-      `The dictionary ${name} could not be fetched (${r.status}).`,
+      tl("The dictionary {name} could not be fetched ({status}).", { name, status: r.status }),
     );
   const bundles = unwrap(c.spellArchive(new Uint8Array(await r.arrayBuffer())));
   const b = bundles.find((x) => x.name.toLowerCase() === name.toLowerCase());
-  if (!b) throw new Error(`${file} has no dictionary ${name}.`);
+  if (!b) throw new Error(tl("{file} has no dictionary {name}.", { file, name }));
   unwrap(c.spellLoad(name, b.aff, b.dic, "[]"));
   loaded.add(name);
   return true;

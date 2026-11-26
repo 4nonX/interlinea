@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { errorText, useRemote } from "../remote";
 import type { GrantView, Kind, Role } from "../server";
 import { roleText } from "./Accounts";
+import { tl } from "../i18n";
 
 /**
  * Who may use a project, memory or termbase on the team server, for its
@@ -74,20 +75,20 @@ export function AccessPanel({
       )}
       {grants === null ? (
         <p className="muted" role="status">
-          Loading…
+          {tl("Loading…")}
         </p>
       ) : grants.length === 0 ? (
         <p className="muted">
-          Nobody has a role on it yet{kind === "project" ? "; people with work given to them see it all the same" : ""}.
+          {kind === "project" ? tl("Nobody has a role on it yet; people with work given to them see it all the same.") : tl("Nobody has a role on it yet.")}
         </p>
       ) : (
         <table className="table">
           <thead>
             <tr>
-              <th scope="col">Who</th>
-              <th scope="col">Role</th>
+              <th scope="col">{tl("Who")}</th>
+              <th scope="col">{tl("Role")}</th>
               <th scope="col">
-                <span className="sr-only">Remove</span>
+                <span className="sr-only">{tl("Remove")}</span>
               </th>
             </tr>
           </thead>
@@ -101,7 +102,7 @@ export function AccessPanel({
                   <select
                     className="select-small"
                     value={g.role}
-                    aria-label={`Role of ${g.name || g.username}`}
+                    aria-label={tl("Role of {x}", { x: g.name || g.username })}
                     onChange={(e) => void attempt(() => r.api!.setGrant({ userId: g.userId, kind, resource, role: e.target.value as Role }))}
                   >
                     {r.roles.map((x) => (
@@ -113,7 +114,7 @@ export function AccessPanel({
                 </td>
                 <td className="cell-action">
                   <button type="button" className="btn btn-quiet btn-small" onClick={() => void attempt(() => r.api!.revokeGrant({ userId: g.userId, kind, resource }))}>
-                    Remove
+                    {tl("Remove")}
                   </button>
                 </td>
               </tr>
@@ -121,11 +122,11 @@ export function AccessPanel({
           </tbody>
         </table>
       )}
-      <form className="role-add" onSubmit={give} aria-label={`Give a role on ${kind === "project" ? "the project" : resource}`}>
+      <form className="role-add" onSubmit={give} aria-label={kind === "project" ? tl("Give a role on the project") : tl("Give a role on {resource}", { resource })}>
         <label>
-          <span className="field-label">Who</span>
+          <span className="field-label">{tl("Who")}</span>
           <select value={userId} onChange={(e) => setUserId(e.target.value)}>
-            <option value="">Choose someone</option>
+            <option value="">{tl("Choose someone")}</option>
             {r.people
               .filter((p) => !grants?.some((g) => g.userId === p.id))
               .map((p) => (
@@ -136,7 +137,7 @@ export function AccessPanel({
           </select>
         </label>
         <label>
-          <span className="field-label">Role</span>
+          <span className="field-label">{tl("Role")}</span>
           <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
             {r.roles.map((x) => (
               <option key={x.name} value={x.name}>
@@ -146,7 +147,7 @@ export function AccessPanel({
           </select>
         </label>
         <button type="submit" className="btn" disabled={!userId}>
-          Give the role
+          {tl("Give the role")}
         </button>
       </form>
     </section>

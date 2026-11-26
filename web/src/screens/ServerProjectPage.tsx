@@ -13,8 +13,9 @@ import { workScope } from "./Projects";
 import { go } from "../App";
 import { AccessPanel } from "./AccessPanel";
 import { ServerProjectSettings } from "./ServerProjectSettings";
+import { tl, tlx } from "../i18n";
 
-const TASK_TEXT: Record<Task, string> = { translate: "Translate", review: "Review" };
+const TASK_TEXT: Record<Task, string> = { translate: tl("Translate"), review: tl("Review") };
 
 /**
  * A project on the team server: its details, files, the work given out in
@@ -62,7 +63,7 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
   if (!project || !r.conn)
     return (
       <p className="boot" role="status">
-        Loading the project…
+        {tl("Loading the project…")}
       </p>
     );
   const s = project.settings;
@@ -73,12 +74,11 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
     <div className="page page-narrow">
       <PageHeader title={s.name} />
       <p className="help">
-        On the team server {host}
-        {s.client ? `, for ${s.client}` : ""}. Made by {project.createdBy} on {fmtDate(project.createdAt)}.
+        {s.client ? tl("On the team server {host}, for {client}. Made by {createdBy} on {createdAt}.", { host, client: s.client, createdBy: project.createdBy, createdAt: fmtDate(project.createdAt) }) : tl("On the team server {host}. Made by {createdBy} on {createdAt}.", { host, createdBy: project.createdBy, createdAt: fmtDate(project.createdAt) })}
       </p>
       <div className="panel-actions server-project-actions">
         <a className="btn btn-primary" href={`#/editor/${projectId}`}>
-          <PenLine size={15} aria-hidden="true" /> Open in the editor
+          <PenLine size={15} aria-hidden="true" />{" "}{tl("Open in the editor")}
         </a>
       </div>
 
@@ -89,7 +89,7 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
       ) : (
       <section className="panel" aria-labelledby="sp-files">
         <h2 id="sp-files" className="panel-title">
-          Files
+          {tl("Files")}
         </h2>
         <ul className="plain-list">
           {s.files.map((f) => (
@@ -97,10 +97,10 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
               <span className="cell-title">{f.name}</span>
               <span className="cell-sub">
                 {f.role === "reference"
-                  ? "Reference file"
+                  ? tl("Reference file")
                   : f.targetLang
-                    ? `Translated into ${lang(f.targetLang).name} only`
-                    : `Translated into ${s.targetLangs.map((t) => lang(t).name).join(", ")}`}
+                    ? tl("Translated into {name} only", { name: lang(f.targetLang).name })
+                    : tl("Translated into {join}", { join: s.targetLangs.map((t) => lang(t).name).join(", ") })}
               </span>
               <button
                 type="button"
@@ -112,7 +112,7 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
                   )
                 }
               >
-                <Download size={14} aria-hidden="true" /> Original
+                <Download size={14} aria-hidden="true" />{" "}{tl("Original")}
               </button>
             </li>
           ))}
@@ -127,49 +127,46 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
 
       <section className="panel" aria-labelledby="sp-now">
         <h2 id="sp-now" className="panel-title">
-          Working now
+          {tl("Working now")}
         </h2>
         {present.length === 0 ? (
-          <p className="muted">Nobody has the project open.</p>
+          <p className="muted">{tl("Nobody has the project open.")}</p>
         ) : (
           <ul className="plain-list">
             {present.map((x) => (
               <li key={x.userId}>
                 <span className="cell-title">{x.userName}</span>{" "}
                 <span className="cell-sub">
-                  {x.file}, <LangChip code={x.targetLang} />, segment {x.segment}, since {fmtDate(x.since)}
-                </span>
+                  {x.file}, <LangChip code={x.targetLang} />{tlx(", segment {segment}, since {since}", { segment: x.segment, since: fmtDate(x.since) })}</span>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      {manager && <AccessPanel kind="project" resource={String(n)} title="People with access" />}
+      {manager && <AccessPanel kind="project" resource={String(n)} title={tl("People with access")} />}
 
       {manager && (
         <section className="panel" aria-labelledby="sp-delete">
           <h2 id="sp-delete" className="panel-title">
-            Delete the project
+            {tl("Delete the project")}
           </h2>
           <p className="help">
-            The project, its files and translations and the work given out in it
-            are removed from the server for everyone. Its memories and termbase
-            stay; delete them on their own if nothing else uses them.
+            {tl("The project, its files and translations and the work given out in it are removed from the server for everyone. Its memories and termbase stay; delete them on their own if nothing else uses them.")}
           </p>
           <ConfirmButton
             small={false}
             label={
               <>
-                <Trash2 size={15} aria-hidden="true" /> Delete the project
+                <Trash2 size={15} aria-hidden="true" />{" "}{tl("Delete the project")}
               </>
             }
-            confirm={`Delete “${s.name}” on ${host} for everyone?`}
-            action="Delete"
+            confirm={tl("Delete “{name}” on {host} for everyone?", { name: s.name, host })}
+            action={tl("Delete")}
             onConfirm={() =>
               void r.api!.deleteProject(n).then(
                 () => {
-                  notify(`Deleted the project “${s.name}” on the server`);
+                  notify(tl("Deleted the project “{name}” on the server", { name: s.name }));
                   void r.refresh();
                   go({ page: "projects" });
                 },
@@ -200,7 +197,7 @@ function Details({ project, manager, onSaved }: { project: ServerProject; manage
     try {
       await r.api!.updateSettings(project.id, { ...s, name: d.name.trim(), client: d.client.trim(), description: d.description.trim(), due: d.due }, project.version);
       await r.open(project.id).catch(() => undefined);
-      notify("Saved the project's details on the server");
+      notify(tl("Saved the project's details on the server"));
       await onSaved();
     } catch (err) {
       if (err instanceof ApiError && err.problems.length) setProblems(Object.fromEntries(err.problems.map((p) => [p.field, p.message])));
@@ -211,34 +208,34 @@ function Details({ project, manager, onSaved }: { project: ServerProject; manage
   return (
     <section className="panel" aria-labelledby="sp-details">
       <h2 id="sp-details" className="panel-title">
-        Details
+        {tl("Details")}
       </h2>
       <form className="server-form" onSubmit={save}>
         <label className="field">
-          <span className="field-label">Name</span>
+          <span className="field-label">{tl("Name")}</span>
           <input value={d.name} disabled={!manager} onChange={(e) => setD({ ...d, name: e.target.value })} aria-invalid={!!problems.name} />
           {problems.name && <span className="error">{problems.name}</span>}
         </label>
         <label className="field">
-          <span className="field-label">Client</span>
+          <span className="field-label">{tl("Client")}</span>
           <input value={d.client} disabled={!manager} onChange={(e) => setD({ ...d, client: e.target.value })} />
         </label>
         <label className="field">
-          <span className="field-label">Description</span>
+          <span className="field-label">{tl("Description")}</span>
           <textarea value={d.description} disabled={!manager} rows={2} onChange={(e) => setD({ ...d, description: e.target.value })} />
         </label>
         <label className="field">
-          <span className="field-label">Due</span>
+          <span className="field-label">{tl("Due")}</span>
           <input type="datetime-local" value={toLocalInput(d.due)} disabled={!manager} onChange={(e) => setD({ ...d, due: fromLocalInput(e.target.value) })} />
           {problems.due && <span className="error">{problems.due}</span>}
         </label>
         <p className="cell-sub">
-          {s.sourceLang} to {s.targetLangs.join(", ")}. Memories, terminology and checks are set when the project is made.
+          {tlx("{sourceLang} to {join}. Memories, terminology and checks are set when the project is made.", { sourceLang: s.sourceLang, join: s.targetLangs.join(", ") })}
         </p>
         {manager && (
           <div className="server-actions">
             <button type="submit" className="btn btn-primary" disabled={!changed || !d.name.trim()}>
-              Save details
+              {tl("Save details")}
             </button>
           </div>
         )}
@@ -299,7 +296,7 @@ function Work({
         due: f.due || undefined,
       });
       setF(EMPTY_FORM);
-      notify("Work given out");
+      notify(tl("Work given out"));
       await onChanged();
       await r.refresh();
     } catch (err) {
@@ -310,7 +307,7 @@ function Work({
   async function setDone(a: Assignment, done: boolean) {
     try {
       await r.api!.updateAssignment(project.id, { ...a, done });
-      notify(done ? "Reported done" : "Reported not done");
+      notify(done ? tl("Reported done") : tl("Reported not done"));
       await onChanged();
       await r.refresh();
     } catch (err) {
@@ -321,21 +318,21 @@ function Work({
   return (
     <section className="panel" aria-labelledby="sp-work">
       <h2 id="sp-work" className="panel-title">
-        Work
+        {tl("Work")}
       </h2>
       {work.length === 0 ? (
-        <p className="muted">No work given out yet.</p>
+        <p className="muted">{tl("No work given out yet.")}</p>
       ) : (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th scope="col">Who</th>
-                <th scope="col">Task</th>
-                <th scope="col">Part</th>
-                <th scope="col">Done</th>
+                <th scope="col">{tl("Who")}</th>
+                <th scope="col">{tl("Task")}</th>
+                <th scope="col">{tl("Part")}</th>
+                <th scope="col">{tl("Done")}</th>
                 <th scope="col">
-                  <span className="sr-only">Remove</span>
+                  <span className="sr-only">{tl("Remove")}</span>
                 </th>
               </tr>
             </thead>
@@ -353,15 +350,15 @@ function Work({
                       checked={a.done}
                       disabled={!manager && a.userId !== me}
                       onChange={(e) => void setDone(a, e.target.checked)}
-                      aria-label={`${a.userName}'s work is done`}
+                      aria-label={tl("{userName}'s work is done", { userName: a.userName })}
                     />
                   </td>
                   <td className="cell-action">
                     {manager && (
                       <ConfirmButton
-                        label="Take back"
-                        confirm={`Take this work back from ${a.userName}?`}
-                        action="Take back"
+                        label={tl("Take back")}
+                        confirm={tl("Take this work back from {userName}?", { userName: a.userName })}
+                        action={tl("Take back")}
                         onConfirm={() =>
                           void r.api!.unassign(project.id, a.id).then(
                             async () => {
@@ -381,12 +378,12 @@ function Work({
         </div>
       )}
       {manager && (
-        <form className="server-form" onSubmit={give} aria-label="Give out work">
-          <h3 className="field-label">Give out work</h3>
+        <form className="server-form" onSubmit={give} aria-label={tl("Give out work")}>
+          <h3 className="field-label">{tl("Give out work")}</h3>
           <label className="field">
-            <span className="field-label">Who</span>
+            <span className="field-label">{tl("Who")}</span>
             <select value={f.userId} onChange={(e) => setF({ ...f, userId: e.target.value })}>
-              <option value="">Choose someone</option>
+              <option value="">{tl("Choose someone")}</option>
               {r.people.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.username})
@@ -395,16 +392,16 @@ function Work({
             </select>
           </label>
           <label className="field">
-            <span className="field-label">Task</span>
+            <span className="field-label">{tl("Task")}</span>
             <select value={f.task} onChange={(e) => setF({ ...f, task: e.target.value as Task })}>
-              <option value="translate">Translate</option>
-              <option value="review">Review</option>
+              <option value="translate">{tl("Translate")}</option>
+              <option value="review">{tl("Review")}</option>
             </select>
           </label>
           <label className="field">
-            <span className="field-label">File</span>
+            <span className="field-label">{tl("File")}</span>
             <select value={f.file} onChange={(e) => setF({ ...f, file: e.target.value, lang: "", from: "", to: "" })}>
-              <option value="">All files</option>
+              <option value="">{tl("All files")}</option>
               {translatable.map((x) => (
                 <option key={x.name} value={x.name}>
                   {x.name}
@@ -413,9 +410,9 @@ function Work({
             </select>
           </label>
           <label className="field">
-            <span className="field-label">Language</span>
+            <span className="field-label">{tl("Language")}</span>
             <select value={f.lang} onChange={(e) => setF({ ...f, lang: e.target.value, from: "", to: "" })}>
-              <option value="">{fileLangs.length === 1 ? lang(fileLangs[0]!).name : "All languages"}</option>
+              <option value="">{fileLangs.length === 1 ? lang(fileLangs[0]!).name : tl("All languages")}</option>
               {fileLangs.length > 1 &&
                 fileLangs.map((t) => (
                   <option key={t} value={t}>
@@ -427,9 +424,9 @@ function Work({
           {f.file && segs.length > 0 && (
             <div className="field-row-inline">
               <label>
-                <span className="field-label">From segment</span>
+                <span className="field-label">{tl("From segment")}</span>
                 <select value={f.from} onChange={(e) => setF({ ...f, from: e.target.value, to: e.target.value && !f.to ? segs[segs.length - 1]! : f.to })}>
-                  <option value="">The whole file</option>
+                  <option value="">{tl("The whole file")}</option>
                   {segs.map((id, i) => (
                     <option key={id} value={id}>
                       {i + 1}
@@ -439,7 +436,7 @@ function Work({
               </label>
               {f.from && (
                 <label>
-                  <span className="field-label">To segment</span>
+                  <span className="field-label">{tl("To segment")}</span>
                   <select value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })}>
                     {segs.slice(segs.indexOf(f.from)).map((id) => (
                       <option key={id} value={id}>
@@ -452,7 +449,7 @@ function Work({
             </div>
           )}
           <label className="field">
-            <span className="field-label">Due (optional)</span>
+            <span className="field-label">{tl("Due (optional)")}</span>
             <input type="datetime-local" value={toLocalInput(f.due)} onChange={(e) => setF({ ...f, due: fromLocalInput(e.target.value) })} />
           </label>
           {problem && (
@@ -462,11 +459,11 @@ function Work({
           )}
           <div className="server-actions">
             <button type="submit" className="btn btn-primary" disabled={!f.userId}>
-              <UserPlus size={15} aria-hidden="true" /> Give out
+              <UserPlus size={15} aria-hidden="true" />{" "}{tl("Give out")}
             </button>
           </div>
           <p className="cell-sub">
-            {plural(work.length, "piece of work", "pieces of work")} in this project. Each segment has one translator and one reviewer.
+            {tlx("{length} in this project. Each segment has one translator and one reviewer.", { length: plural(work.length, "piece of work", "pieces of work") })}
           </p>
         </form>
       )}

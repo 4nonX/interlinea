@@ -3,6 +3,7 @@
 
 import { confirmedShare, type Block, type Segment } from "./editor/model";
 import { LISTED_LANGUAGES } from "./languages.gen";
+import { tl, uiLocale } from "./i18n";
 
 export type LangCode = string;
 
@@ -19,20 +20,20 @@ export interface Language {
  * the same as in the desktop app. Any other language a file names still
  * works; lang() names it.
  */
-export const LANGUAGES: Language[] = LISTED_LANGUAGES;
+export const LANGUAGES: Language[] = LISTED_LANGUAGES.map((l) => ({ ...l, name: tl(l.name) }));
 
 /** Languages written from right to left, for those outside the list. */
 const RTL_LANGUAGES = new Set(["ar", "he", "fa", "ur", "ps", "sd", "ug", "yi", "dv", "ckb"]);
 
 let displayNames: Intl.DisplayNames | null | undefined;
 
-/** A language by code; codes outside the list get their English name from the browser (de becomes German). */
+/** A language by code; codes outside the list get their name from the browser, in the interface language (de becomes German). */
 export function lang(code: LangCode): Language {
   const known = LANGUAGES.find((l) => l.code === code);
   if (known) return known;
   if (displayNames === undefined) {
     try {
-      displayNames = new Intl.DisplayNames(["en"], { type: "language" });
+      displayNames = new Intl.DisplayNames([uiLocale()], { type: "language" });
     } catch {
       displayNames = null;
     }
@@ -80,18 +81,18 @@ export interface InfoType {
 export type FieldKind = "text" | "picklist" | "number" | "date" | "boolean";
 
 export const FIELD_KINDS: { kind: FieldKind; name: string }[] = [
-  { kind: "text", name: "Text" },
-  { kind: "picklist", name: "A list of values" },
-  { kind: "number", name: "Number" },
-  { kind: "date", name: "Date" },
-  { kind: "boolean", name: "Yes or no" },
+  { kind: "text", name: tl("Text") },
+  { kind: "picklist", name: tl("A list of values") },
+  { kind: "number", name: tl("Number") },
+  { kind: "date", name: tl("Date") },
+  { kind: "boolean", name: tl("Yes or no") },
 ];
 
 /** Where a field's value belongs. */
 export const FIELD_LEVELS: { level: InfoType["level"]; name: string; hint: string }[] = [
-  { level: "concept", name: "Entry", hint: "the whole entry, the same in every language" },
-  { level: "language", name: "Language", hint: "each language, such as a definition per language" },
-  { level: "term", name: "Term", hint: "each term, such as grammar or usage" },
+  { level: "concept", name: tl("Entry"), hint: tl("the whole entry, the same in every language") },
+  { level: "language", name: tl("Language"), hint: tl("each language, such as a definition per language") },
+  { level: "term", name: tl("Term"), hint: tl("each term, such as grammar or usage") },
 ];
 
 export type TermStatus = "approved" | "proposed" | "forbidden";

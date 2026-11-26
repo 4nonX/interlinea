@@ -1,30 +1,31 @@
 import type { CoreBand, CoreCounts, CoreRow } from "../project";
 import { fmtNum } from "../format";
+import { tl } from "../i18n";
 
 const SHORT: Record<CoreBand, string> = {
-  locked: "Lock",
+  locked: tl("Lock"),
   context: "CM",
-  repetition: "Rep",
+  repetition: tl("Rep"),
   "cross-file": "XRep",
   "100": "100%",
   "95": "95+",
   "85": "85+",
   "75": "75+",
   "50": "50+",
-  new: "New",
+  new: tl("New"),
 };
 
 const HINT: Record<CoreBand, string> = {
-  locked: "Locked in the file; not translated",
-  context: "100% match whose preceding segment also matches (101%)",
-  repetition: "Same text and tags earlier in the same file",
-  "cross-file": "Same text and tags in an earlier file of the project",
-  "100": "Same text and tags as a memory unit",
+  locked: tl("Locked in the file; not translated"),
+  context: tl("100% match whose preceding segment also matches (101%)"),
+  repetition: tl("Same text and tags earlier in the same file"),
+  "cross-file": tl("Same text and tags in an earlier file of the project"),
+  "100": tl("Same text and tags as a memory unit"),
   "95": "",
   "85": "",
   "75": "",
-  "50": "Usually charged like new text",
-  new: "No match of 50% or more",
+  "50": tl("Usually charged like new text"),
+  new: tl("No match of 50% or more"),
 };
 
 const CLASS: Record<CoreBand, string> = {
@@ -55,15 +56,15 @@ export function AnalysisTable({
       <caption className="sr-only">{caption}</caption>
       <thead>
         <tr>
-          <th scope="col">Match</th>
+          <th scope="col">{tl("Match")}</th>
           <th scope="col" className="num">
-            Segments
+            {tl("Segments")}
           </th>
           <th scope="col" className="num">
-            Words
+            {tl("Words")}
           </th>
           <th scope="col" className="num">
-            Share
+            {tl("Share")}
           </th>
         </tr>
       </thead>
@@ -95,7 +96,7 @@ export function AnalysisTable({
       </tbody>
       <tfoot>
         <tr>
-          <th scope="row">Total</th>
+          <th scope="row">{tl("Total")}</th>
           <td className="num">{fmtNum(total.segments)}</td>
           <td className="num">{fmtNum(total.words)}</td>
           <td className="num">100%</td>

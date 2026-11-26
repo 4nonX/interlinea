@@ -171,6 +171,7 @@ CI runs all of this on every push; run what a change touches first:
 gofmt -l .                       # prints nothing
 go vet ./...
 go run ./langtag/gen -check      # the language tables are up to date
+go run ./i18n/gen -check         # every interface string has its German and Korean
 go run ./cmd/interlinea-apidoc   # docs/api.md and server/openapi.json
 go test ./...
 cd web && npx tsc --noEmit -p . && npm run build && npm run e2e
@@ -188,6 +189,33 @@ The desktop tests open every page at several window sizes, and run once
 more at a scale of 1.5 (the `_150` tests). They fail on any text cut off,
 button too narrow for its label or part reaching out of its place;
 `INTERLINEA_LAYOUT_CHECK=1` marks such problems in the running app.
+
+## The interface in other languages
+
+Both apps are written in English and shown in English, German or Korean,
+as the person chooses under Settings (by default the language of the
+browser or the system). The translations are in `i18n/de.json` and
+`i18n/ko.json`, one catalog per language shared by the two apps: each
+string is looked up by its English text.
+
+- In the browser client a string is marked with `tl("…")`, or `tlx("…")`
+  where a placeholder holds a link or other markup (`src/i18n.ts`).
+  Placeholders are named: `tl("Saved {name}", { name })`. Counts go
+  through `plural(n, "file", "files")`, looked up as "{n} file" and
+  "{n} files", so a language puts the number where it belongs. Dates and
+  numbers go through `fmtDate`, `fmtNum`, `fmtDec` and `listOf`, which
+  follow the interface language.
+- In the desktop app strings are marked with `tr()` as usual in Qt; a
+  catalog translator (`src/interfacelanguage.cpp`) looks them up.
+- A sentence is one string, never put together from pieces, so it can be
+  translated as a whole.
+
+After changing text, `go run ./i18n/gen` adds the new strings to both
+catalogs, with no translation, and takes out those gone; translate what it
+added. `go run ./i18n/gen -todo de` lists what German still lacks, and
+`-check` (run in CI) fails on a missing translation or a translation
+without the placeholders of its string. `tst_interfacelanguage` shows every
+desktop page in German and Korean through the layout check.
 
 ## Fuzzing
 

@@ -21,25 +21,58 @@ import { ConfirmButton } from "./TermbaseDialogs";
 import { LangChip, PageHeader } from "../components/ui";
 import { TeamServer } from "./TeamServer";
 import { fmtDate } from "../format";
+import { browserLanguage, chooseLanguage, chosenLanguage, tl, tlx, UI_LANGUAGES, type UiLanguage } from "../i18n";
+
+/** The language the interface is shown in. */
+function InterfaceLanguage() {
+  const chosen = chosenLanguage();
+  const browser = UI_LANGUAGES.find((l) => l.code === browserLanguage())!.name;
+  return (
+    <section className="panel" aria-labelledby="s-ui-lang">
+      <h2 id="s-ui-lang" className="panel-title">
+        {tl("Interface language")}
+      </h2>
+      <p className="help">
+        {tl("The language of menus, buttons and messages. Documents, projects and termbases keep their own languages.")}
+      </p>
+      <div className="field">
+        <label htmlFor="ui-lang">{tl("Show Interlinea in")}</label>
+        <select
+          id="ui-lang"
+          value={chosen}
+          onChange={(e) => chooseLanguage(e.target.value as UiLanguage | "")}
+        >
+          <option value="">{tl("The browser's language ({name})", { name: browser })}</option>
+          {UI_LANGUAGES.map((l) => (
+            <option key={l.code} value={l.code} lang={l.code}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </section>
+  );
+}
 
 export function Settings() {
   const { state, dispatch } = useStore();
   return (
     <div className="page page-narrow">
-      <PageHeader title="Settings" />
+      <PageHeader title={tl("Settings")} />
+
+      <InterfaceLanguage />
 
       <YourName />
 
       <section className="panel" aria-labelledby="s-words">
         <h2 id="s-words" className="panel-title">
-          Terminology wording
+          {tl("Terminology wording")}
         </h2>
         <p className="help">
-          Project termbases work like branches of a master. Choose how the
-          interface names this. The behaviour is the same either way.
+          {tl("Project termbases work like branches of a master. Choose how the interface names this. The behaviour is the same either way.")}
         </p>
         <fieldset className="field">
-          <legend className="sr-only">Wording</legend>
+          <legend className="sr-only">{tl("Wording")}</legend>
           <label className="choice">
             <input
               type="radio"
@@ -48,9 +81,9 @@ export function Settings() {
               onChange={() => dispatch({ type: "setGitWords", value: false })}
             />
             <span className="choice-body">
-              <span className="choice-title">Plain words</span>
+              <span className="choice-title">{tl("Plain words")}</span>
               <span className="choice-desc">
-                Project termbase, review and merge, update from master, history.
+                {tl("Project termbase, review and merge, update from master, history.")}
               </span>
             </span>
           </label>
@@ -62,9 +95,9 @@ export function Settings() {
               onChange={() => dispatch({ type: "setGitWords", value: true })}
             />
             <span className="choice-body">
-              <span className="choice-title">Git terms</span>
+              <span className="choice-title">{tl("Git terms")}</span>
               <span className="choice-desc">
-                Branch, diff and merge, pull, log, ours and theirs.
+                {tl("Branch, diff and merge, pull, log, ours and theirs.")}
               </span>
             </span>
           </label>
@@ -73,7 +106,7 @@ export function Settings() {
 
       <section className="panel" aria-labelledby="s-editor">
         <h2 id="s-editor" className="panel-title">
-          Editor
+          {tl("Editor")}
         </h2>
         <div className="field">
           <label className="choice">
@@ -90,11 +123,10 @@ export function Settings() {
             />
             <span className="choice-body">
               <span className="choice-title">
-                Insert the best memory match when a segment opens
+                {tl("Insert the best memory match when a segment opens")}
               </span>
               <span className="choice-desc">
-                Only into empty segments. The match percentage stays next to the
-                segment until you confirm.
+                {tl("Only into empty segments. The match percentage stays next to the segment until you confirm.")}
               </span>
             </span>
           </label>
@@ -112,12 +144,10 @@ export function Settings() {
             />
             <span className="choice-body">
               <span className="choice-title">
-                Complete words while you type
+                {tl("Complete words while you type")}
               </span>
               <span className="choice-desc">
-                After two letters, the terms found for the segment and the words
-                of its memory matches are offered. Tab or Enter takes one,
-                Escape closes the list.
+                {tl("After two letters, the terms found for the segment and the words of its memory matches are offered. Tab or Enter takes one, Escape closes the list.")}
               </span>
             </span>
           </label>
@@ -135,23 +165,20 @@ export function Settings() {
             />
             <span className="choice-body">
               <span className="choice-title">
-                Fill repetitions when you confirm
+                {tl("Fill repetitions when you confirm")}
               </span>
               <span className="choice-desc">
-                Other segments with the same text and tags get the same
-                translation and are confirmed. Segments you already confirmed
-                are left alone.
+                {tl("Other segments with the same text and tags get the same translation and are confirmed. Segments you already confirmed are left alone.")}
               </span>
             </span>
           </label>
         </div>
         <fieldset className="field">
           <legend className="field-label">
-            Context matches (CM) in new projects
+            {tl("Context matches (CM) in new projects")}
           </legend>
           <p className="help">
-            Each project counts context matches its own way; change it in the
-            project's settings.
+            {tl("Each project counts context matches its own way; change it in the project's settings.")}
           </p>
           <label className="choice">
             <input
@@ -164,9 +191,9 @@ export function Settings() {
             />
             <span className="choice-body">
               <span className="choice-title">
-                The segment before also matches
+                {tl("The segment before also matches")}
               </span>
-              <span className="choice-desc">The usual rule.</span>
+              <span className="choice-desc">{tl("The usual rule.")}</span>
             </span>
           </label>
           <label className="choice">
@@ -180,10 +207,10 @@ export function Settings() {
             />
             <span className="choice-body">
               <span className="choice-title">
-                The segments before and after also match
+                {tl("The segments before and after also match")}
               </span>
               <span className="choice-desc">
-                Stricter: such a match is often shown as 101%.
+                {tl("Stricter: such a match is often shown as 101%.")}
               </span>
             </span>
           </label>
@@ -230,7 +257,7 @@ function Dictionaries() {
       (e: unknown) =>
         live &&
         notify(
-          `The core could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -280,19 +307,17 @@ function Dictionaries() {
   return (
     <section className="panel" aria-labelledby="s-dict">
       <h2 id="s-dict" className="panel-title">
-        Spelling dictionaries
+        {tl("Spelling dictionaries")}
       </h2>
       <p className="help">
-        Hunspell dictionaries, as LibreOffice and Firefox use them, checked by
-        the core. Each project chooses one per target language in its checks; a
-        new project takes the one that fits each language.
+        {tl("Hunspell dictionaries, as LibreOffice and Firefox use them, checked by the core. Each project chooses one per target language in its checks; a new project takes the one that fits each language.")}
       </p>
       {included.length > 0 && (
         <details className="settings-details field">
           <summary>
             {included.length === 1
-              ? "1 dictionary comes with Interlinea"
-              : `${included.length} dictionaries come with Interlinea`}
+              ? tl("1 dictionary comes with Interlinea")
+              : tl("{length} dictionaries come with Interlinea", { length: included.length })}
           </summary>
           <ul className="settings-list">
             {included.map((d) => {
@@ -303,30 +328,26 @@ function Dictionaries() {
                     <span className="cell-title">{d.name}</span>{" "}
                     <LangChip code={d.lang} />{" "}
                     <span className="muted">
-                      {fmtNum(d.words)} words
-                      {isAdded(d.name)
-                        ? ", replaced by the one you added"
+                      {tlx("{words} words{x}", { words: fmtNum(d.words), x: isAdded(d.name)
+                        ? tl(", replaced by the one you added")
                         : users.length
-                          ? `, used by ${users.join(", ")}`
-                          : ""}
-                    </span>
+                          ? tl(", used by {join}", { join: users.join(", ") })
+                          : "" })}</span>
                   </span>
                 </li>
               );
             })}
           </ul>
           <p className="help">
-            From the LibreOffice dictionaries, each with its authors' licence.
-            They are fetched when a project first spells with them. Add one of
-            the same name to use your own instead.
+            {tl("From the LibreOffice dictionaries, each with its authors' licence. They are fetched when a project first spells with them. Add one of the same name to use your own instead.")}
           </p>
         </details>
       )}
       {included.length > 0 && (
-        <span className="field-label">Added in this browser</span>
+        <span className="field-label">{tl("Added in this browser")}</span>
       )}
       {state.dictionaries.length > 0 ? (
-        <ul className="settings-list" aria-label="Added dictionaries">
+        <ul className="settings-list" aria-label={tl("Added dictionaries")}>
           {state.dictionaries.map((d) => {
             // With an included one of the name, projects keep a dictionary.
             const users = isIncluded(d.name) ? [] : usedBy(d.name);
@@ -336,28 +357,26 @@ function Dictionaries() {
                   <span className="cell-title">{d.name}</span>{" "}
                   <LangChip code={d.lang} />{" "}
                   <span className="muted">
-                    {fmtNum(d.words)} words
-                    {isIncluded(d.name)
-                      ? ", used instead of the included one"
+                    {tlx("{words} words{x}", { words: fmtNum(d.words), x: isIncluded(d.name)
+                      ? tl(", used instead of the included one")
                       : users.length
-                        ? `, used by ${users.join(", ")}`
-                        : ""}
-                  </span>
+                        ? tl(", used by {join}", { join: users.join(", ") })
+                        : "" })}</span>
                 </span>
                 <ConfirmButton
-                  label="Delete"
+                  label={tl("Delete")}
                   disabled={users.length > 0 || !c}
                   confirm={
                     isIncluded(d.name)
-                      ? `Delete the dictionary ${d.name}? The included one is used again.`
-                      : `Delete the dictionary ${d.name}?`
+                      ? tl("Delete the dictionary {name}? The included one is used again.", { name: d.name })
+                      : tl("Delete the dictionary {name}?", { name: d.name })
                   }
-                  action="Delete"
+                  action={tl("Delete")}
                   onConfirm={async () => {
                     if (!c) return;
                     await dropDictionary(c, d.name);
                     dispatch({ type: "deleteDictionary", name: d.name });
-                    notify(`Deleted the dictionary ${d.name}`);
+                    notify(tl("Deleted the dictionary {name}", { name: d.name }));
                   }}
                 />
               </li>
@@ -366,27 +385,25 @@ function Dictionaries() {
         </ul>
       ) : (
         <p className="muted">
-          {included.length > 0 ? "None added." : "No dictionary yet."}
+          {included.length > 0 ? tl("None added.") : tl("No dictionary yet.")}
         </p>
       )}
       {state.dictionaries.some(
         (d) => !isIncluded(d.name) && usedBy(d.name).length,
       ) && (
         <p className="help">
-          A dictionary a project or template uses can't be deleted; choose
-          another there first.
+          {tl("A dictionary a project or template uses can't be deleted; choose another there first.")}
         </p>
       )}
       {found.length > 0 && (
-        <div className="field" role="group" aria-label="Dictionaries to add">
-          <span className="field-label">Found in the files</span>
+        <div className="field" role="group" aria-label={tl("Dictionaries to add")}>
+          <span className="field-label">{tl("Found in the files")}</span>
           <ul className="settings-list">
             {found.map((d, i) => (
               <li key={d.name} className="row">
                 <span className="cell-title">{d.name}</span>
                 <label htmlFor={`dl-${i}`} className="sr-only">
-                  Language of {d.name}
-                </label>
+                  {tlx("Language of {name}", { name: d.name })}</label>
                 <select
                   id={`dl-${i}`}
                   className="select-small"
@@ -399,7 +416,7 @@ function Dictionaries() {
                     )
                   }
                 >
-                  {!d.pick && <option value="">Choose the language</option>}
+                  {!d.pick && <option value="">{tl("Choose the language")}</option>}
                   {LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>
                       {l.name}
@@ -410,11 +427,11 @@ function Dictionaries() {
                   )}
                 </select>
                 {isAdded(d.name) ? (
-                  <span className="muted">replaces the one of this name</span>
+                  <span className="muted">{tl("replaces the one of this name")}</span>
                 ) : (
                   isIncluded(d.name) && (
                     <span className="muted">
-                      used instead of the included one
+                      {tl("used instead of the included one")}
                     </span>
                   )
                 )}
@@ -429,15 +446,15 @@ function Dictionaries() {
               onClick={() => void add()}
             >
               {busy
-                ? "Adding…"
-                : `Add ${plural(found.length, "dictionary", "dictionaries")}`}
+                ? tl("Adding…")
+                : tl("Add {length}", { length: plural(found.length, "dictionary", "dictionaries") })}
             </button>
             <button
               type="button"
               className="btn btn-quiet btn-small"
               onClick={() => setFound([])}
             >
-              Cancel
+              {tl("Cancel")}
             </button>
           </div>
         </div>
@@ -454,7 +471,7 @@ function Dictionaries() {
         onClick={() => input.current?.click()}
       >
         <Upload size={14} aria-hidden="true" />
-        Add dictionaries
+        {tl("Add dictionaries")}
       </button>
       <input
         ref={input}
@@ -480,12 +497,11 @@ function Templates() {
   return (
     <section className="panel" aria-labelledby="s-tpl">
       <h2 id="s-tpl" className="panel-title">
-        Project templates
+        {tl("Project templates")}
       </h2>
       {state.templates.length === 0 ? (
         <p className="help">
-          No template yet. Save a project's settings as a template at the end of
-          New project, or from a project's settings.
+          {tl("No template yet. Save a project's settings as a template at the end of New project, or from a project's settings.")}
         </p>
       ) : (
         <ul className="settings-list">
@@ -500,16 +516,15 @@ function Templates() {
                   ))}
                 </span>{" "}
                 <span className="muted">
-                  {t.client ? `${t.client}, ` : ""}saved {fmtDate(t.createdAt)}
-                </span>
+                  {tlx("{x}saved {createdAt}", { x: t.client ? `${t.client}, ` : "", createdAt: fmtDate(t.createdAt) })}</span>
               </span>
               <ConfirmButton
-                label="Delete"
-                confirm={`Delete the template “${t.name}”? Projects made from it stay as they are.`}
-                action="Delete"
+                label={tl("Delete")}
+                confirm={tl("Delete the template “{name}”? Projects made from it stay as they are.", { name: t.name })}
+                action={tl("Delete")}
                 onConfirm={() => {
                   dispatch({ type: "deleteTemplate", templateId: t.id });
-                  notify(`Deleted the template “${t.name}”`);
+                  notify(tl("Deleted the template “{name}”", { name: t.name }));
                 }}
               />
             </li>
@@ -529,11 +544,11 @@ function YourName() {
   return (
     <section className="panel" aria-labelledby="s-name">
       <h2 id="s-name" className="panel-title">
-        Your name
+        {tl("Your name")}
       </h2>
       <div className="field">
         <label htmlFor="user-name" className="field-label">
-          Name
+          {tl("Name")}
         </label>
         <input
           id="user-name"
@@ -544,9 +559,7 @@ function YourName() {
           onBlur={() => dispatch({ type: "setUserName", name })}
         />
         <p className="help">
-          Entries and translations you change on this computer are signed with
-          it, in their history and in exported files. On a team server your
-          account's name is used.
+          {tl("Entries and translations you change on this computer are signed with it, in their history and in exported files. On a team server your account's name is used.")}
         </p>
       </div>
     </section>
@@ -558,14 +571,12 @@ function About() {
   return (
     <section className="panel" aria-labelledby="s-about">
       <h2 id="s-about" className="panel-title">
-        About Interlinea
+        {tl("About Interlinea")}
       </h2>
       <p className="help">
-        Interlinea is free software under the GNU Affero General Public License,
-        version 3: you may use it, pass it on and change it under the terms of
-        that licence. It comes without warranty.
+        {tl("Interlinea is free software under the GNU Affero General Public License, version 3: you may use it, pass it on and change it under the terms of that licence. It comes without warranty.")}
       </p>
-      <p className="help">Copyright © 2026 Dan Dreßen.</p>
+      <p className="help">{tl("Copyright © 2026 Dan Dreßen.")}</p>
       <div className="row">
         <a
           className="btn btn-small"
@@ -573,7 +584,7 @@ function About() {
           target="_blank"
           rel="noreferrer"
         >
-          Read the licence
+          {tl("Read the licence")}
         </a>
         <a
           className="btn btn-small"
@@ -581,7 +592,7 @@ function About() {
           target="_blank"
           rel="noreferrer"
         >
-          Source code
+          {tl("Source code")}
         </a>
       </div>
     </section>
@@ -594,31 +605,27 @@ function SavedWork() {
   return (
     <section className="panel" aria-labelledby="s-saved">
       <h2 id="s-saved" className="panel-title">
-        Saved work
+        {tl("Saved work")}
       </h2>
       {st.status === "ok" ? (
         <p className="help">
-          Projects, translations, termbases, memories, templates and these
-          settings are saved in this browser as you work, and are here again on
-          your next visit. They stay on this computer.
+          {tl("Projects, translations, termbases, memories, templates and these settings are saved in this browser as you work, and are here again on your next visit. They stay on this computer.")}
         </p>
       ) : (
         <p className="detect detect-warn" role="status">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>
-            This browser does not let Interlinea save ({st.error}). Your work is
-            kept only until you close the page. Allow site data for this page,
-            or leave private browsing, to keep it.
+            {tlx("This browser does not let Interlinea save ({error}). Your work is kept only until you close the page. Allow site data for this page, or leave private browsing, to keep it.", { error: st.error })}
           </span>
         </p>
       )}
       <ConfirmButton
-        label="Delete everything kept in this browser"
-        confirm="Delete all your projects, translations, termbases, memories and settings in this browser?"
-        action="Delete everything"
+        label={tl("Delete everything kept in this browser")}
+        confirm={tl("Delete all your projects, translations, termbases, memories and settings in this browser?")}
+        action={tl("Delete everything")}
         onConfirm={() => {
           void resetSavedWork(dispatch).then(() =>
-            notify("Everything kept in this browser was deleted"),
+            notify(tl("Everything kept in this browser was deleted")),
           );
         }}
         small={false}

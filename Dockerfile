@@ -34,6 +34,8 @@ WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
+# The interface translations, shared with the desktop app.
+COPY i18n/*.json /src/i18n/
 COPY --from=core /out/core/ public/core/
 COPY --from=dictionaries /out/dictionaries/ public/dictionaries/
 RUN npm run build

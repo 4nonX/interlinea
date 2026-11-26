@@ -8,6 +8,8 @@ import { lang, type LangCode } from "../data";
 import { download } from "../core";
 import type { CoreReport } from "../project";
 import { AnalysisTable } from "../components/AnalysisTable";
+import { tl } from "../i18n";
+import { listOf } from "../format";
 
 export interface LanguageAnalysis {
   lang: LangCode;
@@ -20,7 +22,7 @@ const quote = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
 /** The analysis as CSV: one line for each band of each file and language. */
 export function analysisCsv(all: LanguageAnalysis[]): string {
-  const lines = [["Language", "File", "Match", "Segments", "Words", "Characters"].map(quote).join(",")];
+  const lines = [[tl("Language"), tl("File"), tl("Match"), tl("Segments"), tl("Words"), tl("Characters")].map(quote).join(",")];
   for (const a of all)
     for (const f of a.report.files)
       for (const r of f.rows)
@@ -54,11 +56,11 @@ export function ProjectAnalysis({
   return (
     <section className="field" aria-labelledby="project-analysis">
       <span id="project-analysis" className="field-label">
-        Match analysis
+        {tl("Match analysis")}
       </span>
       <div className="row">
         <button type="button" className="btn btn-small" disabled={busy} onClick={analyse}>
-          <BarChart3 size={14} aria-hidden="true" /> {busy ? "Analysing…" : all.length ? "Analyse again" : "Analyse the files"}
+          <BarChart3 size={14} aria-hidden="true" /> {busy ? tl("Analysing…") : all.length ? tl("Analyse again") : tl("Analyse the files")}
         </button>
         {all.length > 0 && (
           <button
@@ -66,7 +68,7 @@ export function ProjectAnalysis({
             className="btn btn-quiet btn-small"
             onClick={() => download(new TextEncoder().encode("﻿" + analysisCsv(all)), `${name} analysis.csv`, "text/csv")}
           >
-            <Download size={14} aria-hidden="true" /> Save as CSV
+            <Download size={14} aria-hidden="true" />{" "}{tl("Save as CSV")}
           </button>
         )}
       </div>
@@ -75,9 +77,9 @@ export function ProjectAnalysis({
           {problem}
         </p>
       )}
-      {!current && <p className="help">Counts the words to translate by how well the project's memories match them, with the saved settings.</p>}
+      {!current && <p className="help">{tl("Counts the words to translate by how well the project's memories match them, with the saved settings.")}</p>}
       {all.length > 1 && (
-        <div className="tabs tabs-small" role="tablist" aria-label="Target language">
+        <div className="tabs tabs-small" role="tablist" aria-label={tl("Target language")}>
           {all.map((a) => (
             <button key={a.lang} type="button" role="tab" aria-selected={a.lang === current?.lang} onClick={() => setShown(a.lang)}>
               {lang(a.lang).name}
@@ -89,10 +91,10 @@ export function ProjectAnalysis({
         <>
           <p className="help">
             {current.memories.length
-              ? `Against ${current.memories.join(" and ")}, counted in this order: context matches first, then repetitions within a file and across files, then the best match.`
-              : "No memory for this language, so only repetitions count."}
+              ? tl("Against {join}, counted in this order: context matches first, then repetitions within a file and across files, then the best match.", { join: listOf(current.memories) })
+              : tl("No memory for this language, so only repetitions count.")}
           </p>
-          <AnalysisTable rows={current.report.rows} total={current.report.total} caption={`Match analysis, ${lang(current.lang).name}`} />
+          <AnalysisTable rows={current.report.rows} total={current.report.total} caption={tl("Match analysis, {name}", { name: lang(current.lang).name })} />
         </>
       )}
     </section>

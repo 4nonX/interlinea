@@ -1,4 +1,5 @@
-// Keeps the person's work between visits: projects, translations,
+
+import { tl } from "./i18n";// Keeps the person's work between visits: projects, translations,
 // termbases, settings and the project memories. Everything is stored in
 // the browser's IndexedDB for this site, so it belongs to one browser
 // profile; nothing leaves the computer.
@@ -35,7 +36,7 @@ function openDB(): Promise<IDBDatabase> {
     let req: IDBOpenDBRequest;
     try {
       if (typeof indexedDB === "undefined")
-        throw new Error("this browser has no IndexedDB");
+        throw new Error(tl("this browser has no IndexedDB"));
       req = indexedDB.open(DB_NAME, 1);
     } catch (e) {
       reject(e);
@@ -47,9 +48,9 @@ function openDB(): Promise<IDBDatabase> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () =>
-      reject(req.error ?? new Error("IndexedDB could not be opened"));
+      reject(req.error ?? new Error(tl("IndexedDB could not be opened")));
     req.onblocked = () =>
-      reject(new Error("IndexedDB is blocked by another tab"));
+      reject(new Error(tl("IndexedDB is blocked by another tab")));
   });
   dbPromise.catch((e: unknown) => {
     dbPromise = null;
@@ -71,9 +72,9 @@ function run<T>(
         if (req) req.onsuccess = () => (result = req.result);
         tx.oncomplete = () => resolve(result);
         tx.onerror = () =>
-          reject(tx.error ?? new Error("IndexedDB transaction failed"));
+          reject(tx.error ?? new Error(tl("IndexedDB transaction failed")));
         tx.onabort = () =>
-          reject(tx.error ?? new Error("IndexedDB transaction aborted"));
+          reject(tx.error ?? new Error(tl("IndexedDB transaction aborted")));
       }),
   );
 }

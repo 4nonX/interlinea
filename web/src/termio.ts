@@ -18,6 +18,7 @@ import {
   type Termbase,
   type TermStatus,
 } from "./data";
+import { tl } from "./i18n";
 
 export type TermFormat =
   "tbx" | "tbx2" | "multiterm" | "sdltb" | "xdt" | "csv" | "tsv" | "xlsx";
@@ -158,57 +159,57 @@ export const FORMATS: {
 }[] = [
   {
     id: "tbx",
-    label: "TBX 3",
+    label: tl("TBX 3"),
     ext: ".tbx",
     type: "application/x-tbx+xml",
-    note: "The ISO standard (30042:2019), read by current terminology tools.",
+    note: tl("The ISO standard (30042:2019), read by current terminology tools."),
   },
   {
     id: "tbx2",
-    label: "TBX 2",
+    label: tl("TBX 2"),
     ext: ".tbx",
     type: "application/x-tbx+xml",
-    note: "The older <martif> form, for tools that do not read TBX 3 yet.",
+    note: tl("The older <martif> form, for tools that do not read TBX 3 yet."),
   },
   {
     id: "multiterm",
-    label: "Termbase XML",
+    label: tl("Termbase XML"),
     ext: ".xml",
     type: "application/xml",
-    note: "The XML exchange format of .sdltb termbases.",
+    note: tl("The XML exchange format of .sdltb termbases."),
   },
   {
     id: "xlsx",
-    label: "XLSX workbook",
+    label: tl("XLSX workbook"),
     ext: ".xlsx",
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    note: "One row per entry, one column per language and field. Synonyms share a cell, separated by “; ”.",
+    note: tl("One row per entry, one column per language and field. Synonyms share a cell, separated by “; ”."),
   },
   {
     id: "csv",
     label: "CSV",
     ext: ".csv",
     type: "text/csv",
-    note: "Comma-separated, UTF-8. Opens in spreadsheet programs.",
+    note: tl("Comma-separated, UTF-8. Opens in spreadsheet programs."),
   },
   {
     id: "tsv",
-    label: "Tab-separated text",
+    label: tl("Tab-separated text"),
     ext: ".tsv",
     type: "text/tab-separated-values",
-    note: "UTF-8, one row per entry.",
+    note: tl("UTF-8, one row per entry."),
   },
 ];
 
 export const FORMAT_LABEL: Record<TermFormat, string> = {
-  tbx: "TBX 3",
-  tbx2: "TBX 2",
-  multiterm: "Termbase XML",
+  tbx: tl("TBX 3"),
+  tbx2: tl("TBX 2"),
+  multiterm: tl("Termbase XML"),
   sdltb: ".sdltb termbase",
   xdt: ".xdt termbase definition",
   csv: "CSV",
-  tsv: "Tab-separated text",
-  xlsx: "XLSX workbook",
+  tsv: tl("Tab-separated text"),
+  xlsx: tl("XLSX workbook"),
 };
 
 export const IMPORT_ACCEPT =

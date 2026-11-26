@@ -14,6 +14,8 @@ import {
   type Segment,
   type Timing,
 } from "./editor/model";
+import { tl } from "./i18n";
+import { plural } from "./format";
 
 export { unwrap };
 
@@ -284,12 +286,19 @@ export function memoryFileName(name: string, ext: string): string {
 
 /** The memory files people can choose, in words. */
 export const MEMORY_FILES_NOTE =
-  "A memory file: .tmx, .sdltm or .txt.";
+  tl("A memory file: .tmx, .sdltm or .txt.");
 
 /** What an import says it did, for a notice. */
 export function importNotice(st: MemoryImport, into: string, from?: string): string {
-  if (st.stored === 0 && st.note) return `Nothing was imported${from ? ` from ${from}` : ""}. ${st.note}`;
-  return `Imported ${st.stored === 1 ? "1 unit" : `${st.stored} units`} ${from ? `from ${from} ` : ""}into ${into}${st.skipped ? `; ${st.skipped} without both languages skipped` : ""}`;
+  if (st.stored === 0 && st.note)
+    return from
+      ? tl("Nothing was imported from {from}. {note}", { from, note: st.note })
+      : tl("Nothing was imported. {note}", { note: st.note });
+  const units = plural(st.stored, "unit", "units");
+  const skipped = st.skipped ? tl("; {n} without both languages skipped", { n: st.skipped }) : "";
+  return from
+    ? tl("Imported {units} from {from} into {into}{skipped}", { units, from, into, skipped })
+    : tl("Imported {units} into {into}{skipped}", { units, into, skipped });
 }
 
 declare global {
@@ -321,7 +330,7 @@ export function pdfFonts(): Promise<Uint8Array[]> {
   fontFiles ??= Promise.all(
     names.map(async (n) => {
       const r = await fetch(`${base()}core/fonts/${n}`);
-      if (!r.ok) throw new Error(`The font ${n} could not be loaded.`);
+      if (!r.ok) throw new Error(tl("The font {n} could not be loaded.", { n }));
       return new Uint8Array(await r.arrayBuffer());
     }),
   ).catch((e) => {
@@ -340,7 +349,7 @@ function loadScript(src: string): Promise<void> {
     const s = document.createElement("script");
     s.src = src;
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`Could not load ${src}`));
+    s.onerror = () => reject(new Error(tl("Could not load {src}", { src })));
     document.head.append(s);
   });
 }
@@ -352,7 +361,7 @@ export function loadCore(): Promise<CoreApi> {
     const res = await fetch(`${base()}core/interlinea.wasm`);
     if (!res.ok)
       throw new Error(
-        `The core is missing (${res.status}). Run "make wasm" in the repository.`,
+        tl("The core is missing ({status}). Run \"make wasm\" in the repository.", { status: res.status }),
       );
     // instantiateStreaming needs the application/wasm type, which not every
     // host sends; compiling from the bytes works everywhere.
@@ -442,31 +451,31 @@ export function documentFormat(name: string): DocumentFormat | null {
 
 /** What a document format is called. */
 export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
-  docx: "DOCX document",
-  pptx: "PPTX presentation",
-  xlsx: "XLSX workbook",
-  html: "Web page",
-  idml: "IDML document",
-  odt: "ODT document",
-  ods: "ODS spreadsheet",
-  odp: "ODP presentation",
-  xml: "XML file",
-  md: "Markdown file",
-  properties: "Properties file",
-  json: "JSON file",
-  yaml: "YAML file",
-  po: "PO file",
-  resx: "RESX file",
-  srt: "SRT subtitles",
-  vtt: "WebVTT subtitles",
-  sbv: "SBV subtitles",
-  ass: "ASS subtitles",
-  sub: "SUB subtitles",
-  ttml: "TTML subtitles",
-  stl: "EBU STL subtitles",
-  scc: "SCC captions",
-  txt: "Text file",
-  pdf: "PDF document",
+  docx: tl("DOCX document"),
+  pptx: tl("PPTX presentation"),
+  xlsx: tl("XLSX workbook"),
+  html: tl("Web page"),
+  idml: tl("IDML document"),
+  odt: tl("ODT document"),
+  ods: tl("ODS spreadsheet"),
+  odp: tl("ODP presentation"),
+  xml: tl("XML file"),
+  md: tl("Markdown file"),
+  properties: tl("Properties file"),
+  json: tl("JSON file"),
+  yaml: tl("YAML file"),
+  po: tl("PO file"),
+  resx: tl("RESX file"),
+  srt: tl("SRT subtitles"),
+  vtt: tl("WebVTT subtitles"),
+  sbv: tl("SBV subtitles"),
+  ass: tl("ASS subtitles"),
+  sub: tl("SUB subtitles"),
+  ttml: tl("TTML subtitles"),
+  stl: tl("EBU STL subtitles"),
+  scc: tl("SCC captions"),
+  txt: tl("Text file"),
+  pdf: tl("PDF document"),
 };
 
 /**
@@ -483,31 +492,31 @@ export function translatedName(name: string, target: string): string {
 
 /** What a document format keeps of the file besides its text. */
 export const DOCUMENT_FORMAT_KEEPS: Record<DocumentFormat, string> = {
-  docx: "formatting kept",
-  pptx: "formatting kept",
-  xlsx: "formatting kept",
-  html: "markup kept",
-  idml: "layout kept",
-  odt: "formatting kept",
-  ods: "formatting kept",
-  odp: "formatting kept",
-  xml: "markup kept",
-  md: "markup kept",
-  properties: "keys and placeholders kept",
-  json: "keys and placeholders kept",
-  yaml: "keys and placeholders kept",
-  po: "keys and placeholders kept",
-  resx: "keys and placeholders kept",
-  srt: "times kept",
-  vtt: "times kept",
-  sbv: "times kept",
-  ass: "times and styles kept",
-  sub: "frames kept",
-  ttml: "times and styles kept",
-  stl: "times and positions kept",
-  scc: "times and positions kept",
-  txt: "line breaks kept",
-  pdf: "text only, saved as a DOCX document",
+  docx: tl("formatting kept"),
+  pptx: tl("formatting kept"),
+  xlsx: tl("formatting kept"),
+  html: tl("markup kept"),
+  idml: tl("layout kept"),
+  odt: tl("formatting kept"),
+  ods: tl("formatting kept"),
+  odp: tl("formatting kept"),
+  xml: tl("markup kept"),
+  md: tl("markup kept"),
+  properties: tl("keys and placeholders kept"),
+  json: tl("keys and placeholders kept"),
+  yaml: tl("keys and placeholders kept"),
+  po: tl("keys and placeholders kept"),
+  resx: tl("keys and placeholders kept"),
+  srt: tl("times kept"),
+  vtt: tl("times kept"),
+  sbv: tl("times kept"),
+  ass: tl("times and styles kept"),
+  sub: tl("frames kept"),
+  ttml: tl("times and styles kept"),
+  stl: tl("times and positions kept"),
+  scc: tl("times and positions kept"),
+  txt: tl("line breaks kept"),
+  pdf: tl("text only, saved as a DOCX document"),
 };
 
 /** The type a translated document is offered for download as. */
@@ -795,17 +804,17 @@ export interface Bilingual extends Extracted {
 }
 
 export const XLIFF_FORMAT_NAME: Record<string, string> = {
-  "xliff-1.2": "XLIFF 1.2",
-  "xliff-2": "XLIFF 2",
+  "xliff-1.2": tl("XLIFF 1.2"),
+  "xliff-2": tl("XLIFF 2"),
   sdlxliff: ".sdlxliff",
   mqxliff: ".mqxliff",
   mxliff: ".mxliff",
   txml: ".txml",
   ttx: ".ttx",
-  sdlreview: "Review table (.docx)",
-  mqrtf: "Two-column table (.rtf)",
-  mqdocx: "Two-column table (.docx)",
-  dvrtf: "External view (.rtf)",
+  sdlreview: tl("Review table (.docx)"),
+  mqrtf: tl("Two-column table (.rtf)"),
+  mqdocx: tl("Two-column table (.docx)"),
+  dvrtf: tl("External view (.rtf)"),
 };
 
 // A segment's state in the file becomes the editor's: confirmed for
@@ -926,7 +935,7 @@ export function returnPackageName(name: string): string {
 
 /** What a package is called, by its name. */
 export function packageKind(name: string): string {
-  return /\.mqout$/i.test(name) ? "handoff package" : "project package";
+  return /\.mqout$/i.test(name) ? tl("handoff package") : tl("project package");
 }
 export const SDL_RETURN_TYPE = "application/octet-stream";
 

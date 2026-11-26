@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import type { Block, Run, Segment, TagRun } from "./model";
 import { plain } from "./model";
+import { tl } from "../i18n";
 
 interface Props {
   blocks: Block[];
@@ -96,12 +97,12 @@ export function Preview({
   const footer = part("footer");
   const notes = [...part("footnote"), ...part("endnote")];
   const extras: { title: string; blocks: Block[] }[] = [
-    { title: "Charts", blocks: part("chart") },
+    { title: tl("Charts"), blocks: part("chart") },
     { title: "SmartArt", blocks: part("diagram") },
-    { title: "Comments", blocks: part("comment") },
-    { title: "Speaker notes", blocks: part("notes") },
-    { title: "Title and description of the page", blocks: part("meta") },
-    { title: "Texts of pictures, links and form fields", blocks: part("attribute") },
+    { title: tl("Comments"), blocks: part("comment") },
+    { title: tl("Speaker notes"), blocks: part("notes") },
+    { title: tl("Title and description of the page"), blocks: part("meta") },
+    { title: tl("Texts of pictures, links and form fields"), blocks: part("attribute") },
   ].filter((x) => x.blocks.length > 0);
   return (
     <div className="preview" ref={root} lang={targetLang}>
@@ -182,7 +183,7 @@ function BlockView({
               title={
                 translated
                   ? undefined
-                  : "Not translated yet: the source text is used"
+                  : tl("Not translated yet: the source text is used")
               }
             >
               <Formatted
@@ -279,7 +280,7 @@ function Formatted({
       case "image":
         top.kids.push(
           <span key={i} className="pv-image">
-            image
+            {tl("image")}
           </span>,
         );
         break;

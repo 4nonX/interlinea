@@ -798,5 +798,37 @@ export default () =>
         errors.length === 0,
         "no console errors with spelling: " + errors.join(" | "),
       );
+
+      // The interface in German and Korean, chosen in Settings; the
+      // browser's language again afterwards.
+      await open("/settings", { reload: false, wait: 600 });
+      check(
+        (await evaluate("[...document.querySelectorAll('#ui-lang option')].map(o => o.textContent).join('|')")) ===
+          "The browser's language (English)|English|Deutsch|한국어",
+        "the interface languages are offered",
+      );
+      await setValue("#ui-lang", "de");
+      check(
+        await waitFor("document.documentElement.lang === 'de' && document.body.innerText.includes('Sprache der Oberfläche')", 15000),
+        "Deutsch: the page comes back in German",
+      );
+      check(
+        (await evaluate("[...document.querySelectorAll('nav a')].map(a => a.textContent.trim()).join('|')")).includes("Projekte|TMs|Terminologie|Einstellungen"),
+        "and so does the navigation: " + (await evaluate("[...document.querySelectorAll('nav a')].map(a => a.textContent.trim()).join('|')")),
+      );
+      await setValue("#ui-lang", "ko");
+      check(
+        await waitFor("document.documentElement.lang === 'ko' && document.body.innerText.includes('인터페이스 언어')", 15000),
+        "한국어: the page comes back in Korean",
+      );
+      await open("/projects", { reload: false, wait: 800 });
+      check((await evaluate("document.body.innerText")).includes("파일로 프로젝트 시작"), "the other pages are in Korean too");
+      await open("/settings", { reload: false, wait: 600 });
+      await setValue("#ui-lang", "");
+      check(
+        await waitFor("document.documentElement.lang === 'en' && document.body.innerText.includes('Interface language')", 15000),
+        "the browser's language brings English back",
+      );
+      check(errors.length === 0, "no console errors in the other languages: " + errors.join(" | "));
     },
   );

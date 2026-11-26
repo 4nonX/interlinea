@@ -4,6 +4,7 @@ import { useStore } from "../store";
 import { errorText, useRemote } from "../remote";
 import { ApiError, serverURL, type ServerInfo } from "../server";
 import { fmtDate } from "../format";
+import { tl, tlx } from "../i18n";
 
 /** Settings: the team server the projects are shared on, and signing in to it. */
 export function TeamServer() {
@@ -43,7 +44,7 @@ export function TeamServer() {
     setProblem("");
     setInfo(null);
     if (!target) {
-      setProblem("Type the server's address.");
+      setProblem(tl("Type the server's address."));
       return;
     }
     setBusy(true);
@@ -63,7 +64,7 @@ export function TeamServer() {
     try {
       await r.signIn(target, username, password);
       setPassword("");
-      notify(`Signed in to ${new URL(target).host}`);
+      notify(tl("Signed in to {host}", { host: new URL(target).host }));
     } catch (err) {
       setProblem(
         err instanceof ApiError && err.code === "tooMany"
@@ -81,7 +82,7 @@ export function TeamServer() {
     setBusy(true);
     try {
       await r.setup(target, setup);
-      notify(`The server is set up. Signed in as ${setup.username}`);
+      notify(tl("The server is set up. Signed in as {username}", { username: setup.username }));
     } catch (err) {
       setProblem(
         err instanceof ApiError && err.problems.length
@@ -105,7 +106,7 @@ export function TeamServer() {
   return (
     <section className="panel" aria-labelledby="s-servers">
       <h2 id="s-servers" className="panel-title">
-        Team server
+        {tl("Team server")}
       </h2>
       {r.conn ? (
         <ul className="server-list">
@@ -114,16 +115,12 @@ export function TeamServer() {
             <div>
               <div className="cell-title">{new URL(r.conn.url).host}</div>
               <div className="cell-sub">
-                Signed in as {r.conn.user.name} ({r.conn.user.username})
-                {r.conn.user.admin ? ", administrator" : ""}. The sign-in lasts
-                until {fmtDate(r.conn.expiresAt)}.
-                {r.info ? ` Server version ${r.info.version}.` : ""}
-              </div>
+                {(r.conn.user.admin ? tl("Signed in as {name} ({username}), administrator. The sign-in lasts until {expiresAt}.", { name: r.conn.user.name, username: r.conn.user.username, expiresAt: fmtDate(r.conn.expiresAt) }) : tl("Signed in as {name} ({username}). The sign-in lasts until {expiresAt}.", { name: r.conn.user.name, username: r.conn.user.username, expiresAt: fmtDate(r.conn.expiresAt) })) + (r.info ? tl(" Server version {version}.", { version: r.info.version }) : "")}</div>
               {r.unsaved > 0 && (
                 <div className="cell-sub cell-warn" role="status">
                   {r.unsaved === 1
-                    ? "1 translation is not on the server yet; it is sent again when the server answers."
-                    : `${r.unsaved} translations are not on the server yet; they are sent again when the server answers.`}
+                    ? tl("1 translation is not on the server yet; it is sent again when the server answers.")
+                    : tl("{unsaved} translations are not on the server yet; they are sent again when the server answers.", { unsaved: r.unsaved })}
                 </div>
               )}
               {r.error && (
@@ -133,24 +130,21 @@ export function TeamServer() {
               )}
             </div>
             <span className={`status ${r.live ? "status-approved" : "status-proposed"}`}>
-              {r.live ? "Connected" : "Reconnecting"}
+              {r.live ? tl("Connected") : tl("Reconnecting")}
             </span>
             <button type="button" className="btn btn-small" onClick={() => void r.signOut()}>
-              <LogOut size={15} aria-hidden="true" /> Sign out
+              <LogOut size={15} aria-hidden="true" />{" "}{tl("Sign out")}
             </button>
           </li>
         </ul>
       ) : (
         <>
           <p className="help">
-            A team server keeps a team's termbases in one place: everyone
-            translates with the same terms, and new and changed entries reach
-            the masters through review. Projects and memories can be shared
-            there as well, with work given to translators and reviewers.
+            {tl("A team server keeps a team's termbases in one place: everyone translates with the same terms, and new and changed entries reach the masters through review. Projects and memories can be shared there as well, with work given to translators and reviewers.")}
           </p>
           <form className="server-connect" onSubmit={check}>
             <label className="field">
-              <span className="field-label">Server address</span>
+              <span className="field-label">{tl("Server address")}</span>
               <input
                 type="url"
                 inputMode="url"
@@ -164,17 +158,16 @@ export function TeamServer() {
               />
             </label>
             <button type="submit" className="btn" disabled={busy}>
-              Connect
+              {tl("Connect")}
             </button>
           </form>
           {info && info.setup && (
-            <form className="server-form" onSubmit={makeAdmin} aria-label="Set up the server">
+            <form className="server-form" onSubmit={makeAdmin} aria-label={tl("Set up the server")}>
               <p className="help">
-                {new URL(target).host} has no accounts yet. Make the first
-                administrator with the setup token from the server's log.
+                {tlx("{host} has no accounts yet. Make the first administrator with the setup token from the server's log.", { host: new URL(target).host })}
               </p>
               <label className="field">
-                <span className="field-label">Setup token</span>
+                <span className="field-label">{tl("Setup token")}</span>
                 <input
                   value={setup.setupToken}
                   autoComplete="off"
@@ -182,7 +175,7 @@ export function TeamServer() {
                 />
               </label>
               <label className="field">
-                <span className="field-label">Username</span>
+                <span className="field-label">{tl("Username")}</span>
                 <input
                   value={setup.username}
                   autoComplete="username"
@@ -190,15 +183,15 @@ export function TeamServer() {
                 />
               </label>
               <label className="field">
-                <span className="field-label">Name</span>
+                <span className="field-label">{tl("Name")}</span>
                 <input value={setup.name} onChange={(e) => setSetup({ ...setup, name: e.target.value })} />
               </label>
               <label className="field">
-                <span className="field-label">Email</span>
+                <span className="field-label">{tl("Email")}</span>
                 <input type="email" value={setup.email} onChange={(e) => setSetup({ ...setup, email: e.target.value })} />
               </label>
               <label className="field">
-                <span className="field-label">Password (12 characters or more)</span>
+                <span className="field-label">{tl("Password (12 characters or more)")}</span>
                 <input
                   type="password"
                   value={setup.password}
@@ -207,18 +200,18 @@ export function TeamServer() {
                 />
               </label>
               <button type="submit" className="btn btn-primary" disabled={busy}>
-                Make the administrator
+                {tl("Make the administrator")}
               </button>
             </form>
           )}
           {info && !info.setup && (
-            <form className="server-form" onSubmit={signIn} aria-label={`Sign in to ${new URL(target).host}`}>
+            <form className="server-form" onSubmit={signIn} aria-label={tl("Sign in to {host}", { host: new URL(target).host })}>
               <label className="field">
-                <span className="field-label">Username</span>
+                <span className="field-label">{tl("Username")}</span>
                 <input value={username} autoComplete="username" onChange={(e) => setUsername(e.target.value)} />
               </label>
               <label className="field">
-                <span className="field-label">Password</span>
+                <span className="field-label">{tl("Password")}</span>
                 <input
                   type="password"
                   value={password}
@@ -228,12 +221,11 @@ export function TeamServer() {
               </label>
               <div className="server-actions">
                 <button type="submit" className="btn btn-primary" disabled={busy || !username || !password}>
-                  <LogIn size={15} aria-hidden="true" /> Sign in
+                  <LogIn size={15} aria-hidden="true" />{" "}{tl("Sign in")}
                 </button>
                 {info.provider && (
                   <button type="button" className="btn" onClick={() => void provider()}>
-                    Sign in with {info.provider}
-                  </button>
+                    {tlx("Sign in with {provider}", { provider: info.provider })}</button>
                 )}
               </div>
             </form>

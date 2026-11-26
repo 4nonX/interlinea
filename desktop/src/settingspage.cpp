@@ -4,6 +4,7 @@
 #include "connectionmanager.h"
 #include "eventfeed.h"
 #include "icons.h"
+#include "interfacelanguage.h"
 #include "languages.h"
 #include "options.h"
 #include "secretstore.h"
@@ -111,8 +112,22 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     QWidget *p = page.scroll->widget();
     page.body->addWidget(Web::header(tr("Settings"), QString(), {}, p));
 
-    // Your name.
+    // Interface language.
     QVBoxLayout *body = nullptr;
+    page.body->addWidget(Web::panel(tr("Interface language"), p, &body));
+    body->addWidget(Web::text(tr("The language of menus, buttons and messages. Documents, projects and termbases keep their own languages."), "help", p));
+    {
+        auto *pick = new QComboBox(p);
+        pick->setObjectName(QStringLiteral("interfaceLanguage"));
+        pick->addItem(tr("The system's language (%1)").arg(InterfaceLanguage::nativeName(InterfaceLanguage::systemLanguage())), QString());
+        for (const QString &code : InterfaceLanguage::codes())
+            pick->addItem(InterfaceLanguage::nativeName(code), code);
+        pick->setCurrentIndex(qMax(0, pick->findData(InterfaceLanguage::chosen())));
+        body->addWidget(Web::field(tr("Show Interlinea in"), pick, p, false, tr("Takes effect when Interlinea is started again.")));
+        connect(pick, &QComboBox::currentIndexChanged, this, [pick](int) { InterfaceLanguage::choose(pick->currentData().toString()); });
+    }
+
+    // Your name.
     page.body->addWidget(Web::panel(tr("Your name"), p, &body));
     m_name = new QLineEdit(p);
     m_name->setObjectName(QStringLiteral("userName"));

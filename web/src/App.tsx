@@ -21,6 +21,7 @@ import { Memories } from "./screens/Memories";
 import { ServerProjectPage } from "./screens/ServerProjectPage";
 import { Accounts } from "./screens/Accounts";
 import { ServerMergeReview } from "./screens/ServerMergeReview";
+import { tl, tlx } from "./i18n";
 
 export type Route =
   | { page: "projects" }
@@ -175,19 +176,19 @@ function Rail({ route }: { route: Route }) {
   const items = [
     {
       id: "projects",
-      label: "Projects",
+      label: tl("Projects"),
       icon: FolderOpen,
       to: { page: "projects" } as Route,
     },
     {
       id: "memories",
-      label: "Memories",
+      label: tl("Memories"),
       icon: Database,
       to: { page: "memories" } as Route,
     },
     {
       id: "terminology",
-      label: "Terminology",
+      label: tl("Terminology"),
       icon: BookText,
       to: { page: "terminology" } as Route,
     },
@@ -195,7 +196,7 @@ function Rail({ route }: { route: Route }) {
       ? [
           {
             id: "accounts",
-            label: "Accounts",
+            label: tl("Accounts"),
             icon: Users,
             to: { page: "accounts" } as Route,
           },
@@ -203,22 +204,21 @@ function Rail({ route }: { route: Route }) {
       : []),
     {
       id: "settings",
-      label: "Settings",
+      label: tl("Settings"),
       icon: SettingsIcon,
       to: { page: "settings" } as Route,
     },
   ];
   return (
-    <nav className="rail" aria-label="Main">
+    <nav className="rail" aria-label={tl("Main")}>
       <a className="brand" href="#/projects">
-        <span className="brand-mark" aria-hidden="true">
+        {tlx("{span}Interlinea", { span: <span className="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 20 20" width="20" height="20">
             <rect x="2" y="4" width="16" height="2" rx="1" />
             <rect x="2" y="9" width="11" height="2" rx="1" opacity=".55" />
             <rect x="2" y="14" width="16" height="2" rx="1" />
           </svg>
-        </span>
-        Interlinea
+        </span> })}
       </a>
       <ul>
         {items.map(({ id, label, icon: Icon, to }) => (
@@ -237,7 +237,7 @@ function Rail({ route }: { route: Route }) {
         {state.gitWords && (
           <span className="rail-mode">
             <GitBranch size={14} aria-hidden="true" />
-            Git terms on
+            {tl("Git terms on")}
           </span>
         )}
       </div>
@@ -322,9 +322,9 @@ function ServerProject({ projectId, children }: { projectId: string; children: R
     return (
       <div className="page page-narrow">
         <div className="empty">
-          <p className="empty-title">This project is on a team server</p>
+          <p className="empty-title">{tl("This project is on a team server")}</p>
           <p>
-            Sign in to the server in <a href="#/settings">Settings</a> to open it.
+            {tlx("Sign in to the server in {a} to open it.", { a: <a href="#/settings">{tl("Settings")}</a> })}
           </p>
         </div>
       </div>
@@ -333,12 +333,12 @@ function ServerProject({ projectId, children }: { projectId: string; children: R
     return (
       <div className="page page-narrow">
         <div className="empty">
-          <p className="empty-title">The project could not be opened</p>
+          <p className="empty-title">{tl("The project could not be opened")}</p>
           <p className="error" role="alert">
             {problem}
           </p>
           <p>
-            <a href="#/projects">Back to the projects</a>
+            <a href="#/projects">{tl("Back to the projects")}</a>
           </p>
         </div>
       </div>
@@ -346,7 +346,7 @@ function ServerProject({ projectId, children }: { projectId: string; children: R
   if (!loaded)
     return (
       <p className="boot" role="status">
-        Opening the project from {new URL(r.conn.url).host}…
+        {tlx("Opening the project from {host}…", { host: new URL(r.conn.url).host })}
       </p>
     );
   return <>{children}</>;
@@ -357,7 +357,7 @@ function Shell() {
   return (
     <div className="app">
       <a className="skip-link" href="#main">
-        Skip to content
+        {tl("Skip to content")}
       </a>
       <Rail route={route} />
       <main

@@ -10,6 +10,7 @@
 #include "settingspage.h"
 #include "singleinstance.h"
 #include "theme.h"
+#include "interfacelanguage.h"
 
 #include <QApplication>
 #include <QDir>
@@ -49,11 +50,7 @@ int main(int argc, char *argv[])
     // The name of the desktop entry, so the windows are grouped under it.
     QGuiApplication::setDesktopFileName(QStringLiteral("org.interlinea.desktop"));
 
-    QTranslator qt, own;
-    if (qt.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"), QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
-        app.installTranslator(&qt);
-    if (own.load(QLocale(), QStringLiteral("interlinea"), QStringLiteral("_"), QStringLiteral(":/translations")))
-        app.installTranslator(&own);
+    InterfaceLanguage::install(app);
 
     SingleInstance instance(QDir::homePath());
     if (!instance.claim(app.arguments().mid(1)))

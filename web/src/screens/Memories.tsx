@@ -21,6 +21,7 @@ import { MemoryUnits, type UnitsBackend } from "./MemoryUnits";
 import { AlignDocuments, type AlignChoice, type AlignInto } from "./Alignment";
 import { LangChip, PageHeader } from "../components/ui";
 import { fmtDate, fmtNum, plural } from "../format";
+import { tl, tlx } from "../i18n";
 
 export function Memories() {
   const { state, notify } = useLocalStore();
@@ -34,7 +35,7 @@ export function Memories() {
       (e: unknown) =>
         live &&
         notify(
-          `The memories could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+          tl("The memories could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -52,19 +53,19 @@ export function Memories() {
   return (
     <div className="page">
       <PageHeader
-        title="Memories"
-        description="Translation memories, in the core. Projects choose which to use for each target language."
+        title={tl("Memories")}
+        description={tl("Translation memories, in the core. Projects choose which to use for each target language.")}
       />
       <ServerMemories />
       {!c ? (
         <p className="muted" role="status">
-          Loading the memories…
+          {tl("Loading the memories…")}
         </p>
       ) : (
         <>
           <section className="section" aria-labelledby="mem-main">
             <h2 id="mem-main" className="section-title">
-              Main memories on this computer
+              {tl("Main memories on this computer")}
             </h2>
             <MemoryTable
               key={version}
@@ -79,12 +80,10 @@ export function Memories() {
           {own.length > 0 && (
             <section className="section" aria-labelledby="mem-own">
               <h2 id="mem-own" className="section-title">
-                Project memories
+                {tl("Project memories")}
               </h2>
               <p className="help">
-                Each collects one project's confirmed translations. Add them to
-                a main memory from the project's settings; they are deleted with
-                the project.
+                {tl("Each collects one project's confirmed translations. Add them to a main memory from the project's settings; they are deleted with the project.")}
               </p>
               <MemoryTable
                 key={version}
@@ -115,7 +114,7 @@ function AlignHere({ c, memories, onAdded }: { c: CoreApi; memories: Translation
       openMemory(c, m, state.projects);
       const createdAt = new Date().toISOString();
       tm.add(c, m.name, units.map((u) => ({ ...u, createdBy: state.userName, createdAt })), overwrite);
-      if (!(await persistMemory(c, m.name))) notify("It is kept only until you close this page: this browser does not allow saving");
+      if (!(await persistMemory(c, m.name))) notify(tl("It is kept only until you close this page: this browser does not allow saving"));
     },
   });
   const choice: AlignChoice = {
@@ -132,7 +131,7 @@ function AlignHere({ c, memories, onAdded }: { c: CoreApi; memories: Translation
     <>
       <button type="button" className="btn btn-small" onClick={() => setOpen(true)}>
         <Columns2 size={14} aria-hidden="true" />
-        Align documents
+        {tl("Align documents")}
       </button>
       {open && (
         <AlignDocuments
@@ -140,7 +139,7 @@ function AlignHere({ c, memories, onAdded }: { c: CoreApi; memories: Translation
           onClose={() => setOpen(false)}
           onAdded={(n, name) => {
             setOpen(false);
-            notify(`Added ${plural(n, "unit", "units")} to ${name}`);
+            notify(tl("Added {n} to {name}", { n: plural(n, "unit", "units"), name }));
             onAdded();
           }}
         />
@@ -155,7 +154,7 @@ function LocalMemory({ c, memory: m, onChanged }: { c: CoreApi; memory: Translat
   const backend = useMemo<UnitsBackend>(() => {
     openMemory(c, m, state.projects);
     const saved = async () => {
-      if (!(await persistMemory(c, m.name))) notify("It is kept only until you close this page: this browser does not allow saving");
+      if (!(await persistMemory(c, m.name))) notify(tl("It is kept only until you close this page: this browser does not allow saving"));
     };
     return {
       search: async (query, inTarget) =>
@@ -213,21 +212,21 @@ function MemoryTable({
   const { state, dispatch, notify } = useLocalStore();
   const input = useRef<HTMLInputElement>(null);
   const [importInto, setImportInto] = useState("");
-  if (!memories.length) return <p className="muted">No memory yet.</p>;
+  if (!memories.length) return <p className="muted">{tl("No memory yet.")}</p>;
   return (
     <>
       <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
-              <th scope="col">Memory</th>
-              <th scope="col">Languages</th>
+              <th scope="col">{tl("Memory")}</th>
+              <th scope="col">{tl("Languages")}</th>
               <th scope="col" className="num">
-                Units
+                {tl("Units")}
               </th>
-              <th scope="col">Used by</th>
+              <th scope="col">{tl("Used by")}</th>
               <th scope="col">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{tl("Actions")}</span>
               </th>
             </tr>
           </thead>
@@ -252,9 +251,7 @@ function MemoryTable({
                   <th scope="row">
                     <span className="cell-title">{m.name}</span>
                     <span className="cell-sub">
-                      {m.client ? `${m.client}, ` : ""}created{" "}
-                      {fmtDate(m.createdAt)}
-                    </span>
+                      {tlx("{x}created {createdAt}", { x: m.client ? `${m.client}, ` : "", createdAt: fmtDate(m.createdAt) })}</span>
                   </th>
                   <td>
                     <span className="lang-pair">
@@ -270,7 +267,7 @@ function MemoryTable({
                         ...inTemplates.map((t) => `template ${t.name}`),
                       ].join(", ")
                     ) : (
-                      <span className="muted">No project</span>
+                      <span className="muted">{tl("No project")}</span>
                     )}
                   </td>
                   <td>
@@ -278,16 +275,16 @@ function MemoryTable({
                       <button
                         type="button"
                         className="btn btn-quiet btn-small"
-                        aria-label={m.name === open ? `Close ${m.name}` : `Open ${m.name}`}
+                        aria-label={m.name === open ? tl("Close {name}", { name: m.name }) : tl("Open {name}", { name: m.name })}
                         onClick={() => onOpen(m.name)}
                       >
-                        {m.name === open ? "Close" : "Open"}
+                        {m.name === open ? tl("Close") : tl("Open")}
                       </button>
                       {!m.projectId && (
                         <button
                           type="button"
                           className="btn btn-small"
-                          aria-label={`Import a memory file into ${m.name}`}
+                          aria-label={tl("Import a memory file into {name}", { name: m.name })}
                           title={MEMORY_FILES_NOTE}
                           onClick={() => {
                             setImportInto(m.name);
@@ -295,7 +292,7 @@ function MemoryTable({
                           }}
                         >
                           <Upload size={14} aria-hidden="true" />
-                          Import
+                          {tl("Import")}
                         </button>
                       )}
                       <button
@@ -311,13 +308,13 @@ function MemoryTable({
                         }
                       >
                         <Download size={14} aria-hidden="true" />
-                        Export TMX
+                        {tl("Export TMX")}
                       </button>
                       <button
                         type="button"
                         className="btn btn-quiet btn-small"
                         disabled={units === 0}
-                        aria-label={`Export ${m.name} as a .txt memory`}
+                        aria-label={tl("Export {name} as a .txt memory", { name: m.name })}
                         onClick={() =>
                           download(
                             tm.exportWordfast(c, m.name),
@@ -327,23 +324,23 @@ function MemoryTable({
                         }
                       >
                         <Download size={14} aria-hidden="true" />
-                        Export .txt
+                        {tl("Export .txt")}
                       </button>
                       {!m.projectId && (
                         <ConfirmButton
                           label={
                             <>
                               <Trash2 size={14} aria-hidden="true" />
-                              Delete
+                              {tl("Delete")}
                             </>
                           }
                           disabled={users.length > 0 || inTemplates.length > 0}
-                          confirm={`Delete ${m.name} and its ${plural(units, "unit", "units")}?`}
-                          action="Delete"
+                          confirm={tl("Delete {name} and its {units}?", { name: m.name, units: plural(units, "unit", "units") })}
+                          action={tl("Delete")}
                           onConfirm={() => {
                             void dropMemory(m.name);
                             dispatch({ type: "deleteMemory", name: m.name });
-                            notify(`Deleted the memory ${m.name}`);
+                            notify(tl("Deleted the memory {name}", { name: m.name }));
                             onChange();
                           }}
                         />
@@ -360,7 +357,7 @@ function MemoryTable({
           type="file"
           accept={MEMORY_FILES}
           hidden
-          aria-label="Memory file to import"
+          aria-label={tl("Memory file to import")}
           onChange={async (e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
@@ -378,7 +375,7 @@ function MemoryTable({
               onChange();
             } catch (err) {
               notify(
-                `Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`,
+                tl("Could not import {name}: {x}", { name: f.name, x: err instanceof Error ? err.message : String(err) }),
               );
             }
           }}
@@ -386,8 +383,7 @@ function MemoryTable({
       </div>
       {memories.some((m) => !m.projectId) && (
         <p className="help">
-          A memory a project or template uses can't be deleted; remove it there
-          first.
+          {tl("A memory a project or template uses can't be deleted; remove it there first.")}
         </p>
       )}
     </>
@@ -416,11 +412,11 @@ function NewMemoryForm({
     (m) => m.name.toLowerCase() === name.trim().toLowerCase(),
   );
   const problem = !name.trim()
-    ? "Give the memory a name."
+    ? tl("Give the memory a name.")
     : taken
-      ? "A memory with this name exists already."
+      ? tl("A memory with this name exists already.")
       : source === target
-        ? "Source and target language must differ."
+        ? tl("Source and target language must differ.")
         : "";
   if (!open)
     return (
@@ -431,7 +427,7 @@ function NewMemoryForm({
           onClick={() => setOpen(true)}
         >
           <Plus size={14} aria-hidden="true" />
-          New memory
+          {tl("New memory")}
         </button>
         {beside}
       </div>
@@ -459,14 +455,14 @@ function NewMemoryForm({
           );
         } catch (err) {
           setError(
-            `Could not read ${tmx?.name}: ${err instanceof Error ? err.message : String(err)}`,
+            tl("Could not read {x}: {x2}", { x: tmx?.name, x2: err instanceof Error ? err.message : String(err) }),
           );
           return;
         }
         dispatch({ type: "createMemory", memory });
         const kept = await persistMemory(c, memory.name);
         notify(
-          `Created the memory ${memory.name}${units ? ` with ${plural(units, "unit", "units")}` : ""}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
+          (units ? tl("Created the memory {name} with {units}", { name: memory.name, units: plural(units, "unit", "units") }) : tl("Created the memory {name}", { name: memory.name })) + (kept ? "" : tl(". It is kept only until you close this page: this browser does not allow saving")),
         );
         setOpen(false);
         setName("");
@@ -476,11 +472,11 @@ function NewMemoryForm({
       }}
     >
       <h3 id="nm-title" className="panel-title">
-        New memory
+        {tl("New memory")}
       </h3>
       <div className="field-grid">
         <div className="field">
-          <label htmlFor="nm-name">Name</label>
+          <label htmlFor="nm-name">{tl("Name")}</label>
           <input
             id="nm-name"
             value={name}
@@ -490,8 +486,7 @@ function NewMemoryForm({
         </div>
         <div className="field">
           <label htmlFor="nm-client">
-            Client <span className="optional">optional</span>
-          </label>
+            {tlx("Client {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
           <input
             id="nm-client"
             value={client}
@@ -499,7 +494,7 @@ function NewMemoryForm({
           />
         </div>
         <div className="field">
-          <label htmlFor="nm-src">Source language</label>
+          <label htmlFor="nm-src">{tl("Source language")}</label>
           <select
             id="nm-src"
             value={source}
@@ -513,7 +508,7 @@ function NewMemoryForm({
           </select>
         </div>
         <div className="field">
-          <label htmlFor="nm-tgt">Target language</label>
+          <label htmlFor="nm-tgt">{tl("Target language")}</label>
           <select
             id="nm-tgt"
             value={target}
@@ -528,8 +523,7 @@ function NewMemoryForm({
         </div>
         <div className="field">
           <label htmlFor="nm-tmx">
-            Fill it from a memory file <span className="optional">optional</span>
-          </label>
+            {tlx("Fill it from a memory file {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
           <input
             id="nm-tmx"
             type="file"
@@ -550,7 +544,7 @@ function NewMemoryForm({
                 if (src) setSource(src);
                 if (tgt) setTarget(tgt);
               } catch (err) {
-                setError(`Could not read ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+                setError(tl("Could not read {name}: {x}", { name: f.name, x: err instanceof Error ? err.message : String(err) }));
               }
             }}
           />
@@ -570,19 +564,18 @@ function NewMemoryForm({
           className="btn btn-primary btn-small"
           disabled={!!problem}
         >
-          Create memory
+          {tl("Create memory")}
         </button>
         <button
           type="button"
           className="btn btn-quiet btn-small"
           onClick={() => setOpen(false)}
         >
-          Cancel
+          {tl("Cancel")}
         </button>
       </div>
       <p className="help">
-        {lang(source).name} to {lang(target).name}. Projects with these
-        languages can use it.
+        {tlx("{name} to {name2}. Projects with these languages can use it.", { name: lang(source).name, name2: lang(target).name })}
       </p>
     </form>
   );

@@ -14,13 +14,14 @@ import { plural } from "../format";
 import { FORMATS, fileBase, term, toCoreEntry, toCoreTermbase } from "../termio";
 import { Modal, useCore } from "./TermbaseDialogs";
 import { may } from "./ServerTermbase";
+import { tl, tlx } from "../i18n";
 
 /** Glossaries to read and print, then the exchange formats. */
 const READ_FORMATS = [
-  { id: "pdf", label: ".pdf", note: "To print or send: fonts included, the same everywhere." },
-  { id: "docx", label: ".docx", note: "To edit further in a word processor." },
-  { id: "html", label: ".html", note: "One web page with a letter index and a search." },
-  { id: "txt", label: ".txt", note: "Plain text." },
+  { id: "pdf", label: ".pdf", note: tl("To print or send: fonts included, the same everywhere.") },
+  { id: "docx", label: ".docx", note: tl("To edit further in a word processor.") },
+  { id: "html", label: ".html", note: tl("One web page with a letter index and a search.") },
+  { id: "txt", label: ".txt", note: tl("Plain text.") },
 ];
 
 const MEDIA: Record<string, string> = {
@@ -31,13 +32,13 @@ const MEDIA: Record<string, string> = {
 };
 
 const STATUSES = [
-  { id: "approved", name: "Approved" },
-  { id: "proposed", name: "Proposed" },
-  { id: "forbidden", name: "Forbidden" },
+  { id: "approved", name: tl("Approved") },
+  { id: "proposed", name: tl("Proposed") },
+  { id: "forbidden", name: tl("Forbidden") },
 ];
 
 type Step = "format" | "content" | "layout";
-const STEP_NAME: Record<Step, string> = { format: "Format", content: "Content", layout: "Layout" };
+const STEP_NAME: Record<Step, string> = { format: tl("Format"), content: tl("Content"), layout: tl("Layout") };
 
 const glossaryFormat = (f: string) => f === "pdf" || f === "docx" || f === "html" || f === "txt";
 
@@ -132,7 +133,7 @@ export function ExportTermbaseDialog({
       setKept(next);
       setPreset(name);
       setSaveName("");
-      notify(`Kept the export settings “${name}” with ${tb.name}`);
+      notify(tl("Kept the export settings “{name}” with {name2}", { name, name2: tb.name }));
     } catch (e) {
       setProblem(errorText(e));
     }
@@ -149,7 +150,7 @@ export function ExportTermbaseDialog({
       }
       setKept(next);
       if (preset === name) setPreset("");
-      notify(`Removed the export settings “${name}”`);
+      notify(tl("Removed the export settings “{name}”", { name }));
     } catch (e) {
       setProblem(errorText(e));
     }
@@ -173,7 +174,7 @@ export function ExportTermbaseDialog({
         const res = await r.api.exportWith(tb.name, options);
         ({ data, type, summary, missing } = res);
       } else {
-        if (!c) throw new Error("The core is still loading.");
+        if (!c) throw new Error(tl("The core is still loading."));
         const fonts = o.format === "pdf" ? await pdfFonts() : [];
         const res = term.exportWith(c, toCoreTermbase(tb, list), options, fonts);
         data = res.data;
@@ -184,12 +185,12 @@ export function ExportTermbaseDialog({
       download(data, name, type);
       notify(
         missing
-          ? `Exported ${summary} to ${name}. No font has ${[...missing].slice(0, 12).join(" ")}: they show as boxes.`
-          : `Exported ${summary} to ${name}`,
+          ? tl("Exported {summary} to {name}. No font has {join}: they show as boxes.", { summary, name, join: [...missing].slice(0, 12).join(" ") })
+          : tl("Exported {summary} to {name}", { summary, name }),
       );
       onClose();
     } catch (e) {
-      setProblem(`The export failed: ${errorText(e)}`);
+      setProblem(tl("The export failed: {e}", { e: errorText(e) }));
     } finally {
       setBusy(false);
     }
@@ -197,16 +198,16 @@ export function ExportTermbaseDialog({
 
   const blocking =
     langs.length === 0
-      ? "Choose a language at least."
+      ? tl("Choose a language at least.")
       : glossary && o.sortBy && !langs.includes(o.sortBy)
-        ? "Sort by one of the languages exported."
+        ? tl("Sort by one of the languages exported.")
         : list.length === 0
-          ? "There is no entry to export."
+          ? tl("There is no entry to export.")
           : "";
 
   return (
-    <Modal title={`Export ${tb.name}`} onClose={onClose} wide>
-      <ol className="stepper stepper-small" aria-label="Steps">
+    <Modal title={tl("Export {name}", { name: tb.name })} onClose={onClose} wide>
+      <ol className="stepper stepper-small" aria-label={tl("Steps")}>
         {steps.map((s, i) => (
           <li key={s} aria-current={s === step ? "step" : undefined} className={at > i ? "is-done" : undefined}>
             <button type="button" className="stepper-link" onClick={() => setStep(s)}>
@@ -223,11 +224,11 @@ export function ExportTermbaseDialog({
         <>
           {(kept.length > 0 || ready.length > 0) && (
             <div className="field">
-              <label htmlFor="exp-preset">Start from</label>
+              <label htmlFor="exp-preset">{tl("Start from")}</label>
               <select id="exp-preset" value={preset} onChange={(e) => choosePreset(e.target.value)}>
-                <option value="">Settings of my own</option>
+                <option value="">{tl("Settings of my own")}</option>
                 {kept.length > 0 && (
-                  <optgroup label={`Kept with ${tb.name}`}>
+                  <optgroup label={tl("Kept with {name}", { name: tb.name })}>
                     {kept.map((p) => (
                       <option key={`k-${p.name}`} value={p.name}>
                         {p.name}
@@ -246,14 +247,14 @@ export function ExportTermbaseDialog({
               {kept.some((p) => p.name === preset) && manage && (
                 <div className="row row-start">
                   <button type="button" className="btn btn-quiet btn-small" onClick={() => void removeKept(preset)}>
-                    Remove “{preset}”
+                    {tlx("Remove “{preset}”", { preset: preset })}
                   </button>
                 </div>
               )}
             </div>
           )}
           <fieldset className="field">
-            <legend>To read and print</legend>
+            <legend>{tl("To read and print")}</legend>
             <ul className="choice-list choice-grid">
               {READ_FORMATS.map((f) => (
                 <li key={f.id}>
@@ -277,7 +278,7 @@ export function ExportTermbaseDialog({
             </ul>
           </fieldset>
           <fieldset className="field">
-            <legend>To exchange with other tools</legend>
+            <legend>{tl("To exchange with other tools")}</legend>
             <ul className="choice-list choice-grid">
               {FORMATS.map((f) => (
                 <li key={f.id}>
@@ -306,8 +307,8 @@ export function ExportTermbaseDialog({
       {step === "content" && (
         <>
           <fieldset className="field">
-            <legend>Languages</legend>
-            <div className="check-list" role="group" aria-label="Languages exported">
+            <legend>{tl("Languages")}</legend>
+            <div className="check-list" role="group" aria-label={tl("Languages exported")}>
               {tb.languages.map((l) => (
                 <label key={l} className="check">
                   <input
@@ -327,22 +328,22 @@ export function ExportTermbaseDialog({
           </fieldset>
           {partial && (
             <fieldset className="field">
-              <legend>Entries</legend>
+              <legend>{tl("Entries")}</legend>
               <div className="check-stack">
               <label className="check">
                 <input type="radio" name="export-scope" checked={scope === "all"} onChange={() => setScope("all")} />
-                <span>All {plural(entries.length, "entry", "entries")}</span>
+                <span>{tl("All")}{" "}{plural(entries.length, "entry", "entries")}</span>
               </label>
               <label className="check">
                 <input type="radio" name="export-scope" checked={scope === "shown"} onChange={() => setScope("shown")} />
-                <span>The {plural(shown.length, "entry", "entries")} the search shows</span>
+                <span>{tlx("The {length} the search shows", { length: plural(shown.length, "entry", "entries") })}</span>
               </label>
               </div>
             </fieldset>
           )}
           <fieldset className="field">
-            <legend>Terms</legend>
-            <div className="check-list" role="group" aria-label="Statuses exported">
+            <legend>{tl("Terms")}</legend>
+            <div className="check-list" role="group" aria-label={tl("Statuses exported")}>
               {STATUSES.map((s) => {
                 const on = !o.statuses || o.statuses.includes(s.id);
                 return (
@@ -364,8 +365,8 @@ export function ExportTermbaseDialog({
           </fieldset>
           {fields.length > 0 && (
             <fieldset className="field">
-              <legend>Fields</legend>
-              <div className="check-list" role="group" aria-label="Fields exported">
+              <legend>{tl("Fields")}</legend>
+              <div className="check-list" role="group" aria-label={tl("Fields exported")}>
                 {fields.map((f) => (
                   <label key={f.id} className="check">
                     <input
@@ -384,7 +385,7 @@ export function ExportTermbaseDialog({
           )}
           <div className="field-grid">
             <div className="field">
-              <label htmlFor="exp-filter">Only entries with</label>
+              <label htmlFor="exp-filter">{tl("Only entries with")}</label>
               <div className="row row-start">
                 <select
                   id="exp-filter"
@@ -392,7 +393,7 @@ export function ExportTermbaseDialog({
                   value={o.filterField ?? ""}
                   onChange={(e) => set({ filterField: e.target.value || undefined, filterValue: undefined })}
                 >
-                  <option value="">Any entry</option>
+                  <option value="">{tl("Any entry")}</option>
                   {fields.map((f) => (
                     <option key={f.id} value={f.name}>
                       {f.name}
@@ -401,19 +402,19 @@ export function ExportTermbaseDialog({
                 </select>
                 {filterField &&
                   (filterField.kind === "picklist" ? (
-                    <select aria-label={`Value of ${filterField.name}`} className="select-auto" value={o.filterValue ?? ""} onChange={(e) => set({ filterValue: e.target.value || undefined })}>
-                      <option value="">Any value</option>
+                    <select aria-label={tl("Value of {name}", { name: filterField.name })} className="select-auto" value={o.filterValue ?? ""} onChange={(e) => set({ filterValue: e.target.value || undefined })}>
+                      <option value="">{tl("Any value")}</option>
                       {(filterField.values ?? []).map((v) => (
                         <option key={v}>{v}</option>
                       ))}
                     </select>
                   ) : (
-                    <input aria-label={`Value of ${filterField.name}`} placeholder="Any value" value={o.filterValue ?? ""} onChange={(e) => set({ filterValue: e.target.value || undefined })} />
+                    <input aria-label={tl("Value of {name}", { name: filterField.name })} placeholder={tl("Any value")} value={o.filterValue ?? ""} onChange={(e) => set({ filterValue: e.target.value || undefined })} />
                   ))}
               </div>
             </div>
             <div className="field">
-              <label htmlFor="exp-since">Changed since</label>
+              <label htmlFor="exp-since">{tl("Changed since")}</label>
               <input id="exp-since" type="date" value={o.changedSince ?? ""} onChange={(e) => set({ changedSince: e.target.value || undefined })} />
             </div>
           </div>
@@ -423,11 +424,11 @@ export function ExportTermbaseDialog({
       {step === "layout" && glossary && (
         <>
           <fieldset className="field">
-            <legend>Layout</legend>
+            <legend>{tl("Layout")}</legend>
             <ul className="choice-list choice-grid">
               {[
-                { id: "dictionary", title: "Dictionary", text: "Headwords in two columns, each language on a line under them." },
-                { id: "table", title: "Table", text: "A column for each language, a row for each entry." },
+                { id: "dictionary", title: tl("Dictionary"), text: tl("Headwords in two columns, each language on a line under them.") },
+                { id: "table", title: tl("Table"), text: tl("A column for each language, a row for each entry.") },
               ].map((x) => (
                 <li key={x.id}>
                   <label className="choice">
@@ -443,7 +444,7 @@ export function ExportTermbaseDialog({
           </fieldset>
           <div className="field-grid">
             <div className="field">
-              <label htmlFor="exp-sort">Sorted by</label>
+              <label htmlFor="exp-sort">{tl("Sorted by")}</label>
               <select id="exp-sort" value={o.sortBy ?? langs[0] ?? ""} onChange={(e) => set({ sortBy: e.target.value })}>
                 {langs.map((l) => (
                   <option key={l} value={l}>
@@ -453,19 +454,19 @@ export function ExportTermbaseDialog({
               </select>
             </div>
             <div className="field">
-              <label htmlFor="exp-title">Title</label>
+              <label htmlFor="exp-title">{tl("Title")}</label>
               <input id="exp-title" value={o.title ?? ""} placeholder={tb.name} onChange={(e) => set({ title: e.target.value || undefined })} />
             </div>
           </div>
           <fieldset className="field">
-            <legend>Show</legend>
+            <legend>{tl("Show")}</legend>
             <div className="check-stack">
             {[
-              { k: "letters", t: "Initial letters before their headwords" },
-              { k: "perTerm", t: "Every synonym as a headword of its own" },
-              { k: "groupHomonyms", t: "Entries with the same headword under it, numbered" },
-              { k: "labels", t: "The names of fields before their values" },
-              { k: "status", t: "Proposed and forbidden terms marked" },
+              { k: "letters", t: tl("Initial letters before their headwords") },
+              { k: "perTerm", t: tl("Every synonym as a headword of its own") },
+              { k: "groupHomonyms", t: tl("Entries with the same headword under it, numbered") },
+              { k: "labels", t: tl("The names of fields before their values") },
+              { k: "status", t: tl("Proposed and forbidden terms marked") },
             ].map((x) => (
               <label key={x.k} className="check">
                 <input
@@ -480,7 +481,7 @@ export function ExportTermbaseDialog({
           </fieldset>
           {(o.format === "pdf" || o.format === "docx" || o.format === "html") && (
             <fieldset className="field">
-              <legend>Page</legend>
+              <legend>{tl("Page")}</legend>
               <div className="check-stack">
               <label className="check">
                 <input type="radio" name="export-page" checked={(o.page ?? "a4") === "a4"} onChange={() => set({ page: "a4" })} />
@@ -488,7 +489,7 @@ export function ExportTermbaseDialog({
               </label>
               <label className="check">
                 <input type="radio" name="export-page" checked={o.page === "letter"} onChange={() => set({ page: "letter" })} />
-                <span>Letter</span>
+                <span>{tl("Letter")}</span>
               </label>
               </div>
             </fieldset>
@@ -498,14 +499,14 @@ export function ExportTermbaseDialog({
 
       {manage && (
         <div className="field export-keep">
-          <label htmlFor="exp-keep">Keep these settings as</label>
+          <label htmlFor="exp-keep">{tl("Keep these settings as")}</label>
           <div className="row row-start">
-            <input id="exp-keep" value={saveName} placeholder="For example Client glossary" onChange={(e) => setSaveName(e.target.value)} />
+            <input id="exp-keep" value={saveName} placeholder={tl("For example Client glossary")} onChange={(e) => setSaveName(e.target.value)} />
             <button type="button" className="btn btn-small" disabled={!saveName.trim()} onClick={() => void keep()}>
-              Keep
+              {tl("Keep")}
             </button>
           </div>
-          <p className="help">Kept with {tb.name}, for everyone who exports it.</p>
+          <p className="help">{tlx("Kept with {name}, for everyone who exports it.", { name: tb.name })}</p>
         </div>
       )}
 
@@ -516,20 +517,20 @@ export function ExportTermbaseDialog({
       )}
       <div className="row row-end">
         <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-          Cancel
+          {tl("Cancel")}
         </button>
         {at > 0 && (
           <button type="button" className="btn btn-small" onClick={() => setStep(steps[at - 1]!)}>
-            Back
+            {tl("Back")}
           </button>
         )}
         {at < steps.length - 1 && (
           <button type="button" className="btn btn-small" onClick={() => setStep(steps[at + 1]!)}>
-            Continue
+            {tl("Continue")}
           </button>
         )}
         <button type="button" className="btn btn-primary btn-small" disabled={busy || !!blocking || (!c && !(tb.remote && o.format === "pdf"))} onClick={() => void run()}>
-          {busy ? "Exporting…" : `Export to ${glossary ? `.${o.format}` : (FORMATS.find((f) => f.id === o.format)?.label ?? o.format)}`}
+          {busy ? tl("Exporting…") : tl("Export to {x}", { x: glossary ? `.${o.format}` : (FORMATS.find((f) => f.id === o.format)?.label ?? o.format) })}
         </button>
       </div>
     </Modal>

@@ -6,6 +6,7 @@ import {
   type FieldKind,
   type InfoType,
 } from "../data";
+import { tl } from "../i18n";
 
 /**
  * The fields of a termbase as they are being defined: what a value is
@@ -58,42 +59,42 @@ export const STRUCTURES: {
 }[] = [
   {
     id: "terms",
-    name: "Terms only",
-    text: "A glossary: the terms of each language, each with its status. Fields can be added later.",
+    name: tl("Terms only"),
+    text: tl("A glossary: the terms of each language, each with its status. Fields can be added later."),
     fields: [],
   },
   {
     id: "notes",
-    name: "Terms with definitions and notes",
-    text: "A definition and its source for each language, and a note on the entry.",
+    name: tl("Terms with definitions and notes"),
+    text: tl("A definition and its source for each language, and a note on the entry."),
     fields: [
-      text("Definition", "language"),
-      text("Source", "language"),
-      text("Note", "concept"),
+      text(tl("Definition"), "language"),
+      text(tl("Source"), "language"),
+      text(tl("Note"), "concept"),
     ],
   },
   {
     id: "terminology",
-    name: "Terminology with grammar",
-    text: "Subject field, notes and the date it was last checked; definitions per language; part of speech, gender, number, context and usage per term.",
+    name: tl("Terminology with grammar"),
+    text: tl("Subject field, notes and the date it was last checked; definitions per language; part of speech, gender, number, context and usage per term."),
     fields: [
-      text("Subject field", "concept"),
-      text("Note", "concept"),
-      { name: "Last checked", level: "concept", kind: "date", values: [] },
-      text("Definition", "language"),
-      text("Source of the definition", "language"),
-      list("Part of speech", "term", [
+      text(tl("Subject field"), "concept"),
+      text(tl("Note"), "concept"),
+      { name: tl("Last checked"), level: "concept", kind: "date", values: [] },
+      text(tl("Definition"), "language"),
+      text(tl("Source of the definition"), "language"),
+      list(tl("Part of speech"), "term", [
         "noun",
         "verb",
         "adjective",
         "adverb",
-        "proper noun",
+        tl("proper noun"),
         "other",
       ]),
-      list("Gender", "term", ["masculine", "feminine", "neuter", "common"]),
-      list("Number", "term", ["singular", "plural"]),
-      text("Context", "term"),
-      text("Usage note", "term"),
+      list(tl("Gender"), "term", ["masculine", "feminine", "neuter", "common"]),
+      list(tl("Number"), "term", ["singular", "plural"]),
+      text(tl("Context"), "term"),
+      text(tl("Usage note"), "term"),
     ],
   },
 ];
@@ -104,15 +105,15 @@ export function fieldProblem(
   others: string[],
 ): string {
   const name = f.name.trim();
-  if (!name) return "Give the field a name.";
+  if (!name) return tl("Give the field a name.");
   if (
     others.some(
       (o) => o.trim().toLocaleLowerCase() === name.toLocaleLowerCase(),
     )
   )
-    return "Another field has this name.";
+    return tl("Another field has this name.");
   if (f.kind === "picklist" && f.values.length === 0)
-    return "Give the list its values, one a line.";
+    return tl("Give the list its values, one a line.");
   return "";
 }
 
@@ -151,7 +152,7 @@ export function ValuesEditor({
       aria-label={label}
       rows={Math.min(6, Math.max(3, values.length + 1))}
       value={draft}
-      placeholder={"One value a line\nsuch as\nnoun\nverb"}
+      placeholder={tl("One value a line\nsuch as\nnoun\nverb")}
       onChange={(e) => {
         setDraft(e.target.value);
         const now = read(e.target.value);
@@ -210,17 +211,17 @@ export function FieldTable({
     <div className="field-table">
       {fields.length === 0 ? (
         <p className="help">
-          No fields: entries hold their terms and each term's status.
+          {tl("No fields: entries hold their terms and each term's status.")}
         </p>
       ) : (
         <table className="table">
           <thead>
             <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Belongs to</th>
-              <th scope="col">Values</th>
+              <th scope="col">{tl("Name")}</th>
+              <th scope="col">{tl("Belongs to")}</th>
+              <th scope="col">{tl("Values")}</th>
               <th scope="col">
-                <span className="sr-only">Remove</span>
+                <span className="sr-only">{tl("Remove")}</span>
               </th>
             </tr>
           </thead>
@@ -237,16 +238,16 @@ export function FieldTable({
                     <input
                       ref={i === fields.length - 1 ? lastName : undefined}
                       value={f.name}
-                      aria-label={`Name of field ${i + 1}`}
+                      aria-label={tl("Name of field {x}", { x: i + 1 })}
                       aria-invalid={!!problem}
-                      placeholder="Name of the field"
+                      placeholder={tl("Name of the field")}
                       onChange={(e) => set(f.key, { name: e.target.value })}
                     />
                     {problem && <p className="field-problem">{problem}</p>}
                   </td>
                   <td>
                     <select
-                      aria-label={`Where ${label} belongs`}
+                      aria-label={tl("Where {label} belongs", { label })}
                       value={f.level}
                       onChange={(e) =>
                         set(f.key, {
@@ -264,13 +265,13 @@ export function FieldTable({
                   <td>
                     <div className="field-kind">
                       <KindSelect
-                        label={`Values of ${label}`}
+                        label={tl("Values of {label}", { label })}
                         value={f.kind}
                         onChange={(kind) => set(f.key, { kind })}
                       />
                       {f.kind === "picklist" && (
                         <ValuesEditor
-                          label={`The values of ${label}, one a line`}
+                          label={tl("The values of {label}, one a line", { label })}
                           values={f.values}
                           onChange={(values) => set(f.key, { values })}
                         />
@@ -281,8 +282,8 @@ export function FieldTable({
                     <button
                       type="button"
                       className="btn btn-quiet btn-small btn-icon"
-                      aria-label={`Remove ${label}`}
-                      title={`Remove ${label}`}
+                      aria-label={tl("Remove {label}", { label })}
+                      title={tl("Remove {label}", { label })}
                       onClick={() =>
                         onChange(fields.filter((x) => x.key !== f.key))
                       }
@@ -306,7 +307,7 @@ export function FieldTable({
           }}
         >
           <Plus size={14} aria-hidden="true" />
-          Add a field
+          {tl("Add a field")}
         </button>
       </div>
     </div>
@@ -343,7 +344,7 @@ export function AddFieldForm({
           onClick={() => setOpen(true)}
         >
           <Plus size={14} aria-hidden="true" />
-          Add a field
+          {tl("Add a field")}
         </button>
       </div>
     );
@@ -362,7 +363,7 @@ export function AddFieldForm({
   return (
     <form
       className="add-field"
-      aria-label="Add a field"
+      aria-label={tl("Add a field")}
       onSubmit={(e) => {
         e.preventDefault();
         if (problem) return;
@@ -376,24 +377,24 @@ export function AddFieldForm({
         setOpen(false);
       }}
     >
-      <label htmlFor={`${id}-n`}>Field name</label>
+      <label htmlFor={`${id}-n`}>{tl("Field name")}</label>
       <input
         id={`${id}-n`}
         ref={ref}
         value={f.name}
         onChange={(e) => setF({ ...f, name: e.target.value })}
-        placeholder="For example Source, Region, Register"
+        placeholder={tl("For example Source, Region, Register")}
         aria-describedby={`${id}-h`}
       />
       <p id={`${id}-h`} className="help" aria-live="polite">
         {same
-          ? `${termbase} already has “${same}”.`
+          ? tl("{termbase} already has “{same}”.", { termbase, same })
           : similar
-            ? `Did you mean the existing field “${similar}”?`
-            : "Every entry in this termbase gets the field. Nothing else changes."}
+            ? tl("Did you mean the existing field “{similar}”?", { similar })
+            : tl("Every entry in this termbase gets the field. Nothing else changes.")}
       </p>
       <fieldset className="scope">
-        <legend>Where does the value belong?</legend>
+        <legend>{tl("Where does the value belong?")}</legend>
         {FIELD_LEVELS.map((l) => (
           <label key={l.level} className="check">
             <input
@@ -408,16 +409,16 @@ export function AddFieldForm({
           </label>
         ))}
       </fieldset>
-      <label htmlFor={`${id}-k`}>Values</label>
+      <label htmlFor={`${id}-k`}>{tl("Values")}</label>
       <KindSelect
         id={`${id}-k`}
-        label="Values"
+        label={tl("Values")}
         value={f.kind}
         onChange={(kind) => setF({ ...f, kind })}
       />
       {f.kind === "picklist" && (
         <ValuesEditor
-          label="The values of the list, one a line"
+          label={tl("The values of the list, one a line")}
           values={f.values}
           onChange={(values) => setF({ ...f, values })}
         />
@@ -428,7 +429,7 @@ export function AddFieldForm({
           className="btn btn-primary btn-small"
           disabled={!!problem}
         >
-          Add field
+          {tl("Add field")}
         </button>
         <button
           type="button"
@@ -438,7 +439,7 @@ export function AddFieldForm({
             setOpen(false);
           }}
         >
-          Cancel
+          {tl("Cancel")}
         </button>
       </div>
     </form>
@@ -478,8 +479,8 @@ export function FieldValue({
     const options =
       it.kind === "boolean"
         ? [
-            { v: "true", t: "Yes" },
-            { v: "false", t: "No" },
+            { v: "true", t: tl("Yes") },
+            { v: "false", t: tl("No") },
           ]
         : (it.values ?? []).map((v) => ({ v, t: v }));
     return (
@@ -491,7 +492,7 @@ export function FieldValue({
           onSave(e.target.value);
         }}
       >
-        <option value="">Not set</option>
+        <option value="">{tl("Not set")}</option>
         {options.map((o) => (
           <option key={o.v} value={o.v}>
             {o.t}
@@ -521,7 +522,7 @@ export function FieldValue({
           id={id}
           inputMode="decimal"
           value={draft}
-          placeholder="Not set"
+          placeholder={tl("Not set")}
           aria-invalid={!!problem}
           aria-describedby={problem ? `${id}-p` : undefined}
           onChange={(e) => {
@@ -531,7 +532,7 @@ export function FieldValue({
           onBlur={() => {
             const v = draft.trim();
             if (v && !NUMBER.test(v)) {
-              setProblem("Type a number, such as 12 or 0.5.");
+              setProblem(tl("Type a number, such as 12 or 0.5."));
               return;
             }
             if (v !== value) onSave(v);
@@ -550,7 +551,7 @@ export function FieldValue({
       id={id}
       value={draft}
       rows={2}
-      placeholder="Not set"
+      placeholder={tl("Not set")}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onSave(draft)}
     />
@@ -558,7 +559,7 @@ export function FieldValue({
     <input
       id={id}
       value={draft}
-      placeholder="Not set"
+      placeholder={tl("Not set")}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== value && onSave(draft)}
     />

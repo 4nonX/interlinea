@@ -62,6 +62,7 @@ import { bilingualDocx, core, documentFormat, extractDocx, extractXliff, loadCor
 import { openRemoteMemory } from "./editor/memory";
 import { fromCoreEntry, infoTypesFromCore, toCoreEntry } from "./termio";
 import { go } from "./App";
+import { tl } from "./i18n";
 
 const KEY = "interlinea.server";
 const PENDING = "interlinea.server.pending";
@@ -94,7 +95,7 @@ export function serverNumber(id: string): number | null {
 }
 
 /** The name a server memory goes by in the browser, apart from local memories. */
-export const remoteMemoryName = (name: string) => `${name} (team server)`;
+export const remoteMemoryName = (name: string) => tl("{name} (team server)", { name });
 const termbaseId = (name: string) => `srv:${name}`;
 
 export function errorText(e: unknown): string {
@@ -172,7 +173,7 @@ const Ctx = createContext<Remote | null>(null);
 
 export function useRemote(): Remote {
   const r = useContext(Ctx);
-  if (!r) throw new Error("useRemote outside RemoteProvider");
+  if (!r) throw new Error(tl("useRemote outside RemoteProvider"));
   return r;
 }
 
@@ -229,7 +230,7 @@ function entryOf(
         id: `h-${eid}`,
         at: e.changedAt ?? e.createdAt ?? fallbackAt,
         by: e.changedBy ?? e.createdBy ?? "",
-        summary: "On the team server",
+        summary: tl("On the team server"),
       },
     ],
   };
@@ -294,7 +295,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       if (e instanceof ApiError && e.code === "signIn") {
         use(null);
-        notify("The team server sign-in has ended. Sign in again in Settings.");
+        notify(tl("The team server sign-in has ended. Sign in again in Settings."));
         return;
       }
       setError(errorText(e));
@@ -321,7 +322,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       void exchangeCode(url, r.code)
         .then((c) => {
           use(c);
-          notify(`Signed in to ${new URL(url).host} as ${c.user.name}`);
+          notify(tl("Signed in to {host} as {name}", { host: new URL(url).host, name: c.user.name }));
         })
         .catch((e) => notify(errorText(e)));
   }, [use, notify]);
@@ -403,8 +404,8 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
                 const holder = others(x.id).find((a) => a.task === "translate") ?? others(x.id)[0];
                 seg.locked = true;
                 seg.lockedReason = holder
-                  ? `${holder.task === "translate" ? "Translated" : "Reviewed"} by ${holder.userName}`
-                  : "Not assigned to you";
+                  ? `${holder.task === "translate" ? tl("Translated") : tl("Reviewed")} by ${holder.userName}`
+                  : tl("Not assigned to you");
               }
               known.current.add(seg);
               return seg;
@@ -536,7 +537,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
 
   const openTermbase = useCallback(
     async (name: string): Promise<string> => {
-      if (!api || !conn) throw new Error("Sign in to the team server first.");
+      if (!api || !conn) throw new Error(tl("Sign in to the team server first."));
       const info = await api.termbase(name);
       const infoTypes = infoTypesFromCore(info.definition.fields as never);
       const ids = new Map(infoTypes.map((i) => [i.name, i.id]));
@@ -576,7 +577,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
 
   const open = useCallback(
     async (n: number) => {
-      if (!api) throw new Error("Sign in to the team server first.");
+      if (!api) throw new Error(tl("Sign in to the team server first."));
       const [p, ws] = await Promise.all([api.project(n), api.myAssignments()]);
       setWork(ws);
       await materialize(p, ws);
@@ -619,7 +620,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
             const s2 = segmentOf(theirs, seg);
             if (e.status === 403) {
               s2.locked = true;
-              s2.lockedReason = "Not assigned to you";
+              s2.lockedReason = tl("Not assigned to you");
             }
             sent.current.set(k, content(s2));
             known.current.add(s2);
@@ -627,7 +628,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
           }
           notify(
             e.code === "conflict"
-              ? `${theirs?.changedBy ?? "Someone"} changed this segment on the server first; their translation is shown`
+              ? (theirs?.changedBy ? tl("{name} changed this segment on the server first; their translation is shown", { name: theirs.changedBy }) : tl("Someone changed this segment on the server first; their translation is shown"))
               : e.message,
           );
         } else {
@@ -674,7 +675,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
 
   const resegment = useCallback(
     async (project: Project, fileId: string, lang: LangCode, segId: string, how: Resegment, before: Run[]) => {
-      if (!api || !project.remote) throw new Error("Sign in to the team server first.");
+      if (!api || !project.remote) throw new Error(tl("Sign in to the team server first."));
       const n = project.remote.id;
       const file = project.remote.files[fileId]!;
       // What was typed in the segments is saved first, so it is what gets split or joined.
@@ -725,7 +726,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
     const nameOf = (tbId: string) => state.termbases.find((t) => t.id === tbId && t.remote)?.name;
     const serverId = (e: Entry) => e.id.slice(e.termbaseId.length + 1);
     const fail = (what: string, tbId: string, err: unknown) => {
-      notify(`${what} was not saved on the server: ${errorText(err)}`);
+      notify(tl("{what} was not saved on the server: {err}", { what, err: errorText(err) }));
       const name = nameOf(tbId);
       // The server's version replaces ours.
       if (name) void openTermbaseQuiet(name);
@@ -750,12 +751,12 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       if (onServer)
         void api.updateEntry(name, { ...core, id: serverId(e) }, e.version ?? 1).then(done, (err) => {
           sendingEntries.current.delete(e.id);
-          fail("The entry", e.termbaseId, err);
+          fail(tl("The entry"), e.termbaseId, err);
         });
       else
         void api.addEntry(name, { ...core, id: undefined }).then(done, (err) => {
           sendingEntries.current.delete(e.id);
-          fail("The new entry", e.termbaseId, err);
+          fail(tl("The new entry"), e.termbaseId, err);
         });
     }
     // Deleted here: gone on the server too.
@@ -766,7 +767,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
       for (const id of ids) {
         if (here.has(id)) continue;
         ids.delete(id);
-        void api.deleteEntry(name, id.slice(tbId.length + 1)).catch((err) => fail("Deleting the entry", tbId, err));
+        void api.deleteEntry(name, id.slice(tbId.length + 1)).catch((err) => fail(tl("Deleting the entry"), tbId, err));
       }
     }
   }, [api, state.entries, state.termbases, dispatch, notify, openTermbase]);
@@ -788,7 +789,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
         switch (e.type) {
           case "signedOut":
             use(null);
-            notify("The team server signed you out.");
+            notify(tl("The team server signed you out."));
             return;
           case "reset":
             for (const p of st.projects) if (p.remote) void open(p.remote.id).catch(() => undefined);
@@ -804,7 +805,7 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
             if (!p?.remote) return;
             if (c.kind === "project-deleted") {
               dispatch({ type: "remoteUnload", projectId: p.id });
-              notify(`${c.by} deleted the project “${c.project}” on the server`);
+              notify(tl("{by} deleted the project “{project}” on the server", { by: c.by, project: c.project }));
               return;
             }
             if ((c.kind === "segment-commented" || c.kind === "segment-reviewed") && c.file && c.targetLang && c.segment) {
@@ -1043,14 +1044,14 @@ export function useTranslationServices(project: Project | undefined, lang: LangC
       async ask(name: string, source: Run[]): Promise<Suggestion> {
         const core = runsToCore(source);
         if (remote) {
-          if (!api) throw new Error("Sign in to the team server first.");
+          if (!api) throw new Error(tl("Sign in to the team server first."));
           const r = await api.providerTranslate(name, sourceLang, lang, [{ id: "1", source: core }]);
           const t = r.translations[0];
-          if (!t) throw new Error(`${name} did not translate the segment.`);
+          if (!t) throw new Error(tl("{name} did not translate the segment.", { name }));
           return { target: t.target, tagsLost: !!t.tagsLost };
         }
         const p = local.find((x) => x.name === name);
-        if (!p) throw new Error(`The service ${name} is no longer there.`);
+        if (!p) throw new Error(tl("The service {name} is no longer there.", { name }));
         return askLocalProvider(p, sourceLang, lang, core);
       },
     }),
@@ -1076,11 +1077,11 @@ export function useGrammar(project: Project | undefined, lang: LangCode) {
             name,
             async check(text: string): Promise<GrammarMatch[]> {
               if (remote) {
-                if (!api) throw new Error("Sign in to the team server first.");
+                if (!api) throw new Error(tl("Sign in to the team server first."));
                 return (await api.providerCheck(name, lang, text)).matches;
               }
               const p = local.find((x) => x.kind === "check" && x.name === name);
-              if (!p) throw new Error(`The project's grammar service, ${name}, is no longer among this browser's services.`);
+              if (!p) throw new Error(tl("The project's grammar service, {name}, is no longer among this browser's services.", { name }));
               return askLocalChecker(p, lang, text);
             },
           }
@@ -1207,7 +1208,7 @@ export function useResegment(project: Project | undefined, fileId: string, lang:
       const p = latest.current.projects.find((x) => x.id === projectId);
       const segments = p?.files.find((f) => f.id === fileId)?.segments[lang] ?? [];
       const index = segments.findIndex((x) => x.id === segId);
-      if (!p || index < 0) return "The segment is not there any more.";
+      if (!p || index < 0) return tl("The segment is not there any more.");
       try {
         if (remote) await resegment(p, fileId, lang, segId, how, before);
         else dispatch({ type: "resegmented", at: { projectId, fileId, lang }, segments: await resegmentHere(how, segments, index, before) });

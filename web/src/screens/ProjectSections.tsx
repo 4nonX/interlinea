@@ -36,7 +36,8 @@ import {
   type Problem,
 } from "../project";
 import { LangChip, LocationBadge } from "../components/ui";
-import { plural } from "../format";
+import { inSentence, plural } from "../format";
+import { tl, tlx } from "../i18n";
 
 export function Problems({
   messages,
@@ -125,7 +126,7 @@ export function TargetPicker({
               <span>
                 {lang(c).name}
                 {fixed.includes(c) && (
-                  <span className="muted"> (a bilingual file is for it)</span>
+                  <span className="muted">{" "}{tl("(a bilingual file is for it)")}</span>
                 )}
               </span>
             </label>
@@ -134,14 +135,14 @@ export function TargetPicker({
       </ul>
       <div className="add-lang">
         <label htmlFor="add-lang" className="sr-only">
-          Add another target language
+          {tl("Add another target language")}
         </label>
         <select
           id="add-lang"
           value={adding}
           onChange={(e) => setAdding(e.target.value)}
         >
-          <option value="">Add another language…</option>
+          <option value="">{tl("Add another language…")}</option>
           {others.map((l) => (
             <option key={l.code} value={l.code}>
               {l.name}
@@ -158,7 +159,7 @@ export function TargetPicker({
           }}
         >
           <Plus size={14} aria-hidden="true" />
-          Add
+          {tl("Add")}
         </button>
       </div>
     </div>
@@ -241,16 +242,16 @@ export function MemoriesSection({
               setDraft((d) => ({ ...d, projectMemory: e.target.checked }))
             }
           />
-          <span>Give the project its own memory for each language</span>
+          <span>{tl("Give the project its own memory for each language")}</span>
         </label>
         <p className="help">
           {draft.projectMemory
-            ? "Confirmed translations go into the project memory first. When the project is done, you add them to a main memory from the project's settings. The project memory is searched before the memories below."
-            : "Confirmed translations go only into the memories below that you update."}
+            ? tl("Confirmed translations go into the project memory first. When the project is done, you add them to a main memory from the project's settings. The project memory is searched before the memories below.")
+            : tl("Confirmed translations go only into the memories below that you update.")}
           {projectId &&
             !draft.projectMemory &&
             state.memories.some((m) => m.projectId === projectId) &&
-            " The project memories you have now are deleted when you save."}
+            tl(" The project memories you have now are deleted when you save.")}
         </p>
       </div>
       {draft.targetLangs.map((l) => {
@@ -258,30 +259,27 @@ export function MemoriesSection({
         return (
           <fieldset key={l} className="field memory-set">
             <legend>
-              {lang(draft.sourceLang).name} to {lang(l).name}
-            </legend>
+              {tlx("{name} to {name2}", { name: lang(draft.sourceLang).name, name2: lang(l).name })}</legend>
             {list.length === 0 ? (
               <p className="muted">
-                No memory chosen.
-                {draft.projectMemory
-                  ? " Matches come only from the project memory."
-                  : " The editor will show no matches."}
-              </p>
+                {tlx("No memory chosen.{x}", { x: draft.projectMemory
+                  ? tl(" Matches come only from the project memory.")
+                  : tl(" The editor will show no matches.") })}</p>
             ) : (
               <div className="table-wrap">
                 <table className="table memory-table">
                   <caption className="sr-only">
-                    Memories for {lang(l).name}, highest priority first
+                    {tlx("Memories for {name}, highest priority first", { name: lang(l).name })}
                   </caption>
                   <thead>
                     <tr>
-                      <th scope="col">Memory</th>
-                      <th scope="col">Lookup</th>
-                      <th scope="col">Concordance</th>
-                      <th scope="col">Update</th>
-                      <th scope="col">Penalty</th>
+                      <th scope="col">{tl("Memory")}</th>
+                      <th scope="col">{tl("Lookup")}</th>
+                      <th scope="col">{tl("Concordance")}</th>
+                      <th scope="col">{tl("Update")}</th>
+                      <th scope="col">{tl("Penalty")}</th>
                       <th scope="col">
-                        <span className="sr-only">Order and removal</span>
+                        <span className="sr-only">{tl("Order and removal")}</span>
                       </th>
                     </tr>
                   </thead>
@@ -308,7 +306,7 @@ export function MemoriesSection({
                                       ` ${plural(memoryCount(c, info, state.projects), "unit", "units")}`}
                                 </>
                               ) : (
-                                "This memory no longer exists."
+                                tl("This memory no longer exists.")
                               )}
                             </span>
                           </th>
@@ -318,7 +316,7 @@ export function MemoriesSection({
                                 <input
                                   type="checkbox"
                                   checked={m[k]}
-                                  aria-label={`${k === "lookup" ? "Look up matches in" : k === "concordance" ? "Search with concordance in" : "Store confirmed translations in"} ${m.memory}`}
+                                  aria-label={`${k === "lookup" ? tl("Look up matches in") : k === "concordance" ? tl("Search with concordance in") : tl("Store confirmed translations in")} ${m.memory}`}
                                   onChange={(e) =>
                                     set({ [k]: e.target.checked })
                                   }
@@ -333,7 +331,7 @@ export function MemoriesSection({
                               min={0}
                               max={100}
                               value={m.penalty}
-                              aria-label={`Penalty for ${m.memory}, in points`}
+                              aria-label={tl("Penalty for {memory}, in points", { memory: m.memory })}
                               onChange={(e) =>
                                 set({
                                   penalty:
@@ -349,7 +347,7 @@ export function MemoriesSection({
                               type="button"
                               className="icon-button"
                               disabled={i === 0}
-                              aria-label={`Move ${m.memory} up`}
+                              aria-label={tl("Move {memory} up", { memory: m.memory })}
                               onClick={() =>
                                 setFor(l, (ms) => swap(ms, i, i - 1))
                               }
@@ -360,7 +358,7 @@ export function MemoriesSection({
                               type="button"
                               className="icon-button"
                               disabled={i === list.length - 1}
-                              aria-label={`Move ${m.memory} down`}
+                              aria-label={tl("Move {memory} down", { memory: m.memory })}
                               onClick={() =>
                                 setFor(l, (ms) => swap(ms, i, i + 1))
                               }
@@ -370,7 +368,7 @@ export function MemoriesSection({
                             <button
                               type="button"
                               className="icon-button"
-                              aria-label={`Remove ${m.memory}`}
+                              aria-label={tl("Remove {memory}", { memory: m.memory })}
                               onClick={() =>
                                 setFor(l, (ms) => ms.filter((_, j) => j !== i))
                               }
@@ -417,9 +415,7 @@ export function MemoriesSection({
         );
       })}
       <p className="help">
-        A penalty takes points off a memory's matches, for memories you trust
-        less: with 2 points, an exact match shows as 98% and is not inserted as
-        an exact match.
+        {tl("A penalty takes points off a memory's matches, for memories you trust less: with 2 points, an exact match shows as 98% and is not inserted as an exact match.")}
       </p>
     </>
   );
@@ -461,7 +457,7 @@ function AddMemory({
   const [pick, setPick] = useState("");
   const [creating, setCreating] = useState(false);
   const pair = `${draft.sourceLang.toUpperCase()}-${target.toUpperCase()}`;
-  const suggested = `${draft.client.trim() || draft.name.trim() || "Memory"} (${pair})`;
+  const suggested = `${draft.client.trim() || draft.name.trim() || tl("Memory")} (${pair})`;
   const [name, setName] = useState(suggested);
   const [tmx, setTmx] = useState<File | null>(null);
   const [error, setError] = useState("");
@@ -470,19 +466,18 @@ function AddMemory({
     (t) => t.toLowerCase() === name.trim().toLowerCase(),
   );
   const nameError = !name.trim()
-    ? "Give the memory a name."
+    ? tl("Give the memory a name.")
     : clash
-      ? "A memory with this name exists already."
+      ? tl("A memory with this name exists already.")
       : "";
   return (
     <div className="memory-add">
       <div className="add-lang">
         <label htmlFor={id} className="sr-only">
-          Add a memory for {lang(target).name}
-        </label>
+          {tlx("Add a memory for {name}", { name: lang(target).name })}</label>
         <select id={id} value={pick} onChange={(e) => setPick(e.target.value)}>
           <option value="">
-            {available.length ? "Add a memory…" : "No other memory fits"}
+            {available.length ? tl("Add a memory…") : tl("No other memory fits")}
           </option>
           {available.map((m) => (
             <option key={m.name} value={m.name}>
@@ -501,7 +496,7 @@ function AddMemory({
           }}
         >
           <Plus size={14} aria-hidden="true" />
-          Add
+          {tl("Add")}
         </button>
         {!creating && (
           <button
@@ -512,7 +507,7 @@ function AddMemory({
               setCreating(true);
             }}
           >
-            New memory
+            {tl("New memory")}
           </button>
         )}
       </div>
@@ -520,10 +515,10 @@ function AddMemory({
         <div
           className="memory-new"
           role="group"
-          aria-label={`New memory for ${lang(target).name}`}
+          aria-label={tl("New memory for {name}", { name: lang(target).name })}
         >
           <div className="field">
-            <label htmlFor={`${id}-name`}>Name of the new memory</label>
+            <label htmlFor={`${id}-name`}>{tl("Name of the new memory")}</label>
             <input
               id={`${id}-name`}
               value={name}
@@ -539,8 +534,7 @@ function AddMemory({
           </div>
           <div className="field">
             <label htmlFor={`${id}-tmx`}>
-              Fill it from a memory file <span className="optional">optional</span>
-            </label>
+              {tlx("Fill it from a memory file {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
             <input
               id={`${id}-tmx`}
               type="file"
@@ -580,7 +574,7 @@ function AddMemory({
                   );
                 } catch (e) {
                   setError(
-                    `Could not read ${tmx?.name ?? "the file"}: ${e instanceof Error ? e.message : String(e)}`,
+                    (tmx ? tl("Could not read {name}: {error}", { name: tmx.name, error: e instanceof Error ? e.message : String(e) }) : tl("Could not read the file: {error}", { error: e instanceof Error ? e.message : String(e) })),
                   );
                   return;
                 }
@@ -590,7 +584,7 @@ function AddMemory({
                 setError("");
               }}
             >
-              Create memory
+              {tl("Create memory")}
             </button>
             <button
               type="button"
@@ -600,7 +594,7 @@ function AddMemory({
                 setError("");
               }}
             >
-              Cancel
+              {tl("Cancel")}
             </button>
           </div>
         </div>
@@ -640,16 +634,14 @@ export function TerminologySection({
     <>
       <fieldset className="field">
         <legend>
-          {t.mode === "direct" ? "Master termbases" : "Master termbases to use"}
+          {t.mode === "direct" ? tl("Master termbases") : tl("Master termbases to use")}
         </legend>
         <p className="help">
-          Masters you keep across projects, for a client, a domain or a set of
-          languages.
+          {tl("Masters you keep across projects, for a client, a domain or a set of languages.")}
         </p>
         {masters.length === 0 && (
           <p className="muted">
-            There is no master termbase yet. The project gets a termbase of
-            its own.
+            {tl("There is no master termbase yet. The project gets a termbase of its own.")}
           </p>
         )}
         <ul className="choice-list">
@@ -691,8 +683,7 @@ export function TerminologySection({
                       {m.name}
                       {suggested && (
                         <span className="tag tag-accent">
-                          Suggested for {m.client}
-                        </span>
+                          {tlx("Suggested for {client}", { client: m.client })}</span>
                       )}
                     </span>
                     <span className="choice-meta">
@@ -710,9 +701,7 @@ export function TerminologySection({
                   <div className="choice-note choice-note-wrap master-langs">
                     <Info size={14} aria-hidden="true" />
                     <span>
-                      {m.name} has no{" "}
-                      {missing.map((c) => lang(c).name).join(", ")}.{" "}
-                      <label className="check check-inline">
+                      {tlx("{name} has no {join}.", { name: m.name, join: missing.map((c) => lang(c).name).join(", ") })}{" "}<label className="check check-inline">
                         <input
                           type="checkbox"
                           checked={t.addLanguages.includes(m.id)}
@@ -725,13 +714,12 @@ export function TerminologySection({
                           }
                         />
                         <span>
-                          Add {missing.length === 1 ? "it" : "them"} to {m.name}
-                        </span>
+                          {(missing.length === 1 ? tl("Add it to {name}", { name: m.name }) : tl("Add them to {name}", { name: m.name }))}</span>
                       </label>
                       {!t.addLanguages.includes(m.id) &&
                         (t.mode === "direct" && t.writeTo === m.id
-                          ? " New terms go into this master, so it needs the languages."
-                          : ` Otherwise ${m.name} is used for the languages it has, and terms in the others stay in the project termbase.`)}
+                          ? tl(" New terms go into this master, so it needs the languages.")
+                          : tl(" Otherwise {name} is used for the languages it has, and terms in the others stay in the project termbase.", { name: m.name }))}
                     </span>
                   </div>
                 )}
@@ -745,42 +733,39 @@ export function TerminologySection({
 
       {existing ? (
         <div className="field">
-          <span className="field-label">Where new terms go</span>
+          <span className="field-label">{tl("Where new terms go")}</span>
           <p>
             {t.mode === "direct"
-              ? "Straight into a master."
+              ? tl("Straight into a master.")
               : t.mode === "own"
-                ? `Into the project's own termbase, without masters.`
-                : `Into the ${w("projectTermbase").toLowerCase()}, then merged into the masters.`}{" "}
+                ? tl("Into the project's own termbase, without masters.")
+                : tl("Into the {termbase}, then merged into the masters.", { termbase: inSentence(w("projectTermbase")) })}{" "}
             <span className="muted">
-              This stays as the project was set up, so the terms already
-              collected stay where they are.
+              {tl("This stays as the project was set up, so the terms already collected stay where they are.")}
             </span>
           </p>
         </div>
       ) : (
         <fieldset className="field">
-          <legend>Where new terms go</legend>
+          <legend>{tl("Where new terms go")}</legend>
           <ul className="choice-list">
             {(
               [
                 [
                   "layered",
                   <>
-                    {w("projectTermbase")}, then merge into the masters{" "}
-                    <span className="tag">Recommended</span>
-                  </>,
-                  "New and changed terms stay in the project. When the project is done, you review them and merge into the masters. The masters stay unchanged until then.",
+                    {tlx("{w}, then merge into the masters {span}", { w: w("projectTermbase"), span: <span className="tag">{tl("Recommended")}</span> })}</>,
+                  tl("New and changed terms stay in the project. When the project is done, you review them and merge into the masters. The masters stay unchanged until then."),
                 ],
                 [
                   "direct",
-                  "Directly into a master",
-                  "New terms are saved to the master right away. Simple when you work alone on this client.",
+                  tl("Directly into a master"),
+                  tl("New terms are saved to the master right away. Simple when you work alone on this client."),
                 ],
                 [
                   "own",
-                  "Own project termbase only",
-                  "No master is used. You can turn it into a master or merge it into one later.",
+                  tl("Own project termbase only"),
+                  tl("No master is used. You can turn it into a master or merge it into one later."),
                 ],
               ] as const
             ).map(([mode, title, desc]) => {
@@ -822,7 +807,7 @@ export function TerminologySection({
 
       {t.mode === "direct" && t.masters.length > 1 && (
         <div className="field">
-          <label htmlFor="direct-target">Master for new terms</label>
+          <label htmlFor="direct-target">{tl("Master for new terms")}</label>
           <select
             id="direct-target"
             value={t.writeTo ?? ""}
@@ -847,12 +832,12 @@ export function TerminologySection({
               checked={t.autoUpdate}
               onChange={(e) => set({ autoUpdate: e.target.checked })}
             />
-            <span>{w("updateFromMaster")} each time the project opens</span>
+            <span>{w("updateFromMaster")}{" "}{tl("each time the project opens")}</span>
           </label>
           <p className="help">
             {t.autoUpdate
-              ? "Changes made to the masters since the project last opened are taken in when the editor opens."
-              : `Changes made to the masters are listed under ${w("reviewMerge")} until you take them in yourself.`}
+              ? tl("Changes made to the masters since the project last opened are taken in when the editor opens.")
+              : tl("Changes made to the masters are listed under {w} until you take them in yourself.", { w: w("reviewMerge") })}
           </p>
         </div>
       )}
@@ -869,9 +854,9 @@ function GrammarField({ qa, setQa, problems }: { qa: QaSettings; setQa: (q: QaSe
   const gone = !!set && !names.some((n) => n.toLowerCase() === set.toLowerCase());
   return (
     <fieldset className="field">
-      <legend>Grammar</legend>
+      <legend>{tl("Grammar")}</legend>
       <div className="field-row-inline">
-        <label htmlFor="qa-grammar">Grammar service</label>
+        <label htmlFor="qa-grammar">{tl("Grammar service")}</label>
         <select
           id="qa-grammar"
           className="select-small"
@@ -881,8 +866,8 @@ function GrammarField({ qa, setQa, problems }: { qa: QaSettings; setQa: (q: QaSe
             setQa(e.target.value ? { ...rest, grammar: e.target.value } : rest);
           }}
         >
-          <option value="">{names.length || gone ? "No grammar check" : "No grammar service yet"}</option>
-          {gone && <option value={set}>{set} (no longer there)</option>}
+          <option value="">{names.length || gone ? tl("No grammar check") : tl("No grammar service yet")}</option>
+          {gone && <option value={set}>{set}{" "}{tl("(no longer there)")}</option>}
           {names.map((n) => (
             <option key={n} value={n}>
               {n}
@@ -892,9 +877,7 @@ function GrammarField({ qa, setQa, problems }: { qa: QaSettings; setQa: (q: QaSe
       </div>
       <Problems messages={problems} />
       <p className="help">
-        With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under{" "}
-        <a href="#/settings">Settings</a>
-        {o ? ", by an administrator of the server" : ""}.
+        {tlx("With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under {a}{x}.", { a: <a href="#/settings">{tl("Settings")}</a>, x: o ? tl(", by an administrator of the server") : "" })}
       </p>
     </fieldset>
   );
@@ -993,7 +976,7 @@ export function ChecksSection({
   return (
     <>
       <fieldset className="field">
-        <legend>Context matches</legend>
+        <legend>{tl("Context matches")}</legend>
         <label className="choice">
           <input
             type="radio"
@@ -1002,9 +985,9 @@ export function ChecksSection({
             onChange={() => setContext("previous")}
           />
           <span className="choice-body">
-            <span className="choice-title">The segment before matches</span>
+            <span className="choice-title">{tl("The segment before matches")}</span>
             <span className="choice-desc">
-              The usual rule for a context match.
+              {tl("The usual rule for a context match.")}
             </span>
           </span>
         </label>
@@ -1017,16 +1000,16 @@ export function ChecksSection({
           />
           <span className="choice-body">
             <span className="choice-title">
-              The segments before and after match
+              {tl("The segments before and after match")}
             </span>
-            <span className="choice-desc">Stricter: both neighbours must match.</span>
+            <span className="choice-desc">{tl("Stricter: both neighbours must match.")}</span>
           </span>
         </label>
       </fieldset>
       <fieldset className="field">
-        <legend>Quality checks while translating</legend>
+        <legend>{tl("Quality checks while translating")}</legend>
         {!c ? (
-          <p className="muted">Loading the checks…</p>
+          <p className="muted">{tl("Loading the checks…")}</p>
         ) : (
           <ul className="check-list">
             {kinds.map((k) => (
@@ -1042,9 +1025,9 @@ export function ChecksSection({
                     <span className="check-desc">
                       {k.description}
                       {k.kind === "length" &&
-                        " Limits come from the file (XLIFF maxwidth); documents have none."}
-                      {k.kind === "spelling" && " With the dictionaries below."}
-                      {k.kind === "rule" && " The rules below."}
+                        tl(" Limits come from the file (XLIFF maxwidth); documents have none.")}
+                      {k.kind === "spelling" && tl(" With the dictionaries below.")}
+                      {k.kind === "rule" && tl(" The rules below.")}
                     </span>
                   </span>
                 </label>
@@ -1060,11 +1043,9 @@ export function ChecksSection({
                   }
                 />
                 <span>
-                  Unedited fuzzy matches
-                  <span className="check-desc">
-                    A fuzzy match is confirmed without a change.
-                  </span>
-                </span>
+                  {tlx("Unedited fuzzy matches{span}", { span: <span className="check-desc">
+                    {tl("A fuzzy match is confirmed without a change.")}
+                  </span> })}</span>
               </label>
             </li>
           </ul>
@@ -1072,17 +1053,15 @@ export function ChecksSection({
       </fieldset>
 
       <fieldset className="field">
-        <legend>Subtitles</legend>
+        <legend>{tl("Subtitles")}</legend>
         <p className="help">
-          Limits for subtitle and caption files, checked with their times:
-          the longest line, the most lines, and how fast the subtitle must be
-          read. Closed captions (SCC) also hold at most 32 characters a line.
+          {tl("Limits for subtitle and caption files, checked with their times: the longest line, the most lines, and how fast the subtitle must be read. Closed captions (SCC) also hold at most 32 characters a line.")}
         </p>
         {(
           [
-            ["sub-line-length", "lineLength", "Characters in a line", 1, 200, 1],
-            ["sub-lines", "lines", "Lines in a subtitle", 1, 10, 1],
-            ["sub-cps", "cps", "Characters per second", 1, 100, 0.5],
+            ["sub-line-length", "lineLength", tl("Characters in a line"), 1, 200, 1],
+            ["sub-lines", "lines", tl("Lines in a subtitle"), 1, 10, 1],
+            ["sub-cps", "cps", tl("Characters per second"), 1, 100, 0.5],
           ] as const
         ).map(([id, key, label, min, max, step]) => (
           <div key={id} className="inline-number subtitle-limit">
@@ -1116,8 +1095,8 @@ export function ChecksSection({
       </fieldset>
 
       <fieldset className="field">
-        <legend>Spelling</legend>
-        {!spellingOn && <p className="muted">The spelling check is off.</p>}
+        <legend>{tl("Spelling")}</legend>
+        {!spellingOn && <p className="muted">{tl("The spelling check is off.")}</p>}
         <ul className="dict-list">
           {targetLangs.map((t) => {
             const fit = dictionariesFor(dictionaries, t);
@@ -1139,8 +1118,8 @@ export function ChecksSection({
                 >
                   <option value="">
                     {fit.length
-                      ? "No spelling check"
-                      : "No dictionary for this language"}
+                      ? tl("No spelling check")
+                      : tl("No dictionary for this language")}
                   </option>
                   {fit.map((d) => (
                     <option key={d.name} value={d.name}>
@@ -1156,17 +1135,13 @@ export function ChecksSection({
           })}
         </ul>
         <p className="help">
-          {includedLangs === 1 &&
-            "A dictionary for one language comes with Interlinea. "}
-          {includedLangs > 1 &&
-            `Dictionaries for ${includedLangs} languages come with Interlinea. `}
-          {includedLangs > 0 ? "Others are" : "Dictionaries are"} added
-          once under <a href="#/settings">Settings</a>, from a LibreOffice
-          extension (.oxt) or .aff and .dic files.
+          {tlx("{x}{x2}{x3} added once under {a}, from a LibreOffice extension (.oxt) or .aff and .dic files.", { x: includedLangs === 1 &&
+            tl("A dictionary for one language comes with Interlinea. "), x2: includedLangs > 1 &&
+            tl("Dictionaries for {includedLangs} languages come with Interlinea. ", { includedLangs }), x3: includedLangs > 0 ? tl("Others are") : tl("Dictionaries are"), a: <a href="#/settings">{tl("Settings")}</a> })}
         </p>
         <div className="field">
           <span className="field-label" id="words-label">
-            Words always spelled right in this project
+            {tl("Words always spelled right in this project")}
           </span>
           {qa.words.length > 0 && (
             <ul className="word-list" aria-labelledby="words-label">
@@ -1176,7 +1151,7 @@ export function ChecksSection({
                   <button
                     type="button"
                     className="icon-button"
-                    aria-label={`Remove ${w}`}
+                    aria-label={tl("Remove {w}", { w })}
                     onClick={() =>
                       setQa({ ...qa, words: qa.words.filter((x) => x !== w) })
                     }
@@ -1189,7 +1164,7 @@ export function ChecksSection({
           )}
           <div className="add-lang">
             <label htmlFor="add-word" className="sr-only">
-              Add a word
+              {tl("Add a word")}
             </label>
             <input
               id="add-word"
@@ -1201,7 +1176,7 @@ export function ChecksSection({
                   addWord();
                 }
               }}
-              placeholder="A name or term"
+              placeholder={tl("A name or term")}
             />
             <button
               type="button"
@@ -1210,7 +1185,7 @@ export function ChecksSection({
               onClick={addWord}
             >
               <Plus size={14} aria-hidden="true" />
-              Add
+              {tl("Add")}
             </button>
           </div>
           <Problems messages={problemsAt(problems, "qa.words")} />
@@ -1220,11 +1195,9 @@ export function ChecksSection({
       <GrammarField qa={qa} setQa={setQa} problems={problemsAt(problems, "qa.grammar")} />
 
       <fieldset className="field">
-        <legend>Rules of your own</legend>
+        <legend>{tl("Rules of your own")}</legend>
         <p className="help">
-          Regular expressions the translation must or must not match, only where
-          the source matches one if you give it, or must match as often as the
-          source matches.
+          {tl("Regular expressions the translation must or must not match, only where the source matches one if you give it, or must match as often as the source matches.")}
         </p>
         {qa.rules.map((r, i) => {
           const id = `rule-${i}`;
@@ -1233,11 +1206,11 @@ export function ChecksSection({
               key={i}
               className="rule"
               role="group"
-              aria-label={r.name || `Rule ${i + 1}`}
+              aria-label={r.name || tl("Rule {x}", { x: i + 1 })}
             >
               <div className="field-grid">
                 <div className="field">
-                  <label htmlFor={`${id}-name`}>Name</label>
+                  <label htmlFor={`${id}-name`}>{tl("Name")}</label>
                   <input
                     id={`${id}-name`}
                     value={r.name}
@@ -1245,7 +1218,7 @@ export function ChecksSection({
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor={`${id}-mode`}>The translation</label>
+                  <label htmlFor={`${id}-mode`}>{tl("The translation")}</label>
                   <select
                     id={`${id}-mode`}
                     value={r.mode}
@@ -1253,15 +1226,15 @@ export function ChecksSection({
                       setRule(i, { mode: e.target.value as QaRule["mode"] })
                     }
                   >
-                    <option value="must-not">must not match</option>
-                    <option value="must">must match</option>
+                    <option value="must-not">{tl("must not match")}</option>
+                    <option value="must">{tl("must match")}</option>
                     <option value="count">
-                      must match as often as the source
+                      {tl("must match as often as the source")}
                     </option>
                   </select>
                 </div>
                 <div className="field">
-                  <label htmlFor={`${id}-target`}>Translation pattern</label>
+                  <label htmlFor={`${id}-target`}>{tl("Translation pattern")}</label>
                   <input
                     id={`${id}-target`}
                     className="mono"
@@ -1271,11 +1244,9 @@ export function ChecksSection({
                 </div>
                 <div className="field">
                   <label htmlFor={`${id}-source`}>
-                    Source pattern{" "}
-                    <span className="optional">
-                      {r.mode === "count" ? "needed" : "optional"}
-                    </span>
-                  </label>
+                    {tlx("Source pattern {span}", { span: <span className="optional">
+                      {r.mode === "count" ? tl("needed") : tl("optional")}
+                    </span> })}</label>
                   <input
                     id={`${id}-source`}
                     className="mono"
@@ -1286,7 +1257,7 @@ export function ChecksSection({
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor={`${id}-sev`}>Shown as</label>
+                  <label htmlFor={`${id}-sev`}>{tl("Shown as")}</label>
                   <select
                     id={`${id}-sev`}
                     value={r.severity ?? "warning"}
@@ -1296,14 +1267,13 @@ export function ChecksSection({
                       })
                     }
                   >
-                    <option value="warning">Warning</option>
-                    <option value="error">Error</option>
+                    <option value="warning">{tl("Warning")}</option>
+                    <option value="error">{tl("Error")}</option>
                   </select>
                 </div>
                 <div className="field">
                   <label htmlFor={`${id}-msg`}>
-                    Message <span className="optional">optional</span>
-                  </label>
+                    {tlx("Message {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
                   <input
                     id={`${id}-msg`}
                     value={r.message ?? ""}
@@ -1322,7 +1292,7 @@ export function ChecksSection({
                 }
               >
                 <X size={14} aria-hidden="true" />
-                Remove rule
+                {tl("Remove rule")}
               </button>
             </div>
           );
@@ -1336,7 +1306,7 @@ export function ChecksSection({
             }
           >
             <Plus size={14} aria-hidden="true" />
-            Add a rule
+            {tl("Add a rule")}
           </button>
         </div>
       </fieldset>
@@ -1360,38 +1330,35 @@ export function SegmentationSection({
   const setRule = (i: number, patch: Partial<SegmentationRule>) => setRules(rules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   return (
     <fieldset className="field">
-      <legend>Segmentation rules of your own</legend>
+      <legend>{tl("Segmentation rules of your own")}</legend>
       <p className="help">
-        Sentences end as is usual for the source language. A rule changes that at every place where the text before it ends with the first pattern and the
-        text after it begins with the second (regular expressions; one may stay empty). Your rules come first.{" "}
-        {existing ? "They cut the documents added from now on; the files in the project stay as they are." : "They cut the documents of the project."} Files that
-        bring their own segments keep them.
+        {tlx("Sentences end as is usual for the source language. A rule changes that at every place where the text before it ends with the first pattern and the text after it begins with the second (regular expressions; one may stay empty). Your rules come first. {x} Files that bring their own segments keep them.", { x: existing ? tl("They cut the documents added from now on; the files in the project stay as they are.") : tl("They cut the documents of the project.") })}
       </p>
       {rules.map((r, i) => {
         const id = `seg-rule-${i}`;
         return (
-          <div key={i} className="rule" role="group" aria-label={`Segmentation rule ${i + 1}`}>
+          <div key={i} className="rule" role="group" aria-label={tl("Segmentation rule {x}", { x: i + 1 })}>
             <div className="field-grid">
               <div className="field">
-                <label htmlFor={`${id}-break`}>At this place</label>
+                <label htmlFor={`${id}-break`}>{tl("At this place")}</label>
                 <select id={`${id}-break`} value={r.break ? "break" : "keep"} onChange={(e) => setRule(i, { break: e.target.value === "break" })}>
-                  <option value="keep">a sentence does not end</option>
-                  <option value="break">a sentence ends</option>
+                  <option value="keep">{tl("a sentence does not end")}</option>
+                  <option value="break">{tl("a sentence ends")}</option>
                 </select>
               </div>
               <div className="field">
-                <label htmlFor={`${id}-before`}>Text before the place</label>
+                <label htmlFor={`${id}-before`}>{tl("Text before the place")}</label>
                 <input id={`${id}-before`} className="mono" value={r.before ?? ""} onChange={(e) => setRule(i, { before: e.target.value || undefined })} />
               </div>
               <div className="field">
-                <label htmlFor={`${id}-after`}>Text after the place</label>
+                <label htmlFor={`${id}-after`}>{tl("Text after the place")}</label>
                 <input id={`${id}-after`} className="mono" value={r.after ?? ""} onChange={(e) => setRule(i, { after: e.target.value || undefined })} />
               </div>
             </div>
             <Problems messages={problemsAt(problems, `segmentation[${i}]`)} />
             <button type="button" className="btn btn-quiet btn-small" onClick={() => setRules(rules.filter((_, j) => j !== i))}>
               <X size={14} aria-hidden="true" />
-              Remove rule
+              {tl("Remove rule")}
             </button>
           </div>
         );
@@ -1399,11 +1366,10 @@ export function SegmentationSection({
       <Problems messages={problems.filter((p) => p.field === "segmentation").map((p) => p.message)} />
       <button type="button" className="btn btn-small" onClick={() => setRules([...rules, { break: false, before: "" }])}>
         <Plus size={14} aria-hidden="true" />
-        Add a segmentation rule
+        {tl("Add a segmentation rule")}
       </button>
       <p className="help">
-        An abbreviation that should not end a sentence: “does not end”, before <code>\bca\.</code>, after <code>\s</code>. A new segment after every
-        semicolon: “ends”, before <code>;</code>, after <code>\s</code>.
+        {tlx("An abbreviation that should not end a sentence: “does not end”, before {code}, after {code2}. A new segment after every semicolon: “ends”, before {code3}, after {code4}.", { code: <code>\bca\.</code>, code2: <code>\s</code>, code3: <code>;</code>, code4: <code>\s</code> })}
       </p>
     </fieldset>
   );
@@ -1430,7 +1396,7 @@ export function PrepareSection({
 }) {
   return (
     <fieldset className="field">
-      <legend>{existing ? "Matches to insert" : "Pre-translation"}</legend>
+      <legend>{existing ? tl("Matches to insert") : "Pre-translation"}</legend>
       {!existing && (
         <label className="check">
           <input
@@ -1440,13 +1406,13 @@ export function PrepareSection({
               setPrepare({ ...prepare, pretranslate: e.target.checked })
             }
           />
-          <span>Fill empty segments with memory matches</span>
+          <span>{tl("Fill empty segments with memory matches")}</span>
         </label>
       )}
       {(prepare.pretranslate || existing) && (
         <div className={existing ? undefined : "nested"}>
           <div className="inline-number">
-            <label htmlFor="pt-min">Lowest match to insert</label>
+            <label htmlFor="pt-min">{tl("Lowest match to insert")}</label>
             <input
               id="pt-min"
               type="number"
@@ -1475,7 +1441,7 @@ export function PrepareSection({
                 setPrepare({ ...prepare, confirmContext: e.target.checked })
               }
             />
-            <span>Confirm segments filled with a context match</span>
+            <span>{tl("Confirm segments filled with a context match")}</span>
           </label>
           <label className="check">
             <input
@@ -1485,11 +1451,10 @@ export function PrepareSection({
                 setPrepare({ ...prepare, confirmExact: e.target.checked })
               }
             />
-            <span>Confirm segments filled with a 100% match</span>
+            <span>{tl("Confirm segments filled with a 100% match")}</span>
           </label>
           <p className="help">
-            Other matches are inserted as drafts for you to check. Locked and
-            translated segments are left alone.
+            {tl("Other matches are inserted as drafts for you to check. Locked and translated segments are left alone.")}
           </p>
           {summary && (
             <p className="detect detect-info" role="status">

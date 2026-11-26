@@ -3,6 +3,7 @@
 // master and applies the reviewer's decisions.
 
 import type { Commit, Entry, LangCode, Removal, ReviewRules, Term } from "./data";
+import { tl } from "./i18n";
 
 /** "removed" is a master entry the project leaves out: merging deletes it in the master. */
 export type ChangeKind = "new" | "changed" | "conflict" | "removed";
@@ -276,7 +277,7 @@ export function applyMerge(
         base: undefined,
         history: [
           ...ch.project.history,
-          commit(`Merged from project “${ctx.projectName}”`),
+          commit(tl("Merged from project “{projectName}”", { projectName: ctx.projectName })),
         ],
       });
       project[pi] = {
@@ -295,14 +296,14 @@ export function applyMerge(
         id: ch.project.id,
         termbaseId: ch.project.termbaseId,
         base: { termbaseId: masterId, entryId: m.id, version: m.version },
-        history: [...ch.project.history, commit("Adopted master version")],
+        history: [...ch.project.history, commit(tl("Adopted master version"))],
       };
       merged++;
       continue;
     }
     let terms = ch.project.terms;
     let concept = { ...m.concept, ...ch.project.concept };
-    let summary = `Merged changes from project “${ctx.projectName}”`;
+    let summary = tl("Merged changes from project “{projectName}”", { projectName: ctx.projectName });
     if (decision === "keep-both") {
       terms = {};
       for (const code of new Set([
@@ -312,7 +313,7 @@ export function applyMerge(
         terms[code] = mergeTerms(m.terms[code], ch.project.terms[code]);
       }
       concept = { ...ch.project.concept, ...m.concept };
-      summary = `Merged with project “${ctx.projectName}”, kept both versions`;
+      summary = tl("Merged with project “{projectName}”, kept both versions", { projectName: ctx.projectName });
     }
     const updated: Entry = {
       ...m,

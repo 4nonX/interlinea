@@ -35,6 +35,7 @@ add_library(interlinea_app STATIC
     src/navigationrail.cpp
     src/signindialog.cpp
     src/settingspage.cpp
+    src/interfacelanguage.cpp
     src/mainwindow.cpp
     src/languages.cpp
     src/projectsmodel.cpp
@@ -69,6 +70,8 @@ add_library(interlinea_app STATIC
 )
 # The licence and the copyright notice are in the app, which shows them.
 qt_add_resources(interlinea_app "legal" PREFIX "/legal" BASE .. FILES ../LICENSE ../NOTICE)
+# The interface translations, shared with the web app.
+qt_add_resources(interlinea_app "i18n" PREFIX "/i18n" BASE ../i18n FILES ../i18n/de.json ../i18n/ko.json)
 target_include_directories(interlinea_app PUBLIC src)
 target_compile_definitions(interlinea_app PUBLIC INTERLINEA_VERSION="${INTERLINEA_VERSION}")
 target_link_libraries(interlinea_app PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
@@ -154,7 +157,7 @@ else()
 endif()
 
 enable_testing()
-foreach(name apiclient eventfeed secretstore providersignin connections ui projects editor memories terminology endtoend)
+foreach(name apiclient eventfeed secretstore providersignin connections ui projects editor memories terminology interfacelanguage endtoend)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_app Qt6::Test)

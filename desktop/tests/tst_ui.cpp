@@ -98,7 +98,7 @@ private slots:
         QStringList panels;
         for (QFrame *f : page->findChildren<QFrame *>(QStringLiteral("panel")))
             panels << f->accessibleName();
-        QCOMPARE(panels, (QStringList{QStringLiteral("Your name"), QStringLiteral("Terminology wording"), QStringLiteral("Editor"), QStringLiteral("Project templates"),
+        QCOMPARE(panels, (QStringList{QStringLiteral("Interface language"), QStringLiteral("Your name"), QStringLiteral("Terminology wording"), QStringLiteral("Editor"), QStringLiteral("Project templates"),
                                       QStringLiteral("Spelling dictionaries"), QStringLiteral("Translation services"), QStringLiteral("Grammar services"), QStringLiteral("Access for programs"),
                                       QStringLiteral("Team server"), QStringLiteral("Saved work"), QStringLiteral("About Interlinea")}));
         // The app says whose it is and under which licence, and has the licence to read.

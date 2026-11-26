@@ -24,6 +24,7 @@ import {
   type SectionsSource,
 } from "./ProjectSections";
 import { ConfirmButton } from "./TermbaseDialogs";
+import { tl, tlx } from "../i18n";
 
 /** A server project's settings as the sections edit them. */
 function draftOf(s: CoreSettings): Draft {
@@ -163,7 +164,7 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
         terminology: { ...base.terminology, termbase, location: "server", autoUpdate: false },
       } as CoreSettings;
       await api.updateSettings(project.id, settings, project.version);
-      notify("Saved the project's settings on the server");
+      notify(tl("Saved the project's settings on the server"));
       setCreated([]);
       setChanged(false);
       setDraftState(draftOf(settings));
@@ -171,7 +172,7 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
       await onSaved();
     } catch (e) {
       if (e instanceof ApiError && e.problems.length) setProblems(e.problems);
-      else setError(e instanceof ApiError && e.code === "conflict" ? "The project changed on the server in the meantime. It is loaded again; make your change once more." : errorText(e));
+      else setError(e instanceof ApiError && e.code === "conflict" ? tl("The project changed on the server in the meantime. It is loaded again; make your change once more.") : errorText(e));
       if (e instanceof ApiError && e.code === "conflict") {
         setChanged(false);
         await onSaved();
@@ -184,7 +185,7 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
   if (!source)
     return (
       <p className="muted" role="status">
-        Loading the server's memories and termbases…
+        {tl("Loading the server's memories and termbases…")}
       </p>
     );
   return (
@@ -193,7 +194,7 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
 
       <section className="panel" aria-labelledby="sps-langs">
         <h2 id="sps-langs" className="panel-title">
-          Languages and memories
+          {tl("Languages and memories")}
         </h2>
         <TargetPicker
           source={draft.sourceLang}
@@ -203,7 +204,7 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
           fixed={fixed}
         />
         <p className="help">
-          A language you add gets every file to translate, with nothing translated yet. A language you take out loses its translations and the work given out in it.
+          {tl("A language you add gets every file to translate, with nothing translated yet. A language you take out loses its translations and the work given out in it.")}
         </p>
         <MemoriesSection c={c} draft={draft} setDraft={setDraft} problems={problems} created={created} setCreated={(f) => {
           setChanged(true);
@@ -213,21 +214,21 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
 
       <section className="panel" aria-labelledby="sps-terms">
         <h2 id="sps-terms" className="panel-title">
-          Terminology
+          {tl("Terminology")}
         </h2>
         <TerminologySection draft={draft} setDraft={setDraft} problems={problems} existing />
       </section>
 
       <section className="panel" aria-labelledby="sps-seg">
         <h2 id="sps-seg" className="panel-title">
-          Segmentation
+          {tl("Segmentation")}
         </h2>
         <SegmentationSection rules={draft.segmentation} setRules={(segmentation) => setDraft((d) => ({ ...d, segmentation }))} problems={problems} existing />
       </section>
 
       <section className="panel" aria-labelledby="sps-checks">
         <h2 id="sps-checks" className="panel-title">
-          Checks and analysis
+          {tl("Checks and analysis")}
         </h2>
         <ChecksSection
           c={c}
@@ -252,25 +253,25 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
 
       <section className="panel" aria-labelledby="sps-prep">
         <h2 id="sps-prep" className="panel-title">
-          Matches to insert
+          {tl("Matches to insert")}
         </h2>
         <PrepareSection prepare={draft.prepare} setPrepare={(prepare) => setDraft((d) => ({ ...d, prepare }))} problems={problems} existing />
         <button
           type="button"
           className="btn"
           disabled={changed}
-          title={changed ? "Save the settings first" : undefined}
+          title={changed ? tl("Save the settings first") : undefined}
           onClick={() =>
             void api.pretranslate(project.id).then(
               (rs) => {
                 const n = rs.reduce((a, x) => a + x.filled, 0);
-                notify(n ? `Pre-translated ${plural(n, "segment", "segments")} on the server` : "Nothing to pre-translate: no empty segment has a good enough match");
+                notify(n ? tl("Pre-translated {n} on the server", { n: plural(n, "segment", "segments") }) : tl("Nothing to pre-translate: no empty segment has a good enough match"));
               },
               (e) => notify(errorText(e)),
             )
           }
         >
-          Pre-translate empty segments now
+          {tl("Pre-translate empty segments now")}
         </button>
       </section>
 
@@ -278,11 +279,10 @@ export function ServerProjectSettings({ project, onSaved }: { project: ServerPro
         {problems.length > 0 && <Problems messages={problems.map((p) => p.message)} />}
         {error && (
           <p className="error" role="alert">
-            Could not save: {error}
-          </p>
+            {tlx("Could not save: {error}", { error: error })}</p>
         )}
         <button type="button" className="btn btn-primary" disabled={!changed || saving} onClick={() => void save()}>
-          {saving ? "Saving…" : "Save settings"}
+          {saving ? tl("Saving…") : tl("Save settings")}
         </button>
       </div>
     </SectionsSourceProvider>
@@ -298,7 +298,7 @@ function ServerFiles({ project, onChanged }: { project: ServerProject; onChanged
   const s = project.settings;
 
   async function add(list: FileList) {
-    setBusy("Reading the files…");
+    setBusy(tl("Reading the files…"));
     try {
       const docs = draftDocs(await readFiles([...list].map((file) => ({ file }))));
       const words = await extractWordDocs(docs, s.sourceLang, s.segmentation ?? []);
@@ -306,13 +306,13 @@ function ServerFiles({ project, onChanged }: { project: ServerProject; onChanged
       let version = project.version;
       for (const f of files) {
         if (s.files.some((x) => x.name.toLowerCase() === f.name.toLowerCase())) {
-          notify(`${f.name} is in the project already; remove it first to replace it`);
+          notify(tl("{name} is in the project already; remove it first to replace it", { name: f.name }));
           continue;
         }
         setBusy(`Sending ${f.name}…`);
         version = (await r.api!.addFile(project.id, uploadOf(f), version)).version;
       }
-      notify(`Added ${plural(files.length, "file", "files")} on the server`);
+      notify(tl("Added {length} on the server", { length: plural(files.length, "file", "files") }));
       await r.open(project.id).catch(() => undefined);
       await onChanged();
     } catch (e) {
@@ -327,7 +327,7 @@ function ServerFiles({ project, onChanged }: { project: ServerProject; onChanged
   return (
     <section className="panel" aria-labelledby="sps-files">
       <h2 id="sps-files" className="panel-title">
-        Files
+        {tl("Files")}
       </h2>
       <ul className="plain-list">
         {s.files.map((f) => (
@@ -335,23 +335,23 @@ function ServerFiles({ project, onChanged }: { project: ServerProject; onChanged
             <span className="cell-title">{f.name}</span>
             <span className="cell-sub">
               {f.role === "reference"
-                ? "Reference file"
+                ? tl("Reference file")
                 : f.targetLang
-                  ? `Translated into ${lang(f.targetLang).name} only`
-                  : `Translated into ${s.targetLangs.map((t) => lang(t).name).join(", ")}`}
+                  ? tl("Translated into {name} only", { name: lang(f.targetLang).name })
+                  : tl("Translated into {join}", { join: s.targetLangs.map((t) => lang(t).name).join(", ") })}
             </span>
             <ConfirmButton
               label={
                 <>
-                  <Trash2 size={14} aria-hidden="true" /> Remove
+                  <Trash2 size={14} aria-hidden="true" />{" "}{tl("Remove")}
                 </>
               }
-              confirm={`Remove ${f.name} with its translations and the work given out in it, for everyone?`}
-              action="Remove"
+              confirm={tl("Remove {name} with its translations and the work given out in it, for everyone?", { name: f.name })}
+              action={tl("Remove")}
               onConfirm={() =>
                 void r.api!.removeFile(project.id, f.name, project.version).then(
                   async () => {
-                    notify(`Removed ${f.name} on the server`);
+                    notify(tl("Removed {name} on the server", { name: f.name }));
                     await r.open(project.id).catch(() => undefined);
                     await onChanged();
                   },
@@ -367,11 +367,11 @@ function ServerFiles({ project, onChanged }: { project: ServerProject; onChanged
         type="file"
         multiple
         hidden
-        aria-label="Files to add"
+        aria-label={tl("Files to add")}
         onChange={(e) => e.target.files?.length && void add(e.target.files)}
       />
       <button type="button" className="btn" disabled={!!busy} onClick={() => input.current?.click()}>
-        <FilePlus2 size={15} aria-hidden="true" /> {busy || "Add files"}
+        <FilePlus2 size={15} aria-hidden="true" /> {busy || tl("Add files")}
       </button>
     </section>
   );

@@ -11,12 +11,13 @@ import { computeChanges } from "../merge";
 import { setPendingDocs } from "../draft";
 import { readFiles } from "../detect";
 import { chosenFiles, droppedFiles, type ChosenFile } from "../files";
-import { fmtDate, fmtNum, plural } from "../format";
+import { fmtDate, fmtNum, listOf, plural } from "../format";
 import { LangChip, LocationBadge, PageHeader } from "../components/ui";
 import { go } from "../App";
 import { remoteId, useRemote } from "../remote";
 import { allows } from "../server";
 import type { ServerProjectSummary } from "../server";
+import { tl, tlx } from "../i18n";
 
 export function Projects() {
   const { state } = useStore();
@@ -66,7 +67,7 @@ export function Projects() {
 
   return (
     <div className="page">
-      <PageHeader title="Projects" />
+      <PageHeader title={tl("Projects")} />
 
       <section
         className={`dropzone${dragging ? " is-dragging" : ""}`}
@@ -80,11 +81,11 @@ export function Projects() {
       >
         <Upload size={22} aria-hidden="true" className="dropzone-icon" />
         <div className="dropzone-text">
-          <h2 id="dz-title">Start a project from files</h2>
+          <h2 id="dz-title">{tl("Start a project from files")}</h2>
           <p>
             {reading
-              ? "Reading the files…"
-              : "Drop files, a folder, or a project package here. Interlinea detects the source language and suggests memories and termbases for the client."}
+              ? tl("Reading the files…")
+              : tl("Drop files, a folder, or a project package here. Interlinea detects the source language and suggests memories and termbases for the client.")}
           </p>
         </div>
         <div className="row">
@@ -94,7 +95,7 @@ export function Projects() {
             onClick={() => input.current?.click()}
             disabled={reading}
           >
-            Choose files
+            {tl("Choose files")}
           </button>
           <button
             type="button"
@@ -103,10 +104,10 @@ export function Projects() {
             disabled={reading}
           >
             <FolderOpen size={14} aria-hidden="true" />
-            Choose a folder
+            {tl("Choose a folder")}
           </button>
           <a className="btn btn-quiet" href="#/new">
-            New project without files
+            {tl("New project without files")}
           </a>
         </div>
         <input
@@ -138,25 +139,25 @@ export function Projects() {
 
       <section aria-labelledby="recent-title" className="section">
         <h2 id="recent-title" className="section-title">
-          On this computer
+          {tl("On this computer")}
         </h2>
         {local.length === 0 ? (
-          <p className="muted">No projects yet. Start one from files above.</p>
+          <p className="muted">{tl("No projects yet. Start one from files above.")}</p>
         ) : (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th scope="col">Project</th>
-                <th scope="col">Languages</th>
-                <th scope="col">Terminology</th>
+                <th scope="col">{tl("Project")}</th>
+                <th scope="col">{tl("Languages")}</th>
+                <th scope="col">{tl("Terminology")}</th>
                 <th scope="col" className="num">
-                  Words
+                  {tl("Words")}
                 </th>
                 <th scope="col" className="num">
-                  Done
+                  {tl("Done")}
                 </th>
-                <th scope="col">Due</th>
+                <th scope="col">{tl("Due")}</th>
                 <th scope="col">
                   <span className="sr-only">{w("projectChanges")}</span>
                 </th>
@@ -191,9 +192,9 @@ export function Projects() {
                     <td>
                       <div className="cell-title">
                         {p.setup.mode === "direct"
-                          ? "Writes to master"
+                          ? tl("Writes to master")
                           : p.setup.mode === "own"
-                            ? "Own termbase"
+                            ? tl("Own termbase")
                             : w("projectTermbase")}
                       </div>
                       <div className="cell-sub">
@@ -205,7 +206,7 @@ export function Projects() {
                             {masters.map((m) => m.name).join(", ")}
                           </>
                         ) : (
-                          "No master"
+                          tl("No master")
                         )}{" "}
                         <LocationBadge location={p.setup.location} />
                       </div>
@@ -222,7 +223,7 @@ export function Projects() {
                       {p.due ? (
                         fmtDate(p.due)
                       ) : (
-                        <span className="muted">None</span>
+                        <span className="muted">{tl("None")}</span>
                       )}
                     </td>
                     <td className="cell-action">
@@ -236,10 +237,10 @@ export function Projects() {
                         <a
                           className="btn btn-quiet btn-small"
                           href={`#/project/${p.id}`}
-                          aria-label={`Settings of ${p.name}`}
+                          aria-label={tl("Settings of {name}", { name: p.name })}
                         >
                           <Settings2 size={14} aria-hidden="true" />
-                          Settings
+                          {tl("Settings")}
                         </a>
                       </span>
                     </td>
@@ -274,7 +275,7 @@ function ServerProjects() {
   return (
     <section aria-labelledby="server-title" className="section">
       <h2 id="server-title" className="section-title">
-        On the team server
+        {tl("On the team server")}
       </h2>
       {r.error && (
         <p className="error" role="alert">
@@ -283,27 +284,26 @@ function ServerProjects() {
       )}
       {r.projects === null ? (
         <p className="muted" role="status">
-          Loading the projects on {host}…
+          {tlx("Loading the projects on {host}…", { host: host })}
         </p>
       ) : r.projects.length === 0 ? (
         <p className="muted">
-          No projects on {host} for you yet. Projects you make there, or work
-          given to you, appear here.
+          {tlx("No projects on {host} for you yet. Projects you make there, or work given to you, appear here.", { host: host })}
         </p>
       ) : (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th scope="col">Project</th>
-                <th scope="col">Languages</th>
-                <th scope="col">Your work</th>
+                <th scope="col">{tl("Project")}</th>
+                <th scope="col">{tl("Languages")}</th>
+                <th scope="col">{tl("Your work")}</th>
                 <th scope="col" className="num">
-                  Done
+                  {tl("Done")}
                 </th>
-                <th scope="col">Due</th>
+                <th scope="col">{tl("Due")}</th>
                 <th scope="col">
-                  <span className="sr-only">Settings</span>
+                  <span className="sr-only">{tl("Settings")}</span>
                 </th>
               </tr>
             </thead>
@@ -336,7 +336,7 @@ function ServerProjects() {
                       {work.length ? (
                         <>
                           <div className="cell-title">
-                            {work.map((a) => (a.task === "translate" ? "Translating" : "Reviewing")).filter((x, i, xs) => xs.indexOf(x) === i).join(" and ")}
+                            {listOf(work.map((a) => (a.task === "translate" ? tl("Translating") : tl("Reviewing"))).filter((x, i, xs) => xs.indexOf(x) === i))}
                           </div>
                           <div className="cell-sub">
                             {work.map((a) => workScope(a)).join("; ")}
@@ -344,17 +344,17 @@ function ServerProjects() {
                           </div>
                         </>
                       ) : allows(p.access.role, "manage") ? (
-                        "Managing"
+                        tl("Managing")
                       ) : p.access.role ? (
-                        <span className="muted">No work given to you</span>
+                        <span className="muted">{tl("No work given to you")}</span>
                       ) : null}
                     </td>
                     <td className="num">{p.segments ? Math.round((p.confirmed / p.segments) * 100) : 0}%</td>
-                    <td>{s.due ? fmtDate(s.due) : <span className="muted">None</span>}</td>
+                    <td>{s.due ? fmtDate(s.due) : <span className="muted">{tl("None")}</span>}</td>
                     <td className="cell-action">
-                      <a className="btn btn-quiet btn-small" href={`#/project/${id}`} aria-label={`Settings of ${s.name}`}>
+                      <a className="btn btn-quiet btn-small" href={`#/project/${id}`} aria-label={tl("Settings of {name}", { name: s.name })}>
                         <Settings2 size={14} aria-hidden="true" />
-                        Settings
+                        {tl("Settings")}
                       </a>
                     </td>
                   </tr>
@@ -370,7 +370,7 @@ function ServerProjects() {
 
 /** What part of a project an assignment is: "all files", "Mietvertrag.docx, en-GB, segments s1 to s4". */
 export function workScope(a: { file?: string; targetLang?: string; fromSegment?: string; toSegment?: string; due?: string }): string {
-  const parts = [a.file ?? "all files", a.targetLang ?? "all languages"];
+  const parts = [a.file ?? tl("all files"), a.targetLang ?? tl("all languages")];
   if (a.fromSegment) parts.push(a.fromSegment === a.toSegment ? `segment ${a.fromSegment}` : `segments ${a.fromSegment} to ${a.toSegment}`);
   if (a.due) parts.push(`due ${fmtDate(a.due)}`);
   return parts.join(", ");

@@ -54,6 +54,7 @@ import {
   type SegmentIssue,
   type SegmentStatus,
 } from "./editor/model";
+import { tl } from "./i18n";
 
 /** Where a segment list is: a file of a project, in a target language. */
 export interface SegmentsAt {
@@ -428,10 +429,10 @@ function keepTrack(prev: State, next: State, action: Action): State {
       const at = new Date().toISOString();
       const summary =
         action.type === "mergeEntries"
-          ? "Merged into another entry"
+          ? tl("Merged into another entry")
           : action.type === "merge"
-            ? "Deleted by a merge"
-            : "Deleted";
+            ? tl("Deleted by a merge")
+            : tl("Deleted");
       deleted = [
         ...gone.map((entry) => ({ entry, at, by: prev.userName, summary })),
         ...deleted,
@@ -732,7 +733,7 @@ function reduce(state: State, action: Action): State {
             id: `c-${Date.now().toString(36)}`,
             at: action.now,
             by: state.userName,
-            summary: `Set ${label} of “${term.text}”`,
+            summary: tl("Set {label} of “{text}”", { label, text: term.text }),
           };
           return {
             ...e,
@@ -867,7 +868,7 @@ function reduce(state: State, action: Action): State {
             id: `c-${id}`,
             at: now,
             by: state.userName,
-            summary: "Added while translating",
+            summary: tl("Added while translating"),
             project: p.name,
             segment: input.segment,
           },
@@ -921,7 +922,7 @@ function reduce(state: State, action: Action): State {
             version: e.version + 1,
             history: [
               ...e.history,
-              commit(state.userName, action.now, `Removed the language ${name}`),
+              commit(state.userName, action.now, tl("Removed the language {name}", { name })),
             ],
           };
         }),
@@ -987,7 +988,7 @@ function reduce(state: State, action: Action): State {
                   commit(
                     state.userName,
                     action.now,
-                    `Removed the field ${it?.name ?? action.infoTypeId}`,
+                    tl("Removed the field {x}", { x: it?.name ?? action.infoTypeId }),
                   ),
                 ],
               }
@@ -1090,7 +1091,7 @@ function reduce(state: State, action: Action): State {
             version: e.version + 1,
             history: [
               ...e.history,
-              commit(state.userName, action.now, `Restored the version of ${fmtTime(v.at)}`),
+              commit(state.userName, action.now, tl("Restored the version of {x}", { x: fmtTime(v.at) })),
             ],
           };
         }),
@@ -1105,7 +1106,7 @@ function reduce(state: State, action: Action): State {
         version: d.entry.version + 1,
         history: [
           ...d.entry.history,
-          commit(state.userName, action.now, "Brought back"),
+          commit(state.userName, action.now, tl("Brought back")),
         ],
       };
       return {
@@ -1126,7 +1127,7 @@ function reduce(state: State, action: Action): State {
         version: 1,
         base: { termbaseId: m.termbaseId, entryId: m.id, version: m.version },
         history: [
-          commit(state.userName, action.now, "Taken from the master to change"),
+          commit(state.userName, action.now, tl("Taken from the master to change")),
         ],
       };
       return {
@@ -1347,7 +1348,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   if (!ready)
     return (
       <p className="boot" role="status">
-        Opening your work…
+        {tl("Opening your work…")}
       </p>
     );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -1355,7 +1356,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
 export function useStore(): Store {
   const s = useContext(Ctx);
-  if (!s) throw new Error("useStore outside StoreProvider");
+  if (!s) throw new Error(tl("useStore outside StoreProvider"));
   return s;
 }
 
@@ -1384,44 +1385,44 @@ export function useLocalStore(): Store {
 // Wording: the same mechanics, labelled for translators or in git terms.
 const WORDS = {
   plain: {
-    projectChanges: "Project changes",
-    reviewMerge: "Review and merge",
-    mergeInto: "Merge into",
-    merged: "Merged",
-    updateFromMaster: "Update from master",
-    updated: "Project updated from master",
-    history: "History",
-    basedOn: "Based on",
-    projectTermbase: "Project termbase",
-    useProject: "Use project version",
-    keepMaster: "Keep master version",
-    keepBoth: "Keep both",
-    skip: "Leave out",
-    accept: "Include",
-    newEntry: "New entry",
-    changedEntry: "Changed",
-    conflict: "Conflict",
+    projectChanges: tl("Project changes"),
+    reviewMerge: tl("Review and merge"),
+    mergeInto: tl("Merge into"),
+    merged: tl("Merged"),
+    updateFromMaster: tl("Update from master"),
+    updated: tl("Project updated from master"),
+    history: tl("History"),
+    basedOn: tl("Based on"),
+    projectTermbase: tl("Project termbase"),
+    useProject: tl("Use project version"),
+    keepMaster: tl("Keep master version"),
+    keepBoth: tl("Keep both"),
+    skip: tl("Leave out"),
+    accept: tl("Include"),
+    newEntry: tl("New entry"),
+    changedEntry: tl("Changed"),
+    conflict: tl("Conflict"),
     change: "change",
     changes: "changes",
   },
   git: {
-    projectChanges: "Branch diff",
-    reviewMerge: "Diff and merge",
-    mergeInto: "Merge into",
-    merged: "Merged",
-    updateFromMaster: "Pull from master",
-    updated: "Pulled from master",
-    history: "Log",
-    basedOn: "Branched from",
-    projectTermbase: "Branch",
-    useProject: "Use ours",
-    keepMaster: "Use theirs",
-    keepBoth: "Union",
-    skip: "Drop",
-    accept: "Pick",
-    newEntry: "Added",
-    changedEntry: "Modified",
-    conflict: "Conflict",
+    projectChanges: tl("Branch diff"),
+    reviewMerge: tl("Diff and merge"),
+    mergeInto: tl("Merge into"),
+    merged: tl("Merged"),
+    updateFromMaster: tl("Pull from master"),
+    updated: tl("Pulled from master"),
+    history: tl("Log"),
+    basedOn: tl("Branched from"),
+    projectTermbase: tl("Branch"),
+    useProject: tl("Use ours"),
+    keepMaster: tl("Use theirs"),
+    keepBoth: tl("Union"),
+    skip: tl("Drop"),
+    accept: tl("Pick"),
+    newEntry: tl("Added"),
+    changedEntry: tl("Modified"),
+    conflict: tl("Conflict"),
     change: "commit",
     changes: "commits",
   },

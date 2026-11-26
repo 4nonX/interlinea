@@ -39,6 +39,9 @@ jobs:
       - name: the apps' language lists are up to date
         if: runner.os == 'Linux'
         run: go run ./langtag/gen -check
+      - name: every string of the interface is translated
+        if: runner.os == 'Linux'
+        run: go run ./i18n/gen -check
       - name: test
         run: go test ./...
       - name: race

@@ -5,24 +5,25 @@ import { errorText, useRemote } from "../remote";
 import { allows, ApiError, type MergeAssignment, type MergeFilter, type MergeItem, type MergeProgress, type MergeRequest, type Person } from "../server";
 import { lang } from "../data";
 import type { CoreEntry } from "../termio";
-import { fmtDate, plural } from "../format";
+import { fmtDate, listOf, plural } from "../format";
 import { LangChip, PageHeader } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
+import { tl, tlx } from "../i18n";
 
 const KIND_TEXT: Record<MergeItem["kind"], string> = {
-  new: "New entry",
-  changed: "Changed entry",
-  deleted: "Deleted in the project",
+  new: tl("New entry"),
+  changed: tl("Changed entry"),
+  deleted: tl("Deleted in the project"),
 };
 
 const STATE_TEXT: Record<string, string> = {
-  waiting: "Waiting",
-  approved: "Approved",
-  "approved-with-edits": "Approved with edits",
-  "changes-requested": "Changes requested",
-  rejected: "Rejected",
-  postponed: "Postponed",
-  reverted: "Reverted",
+  waiting: tl("Waiting"),
+  approved: tl("Approved"),
+  "approved-with-edits": tl("Approved with edits"),
+  "changes-requested": tl("Changes requested"),
+  rejected: tl("Rejected"),
+  postponed: tl("Postponed"),
+  reverted: tl("Reverted"),
 };
 
 type View = "waiting" | "decided" | "all";
@@ -56,11 +57,11 @@ function Terms({ entry }: { entry: CoreEntry }) {
 /** The part of a request a reviewer has, in words. */
 function partText(scope: MergeFilter): string {
   const parts: string[] = [];
-  if (scope.langs?.length) parts.push(`entries with terms in ${scope.langs.map((l) => lang(l).name).join(", ")}`);
-  for (const k of scope.kinds ?? []) parts.push(k === "new" ? "new entries" : k === "changed" ? "changed entries" : "entries deleted in the project");
-  if (scope.conflicts) parts.push("entries with conflicts");
-  if (scope.authors?.length) parts.push(`entries by ${scope.authors.join(", ")}`);
-  return parts.length ? parts.join("; ") : "all of it";
+  if (scope.langs?.length) parts.push(tl("entries with terms in {x}", { x: scope.langs.map((l) => lang(l).name).join(", ") }));
+  for (const k of scope.kinds ?? []) parts.push(k === "new" ? tl("new entries") : k === "changed" ? tl("changed entries") : tl("entries deleted in the project"));
+  if (scope.conflicts) parts.push(tl("entries with conflicts"));
+  if (scope.authors?.length) parts.push(tl("entries by {x}", { x: scope.authors.join(", ") }));
+  return parts.length ? parts.join("; ") : tl("all of it");
 }
 
 /** Who reviews which part of a request, and giving parts out. */
@@ -93,7 +94,7 @@ function Reviewers({
   async function give(e: FormEvent) {
     e.preventDefault();
     if (!who) {
-      notify("Choose who reviews.");
+      notify(tl("Choose who reviews."));
       return;
     }
     const scope: MergeFilter = part.startsWith("lang:")
@@ -105,7 +106,7 @@ function Reviewers({
           : {};
     try {
       await r.api!.assignReviewer(id, { reviewer: who, scope });
-      notify(`${nameOf(who)} reviews a part of the request`);
+      notify(tl("{who} reviews a part of the request", { who: nameOf(who) }));
       setWho("");
       setPart("");
       await onChange();
@@ -117,10 +118,10 @@ function Reviewers({
   return (
     <section className="panel" aria-labelledby="mr-reviewers">
       <h2 id="mr-reviewers" className="panel-title">
-        Reviewers
+        {tl("Reviewers")}
       </h2>
       {reviewers.length === 0 ? (
-        <p className="help">Nobody is given a part: everyone who may approve changes to {mr.target} sees all of it.</p>
+        <p className="help">{tlx("Nobody is given a part: everyone who may approve changes to {target} sees all of it.", { target: mr.target })}</p>
       ) : (
         <ul className="mr-reviewers">
           {reviewers.map((a) => {
@@ -132,24 +133,24 @@ function Reviewers({
                 <span className="cell-title">{nameOf(a.reviewer)}</span>
                 <span className="cell-sub">
                   {partText(a.scope)}
-                  {all > 0 ? `: ${left === 0 ? `all ${all} decided` : `${left} of ${all} to decide`}` : ""}
+                  {all > 0 ? `: ${left === 0 ? tl("all {all} decided", { all }) : tl("{left} of {all} to decide", { left, all })}` : ""}
                 </span>
                 {open && manage && (
                   <button
                     type="button"
                     className="btn btn-quiet btn-small"
-                    aria-label={`Take the part from ${nameOf(a.reviewer)}`}
+                    aria-label={tl("Take the part from {reviewer}", { reviewer: nameOf(a.reviewer) })}
                     onClick={() =>
                       void r.api!.unassignReviewer(id, a.reviewer).then(
                         async () => {
-                          notify(`${nameOf(a.reviewer)} no longer has a part of the request`);
+                          notify(tl("{reviewer} no longer has a part of the request", { reviewer: nameOf(a.reviewer) }));
                           await onChange();
                         },
                         (err) => notify(errorText(err)),
                       )
                     }
                   >
-                    Remove
+                    {tl("Remove")}
                   </button>
                 )}
               </li>
@@ -159,11 +160,11 @@ function Reviewers({
       )}
       {open && manage && (
         <>
-          <form className="role-add" onSubmit={give} aria-label="Give someone a part">
+          <form className="role-add" onSubmit={give} aria-label={tl("Give someone a part")}>
             <label>
-              <span className="field-label">Who</span>
+              <span className="field-label">{tl("Who")}</span>
               <select value={who} onChange={(e) => setWho(e.target.value)}>
-                <option value="">Choose someone</option>
+                <option value="">{tl("Choose someone")}</option>
                 {people.map((p) => (
                   <option key={p.username} value={p.username}>
                     {p.name ? `${p.name} (${p.username})` : p.username}
@@ -172,25 +173,24 @@ function Reviewers({
               </select>
             </label>
             <label>
-              <span className="field-label">Part</span>
+              <span className="field-label">{tl("Part")}</span>
               <select value={part} onChange={(e) => setPart(e.target.value)}>
-                <option value="">All of it</option>
+                <option value="">{tl("All of it")}</option>
                 {languages.map((l) => (
                   <option key={l} value={`lang:${l}`}>
-                    Terms in {lang(l).name}
-                  </option>
+                    {tlx("Terms in {name}", { name: lang(l).name })}</option>
                 ))}
-                <option value="kind:new">New entries</option>
-                <option value="kind:changed">Changed entries</option>
-                <option value="conflicts">Entries with conflicts</option>
+                <option value="kind:new">{tl("New entries")}</option>
+                <option value="kind:changed">{tl("Changed entries")}</option>
+                <option value="conflicts">{tl("Entries with conflicts")}</option>
               </select>
             </label>
             <button type="submit" className="btn">
-              Give the part
+              {tl("Give the part")}
             </button>
           </form>
           <p className="help">
-            A reviewer must be able to approve changes to {mr.target}. Giving someone a part again replaces the one they had.
+            {tlx("A reviewer must be able to approve changes to {target}. Giving someone a part again replaces the one they had.", { target: mr.target })}
           </p>
         </>
       )}
@@ -262,27 +262,27 @@ export function ServerMergeReview({ id }: { id: number }) {
       const left = res.needResolution?.length ?? 0;
       notify(
         `${what ?? STATE_TEXT[state]}: ${plural(res.decided, "entry", "entries")}` +
-          (left ? `; ${plural(left, "entry needs", "entries need")} a decision one by one (the master changed the same places)` : ""),
+          (left ? tl("; {x} a decision one by one (the master changed the same places)", { x: plural(left, "entry needs", "entries need") }) : ""),
       );
       await load();
     } catch (e) {
-      notify(e instanceof ApiError && e.status === 403 ? `${e.message} Ask a manager of ${mr?.target} for the approve role.` : errorText(e));
+      notify(e instanceof ApiError && e.status === 403 ? tl("{message} Ask a manager of {x} for the approve role.", { message: e.message, x: mr?.target }) : errorText(e));
     }
   }
 
   if (!r.conn)
     return (
       <div className="page page-narrow">
-        <PageHeader title="Review" />
+        <PageHeader title={tl("Review")} />
         <p>
-          Sign in to the team server in <a href="#/settings">Settings</a>.
+          {tlx("Sign in to the team server in {a}.", { a: <a href="#/settings">{tl("Settings")}</a> })}
         </p>
       </div>
     );
   if (problem && !mr)
     return (
       <div className="page page-narrow">
-        <PageHeader title="Review" />
+        <PageHeader title={tl("Review")} />
         <p className="error" role="alert">
           {problem}
         </p>
@@ -291,7 +291,7 @@ export function ServerMergeReview({ id }: { id: number }) {
   if (!mr || !progress)
     return (
       <p className="boot" role="status">
-        Loading the request…
+        {tl("Loading the request…")}
       </p>
     );
   const open = mr.state === "open";
@@ -303,46 +303,43 @@ export function ServerMergeReview({ id }: { id: number }) {
     <div className="page">
       <PageHeader title={mr.title}>
         <a className="btn btn-quiet" href={`#/terminology/srv:${encodeURIComponent(mr.project)}`}>
-          Back to the termbase
+          {tl("Back to the termbase")}
         </a>
       </PageHeader>
       <p className="help">
-        {mr.project} into {mr.target}. Submitted by {mr.createdBy} on {fmtDate(mr.createdAt)}
-        {mr.deadline ? `, to be decided by ${fmtDate(mr.deadline)}` : ""}.{" "}
-        {open ? "" : `Closed on ${fmtDate(mr.closedAt ?? mr.createdAt)}.`}
-      </p>
+        {tlx("{project} into {target}. Submitted by {createdBy} on {createdAt}{x}. {x2}", { project: mr.project, target: mr.target, createdBy: mr.createdBy, createdAt: fmtDate(mr.createdAt), x: mr.deadline ? tl(", to be decided by {deadline}", { deadline: fmtDate(mr.deadline) }) : "", x2: open ? "" : tl("Closed on {fmtDate}.", { fmtDate: fmtDate(mr.closedAt ?? mr.createdAt) }) })}</p>
       <section className="panel" aria-labelledby="mr-progress">
         <h2 id="mr-progress" className="panel-title">
-          Progress
+          {tl("Progress")}
         </h2>
         <p>
           {plural(progress.total, "entry", "entries")}: {Object.entries(progress.states)
             .filter(([, n]) => n > 0)
             .map(([s, n]) => `${n} ${(STATE_TEXT[s] ?? s).toLowerCase()}`)
             .join(", ")}
-          {progress.conflicts ? `; ${plural(progress.conflicts, "conflict", "conflicts")} with the master` : ""}.
+          {progress.conflicts ? tl("; {conflicts} with the master", { conflicts: plural(progress.conflicts, "conflict", "conflicts") }) : ""}.
         </p>
-        <progress max={progress.total || 1} value={progress.total - waiting} aria-label="Decided" />
-        {open && target && !approve && <p className="help">Those who may approve changes to {mr.target} decide. You see how far they are.</p>}
+        <progress max={progress.total || 1} value={progress.total - waiting} aria-label={tl("Decided")} />
+        {open && target && !approve && <p className="help">{tlx("Those who may approve changes to {target} decide. You see how far they are.", { target: mr.target })}</p>}
         {open && approve && (
           <div className="server-actions">
             <button
               type="button"
               className="btn btn-primary"
               disabled={waiting === 0}
-              onClick={() => void decide({ states: ["waiting"], conflicts: false }, "approved", undefined, "Approved all waiting entries without conflicts")}
+              onClick={() => void decide({ states: ["waiting"], conflicts: false }, "approved", undefined, tl("Approved all waiting entries without conflicts"))}
             >
-              <Check size={15} aria-hidden="true" /> Approve all waiting without conflicts
+              <Check size={15} aria-hidden="true" />{" "}{tl("Approve all waiting without conflicts")}
             </button>
             <ConfirmButton
               small={false}
-              label="Close the request"
-              confirm={waiting ? `${plural(waiting, "entry is", "entries are")} still waiting. Close anyway?` : "Close the request?"}
-              action="Close"
+              label={tl("Close the request")}
+              confirm={waiting ? tl("{waiting} still waiting. Close anyway?", { waiting: plural(waiting, "entry is", "entries are") }) : tl("Close the request?")}
+              action={tl("Close")}
               onConfirm={() =>
                 void r.api!.closeMergeRequest(id).then(
                   async () => {
-                    notify("Closed the request");
+                    notify(tl("Closed the request"));
                     await load();
                   },
                   (e) => notify(errorText(e)),
@@ -355,7 +352,7 @@ export function ServerMergeReview({ id }: { id: number }) {
 
       <Reviewers id={id} mr={mr} progress={progress} reviewers={reviewers} people={r.people} languages={target?.languages ?? []} manage={manage} onChange={load} />
 
-      <div className="tabs tabs-small" role="tablist" aria-label="Entries to show">
+      <div className="tabs tabs-small" role="tablist" aria-label={tl("Entries to show")}>
         {(["waiting", "decided", "all"] as View[]).map((v) => (
           <button
             key={v}
@@ -367,7 +364,7 @@ export function ServerMergeReview({ id }: { id: number }) {
               setView(v);
             }}
           >
-            {v === "waiting" ? `Waiting (${waiting})` : v === "decided" ? "Decided" : "All"}
+            {v === "waiting" ? tl("Waiting ({waiting})", { waiting }) : v === "decided" ? tl("Decided") : tl("All")}
           </button>
         ))}
       </div>
@@ -381,12 +378,12 @@ export function ServerMergeReview({ id }: { id: number }) {
               setMine(e.target.checked);
             }}
           />
-          Only my part
+          {tl("Only my part")}
         </label>
       )}
 
       {items.length === 0 ? (
-        <p className="muted">{view === "waiting" ? "Nothing is waiting." : "No entries here."}</p>
+        <p className="muted">{view === "waiting" ? tl("Nothing is waiting.") : tl("No entries here.")}</p>
       ) : (
         <ul className="mr-items">
           {items.map((it) => (
@@ -394,9 +391,7 @@ export function ServerMergeReview({ id }: { id: number }) {
               <div className="mr-head">
                 <span className="cell-title">{KIND_TEXT[it.kind]}</span>
                 <span className="cell-sub">
-                  by {it.author}, {fmtDate(it.changedAt)}
-                  {it.reviewers?.length && (it.state === "waiting" || it.state === "postponed") ? `; for ${it.reviewers.join(", ")} to review` : ""}
-                </span>
+                  {tlx("by {author}, {changedAt}{x}", { author: it.author, changedAt: fmtDate(it.changedAt), x: it.reviewers?.length && (it.state === "waiting" || it.state === "postponed") ? tl("; for {join} to review", { join: listOf(it.reviewers) }) : "" })}</span>
                 <span className={`status ${it.state === "waiting" ? "status-proposed" : it.state.startsWith("approved") ? "status-approved" : "status-forbidden"}`}>
                   {STATE_TEXT[it.state] ?? it.state}
                 </span>
@@ -415,49 +410,47 @@ export function ServerMergeReview({ id }: { id: number }) {
                 <div className="notice" role="note">
                   <AlertTriangle size={16} aria-hidden="true" />
                   <div className="notice-body">
-                    <p className="notice-title">The master changed the same places</p>
+                    <p className="notice-title">{tl("The master changed the same places")}</p>
                     <ul className="mr-changes">
                       {it.conflicts.map((c, i) => (
                         <li key={i}>
-                          {c.path}: the project has “{c.ours || "nothing"}”, {mr.target} has “{c.theirs || "nothing"}”
-                          {c.base ? ` (was “${c.base}”)` : ""}
-                        </li>
+                          {tlx("{path}: the project has “{x}”, {target} has “{x2}”{x3}", { path: c.path, x: c.ours || tl("nothing"), target: mr.target, x2: c.theirs || tl("nothing"), x3: c.base ? tl(" (was “{base}”)", { base: c.base }) : "" })}</li>
                       ))}
                     </ul>
                     {open && approve && (it.state === "waiting" || it.state === "postponed") && it.merged && (
                       <p className="cell-sub">
-                        Choose which of the two goes into {mr.target}. What only one side changed is merged either way.
+                        {tlx("Choose which of the two goes into {target}. What only one side changed is merged either way.", { target: mr.target })}
                       </p>
                     )}
                   </div>
                 </div>
               )}
-              {it.forbidden && <p className="cell-sub cell-warn">It has a forbidden term.</p>}
+              {it.forbidden && <p className="cell-sub cell-warn">{tl("It has a forbidden term.")}</p>}
               {it.duplicates && it.duplicates.length > 0 && (
-                <p className="cell-sub cell-warn">{plural(it.duplicates.length, "master entry shares", "master entries share")} a term with it.</p>
+                <p className="cell-sub cell-warn">{plural(it.duplicates.length, "master entry shares", "master entries share")}{" "}{tl("a term with it.")}</p>
               )}
               {it.comment && <p className="cell-sub">“{it.comment}”{it.reviewer ? `, ${it.reviewer}` : ""}</p>}
               {(it.state === "reverted" || it.state === "rejected" || it.state === "changes-requested") && (
                 <p className="cell-sub">
-                  {it.state === "reverted" ? `Taken out of ${mr.target} again.` : `Not in ${mr.target}.`} It is submitted again once the project has changed it.
+                  {tlx("{x} It is submitted again once the project has changed it.", { x: it.state === "reverted" ? tl("Taken out of {target} again.", { target: mr.target }) : tl("Not in {target}.", { target: mr.target }) })}
                 </p>
               )}
               {open && approve && it.state.startsWith("approved") && it.rule !== "identical" && (
                 <div>
                   <ConfirmButton
-                    label="Undo the merge"
-                    confirm={`Take this out of ${mr.target} again? The entry there goes back to what it was before.`}
-                    action="Undo"
+                    label={tl("Undo the merge")}
+                    confirm={tl("Take this out of {target} again? The entry there goes back to what it was before.", { target: mr.target })}
+                    action={tl("Undo")}
                     onConfirm={() =>
                       void r.api!.revertMergeItem(id, it.id).then(
                         async () => {
-                          notify(`Took the merge back out of ${mr.target}`);
+                          notify(tl("Took the merge back out of {target}", { target: mr.target }));
                           await load();
                         },
                         async (e) => {
                           notify(
                             e instanceof ApiError && e.status === 409
-                              ? `The entry in ${mr.target} was changed after the merge. Change it there by hand.`
+                              ? tl("The entry in {target} was changed after the merge. Change it there by hand.", { target: mr.target })
                               : errorText(e),
                           );
                           await load();
@@ -471,8 +464,8 @@ export function ServerMergeReview({ id }: { id: number }) {
                 <input
                   className="mr-note"
                   value={notes[it.id] ?? ""}
-                  placeholder="A note for the author, with your decision"
-                  aria-label="A note for the author"
+                  placeholder={tl("A note for the author, with your decision")}
+                  aria-label={tl("A note for the author")}
                   onChange={(e) => setNotes((n) => ({ ...n, [it.id]: e.target.value }))}
                 />
               )}
@@ -483,30 +476,30 @@ export function ServerMergeReview({ id }: { id: number }) {
                       <button
                         type="button"
                         className="btn btn-small"
-                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.mergedOurs ?? it.entry, `Used the project version (${resolution(it, "ours")})`)}
+                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.mergedOurs ?? it.entry, tl("Used the project version ({x})", { x: resolution(it, "ours") }))}
                       >
                         <Check size={14} aria-hidden="true" /> {w("useProject")}: {resolution(it, "ours")}
                       </button>
                       <button
                         type="button"
                         className="btn btn-small"
-                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.merged, `Kept the master version (${resolution(it, "theirs")})`)}
+                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.merged, tl("Kept the master version ({x})", { x: resolution(it, "theirs") }))}
                       >
                         <Check size={14} aria-hidden="true" /> {w("keepMaster")}: {resolution(it, "theirs")}
                       </button>
                     </>
                   ) : (
                     <button type="button" className="btn btn-small btn-primary" onClick={() => void decide({ ids: [it.id] }, "approved")}>
-                      <Check size={14} aria-hidden="true" /> Approve
+                      <Check size={14} aria-hidden="true" />{" "}{tl("Approve")}
                     </button>
                   )}
                   {it.state !== "postponed" && (
                     <button type="button" className="btn btn-small" onClick={() => void decide({ ids: [it.id] }, "postponed")}>
-                      <Clock size={14} aria-hidden="true" /> Postpone
+                      <Clock size={14} aria-hidden="true" />{" "}{tl("Postpone")}
                     </button>
                   )}
                   <button type="button" className="btn btn-small" onClick={() => void decide({ ids: [it.id] }, "rejected")}>
-                    <X size={14} aria-hidden="true" /> Reject
+                    <X size={14} aria-hidden="true" />{" "}{tl("Reject")}
                   </button>
                 </div>
               )}
@@ -517,10 +510,10 @@ export function ServerMergeReview({ id }: { id: number }) {
       {total > items.length && (
         <p className="row">
           <span className="cell-sub">
-            Showing the first {items.length} of {total}.
+            {tlx("Showing the first {length} of {total}.", { length: items.length, total: total })}
           </span>
           <button type="button" className="btn btn-small" onClick={() => setLimit((n) => n + 50)}>
-            Show more
+            {tl("Show more")}
           </button>
         </p>
       )}

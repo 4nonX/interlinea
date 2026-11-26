@@ -122,8 +122,9 @@ import {
   type TargetEditorHandle,
 } from "../editor/TargetEditor";
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
-import { fmtDate, fmtNum, plural } from "../format";
+import { fmtDate, fmtDec, fmtNum, inSentence, listOf, plural } from "../format";
 import { usePresence, useResegment, useSegmentComments, useSegmentIssues, useGrammar, useServerConcordance, useTranslationServices } from "../remote";
+import { tl, tlx } from "../i18n";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -132,9 +133,9 @@ function initials(name: string): string {
 }
 
 const STATUS_TEXT: Record<Segment["status"], string> = {
-  new: "Not translated",
-  draft: "Draft",
-  confirmed: "Confirmed",
+  new: tl("Not translated"),
+  draft: tl("Draft"),
+  confirmed: tl("Confirmed"),
 };
 
 type Filter = "all" | "todo" | "warnings";
@@ -249,7 +250,7 @@ export function Editor({
       (e: unknown) =>
         live &&
         notify(
-          `The translation memory could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+          tl("The translation memory could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -310,7 +311,7 @@ export function Editor({
       now: new Date().toISOString(),
     });
     notify(
-      `${w("updated")}: ${plural(incoming, "master change", "master changes")} taken in`,
+      tl("{w}: {incoming} taken in", { w: w("updated"), incoming: plural(incoming, "master change", "master changes") }),
     );
     // Once per opening of the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,7 +343,7 @@ export function Editor({
       .flatMap((f) => Object.entries(f.segments).map(([l, segs]) => ({ name: f.name, lang: l, segments: segs })));
     const name = `${project.name} review.csv`;
     download(new TextEncoder().encode(await reviewCsv(files)), name, "text/csv");
-    notify(`Saved ${name}`);
+    notify(tl("Saved {name}", { name }));
   }
   // Splitting and joining: in documents and in plain XLIFF files. Files of
   // Trados and memoQ keep their segments, as those programs keep their
@@ -377,7 +378,7 @@ export function Editor({
     if (!active) return;
     const no = await cut("join", active.id);
     if (no) notify(no);
-    setAnnouncement(no ?? "Joined with the next segment");
+    setAnnouncement(no ?? tl("Joined with the next segment"));
     editor.current?.focus();
   }
   const services = useTranslationServices(project, target);
@@ -460,13 +461,13 @@ export function Editor({
         if (ok) setDictReady(dictName);
         else
           notify(
-            `The dictionary ${dictName} is no longer saved in this browser, so spelling is not checked. Add it again under Settings.`,
+            tl("The dictionary {dictName} is no longer saved in this browser, so spelling is not checked. Add it again under Settings.", { dictName }),
           );
       },
       (e: unknown) =>
         live &&
         notify(
-          `The dictionary ${dictName} could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+          tl("The dictionary {dictName} could not be loaded: {x}", { dictName, x: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -489,7 +490,7 @@ export function Editor({
       found: i.found,
       text:
         i.kind === "tags-missing"
-          ? `${i.message} Press F9 to insert the next one.`
+          ? tl("{message} Press F9 to insert the next one.", { message: i.message })
           : i.kind === "spelling" && i.suggestions?.length
             ? `${i.message} Perhaps ${i.suggestions.slice(0, 3).join(", ")}.`
             : i.message,
@@ -567,7 +568,7 @@ export function Editor({
     ) {
       extra.push({
         kind: "unedited",
-        text: `The ${active.origin.score}% match is unchanged. Check what differs from the memory source.`,
+        text: tl("The {score}% match is unchanged. Check what differs from the memory source.", { score: active.origin.score }),
       });
     }
     const ignored = new Set(active.ignored ?? []);
@@ -636,7 +637,7 @@ export function Editor({
       STATUS_TEXT[active.status],
     ];
     const best = matches[0];
-    if (active.locked) parts.push(active.lockedReason ?? "Locked in the file");
+    if (active.locked) parts.push(active.lockedReason ?? tl("Locked in the file"));
     if (
       state.autoInsert &&
       best &&
@@ -661,9 +662,9 @@ export function Editor({
     return (
       <div className="page page-narrow">
         <div className="empty">
-          <p className="empty-title">Project not found</p>
+          <p className="empty-title">{tl("Project not found")}</p>
           <a className="btn btn-small" href="#/projects">
-            Back to projects
+            {tl("Back to projects")}
           </a>
         </div>
       </div>
@@ -736,14 +737,14 @@ export function Editor({
     if (active.locked) {
       setAnnouncement(
         active.lockedReason
-          ? `${active.lockedReason}: this segment is not yours to change.`
-          : "This segment is locked in the file and cannot be changed.",
+          ? tl("{lockedReason}: this segment is not yours to change.", { lockedReason: active.lockedReason })
+          : tl("This segment is locked in the file and cannot be changed."),
       );
       return;
     }
     if (!plain(active.target).trim()) {
       setAnnouncement(
-        "The target is empty. Type a translation or insert a match first.",
+        tl("The target is empty. Type a translation or insert a match first."),
       );
       return;
     }
@@ -797,22 +798,22 @@ export function Editor({
         setMemVersion((v) => v + 1);
         if (!kept)
           notify(
-            "The memory is kept only until you close this page: this browser does not allow saving",
+            tl("The memory is kept only until you close this page: this browser does not allow saving"),
           );
       });
     }
 
     const said = [
       warnings.length
-        ? `Confirmed with ${plural(warnings.length, "warning", "warnings")}`
-        : "Confirmed",
+        ? tl("Confirmed with {x}", { x: plural(warnings.length, "warning", "warnings") })
+        : tl("Confirmed"),
     ];
     if (repetitions.length) {
       said.push(
         `${plural(repetitions.length, "repetition", "repetitions")} filled: segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")}`,
       );
       notify(
-        `Also filled ${plural(repetitions.length, "repetition", "repetitions")} (segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")})`,
+        tl("Also filled {length} (segment {join})", { length: plural(repetitions.length, "repetition", "repetitions"), join: repetitions.map((r) => segments.indexOf(r) + 1).join(", ") }),
       );
     }
     const skip = new Set([active.id, ...repetitions.map((r) => r.id)]);
@@ -821,8 +822,8 @@ export function Editor({
     const next = segments.slice(index + 1).find(open) ?? segments.find(open);
     if (next) activate(next.id);
     else {
-      notify("All segments confirmed");
-      said.push("All segments are confirmed");
+      notify(tl("All segments confirmed"));
+      said.push(tl("All segments are confirmed"));
     }
     // The next segment's own announcement follows this one.
     setTimeout(() => setAnnouncement((a) => `${said.join(". ")}. ${a}`), 0);
@@ -840,7 +841,7 @@ export function Editor({
 
   async function bytesOf(f: NonNullable<typeof file>): Promise<Uint8Array> {
     if (f.bytes) return f.bytes;
-    if (!f.url) throw new Error(`${f.name} has no original file to save into.`);
+    if (!f.url) throw new Error(tl("{name} has no original file to save into.", { name: f.name }));
     return new Uint8Array(
       await (await fetch(new URL(f.url, document.baseURI))).arrayBuffer(),
     );
@@ -854,7 +855,7 @@ export function Editor({
         (s) => s.status !== "confirmed" && !s.locked,
       ).length;
       const pending = open
-        ? ` ${plural(open, "segment is", "segments are")} not confirmed yet.`
+        ? tl(" {x} not confirmed yet.", { x: plural(open, "segment is", "segments are") })
         : "";
       if (file.kind === "xliff") {
         const pkg = project.sdlPackage;
@@ -874,7 +875,7 @@ export function Editor({
           const name = returnPackageName(pkg.name);
           download(rpx, name, SDL_RETURN_TYPE);
           notify(
-            `Saved the return package ${name} with ${plural(Object.keys(translated).length, "file", "files")}.${pending}`,
+            tl("Saved the return package {name} with {length}.{pending}", { name, length: plural(Object.keys(translated).length, "file", "files"), pending }),
           );
           return;
         }
@@ -897,12 +898,12 @@ export function Editor({
       const empty = segments.filter((s) => !plain(s.target).trim()).length;
       notify(
         empty
-          ? `Saved ${name}. ${plural(empty, "segment", "segments")} without a translation kept the ${lang(source).name} text.`
-          : `Saved ${name}`,
+          ? tl("Saved {name}. {empty} without a translation kept the {name2} text.", { name, empty: plural(empty, "segment", "segments"), name2: lang(source).name })
+          : tl("Saved {name}", { name }),
       );
     } catch (e) {
       notify(
-        `Could not save the document: ${e instanceof Error ? e.message : String(e)}`,
+        tl("Could not save the document: {x}", { x: e instanceof Error ? e.message : String(e) }),
       );
     } finally {
       setSaving(false);
@@ -924,7 +925,7 @@ export function Editor({
     if (!active) return;
     const next = missingTags(active.source, active.target)[0];
     if (next) editor.current?.insertTag(next);
-    else setAnnouncement("All tags are already in the target.");
+    else setAnnouncement(tl("All tags are already in the target."));
   }
 
   function openCapture() {
@@ -998,7 +999,7 @@ export function Editor({
       <header className="editor-bar">
         <a className="btn btn-quiet btn-small" href="#/projects">
           <ArrowLeft size={14} aria-hidden="true" />
-          Projects
+          {tl("Projects")}
         </a>
         <div className="editor-title">
           <h1 id="page-title" tabIndex={-1}>
@@ -1008,7 +1009,7 @@ export function Editor({
             {workable.length > 1 ? (
               <>
                 <label htmlFor="ed-file" className="sr-only">
-                  File
+                  {tl("File")}
                 </label>
                 <select
                   id="ed-file"
@@ -1038,7 +1039,7 @@ export function Editor({
               {targets.length > 1 ? (
                 <>
                   <label htmlFor="ed-lang" className="sr-only">
-                    Target language
+                    {tl("Target language")}
                   </label>
                   <select
                     id="ed-lang"
@@ -1068,7 +1069,7 @@ export function Editor({
         </div>
         <div
           className="editor-progress"
-          aria-label={`${Math.round((doneWords / (totalWords || 1)) * 100)} percent confirmed`}
+          aria-label={tl("{round} percent confirmed", { round: Math.round((doneWords / (totalWords || 1)) * 100) })}
         >
           <span className="progress-track" aria-hidden="true">
             <span
@@ -1077,14 +1078,13 @@ export function Editor({
             />
           </span>
           <span className="progress-text">
-            {plural(doneWords, "word", "words")} of{" "}
-            {totalWords.toLocaleString("en-GB")} confirmed
+            {tlx("{doneWords} of {toLocaleString} confirmed", { doneWords: plural(doneWords, "word", "words"), toLocaleString: fmtNum(totalWords) })}
           </span>
         </div>
         <div
           className="segmented segmented-small"
           role="radiogroup"
-          aria-label="Show segments"
+          aria-label={tl("Show segments")}
         >
           <label className="segment">
             <input
@@ -1093,7 +1093,7 @@ export function Editor({
               checked={filter === "all"}
               onChange={() => setFilter("all")}
             />
-            <span>All</span>
+            <span>{tl("All")}</span>
           </label>
           <label className="segment">
             <input
@@ -1102,7 +1102,7 @@ export function Editor({
               checked={filter === "todo"}
               onChange={() => setFilter("todo")}
             />
-            <span>To do</span>
+            <span>{tl("To do")}</span>
           </label>
           <label className="segment">
             <input
@@ -1111,15 +1111,15 @@ export function Editor({
               checked={filter === "warnings"}
               onChange={() => setFilter("warnings")}
             />
-            <span>Warnings{withWarnings > 0 && ` (${withWarnings})`}</span>
+            <span>{tl("Warnings")}{withWarnings > 0 && ` (${withWarnings})`}</span>
           </label>
         </div>
         <label className="editor-find">
-          <span className="sr-only">Find in the segments</span>
-          <input type="search" placeholder="Find in the segments" value={find} onChange={(e) => setFind(e.target.value)} />
+          <span className="sr-only">{tl("Find in the segments")}</span>
+          <input type="search" placeholder={tl("Find in the segments")} value={find} onChange={(e) => setFind(e.target.value)} />
           {sought && (
             <span className="cell-sub" role="status">
-              {found === 0 ? "Nothing found" : plural(found, "segment", "segments")}
+              {found === 0 ? tl("Nothing found") : plural(found, "segment", "segments")}
             </span>
           )}
         </label>
@@ -1132,11 +1132,11 @@ export function Editor({
           )}
           <a className="btn btn-small" href={`#/project/${project.id}`}>
             <Settings2 size={14} aria-hidden="true" />
-            Project settings
+            {tl("Project settings")}
           </a>
           <button type="button" className="btn btn-small" onClick={() => setReplacing(true)} disabled={segments.length === 0}>
             <Replace size={14} aria-hidden="true" />
-            Replace
+            {tl("Replace")}
           </button>
           <button
             type="button"
@@ -1145,7 +1145,7 @@ export function Editor({
             disabled={!c}
           >
             <Database size={14} aria-hidden="true" />
-            Memories
+            {tl("Memories")}
           </button>
           <button
             type="button"
@@ -1154,7 +1154,7 @@ export function Editor({
             disabled={segments.length === 0}
           >
             <BarChart3 size={14} aria-hidden="true" />
-            Analysis
+            {tl("Analysis")}
           </button>
           {file?.blocks && file.kind === "docx" && (
             <button
@@ -1164,7 +1164,7 @@ export function Editor({
               onClick={() => setShowPreview((v) => !v)}
             >
               <Eye size={14} aria-hidden="true" />
-              Preview
+              {tl("Preview")}
             </button>
           )}
           {file &&
@@ -1178,16 +1178,16 @@ export function Editor({
               >
                 <Download size={14} aria-hidden="true" />
                 {saving
-                  ? "Saving…"
+                  ? tl("Saving…")
                   : project.sdlPackage && file.packagePath
-                    ? "Save return package"
+                    ? tl("Save return package")
                     : file.kind === "xliff"
                       ? /\.rtf$/i.test(file.name)
-                        ? "Save RTF"
+                        ? tl("Save RTF")
                         : /\.docx$/i.test(file.name)
-                          ? "Save DOCX"
-                          : "Save XLIFF"
-                      : "Save translated document"}
+                          ? tl("Save DOCX")
+                          : tl("Save XLIFF")
+                      : tl("Save translated document")}
               </button>
             )}
         </div>
@@ -1205,7 +1205,7 @@ export function Editor({
             const no = await cut("split", active.id, before);
             if (no) return no;
             setSplitting(false);
-            setAnnouncement("Split in two segments");
+            setAnnouncement(tl("Split in two segments"));
             return undefined;
           }}
         />
@@ -1232,28 +1232,25 @@ export function Editor({
       >
         <form method="dialog" className="dialog-body">
           <h2 id="memory-title" className="dialog-title">
-            Translation memories
+            {tl("Translation memories")}
           </h2>
           <p className="help">
-            Memories for {lang(target).name}, highest priority first. Matches
-            are scored in the core, with each memory's penalty taken off.{" "}
-            <a href={`#/project/${project.id}`}>
-              Change them in the project settings
-            </a>
-            .
+            {tlx("Memories for {name}, highest priority first. Matches are scored in the core, with each memory's penalty taken off. {a}.", { name: lang(target).name, a: <a href={`#/project/${project.id}`}>
+              {tl("Change them in the project settings")}
+            </a> })}
           </p>
           {c && (
             <table className="table">
-              <caption className="sr-only">Memories of this project</caption>
+              <caption className="sr-only">{tl("Memories of this project")}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Memory</th>
-                  <th scope="col">Used for</th>
+                  <th scope="col">{tl("Memory")}</th>
+                  <th scope="col">{tl("Used for")}</th>
                   <th scope="col" className="num">
-                    Units
+                    {tl("Units")}
                   </th>
                   <th scope="col">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{tl("Actions")}</span>
                   </th>
                 </tr>
               </thead>
@@ -1274,7 +1271,7 @@ export function Editor({
                       ? "concordance"
                       : "",
                     refs.update.some((m) => m.name === name)
-                      ? "updated on confirm"
+                      ? tl("updated on confirm")
                       : "",
                   ].filter(Boolean);
                   const isProject = projectMemory?.name === name;
@@ -1283,7 +1280,7 @@ export function Editor({
                       <th scope="row" className="cell-title">
                         {name}
                         {isProject && (
-                          <span className="muted"> (project memory)</span>
+                          <span className="muted">{" "}{tl("(project memory)")}</span>
                         )}
                       </th>
                       <td>{uses.join(", ")}</td>
@@ -1293,12 +1290,12 @@ export function Editor({
                           <button
                             type="button"
                             className="btn btn-small"
-                            aria-label={`Import a memory file into ${name}`}
+                            aria-label={tl("Import a memory file into {name}", { name })}
                             title={MEMORY_FILES_NOTE}
                             onClick={() => tmxInput.current?.click()}
                           >
                             <Upload size={14} aria-hidden="true" />
-                            Import
+                            {tl("Import")}
                           </button>
                         )}
                         <button
@@ -1314,12 +1311,12 @@ export function Editor({
                           disabled={tm.count(c, name) === 0}
                         >
                           <Download size={14} aria-hidden="true" />
-                          Export TMX
+                          {tl("Export TMX")}
                         </button>
                         <button
                           type="button"
                           className="btn btn-quiet btn-small"
-                          aria-label={`Export ${name} as a .txt memory`}
+                          aria-label={tl("Export {name} as a .txt memory", { name })}
                           onClick={() =>
                             download(
                               tm.exportWordfast(c, name),
@@ -1330,7 +1327,7 @@ export function Editor({
                           disabled={tm.count(c, name) === 0}
                         >
                           <Download size={14} aria-hidden="true" />
-                          Export .txt
+                          {tl("Export .txt")}
                         </button>
                       </td>
                     </tr>
@@ -1345,8 +1342,7 @@ export function Editor({
               refs.update.length ===
               0 && (
               <p className="muted">
-                This language of the project uses no memory, so the editor shows
-                no matches.
+                {tl("This language of the project uses no memory, so the editor shows no matches.")}
               </p>
             )}
           <input
@@ -1354,7 +1350,7 @@ export function Editor({
             type="file"
             accept={MEMORY_FILES}
             hidden
-            aria-label="Memory file to import"
+            aria-label={tl("Memory file to import")}
             onChange={async (e) => {
               const f = e.target.files?.[0];
               e.target.value = "";
@@ -1372,13 +1368,13 @@ export function Editor({
                 );
               } catch (err) {
                 notify(
-                  `Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`,
+                  tl("Could not import {name}: {x}", { name: f.name, x: err instanceof Error ? err.message : String(err) }),
                 );
               }
             }}
           />
           <div className="row">
-            <button className="btn btn-primary btn-small">Close</button>
+            <button className="btn btn-primary btn-small">{tl("Close")}</button>
           </div>
         </form>
       </dialog>
@@ -1390,20 +1386,14 @@ export function Editor({
       >
         <form method="dialog" className="dialog-body">
           <h2 id="analysis-title" className="dialog-title">
-            Analysis
+            {tl("Analysis")}
           </h2>
           <p className="help">
-            {plural(
+            {tlx("{length} in {name} against {x}, counted in this order: context matches first, then repetitions within a file and across files, then the best match. Below 50% counts as new. The project memory is left out: it holds this project's own translations.", { length: plural(
               project.files.filter((f) => f.segments[target]).length,
               "file",
               "files",
-            )}{" "}
-            in {lang(target).name} against{" "}
-            {analysisMemories.map((m) => m.name).join(" and ") || "no memory"},
-            counted in this order: context matches first, then repetitions within
-            a file and across files, then the best match. Below 50% counts as
-            new. The project memory is left out: it holds this project's own
-            translations.
+            ), name: lang(target).name, x: listOf(analysisMemories.map((m) => m.name)) || tl("no memory") })}
           </p>
           {c ? (
             <DialogAnalysis
@@ -1413,10 +1403,10 @@ export function Editor({
               memories={analysisMemories}
             />
           ) : (
-            <p className="muted">Loading the memory…</p>
+            <p className="muted">{tl("Loading the memory…")}</p>
           )}
           <div className="row">
-            <button className="btn btn-primary btn-small">Close</button>
+            <button className="btn btn-primary btn-small">{tl("Close")}</button>
           </div>
         </form>
       </dialog>
@@ -1427,18 +1417,16 @@ export function Editor({
 
       {segments.length === 0 ? (
         <div className="empty">
-          <p className="empty-title">No text to translate</p>
+          <p className="empty-title">{tl("No text to translate")}</p>
           <p>
-            The document has no readable text here (for example a scan, or a
-            format only the full product imports). Text recognition for scans
-            comes with the file filters.
+            {tl("The document has no readable text here (for example a scan, or a format only the full product imports). Text recognition for scans comes with the file filters.")}
           </p>
         </div>
       ) : (
         <div
           className={`editor-body${showPreview && file?.blocks && file.kind === "docx" ? " with-preview" : ""}`}
         >
-          <ol className="segments" aria-label="Segments">
+          <ol className="segments" aria-label={tl("Segments")}>
             {visible.map((s) => {
               const n = segments.indexOf(s) + 1;
               const isActive = s.id === activeId;
@@ -1454,8 +1442,8 @@ export function Editor({
                       <span
                         key={x.userId}
                         className="seg-presence"
-                        title={`${x.userName} has this segment open`}
-                        aria-label={`${x.userName} has this segment open`}
+                        title={tl("{userName} has this segment open", { userName: x.userName })}
+                        aria-label={tl("{userName} has this segment open", { userName: x.userName })}
                       >
                         {initials(x.userName)}
                       </span>
@@ -1476,18 +1464,18 @@ export function Editor({
                         ref={lockedView}
                         tabIndex={0}
                         onKeyDown={onKeyDown}
-                        aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. ${s.lockedReason ?? "Locked in the file"}`}
+                        aria-label={`Segment ${n}: ${plain(s.target) || tl("not translated")}. ${s.lockedReason ?? tl("Locked in the file")}`}
                       >
                         <span className="seg-target-text">
                           {s.target.length ? (
                             <RunsView runs={s.target} />
                           ) : (
-                            <span className="missing">Not translated</span>
+                            <span className="missing">{tl("Not translated")}</span>
                           )}
                         </span>
                         <span className="seg-locked-note">
                           <Lock size={13} aria-hidden="true" />{" "}
-                          {s.lockedReason ?? "Locked in the file"}
+                          {s.lockedReason ?? tl("Locked in the file")}
                         </span>
                       </div>
                     ) : isActive ? (
@@ -1497,7 +1485,7 @@ export function Editor({
                           ref={editor}
                           initial={s.target}
                           lang={target}
-                          label={`Translation of segment ${n}, ${lang(target).name}`}
+                          label={tl("Translation of segment {n}, {name}", { n, name: lang(target).name })}
                           describedBy="seg-help"
                           onChange={(runs) => setTarget(runs)}
                           onKeyDown={onKeyDown}
@@ -1522,13 +1510,13 @@ export function Editor({
                         className="seg-target-view"
                         lang={target}
                         onClick={() => activate(s.id)}
-                        aria-label={`Segment ${n}: ${plain(s.target) || "not translated"}. ${STATUS_TEXT[s.status]}${s.warnings?.length ? `, ${plural(s.warnings.length, "warning", "warnings")}` : ""}. Edit`}
+                        aria-label={`Segment ${n}: ${plain(s.target) || tl("not translated")}. ${STATUS_TEXT[s.status]}${s.warnings?.length ? `, ${plural(s.warnings.length, "warning", "warnings")}` : ""}. Edit`}
                       >
                         <span className="seg-target-text">
                           {s.target.length ? (
                             <RunsView runs={s.target} />
                           ) : (
-                            <span className="missing">Not translated</span>
+                            <span className="missing">{tl("Not translated")}</span>
                           )}
                         </span>
                       </button>
@@ -1543,11 +1531,10 @@ export function Editor({
           {showPreview && file?.blocks && file.kind === "docx" && (
             <section
               className="preview-pane"
-              aria-label="Preview of the translated document"
+              aria-label={tl("Preview of the translated document")}
             >
               <p className="preview-note">
-                Layout from the document. Untranslated text appears in the
-                source language, grey and underlined. The saved file is exact.
+                {tl("Layout from the document. Untranslated text appears in the source language, grey and underlined. The saved file is exact.")}
               </p>
               <Preview
                 blocks={file.blocks}
@@ -1560,18 +1547,16 @@ export function Editor({
             </section>
           )}
 
-          <aside className="results" aria-label="Translation results">
+          <aside className="results" aria-label={tl("Translation results")}>
             <p id="seg-help" className="sr-only">
-              Control Enter confirms and moves on. Control and a number inserts
-              a numbered result. Control E adds a term. Control K searches the
-              memory. F9 inserts the next tag.
+              {tl("Control Enter confirms and moves on. Control and a number inserts a numbered result. Control E adds a term. Control K searches the memory. F9 inserts the next tag.")}
             </p>
             {active && (
               <>
-                <Section title="Translation results" count={results.length}>
+                <Section title={tl("Translation results")} count={results.length}>
                   {results.length === 0 ? (
                     <p className="muted">
-                      No memory matches or terms for this segment.
+                      {tl("No memory matches or terms for this segment.")}
                     </p>
                   ) : (
                     <ol className="result-list">
@@ -1621,17 +1606,16 @@ export function Editor({
                   )}
                 </Section>
 
-                <Section title="Checks" count={allIssues.length}>
+                <Section title={tl("Checks")} count={allIssues.length}>
                   {grammar && grammarError && (
                     <p className="muted" role="status">
-                      Grammar is not checked: {grammarError}
-                    </p>
+                      {tlx("Grammar is not checked: {grammarError}", { grammarError: grammarError })}</p>
                   )}
                   {allIssues.length === 0 ? (
                     <p className="muted">
                       {plain(active.target).trim()
-                        ? "No problems found."
-                        : "Checks run as you type and again when you confirm."}
+                        ? tl("No problems found.")
+                        : tl("Checks run as you type and again when you confirm.")}
                     </p>
                   ) : (
                     <ul className="issues">
@@ -1657,9 +1641,9 @@ export function Editor({
                                   const runs = replaceStretch(active.target, q.offset!, q.length ?? 0, value);
                                   if (runs) editor.current?.setRuns(runs);
                                 }}
-                                aria-label={`Replace ${q.found} with ${value}`}
+                                aria-label={tl("Replace {found} with {value}", { found: q.found, value })}
                               >
-                                Replace with “{value}”
+                                {tlx("Replace with “{value}”", { value: value })}
                               </button>
                                   ))}
                                 </span>
@@ -1686,12 +1670,12 @@ export function Editor({
                                   },
                                 });
                                 notify(
-                                  `“${q.found}” is spelled right in this project from now on`,
+                                  tl("“{found}” is spelled right in this project from now on", { found: q.found }),
                                 );
                               }}
-                              aria-label={`Add ${q.found} to the project's words`}
+                              aria-label={tl("Add {found} to the project's words", { found: q.found })}
                             >
-                              Add to the project's words
+                              {tl("Add to the project's words")}
                             </button>
                           )}
                           <button
@@ -1705,9 +1689,9 @@ export function Editor({
                                 text: q.text,
                               })
                             }
-                            aria-label={`Ignore: ${q.text}`}
+                            aria-label={tl("Ignore: {text}", { text: q.text })}
                           >
-                            Ignore
+                            {tl("Ignore")}
                           </button>
                         </li>
                       ))}
@@ -1715,14 +1699,13 @@ export function Editor({
                   )}
                   {(active.ignored?.length ?? 0) > 0 && (
                     <p className="help">
-                      {plural(active.ignored!.length, "warning", "warnings")}{" "}
-                      ignored for this segment.
+                      {tlx("{length} ignored for this segment.", { length: plural(active.ignored!.length, "warning", "warnings") })}
                     </p>
                   )}
                 </Section>
 
                 {lookupText !== null && (
-                  <Section title="Memory search">
+                  <Section title={tl("Memory search")}>
                     <form
                       className="lookup"
                       role="search"
@@ -1736,7 +1719,7 @@ export function Editor({
                       }}
                     >
                       <label htmlFor="lookup-q" className="sr-only">
-                        Search the memory
+                        {tl("Search the memory")}
                       </label>
                       <Search size={14} aria-hidden="true" />
                       <input
@@ -1744,12 +1727,12 @@ export function Editor({
                         autoFocus
                         value={lookupText}
                         onChange={(e) => setLookupText(e.target.value)}
-                        placeholder="Words in either language"
+                        placeholder={tl("Words in either language")}
                       />
                       <button
                         type="button"
                         className="btn btn-quiet btn-tiny"
-                        aria-label="Close memory search"
+                        aria-label={tl("Close memory search")}
                         onClick={() => {
                           setLookupText(null);
                           editor.current?.focus();
@@ -1765,8 +1748,7 @@ export function Editor({
                         </p>
                         {concordanceHits.length === 0 ? (
                           <p className="muted">
-                            Nothing in the memory contains “{lookupText.trim()}
-                            ”.
+                            {tlx("Nothing in the memory contains “{trim}”.", { trim: lookupText.trim() })}
                           </p>
                         ) : (
                           <ul className="lookup-list">
@@ -1806,7 +1788,7 @@ export function Editor({
                   </Section>
                 )}
 
-                <Section title="Review" count={active.issues?.length}>
+                <Section title={tl("Review")} count={active.issues?.length}>
                   <SegmentIssues
                     key={active.id}
                     issues={active.issues ?? []}
@@ -1819,7 +1801,7 @@ export function Editor({
                   />
                 </Section>
 
-                <Section title="Comments" count={active.comments?.length}>
+                <Section title={tl("Comments")} count={active.comments?.length}>
                   <SegmentComments
                     key={active.id}
                     comments={active.comments ?? []}
@@ -1830,7 +1812,7 @@ export function Editor({
                   />
                 </Section>
 
-                <Section title="Add a term">
+                <Section title={tl("Add a term")}>
                   {capture ? (
                     <CaptureForm
                       key={`${capture.source}|${capture.target}`}
@@ -1858,7 +1840,7 @@ export function Editor({
                           },
                         });
                         notify(
-                          `Added “${src}” to ${writeTermbase?.name ?? "the termbase"}`,
+                          (writeTermbase ? tl("Added “{src}” to {name}", { src, name: writeTermbase.name }) : tl("Added “{src}” to the termbase", { src })),
                         );
                         setCapture(null);
                         editor.current?.focus();
@@ -1867,8 +1849,7 @@ export function Editor({
                   ) : (
                     <div className="capture-intro">
                       <p className="muted">
-                        Select the term in the source and its translation in the
-                        target, then add it. The sentence is saved with it.
+                        {tl("Select the term in the source and its translation in the target, then add it. The sentence is saved with it.")}
                       </p>
                       <div className="tool-row">
                         <button
@@ -1877,18 +1858,14 @@ export function Editor({
                           onClick={openCapture}
                         >
                           <Plus size={14} aria-hidden="true" />
-                          Add term
-                          <kbd>Ctrl+E</kbd>
-                        </button>
+                          {tlx("Add term{kbd}", { kbd: <kbd>Ctrl+E</kbd> })}</button>
                         <button
                           type="button"
                           className="btn btn-small"
                           onClick={openLookup}
                         >
                           <Search size={14} aria-hidden="true" />
-                          Search memory
-                          <kbd>Ctrl+K</kbd>
-                        </button>
+                          {tlx("Search memory{kbd}", { kbd: <kbd>Ctrl+K</kbd> })}</button>
                       </div>
                     </div>
                   )}
@@ -1903,9 +1880,7 @@ export function Editor({
                     }
                   >
                     <Copy size={14} aria-hidden="true" />
-                    Copy source
-                    <kbd>Ctrl+Ins</kbd>
-                  </button>
+                    {tlx("Copy source{kbd}", { kbd: <kbd>Ctrl+Ins</kbd> })}</button>
                   <button
                     type="button"
                     className="btn btn-small"
@@ -1915,41 +1890,33 @@ export function Editor({
                     }
                   >
                     <Tag size={14} aria-hidden="true" />
-                    Next tag
-                    <kbd>F9</kbd>
-                  </button>
+                    {tlx("Next tag{kbd}", { kbd: <kbd>F9</kbd> })}</button>
                   <button
                     type="button"
                     className="btn btn-primary btn-small"
                     onClick={confirmAndNext}
                   >
                     <Check size={14} aria-hidden="true" />
-                    Confirm
-                    <kbd>Ctrl+Enter</kbd>
-                  </button>
+                    {tlx("Confirm{kbd}", { kbd: <kbd>Ctrl+Enter</kbd> })}</button>
                 </div>
 
                 {cuttable && (
                   <div className="tool-row">
                     <button type="button" className="btn btn-small" onClick={() => setSplitting(true)} disabled={!cuts}>
                       <Scissors size={14} aria-hidden="true" />
-                      Split
-                      <kbd>Alt+Shift+S</kbd>
-                    </button>
+                      {tlx("Split{kbd}", { kbd: <kbd>Alt+Shift+S</kbd> })}</button>
                     <button type="button" className="btn btn-small" onClick={() => void join()} disabled={!joins}>
                       <Combine size={14} aria-hidden="true" />
-                      Join with next
-                      <kbd>Alt+Shift+J</kbd>
-                    </button>
+                      {tlx("Join with next{kbd}", { kbd: <kbd>Alt+Shift+J</kbd> })}</button>
                     {(fixed || active.joined || active.split) && (
                       <p className="help cut-note">
                         {fixed
-                          ? "The program this file comes from keeps its own record of every segment, so its segments stay as they are."
+                          ? tl("The program this file comes from keeps its own record of every segment, so its segments stay as they are.")
                           : active.split && active.joined
-                            ? `A part of ${active.joined.length} segments of the file that were joined.`
+                            ? tl("A part of {length} segments of the file that were joined.", { length: active.joined.length })
                             : active.joined
-                              ? `Joined from ${active.joined.length} segments of the file. Split it where they met to have them apart again.`
-                              : "A part of a segment of the file that was split."}
+                              ? tl("Joined from {length} segments of the file. Split it where they met to have them apart again.", { length: active.joined.length })
+                              : tl("A part of a segment of the file that was split.")}
                       </p>
                     )}
                   </div>
@@ -1958,42 +1925,40 @@ export function Editor({
                 <details className="shortcuts">
                   <summary>
                     <Keyboard size={14} aria-hidden="true" />
-                    Keyboard shortcuts
+                    {tl("Keyboard shortcuts")}
                   </summary>
                   <dl>
-                    <dt>Ctrl+Enter</dt>
+                    <dt>{tl("Ctrl+Enter")}</dt>
                     <dd>
-                      Confirm, fill repetitions and go to the next open segment
+                      {tl("Confirm, fill repetitions and go to the next open segment")}
                     </dd>
-                    <dt>Alt+↓ / Alt+↑</dt>
-                    <dd>Next / previous segment</dd>
-                    <dt>Ctrl+1 to 9</dt>
+                    <dt>{tl("Alt+↓ / Alt+↑")}</dt>
+                    <dd>{tl("Next / previous segment")}</dd>
+                    <dt>{tl("Ctrl+1 to 9")}</dt>
                     <dd>
-                      Insert result 1 to 9 (a memory match replaces the target,
-                      a term goes in at the caret)
+                      {tl("Insert result 1 to 9 (a memory match replaces the target, a term goes in at the caret)")}
                     </dd>
-                    <dt>Ctrl+↓ / Ctrl+↑, Ctrl+Space</dt>
+                    <dt>{tl("Ctrl+↓ / Ctrl+↑, Ctrl+Space")}</dt>
                     <dd>
-                      Move through the results, insert the highlighted one
+                      {tl("Move through the results, insert the highlighted one")}
                     </dd>
-                    <dt>Ctrl+Insert</dt>
-                    <dd>Copy source to target</dd>
+                    <dt>{tl("Ctrl+Insert")}</dt>
+                    <dd>{tl("Copy source to target")}</dd>
                     <dt>F9</dt>
-                    <dd>Insert the next missing tag</dd>
-                    <dt>Ctrl+E</dt>
-                    <dd>Add a term from the selections</dd>
-                    <dt>Ctrl+H</dt>
-                    <dd>Find and replace in the translations</dd>
-                    <dt>Alt+Shift+S, Alt+Shift+J</dt>
+                    <dd>{tl("Insert the next missing tag")}</dd>
+                    <dt>{tl("Ctrl+E")}</dt>
+                    <dd>{tl("Add a term from the selections")}</dd>
+                    <dt>{tl("Ctrl+H")}</dt>
+                    <dd>{tl("Find and replace in the translations")}</dd>
+                    <dt>{tl("Alt+Shift+S, Alt+Shift+J")}</dt>
                     <dd>
-                      Split the segment at any place, join it with the next one
-                      of its paragraph
+                      {tl("Split the segment at any place, join it with the next one of its paragraph")}
                     </dd>
-                    <dt>Ctrl+K or F3</dt>
-                    <dd>Search the memory for the selection</dd>
+                    <dt>{tl("Ctrl+K or F3")}</dt>
+                    <dd>{tl("Search the memory for the selection")}</dd>
                   </dl>
                   <p className="help">
-                    These are the shortcuts usual in translation tools.
+                    {tl("These are the shortcuts usual in translation tools.")}
                   </p>
                 </details>
               </>
@@ -2008,8 +1973,8 @@ export function Editor({
 function unitMeta(u: TmUnit & { memory?: MemoryRef }): string {
   const parts = [
     u.memory
-      ? `${u.memory.name}${u.memory.project ? " (project memory)" : ""}`
-      : "Memory",
+      ? `${u.memory.name}${u.memory.project ? tl(" (project memory)") : ""}`
+      : tl("Memory"),
   ];
   if (u.memory?.penalty) parts.push(`penalty ${u.memory.penalty}`);
   if (u.project && u.project !== u.memory?.name) parts.push(u.project);
@@ -2022,9 +1987,9 @@ function unitMeta(u: TmUnit & { memory?: MemoryRef }): string {
 const FILE_STATE_TEXT: Partial<
   Record<NonNullable<Segment["file"]>["state"], string>
 > = {
-  reviewed: "Approved by a reviewer in the file",
-  final: "Signed off in the file",
-  rejected: "Rejected by a reviewer in the file",
+  reviewed: tl("Approved by a reviewer in the file"),
+  final: tl("Signed off in the file"),
+  rejected: tl("Rejected by a reviewer in the file"),
 };
 
 function SegmentStatusCell({ s }: { s: Segment }) {
@@ -2035,7 +2000,7 @@ function SegmentStatusCell({ s }: { s: Segment }) {
       : undefined;
   const title = [
     STATUS_TEXT[s.status],
-    s.locked ? (s.lockedReason ?? "Locked in the file") : "",
+    s.locked ? (s.lockedReason ?? tl("Locked in the file")) : "",
     fileNote ?? "",
     ...(s.notes ?? []).map((n) => `Note: ${n}`),
     ...(s.comments ?? []).map((c) => `${c.by}: ${c.text}`),
@@ -2046,26 +2011,26 @@ function SegmentStatusCell({ s }: { s: Segment }) {
   return (
     <span className="seg-status" title={title}>
       {s.status === "confirmed" ? (
-        <Check size={16} aria-label="Confirmed" />
+        <Check size={16} aria-label={tl("Confirmed")} />
       ) : s.status === "draft" ? (
-        <PencilLine size={15} aria-label="Draft" />
+        <PencilLine size={15} aria-label={tl("Draft")} />
       ) : (
-        <CircleDashed size={15} aria-label="Not translated" />
+        <CircleDashed size={15} aria-label={tl("Not translated")} />
       )}
-      {s.locked && <Lock size={13} aria-label={s.lockedReason ?? "Locked in the file"} />}
+      {s.locked && <Lock size={13} aria-label={s.lockedReason ?? tl("Locked in the file")} />}
       {fileNote && (
         <span className={`seg-file-state seg-file-${s.file!.state}`}>
           {s.file!.state === "rejected"
-            ? "Rejected"
+            ? tl("Rejected")
             : s.file!.state === "final"
-              ? "Signed off"
-              : "Approved"}
+              ? tl("Signed off")
+              : tl("Approved")}
         </span>
       )}
       {s.file?.match && !s.origin ? (
         <span
           className="seg-file-match"
-          title={`${s.file.match}% match in the file`}
+          title={tl("{match}% match in the file", { match: s.file.match })}
         >
           {s.file.match}%
         </span>
@@ -2101,7 +2066,7 @@ function SegmentStatusCell({ s }: { s: Segment }) {
       )}
       {s.origin?.kind === "repetition" && (
         <span className="seg-origin">
-          <Repeat2 size={13} aria-label="Repetition" />
+          <Repeat2 size={13} aria-label={tl("Repetition")} />
         </span>
       )}
     </span>
@@ -2160,7 +2125,7 @@ function DialogAnalysis({
     [c, project.files, project.sourceLang, target, memories, project.context],
   );
   return (
-    <AnalysisTable rows={r.rows} total={r.total} caption="Match analysis" />
+    <AnalysisTable rows={r.rows} total={r.total} caption={tl("Match analysis")} />
   );
 }
 
@@ -2213,7 +2178,7 @@ function TermBody({
     <>
       <span className="result-score result-term">
         <Tag size={13} aria-hidden="true" />
-        <span className="sr-only">Term</span>
+        <span className="sr-only">{tl("Term")}</span>
       </span>
       <span className="result-body">
         <span className="result-source">
@@ -2348,7 +2313,7 @@ function SourceText({ runs, hits }: { runs: Run[]; hits: TermHit[] }) {
         <span
           key={`${i}-h${a}`}
           className="term-hit"
-          title={`${h.termbase.name}: ${tgt || "no translation"}`}
+          title={`${h.termbase.name}: ${tgt || tl("no translation")}`}
         >
           {r.slice(a - start, b - start)}
         </span>,
@@ -2409,7 +2374,7 @@ function CaptureForm({
         lang={sourceLang}
         value={src}
         onChange={(e) => setSrc(e.target.value)}
-        placeholder="Select it in the source, or type"
+        placeholder={tl("Select it in the source, or type")}
       />
       <label htmlFor="cap-tgt">{lang(targetLang).name}</label>
       <input
@@ -2418,19 +2383,17 @@ function CaptureForm({
         lang={targetLang}
         value={tgt}
         onChange={(e) => setTgt(e.target.value)}
-        placeholder="Select it in your translation, or type"
+        placeholder={tl("Select it in your translation, or type")}
       />
       <label htmlFor="cap-note">
-        Note <span className="optional">optional</span>
-      </label>
+        {tlx("Note {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
       <input
         id="cap-note"
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
       <p className="help">
-        Saved as proposed to {termbaseName}{" "}
-        <LocationBadge location={location} />, with this sentence.
+        {tlx("Saved as proposed to {termbaseName}", { termbaseName: termbaseName })}{" "}<LocationBadge location={location} />{tl(", with this sentence.")}
       </p>
       <div className="row">
         <button
@@ -2438,14 +2401,14 @@ function CaptureForm({
           className="btn btn-primary btn-small"
           disabled={!valid}
         >
-          Add term
+          {tl("Add term")}
         </button>
         <button
           type="button"
           className="btn btn-quiet btn-small"
           onClick={onCancel}
         >
-          Cancel
+          {tl("Cancel")}
         </button>
       </div>
     </form>
@@ -2491,12 +2454,12 @@ function SubtitleCounter({
   const chars = lines.reduce((n, l) => n + [...l].length, 0);
   const cps = seconds > 0 ? chars / seconds : 0;
   const parts: [string, boolean][] = [
-    [`Longest line ${longest} of ${maxLine}`, longest > maxLine],
+    [tl("Longest line {longest} of {maxLine}", { longest, maxLine }), longest > maxLine],
     [`${plural(lines.length, "line", "lines")} of ${limits.lines}`, lines.length > limits.lines],
   ];
   if (seconds > 0)
     parts.push([
-      `${cps.toFixed(1)} of ${limits.cps} characters per second in ${seconds.toFixed(2)} s`,
+      tl("{x} of {cps} characters per second in {x2} s", { x: fmtDec(cps, 1), cps: limits.cps, x2: fmtDec(seconds, 2) }),
       cps > limits.cps,
     ]);
   return (
@@ -2519,9 +2482,7 @@ function LengthCounter({ length, max }: { length: number; max: number }) {
       className={`length-counter${over ? " is-over" : ""}`}
       aria-live="polite"
     >
-      {length} of {max} characters
-      {over ? `, ${length - max} too many` : ""}
-    </span>
+      {tlx("{length} of {max} characters{x}", { length: length, max: max, x: over ? tl(", {x} too many", { x: length - max }) : "" })}</span>
   );
 }
 
@@ -2574,7 +2535,7 @@ function ServiceSuggestions({
             }}
           >
             <Languages size={14} aria-hidden="true" />
-            {busy === name ? `Asking ${name}…` : `Suggest with ${name}`}
+            {busy === name ? `Asking ${name}…` : tl("Suggest with {name}", { name })}
           </button>
         ))}
       </div>
@@ -2587,12 +2548,10 @@ function ServiceSuggestions({
         <div className="suggestion" role="status">
           <p lang={targetLang}>{plain(got.runs)}</p>
           <p className="result-meta">
-            From {got.name}
-            {got.tagsLost ? ", without the source's tags: put them in by hand" : ""}
-          </p>
+            {tlx("From {name}{x}", { name: got.name, x: got.tagsLost ? tl(", without the source's tags: put them in by hand") : "" })}</p>
           <div className="row">
             <button type="button" className="btn btn-small" onClick={() => onInsert(got.runs)}>
-              Insert
+              {tl("Insert")}
             </button>
           </div>
         </div>
@@ -2607,7 +2566,7 @@ const severityPoints = (v: string) => ISSUE_SEVERITIES.find(([id]) => id === v)?
 
 /** What a file's score says, in a sentence. */
 export function qualityText(q: Quality): string {
-  if (q.issues === 0) return `No issues marked in ${plural(q.words, "word", "words")}.`;
+  if (q.issues === 0) return tl("No issues marked in {x}.", { x: plural(q.words, "word", "words") });
   const parts = [
     q.minor ? `${q.minor} minor` : "",
     q.major ? `${q.major} major` : "",
@@ -2649,7 +2608,7 @@ function SegmentIssues({
   return (
     <>
       {issues.length === 0 ? (
-        <p className="muted">No issues marked on this segment.</p>
+        <p className="muted">{tl("No issues marked on this segment.")}</p>
       ) : (
         <ul className="comment-list">
           {issues.map((i) => (
@@ -2664,10 +2623,10 @@ function SegmentIssues({
                   <button
                     type="button"
                     className="link-button"
-                    aria-label={`Delete the issue ${categoryName(i.category)}, ${severityName(i.severity).toLowerCase()}`}
+                    aria-label={tl("Delete the issue {category}, {severity}", { category: categoryName(i.category), severity: inSentence(severityName(i.severity)) })}
                     onClick={() => void onDelete(i.id)}
                   >
-                    Delete
+                    {tl("Delete")}
                   </button>
                 )}
               </p>
@@ -2677,7 +2636,7 @@ function SegmentIssues({
       )}
       <div className="field-grid issue-form">
         <div className="field">
-          <label htmlFor="issue-category">Kind of issue</label>
+          <label htmlFor="issue-category">{tl("Kind of issue")}</label>
           <select id="issue-category" value={category} onChange={(e) => setCategory(e.target.value as IssueCategory)}>
             {ISSUE_CATEGORIES.map(([id, name]) => (
               <option key={id} value={id}>
@@ -2687,7 +2646,7 @@ function SegmentIssues({
           </select>
         </div>
         <div className="field">
-          <label htmlFor="issue-severity">Severity</label>
+          <label htmlFor="issue-severity">{tl("Severity")}</label>
           <select id="issue-severity" value={severity} onChange={(e) => setSeverity(e.target.value as IssueSeverity)}>
             {ISSUE_SEVERITIES.map(([id, name, points]) => (
               <option key={id} value={id}>
@@ -2698,11 +2657,11 @@ function SegmentIssues({
         </div>
       </div>
       <label className="field">
-        <span className="sr-only">What is wrong, if you want to say</span>
+        <span className="sr-only">{tl("What is wrong, if you want to say")}</span>
         <input
           id="issue-note"
           maxLength={1000}
-          placeholder="What is wrong (optional)"
+          placeholder={tl("What is wrong (optional)")}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onKeyDown={(e) => {
@@ -2716,19 +2675,17 @@ function SegmentIssues({
       </label>
       <button type="button" className="btn btn-small" disabled={busy} onClick={add}>
         <Flag size={14} aria-hidden="true" />
-        Mark issue
+        {tl("Mark issue")}
       </button>
       {quality && (
         <div className="quality" role="status">
           <p className="quality-score">
-            Score of this file <strong>{quality.score.toFixed(1)}</strong>
-            <span className="muted"> of 100</span>
-          </p>
+            {tlx("Score of this file {strong}{span}", { strong: <strong>{fmtDec(quality.score, 1)}</strong>, span: <span className="muted">{" "}{tl("of 100")}</span> })}</p>
           <p className="help">
-            {qualityText(quality)} The score is 100 less the penalty points in percent of the words.
+            {tlx("{quality} The score is 100 less the penalty points in percent of the words.", { quality: qualityText(quality) })}
           </p>
           <button type="button" className="link-button" onClick={() => void onSave()}>
-            Save the project's review as CSV
+            {tl("Save the project's review as CSV")}
           </button>
         </div>
       )}
@@ -2764,7 +2721,7 @@ function SegmentComments({
   return (
     <>
       {comments.length === 0 ? (
-        <p className="muted">No comments on this segment.</p>
+        <p className="muted">{tl("No comments on this segment.")}</p>
       ) : (
         <ul className="comment-list">
           {comments.map((c) => (
@@ -2773,8 +2730,8 @@ function SegmentComments({
               <p className="result-meta">
                 {c.by}, {fmtDate(c.at)}
                 {(deletesAll || c.by === me) && (
-                  <button type="button" className="link-button" aria-label={`Delete the comment “${c.text}”`} onClick={() => void onDelete(c.id)}>
-                    Delete
+                  <button type="button" className="link-button" aria-label={tl("Delete the comment “{text}”", { text: c.text })} onClick={() => void onDelete(c.id)}>
+                    {tl("Delete")}
                   </button>
                 )}
               </p>
@@ -2783,11 +2740,11 @@ function SegmentComments({
         </ul>
       )}
       <label className="field">
-        <span className="sr-only">A comment on this segment</span>
+        <span className="sr-only">{tl("A comment on this segment")}</span>
         <textarea
           rows={2}
           maxLength={2000}
-          placeholder="A comment for those working on the project"
+          placeholder={tl("A comment for those working on the project")}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
@@ -2801,7 +2758,7 @@ function SegmentComments({
       </label>
       <button type="button" className="btn btn-small" disabled={!text.trim() || busy} onClick={add}>
         <MessageSquare size={14} aria-hidden="true" />
-        Add comment
+        {tl("Add comment")}
       </button>
     </>
   );
@@ -2869,7 +2826,7 @@ function SplitDialog({
     if (no) setError(no);
   };
   return (
-    <Modal title="Split the segment" onClose={onClose}>
+    <Modal title={tl("Split the segment")} onClose={onClose}>
       <form
         className="dialog-form"
         onSubmit={(e) => {
@@ -2878,16 +2835,14 @@ function SplitDialog({
         }}
       >
         <p className="help" id="split-help">
-          Click where the second part begins, or go there with the arrow keys. The translation stays with the first part.
-          {segment.joined ? " Split where two joined segments met, they stand apart again." : ""}
-        </p>
+          {tlx("Click where the second part begins, or go there with the arrow keys. The translation stays with the first part.{x}", { x: segment.joined ? tl(" Split where two joined segments met, they stand apart again.") : "" })}</p>
         <div
           ref={box}
           className="split-source"
           role="textbox"
           aria-multiline="true"
           aria-readonly="true"
-          aria-label="Source of the segment"
+          aria-label={tl("Source of the segment")}
           aria-describedby="split-help"
           contentEditable
           suppressContentEditableWarning
@@ -2901,10 +2856,10 @@ function SplitDialog({
           }}
         />
         <dl className="split-parts" aria-live="polite">
-          <dt>First part</dt>
-          <dd lang={sourceLang}>{ok ? <RunsView runs={trimmed(first, true)} /> : <span className="muted">Place the cursor inside the text.</span>}</dd>
-          <dt>Second part</dt>
-          <dd lang={sourceLang}>{ok ? <RunsView runs={trimmed(second, false)} /> : <span className="muted">Both parts need text.</span>}</dd>
+          <dt>{tl("First part")}</dt>
+          <dd lang={sourceLang}>{ok ? <RunsView runs={trimmed(first, true)} /> : <span className="muted">{tl("Place the cursor inside the text.")}</span>}</dd>
+          <dt>{tl("Second part")}</dt>
+          <dd lang={sourceLang}>{ok ? <RunsView runs={trimmed(second, false)} /> : <span className="muted">{tl("Both parts need text.")}</span>}</dd>
         </dl>
         {error && (
           <p className="error" role="alert">
@@ -2913,10 +2868,10 @@ function SplitDialog({
         )}
         <div className="row">
           <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-            Cancel
+            {tl("Cancel")}
           </button>
           <button type="submit" className="btn btn-primary btn-small" disabled={!ok || busy}>
-            Split
+            {tl("Split")}
           </button>
         </div>
       </form>
@@ -2958,7 +2913,7 @@ function ReplaceDialog({
       }
     }
   return (
-    <Modal title="Find and replace" onClose={onClose}>
+    <Modal title={tl("Find and replace")} onClose={onClose}>
       <form
         className="dialog-form"
         onSubmit={(e) => {
@@ -2967,34 +2922,34 @@ function ReplaceDialog({
         }}
       >
         <label className="field">
-          <span className="field-label">Find in the translations</span>
+          <span className="field-label">{tl("Find in the translations")}</span>
           <input value={find} lang={targetLang} autoFocus onChange={(e) => setFind(e.target.value)} />
         </label>
         <label className="field">
-          <span className="field-label">Replace with</span>
+          <span className="field-label">{tl("Replace with")}</span>
           <input value={to} lang={targetLang} onChange={(e) => setTo(e.target.value)} />
         </label>
         <label className="check">
-          <input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} /> Match case
+          <input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} />{" "}{tl("Match case")}
         </label>
         <label className="check">
-          <input type="checkbox" checked={wholeWords} onChange={(e) => setWholeWords(e.target.checked)} /> Whole words only
+          <input type="checkbox" checked={wholeWords} onChange={(e) => setWholeWords(e.target.checked)} />{" "}{tl("Whole words only")}
         </label>
         <p role="status">
           {!find
-            ? "Nothing to find yet."
+            ? tl("Nothing to find yet.")
             : places === 0
-              ? "Not found in the translations of this file."
+              ? tl("Not found in the translations of this file.")
               : `${plural(places, "place", "places")} in ${plural(changes.length, "segment", "segments")}.`}
-          {locked > 0 && ` ${plural(locked, "locked segment has", "locked segments have")} it too and ${locked === 1 ? "stays" : "stay"} as ${locked === 1 ? "it is" : "they are"}.`}
+          {locked > 0 && " " + (locked === 1 ? tl("1 locked segment has it too and stays as it is.") : tl("{n} locked segments have it too and stay as they are.", { n: fmtNum(locked) }))}
         </p>
-        <p className="help">Formatting tags stay where they are. A confirmed segment that changes is a draft again, to be confirmed anew.</p>
+        <p className="help">{tl("Formatting tags stay where they are. A confirmed segment that changes is a draft again, to be confirmed anew.")}</p>
         <div className="row">
           <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-            Cancel
+            {tl("Cancel")}
           </button>
           <button type="submit" className="btn btn-primary btn-small" disabled={!changes.length}>
-            Replace all
+            {tl("Replace all")}
           </button>
         </div>
       </form>

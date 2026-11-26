@@ -5,6 +5,7 @@
 
 import type { CoreRun } from "./model";
 import { core, loadCore, unwrap } from "../core";
+import { tl } from "../i18n";
 
 /** Which translation service it is: one of one's own, or one built in. */
 export type MtService = "own" | "deepl" | "google" | "microsoft" | "openai" | "anthropic";
@@ -86,7 +87,7 @@ async function send(r: MtRequest, name: string, what: string): Promise<{ status:
     res = await fetch(r.url, { method: r.method, headers: r.header, body: r.method === "GET" ? undefined : r.body });
   } catch {
     throw new Error(
-      `${name} did not ${what}: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.`,
+      tl("{name} did not {what}: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.", { name, what }),
     );
   }
   return { status: res.status, body: await res.text().catch(() => "") };
@@ -97,7 +98,7 @@ export async function localModels(s: MtSettings): Promise<string[] | null> {
   const c = await coreNow();
   const raw = unwrap(c.mtModels(JSON.stringify(s)));
   if (!raw) return null;
-  const { status, body } = await send(JSON.parse(raw) as MtRequest, "The service", "list its models");
+  const { status, body } = await send(JSON.parse(raw) as MtRequest, tl("The service"), tl("list its models"));
   return JSON.parse(unwrap(c.mtModelsAnswer(JSON.stringify(s), status, body))) as string[];
 }
 
@@ -173,16 +174,16 @@ export function suggestionOf(text: string, source: CoreRun[]): Suggestion {
 
 /** Why an address can't be a service's, or nothing. */
 export function providerProblem(p: { name: string; url: string; headerName: string; headerValue: string }): string {
-  if (!p.name.trim() || /[/?#]/.test(p.name)) return "Give the service a name, without / ? or #.";
+  if (!p.name.trim() || /[/?#]/.test(p.name)) return tl("Give the service a name, without / ? or #.");
   let u: URL | null = null;
   try {
     u = new URL(p.url.trim());
   } catch {
     u = null;
   }
-  if (!u || (u.protocol !== "https:" && u.protocol !== "http:")) return "The address starts with https:// or http://.";
-  if (/[\s:]/.test(p.headerName.trim())) return "The header's name has no blanks and no colon.";
-  if (!p.headerName.trim() && p.headerValue) return "Name the header its value is sent in.";
+  if (!u || (u.protocol !== "https:" && u.protocol !== "http:")) return tl("The address starts with https:// or http://.");
+  if (/[\s:]/.test(p.headerName.trim())) return tl("The header's name has no blanks and no colon.");
+  if (!p.headerName.trim() && p.headerValue) return tl("Name the header its value is sent in.");
   return "";
 }
 
@@ -192,12 +193,12 @@ export async function askLocalProvider(p: LocalProvider, sourceLang: string, tar
   const settings = JSON.stringify(settingsOf(p));
   const segments = JSON.stringify([{ id: "1", text: markup(source) }]);
   const ask = c.mtTranslate(settings, sourceLang, targetLang, segments);
-  if (!ask.ok) throw new Error(`${p.name} did not translate: ${ask.error}.`);
+  if (!ask.ok) throw new Error(tl("{name} did not translate: {error}.", { name: p.name, error: ask.error }));
   const { status, body } = await send(JSON.parse(ask.value) as MtRequest, p.name, "translate");
   const got = c.mtAnswer(settings, segments, status, body);
-  if (!got.ok) throw new Error(`${p.name} did not translate: ${got.error}.`);
+  if (!got.ok) throw new Error(tl("{name} did not translate: {error}.", { name: p.name, error: got.error }));
   const t = (JSON.parse(got.value) as { id: string; text: string }[]).find((x) => x.id === "1");
-  if (!t) throw new Error(`${p.name} did not translate: its answer has no translation of what was asked.`);
+  if (!t) throw new Error(tl("{name} did not translate: its answer has no translation of what was asked.", { name: p.name }));
   return suggestionOf(t.text, source);
 }
 
@@ -251,7 +252,7 @@ export async function askLocalChecker(p: LocalProvider, lang: string, text: stri
     try {
       return await fetch(p.url, { method: "POST", headers, body: new URLSearchParams({ text, language, disabledCategories: "TYPOS" }).toString() });
     } catch {
-      throw new Error(`${p.name} did not check: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.`);
+      throw new Error(tl("{name} did not check: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.", { name: p.name }));
     }
   };
   let res = await ask(lang);
@@ -260,8 +261,8 @@ export async function askLocalChecker(p: LocalProvider, lang: string, text: stri
     const again = await ask(lang.split("-")[0]!);
     if (again.ok) res = again;
   }
-  if (!res.ok) throw new Error(`${p.name} did not check: it answered ${res.status} ${(await res.text().catch(() => "")).trim().slice(0, 200)}.`);
+  if (!res.ok) throw new Error(tl("{name} did not check: it answered {status} {slice}.", { name: p.name, status: res.status, slice: (await res.text().catch(() => "")).trim().slice(0, 200) }));
   const found = readMatches(await res.json().catch(() => null), text);
-  if (!found) throw new Error(`${p.name} did not check: its answer is not the JSON the contract asks for.`);
+  if (!found) throw new Error(tl("{name} did not check: its answer is not the JSON the contract asks for.", { name: p.name }));
   return found;
 }

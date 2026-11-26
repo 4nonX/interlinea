@@ -6,11 +6,12 @@ import { allows, ApiError, type CatalogMemory, type Role, type ServerUnit } from
 import { MemoryUnits, SavedElsewhere, type UnitsBackend } from "./MemoryUnits";
 import { AlignDocuments } from "./Alignment";
 import { download, importNotice, MEMORY_FILES, MEMORY_FILES_NOTE, WORDFAST_TYPE } from "../core";
-import { fmtDate, fmtNum } from "../format";
+import { fmtDate, fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { AccessPanel } from "./AccessPanel";
 import { LANGUAGES } from "../data";
+import { tl, tlx } from "../i18n";
 
 type ServerMemory = CatalogMemory & { createdAt: string; role: Role };
 
@@ -50,7 +51,7 @@ export function ServerMemories() {
   return (
     <section className="section" aria-labelledby="mem-server">
       <h2 id="mem-server" className="section-title">
-        On the team server
+        {tl("On the team server")}
       </h2>
       {problem && (
         <p className="error" role="alert">
@@ -59,23 +60,23 @@ export function ServerMemories() {
       )}
       {list === null ? (
         <p className="muted" role="status">
-          Loading the memories on {host}…
+          {tlx("Loading the memories on {host}…", { host: host })}
         </p>
       ) : list.length === 0 ? (
-        <p className="muted">No memories on {host} for you yet.</p>
+        <p className="muted">{tlx("No memories on {host} for you yet.", { host: host })}</p>
       ) : (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th scope="col">Memory</th>
-                <th scope="col">Languages</th>
+                <th scope="col">{tl("Memory")}</th>
+                <th scope="col">{tl("Languages")}</th>
                 <th scope="col" className="num">
-                  Units
+                  {tl("Units")}
                 </th>
-                <th scope="col">You may</th>
+                <th scope="col">{tl("You may")}</th>
                 <th scope="col">
-                  <span className="sr-only">Open</span>
+                  <span className="sr-only">{tl("Open")}</span>
                 </th>
               </tr>
             </thead>
@@ -84,7 +85,7 @@ export function ServerMemories() {
                 <tr key={m.name} aria-current={m.name === open ? "true" : undefined}>
                   <th scope="row" className="cell-title">
                     {m.name}
-                    <div className="cell-sub">Since {fmtDate(m.createdAt)}</div>
+                    <div className="cell-sub">{tl("Since")}{" "}{fmtDate(m.createdAt)}</div>
                   </th>
                   <td>
                     <span className="lang-pair">
@@ -97,7 +98,7 @@ export function ServerMemories() {
                   <td>{m.role}</td>
                   <td className="cell-action">
                     <button type="button" className="btn btn-quiet btn-small" onClick={() => setOpen(m.name === open ? null : m.name)}>
-                      {m.name === open ? "Close" : "Open"}
+                      {m.name === open ? tl("Close") : tl("Open")}
                     </button>
                   </td>
                 </tr>
@@ -113,10 +114,10 @@ export function ServerMemories() {
       <NewServerMemory onMade={async (name) => {
         await load();
         setOpen(name);
-        notify(`Made the memory ${name} on ${host}`);
+        notify(tl("Made the memory {name} on {host}", { name, host }));
       }} beside={
         <button type="button" className="btn" onClick={() => setAligning(true)}>
-          Align documents
+          {tl("Align documents")}
         </button>
       } />
       {api && aligning && (
@@ -131,7 +132,7 @@ export function ServerMemories() {
                 const made = await api.createMemory({ name, sourceLang, targetLang });
                 return { name: made.name, sourceLang, targetLang, add: async (units, overwrite) => void (await api.addUnits(made.name, units, overwrite)) };
               } catch (err) {
-                throw err instanceof ApiError && err.status === 403 ? new Error("You may not make memories on the server. Ask an administrator for the manage role on all memories.") : err;
+                throw err instanceof ApiError && err.status === 403 ? new Error(tl("You may not make memories on the server. Ask an administrator for the manage role on all memories.")) : err;
               }
             },
           }}
@@ -140,7 +141,7 @@ export function ServerMemories() {
             setAligning(false);
             await load();
             setOpen(name);
-            notify(`Added ${n === 1 ? "1 unit" : `${fmtNum(n)} units`} to ${name} on ${host}`);
+            notify(tl("Added {units} to {name} on {host}", { units: plural(n, "unit", "units"), name, host }));
           }}
         />
       )}
@@ -202,34 +203,34 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
             className="btn"
             onClick={() => void api.exportMemory(m.name).then((b) => download(b, `${m.name}.tmx`, "application/x-tmx+xml"), (e) => notify(errorText(e)))}
           >
-            <Download size={15} aria-hidden="true" /> Export TMX
+            <Download size={15} aria-hidden="true" />{" "}{tl("Export TMX")}
           </button>
           <button
             type="button"
             className="btn"
-            aria-label={`Export ${m.name} as a .txt memory`}
+            aria-label={tl("Export {name} as a .txt memory", { name: m.name })}
             onClick={() => void api.exportMemory(m.name, "wordfast").then((b) => download(b, `${m.name}.txt`, WORDFAST_TYPE), (e) => notify(errorText(e)))}
           >
-            <Download size={15} aria-hidden="true" /> Export .txt
+            <Download size={15} aria-hidden="true" />{" "}{tl("Export .txt")}
           </button>
           {edit && (
             <>
-              <input ref={input} type="file" accept={MEMORY_FILES} hidden aria-label={`Memory file for ${m.name}`} onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
-              <button type="button" className="btn" title={MEMORY_FILES_NOTE} aria-label={`Import a memory file into ${m.name}`} onClick={() => input.current?.click()}>
-                <Upload size={15} aria-hidden="true" /> Import
+              <input ref={input} type="file" accept={MEMORY_FILES} hidden aria-label={tl("Memory file for {name}", { name: m.name })} onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
+              <button type="button" className="btn" title={MEMORY_FILES_NOTE} aria-label={tl("Import a memory file into {name}", { name: m.name })} onClick={() => input.current?.click()}>
+                <Upload size={15} aria-hidden="true" />{" "}{tl("Import")}
               </button>
             </>
           )}
           {manage && (
             <ConfirmButton
               small={false}
-              label="Delete the memory"
-              confirm={`Delete ${m.name} and its ${fmtNum(m.units)} units on the server for everyone?`}
-              action="Delete"
+              label={tl("Delete the memory")}
+              confirm={tl("Delete {name} and its {units} units on the server for everyone?", { name: m.name, units: fmtNum(m.units) })}
+              action={tl("Delete")}
               onConfirm={() =>
                 void api.deleteMemory(m.name).then(
                   async () => {
-                    notify(`Deleted ${m.name} on the server`);
+                    notify(tl("Deleted {name} on the server", { name: m.name }));
                     await onDeleted();
                   },
                   (e) => notify(e instanceof ApiError && e.code === "inUse" ? e.message : errorText(e)),
@@ -239,7 +240,7 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
           )}
         </div>
       </section>
-      {manage && <AccessPanel kind="memory" resource={m.name} title={`Who may use ${m.name}`} />}
+      {manage && <AccessPanel kind="memory" resource={m.name} title={tl("Who may use {name}", { name: m.name })} />}
     </div>
   );
 }
@@ -253,7 +254,7 @@ function NewServerMemory({ onMade, beside }: { onMade: (name: string) => Promise
     return (
       <div className="row">
         <button type="button" className="btn" onClick={() => setShown(true)}>
-          New memory on the server
+          {tl("New memory on the server")}
         </button>
         {beside}
       </div>
@@ -267,17 +268,17 @@ function NewServerMemory({ onMade, beside }: { onMade: (name: string) => Promise
       setShown(false);
       await onMade(made.name);
     } catch (err) {
-      setProblem(err instanceof ApiError && err.status === 403 ? "You may not make memories on the server. Ask an administrator for the manage role on all memories." : errorText(err));
+      setProblem(err instanceof ApiError && err.status === 403 ? tl("You may not make memories on the server. Ask an administrator for the manage role on all memories.") : errorText(err));
     }
   }
   return (
-    <form className="role-add" onSubmit={make} aria-label="New memory on the server">
+    <form className="role-add" onSubmit={make} aria-label={tl("New memory on the server")}>
       <label className="field">
-        <span className="field-label">Name</span>
+        <span className="field-label">{tl("Name")}</span>
         <input value={m.name} onChange={(e) => setM({ ...m, name: e.target.value })} />
       </label>
       <label>
-        <span className="field-label">From</span>
+        <span className="field-label">{tl("From")}</span>
         <select value={m.sourceLang} onChange={(e) => setM({ ...m, sourceLang: e.target.value })}>
           {LANGUAGES.map((l) => (
             <option key={l.code} value={l.code}>
@@ -287,7 +288,7 @@ function NewServerMemory({ onMade, beside }: { onMade: (name: string) => Promise
         </select>
       </label>
       <label>
-        <span className="field-label">To</span>
+        <span className="field-label">{tl("To")}</span>
         <select value={m.targetLang} onChange={(e) => setM({ ...m, targetLang: e.target.value })}>
           {LANGUAGES.map((l) => (
             <option key={l.code} value={l.code}>
@@ -297,10 +298,10 @@ function NewServerMemory({ onMade, beside }: { onMade: (name: string) => Promise
         </select>
       </label>
       <button type="submit" className="btn btn-primary" disabled={!m.name.trim()}>
-        Make the memory
+        {tl("Make the memory")}
       </button>
       <button type="button" className="btn btn-quiet" onClick={() => setShown(false)}>
-        Cancel
+        {tl("Cancel")}
       </button>
       {problem && (
         <p className="error" role="alert">

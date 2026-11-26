@@ -65,6 +65,7 @@ import {
 import { roleText } from "./Accounts";
 import { NewTermbaseDialog } from "./NewTermbase";
 import { ExportTermbaseDialog } from "./ExportTermbase";
+import { tl, tlx } from "../i18n";
 
 type DialogKind = "import" | "import-new" | "export" | "settings" | null;
 
@@ -93,10 +94,10 @@ export function Terminology({
   if (wanted && !loaded)
     return (
       <div className="page page-narrow">
-        <PageHeader title="Terminology" />
+        <PageHeader title={tl("Terminology")} />
         {!r.conn ? (
           <p>
-            This termbase is on a team server. Sign in to it in <a href="#/settings">Settings</a>.
+            {tlx("This termbase is on a team server. Sign in to it in {a}.", { a: <a href="#/settings">{tl("Settings")}</a> })}
           </p>
         ) : problem ? (
           <p className="error" role="alert">
@@ -104,7 +105,7 @@ export function Terminology({
           </p>
         ) : (
           <p className="muted" role="status">
-            Opening the termbase from {new URL(r.conn.url).host}…
+            {tlx("Opening the termbase from {host}…", { host: new URL(r.conn.url).host })}
           </p>
         )}
       </div>
@@ -122,13 +123,13 @@ function NoTermbase() {
   const [importing, setImporting] = useState(false);
   return (
     <div className="page page-wide">
-      <PageHeader title="Terminology" />
+      <PageHeader title={tl("Terminology")} />
       <div className="workspace">
         <TermbaseList current="" onImport={() => setImporting(true)} />
-        <section className="pane pane-entries" aria-label="Entries">
+        <section className="pane pane-entries" aria-label={tl("Entries")}>
           <div className="empty">
-            <p className="empty-title">No termbase yet</p>
-            <p>Make a master on the left, or import a termbase file.</p>
+            <p className="empty-title">{tl("No termbase yet")}</p>
+            <p>{tl("Make a master on the left, or import a termbase file.")}</p>
           </div>
         </section>
       </div>
@@ -184,7 +185,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
 
   return (
     <div className="page page-wide">
-      <PageHeader title="Terminology" />
+      <PageHeader title={tl("Terminology")} />
       <div className="workspace">
         <TermbaseList
           current={tb.id}
@@ -209,7 +210,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                     onClick={() => setDialog("import")}
                   >
                     <Upload size={14} aria-hidden="true" />
-                    Import
+                    {tl("Import")}
                   </button>
                 )}
                 <button
@@ -219,7 +220,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                   disabled={entries.length === 0}
                 >
                   <Download size={14} aria-hidden="true" />
-                  Export
+                  {tl("Export")}
                 </button>
                 {tb.remote && <ReloadButton tb={tb} />}
                 {manage && (
@@ -229,7 +230,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                     onClick={() => setDialog("settings")}
                   >
                     <Settings2 size={14} aria-hidden="true" />
-                    Settings
+                    {tl("Settings")}
                   </button>
                 )}
               </div>
@@ -247,7 +248,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                 </span>
               )}
               {tb.remote && !manage && (
-                <span className="tag" title="What you may do in this termbase">
+                <span className="tag" title={tl("What you may do in this termbase")}>
                   {(tb.role ?? "read").split("+").map(roleText).join(", ")}
                 </span>
               )}
@@ -264,7 +265,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
           <div
             className="tabs tabs-small"
             role="tablist"
-            aria-label="Entry lists"
+            aria-label={tl("Entry lists")}
           >
             <button
               type="button"
@@ -272,7 +273,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
               aria-selected={view === "entries"}
               onClick={() => setView("entries")}
             >
-              Entries
+              {tl("Entries")}
             </button>
             {edit && (
               <button
@@ -283,21 +284,21 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                 disabled={entries.length < 2}
               >
                 <Copy size={14} aria-hidden="true" />
-                Duplicates
+                {tl("Duplicates")}
               </button>
             )}
             <button type="button" role="tab" aria-selected={view === "deleted"} onClick={() => setView("deleted")}>
-              Deleted
+              {tl("Deleted")}
             </button>
             {layeredProject && (
               <button
                 type="button"
                 role="tab"
                 aria-selected={view === "master"}
-                aria-label={`The master's entries (${masterCount})`}
+                aria-label={tl("The master's entries ({masterCount})", { masterCount })}
                 onClick={() => setView("master")}
               >
-                Master ({masterCount})
+                {tlx("Master ({masterCount})", { masterCount: masterCount })}
               </button>
             )}
           </div>
@@ -322,18 +323,18 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                 <div className="search">
                   <Search size={15} aria-hidden="true" />
                   <label htmlFor="q" className="sr-only">
-                    Search terms and fields
+                    {tl("Search terms and fields")}
                   </label>
                   <input
                     id="q"
                     type="search"
-                    placeholder="Search terms and fields"
+                    placeholder={tl("Search terms and fields")}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
                 </div>
                 <label htmlFor="status" className="sr-only">
-                  Status
+                  {tl("Status")}
                 </label>
                 <select
                   id="status"
@@ -342,10 +343,10 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                     setStatus(e.target.value as TermStatus | "all")
                   }
                 >
-                  <option value="all">All statuses</option>
-                  <option value="approved">Approved</option>
-                  <option value="proposed">Proposed</option>
-                  <option value="forbidden">Forbidden</option>
+                  <option value="all">{tl("All statuses")}</option>
+                  <option value="approved">{tl("Approved")}</option>
+                  <option value="proposed">{tl("Proposed")}</option>
+                  <option value="forbidden">{tl("Forbidden")}</option>
                 </select>
               </div>
               {edit && <NewEntry tb={tb} initial={query} />}
@@ -353,20 +354,20 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                 <div className="empty">
                   {entries.length === 0 && !edit ? (
                     <>
-                      <p className="empty-title">No entries yet</p>
+                      <p className="empty-title">{tl("No entries yet")}</p>
                       <p>
                         {layeredProject && masterCount > 0
-                          ? "The project has no entries of its own. The master's are under Master."
-                          : "Those who may edit this termbase add its entries."}
+                          ? tl("The project has no entries of its own. The master's are under Master.")
+                          : tl("Those who may edit this termbase add its entries.")}
                       </p>
                     </>
                   ) : entries.length === 0 ? (
                     <>
-                      <p className="empty-title">No entries yet</p>
+                      <p className="empty-title">{tl("No entries yet")}</p>
                       <p>
                         {layeredProject && masterCount > 0
-                          ? "The project has no entries of its own yet: it uses the master's, which are under Master. Add an entry above, or change one of the master's for this project."
-                          : "Add an entry above, import a TBX, .sdltb or XLSX file, or add terms while you translate."}
+                          ? tl("The project has no entries of its own yet: it uses the master's, which are under Master. Add an entry above, or change one of the master's for this project.")
+                          : tl("Add an entry above, import a TBX, .sdltb or XLSX file, or add terms while you translate.")}
                       </p>
                       <button
                         type="button"
@@ -374,12 +375,12 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                         onClick={() => setDialog("import")}
                       >
                         <Upload size={14} aria-hidden="true" />
-                        Import a file
+                        {tl("Import a file")}
                       </button>
                     </>
                   ) : (
                     <>
-                      <p className="empty-title">Nothing matches “{query}”</p>
+                      <p className="empty-title">{tlx("Nothing matches “{query}”", { query: query })}</p>
                       <button
                         type="button"
                         className="btn btn-small"
@@ -388,13 +389,13 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
                           setStatus("all");
                         }}
                       >
-                        Clear search
+                        {tl("Clear search")}
                       </button>
                     </>
                   )}
                 </div>
               ) : (
-                <ul className="entry-list" aria-label={`Entries in ${tb.name}`}>
+                <ul className="entry-list" aria-label={tl("Entries in {name}", { name: tb.name })}>
                   {filtered.map((e) => (
                     <EntryRow
                       key={e.id}
@@ -424,7 +425,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
         ) : selected && view !== "master" ? (
           <EntryDetail key={selected.id} entry={selected} tb={tb} />
         ) : (
-          <section className="pane pane-detail" aria-label="Entry" />
+          <section className="pane pane-detail" aria-label={tl("Entry")} />
         )}
       </div>
 
@@ -464,14 +465,14 @@ function TermbaseList({
   const r = useRemote();
   const [creating, setCreating] = useState<"master" | "project" | null>(null);
   const groups: [string, Termbase[]][] = [
-    ["Masters", state.termbases.filter((t) => t.kind === "master" && !t.remote)],
+    [tl("Masters"), state.termbases.filter((t) => t.kind === "master" && !t.remote)],
     [
       `${w("projectTermbase")}s`,
       state.termbases.filter((t) => t.kind === "project" && !t.remote),
     ],
   ];
   return (
-    <nav className="pane pane-tbs" aria-label="Termbases">
+    <nav className="pane pane-tbs" aria-label={tl("Termbases")}>
       {groups.filter(([, list]) => list.length > 0).map(([label, list]) => (
         <div key={label} className="tb-group">
           <h2 className="tb-group-title">{label}</h2>
@@ -512,12 +513,12 @@ function TermbaseList({
             onClick={() => setCreating("master")}
           >
             <Plus size={14} aria-hidden="true" />
-            New master
+            {tl("New master")}
           </button>
           {r.api && (
             <button type="button" className="btn btn-quiet btn-small tb-new" onClick={() => setCreating("project")}>
               <GitBranch size={14} aria-hidden="true" />
-              New project termbase
+              {tl("New project termbase")}
             </button>
           )}
           <button
@@ -526,7 +527,7 @@ function TermbaseList({
             onClick={onImport}
           >
             <Upload size={14} aria-hidden="true" />
-            Import termbase
+            {tl("Import termbase")}
           </button>
         </div>
     </nav>
@@ -544,8 +545,7 @@ function ProjectBranchNote({ tb }: { tb: Termbase }) {
     <p className="branch-note">
       <GitBranch size={14} aria-hidden="true" />
       <span>
-        {w("basedOn")} {masters.map((m) => m.name).join(", ")}. Shows only this
-        project's new and changed entries.
+        {tlx("{w} {join}. Shows only this project's new and changed entries.", { w: w("basedOn"), join: masters.map((m) => m.name).join(", ") })}
       </span>
       {tb.projectId && (
         <a href={`#/merge/${tb.projectId}`} className="link">
@@ -595,7 +595,7 @@ function NewEntry({ tb, initial }: { tb: Termbase; initial: string }) {
           }}
         >
           <Plus size={14} aria-hidden="true" />
-          New entry
+          {tl("New entry")}
         </button>
       </div>
     );
@@ -619,7 +619,7 @@ function NewEntry({ tb, initial }: { tb: Termbase; initial: string }) {
             version: 1,
             concept: {},
             terms: { [code]: [{ text: v, status: st }] },
-            history: [{ id: `c-${id}`, at: now, by: state.userName, summary: "Created" }],
+            history: [{ id: `c-${id}`, at: now, by: state.userName, summary: tl("Created") }],
           },
         });
         if (!tb.languages.includes(code))
@@ -628,13 +628,13 @@ function NewEntry({ tb, initial }: { tb: Termbase; initial: string }) {
             termbaseId: tb.id,
             patch: { languages: [...tb.languages, code] },
           });
-        notify(`Added “${v}”`);
+        notify(tl("Added “{v}”", { v }));
         setOpen(false);
         setText("");
         go({ page: "terminology", termbaseId: tb.id, entryId: id });
       }}
     >
-      <label htmlFor="ne-text">First term</label>
+      <label htmlFor="ne-text">{tl("First term")}</label>
       <div className="row row-start">
         <input
           id="ne-text"
@@ -644,7 +644,7 @@ function NewEntry({ tb, initial }: { tb: Termbase; initial: string }) {
           lang={primary(code)}
         />
         <label htmlFor="ne-lang" className="sr-only">
-          Language
+          {tl("Language")}
         </label>
         <select
           id="ne-lang"
@@ -658,33 +658,33 @@ function NewEntry({ tb, initial }: { tb: Termbase; initial: string }) {
           ))}
         </select>
         <label htmlFor="ne-status" className="sr-only">
-          Status
+          {tl("Status")}
         </label>
         <select
           id="ne-status"
           value={st}
           onChange={(e) => setSt(e.target.value as TermStatus)}
         >
-          <option value="approved">Approved</option>
-          <option value="proposed">Proposed</option>
-          <option value="forbidden">Forbidden</option>
+          <option value="approved">{tl("Approved")}</option>
+          <option value="proposed">{tl("Proposed")}</option>
+          <option value="forbidden">{tl("Forbidden")}</option>
         </select>
       </div>
-      <p className="help">Add the other languages and fields in the entry.</p>
+      <p className="help">{tl("Add the other languages and fields in the entry.")}</p>
       <div className="row">
         <button
           type="button"
           className="btn btn-quiet btn-small"
           onClick={() => setOpen(false)}
         >
-          Cancel
+          {tl("Cancel")}
         </button>
         <button
           type="submit"
           className="btn btn-primary btn-small"
           disabled={!text.trim()}
         >
-          Add entry
+          {tl("Add entry")}
         </button>
       </div>
     </form>
@@ -721,7 +721,7 @@ function EntryRow({
               {head.text}
             </InLang>
           ) : (
-            <span className="missing">No term</span>
+            <span className="missing">{tl("No term")}</span>
           )}
           {srcTerms.length > 1 && (
             <span className="muted"> +{srcTerms.length - 1}</span>
@@ -741,7 +741,7 @@ function EntryRow({
                       .join(", ") || ts[0]!.text}
                   </InLang>
                 ) : (
-                  <span className="missing">missing</span>
+                  <span className="missing">{tl("missing")}</span>
                 )}
               </span>
             );
@@ -820,20 +820,20 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
       <div className="pane-head">
         <div className="pane-head-row">
           <h2 id="detail-title" className="pane-title">
-            {head ? <InLang code={head.code}>{head.text}</InLang> : "Entry"}
+            {head ? <InLang code={head.code}>{head.text}</InLang> : tl("Entry")}
           </h2>
           {may(tb, "edit") && <ConfirmButton
             label={
               <>
                 <Trash2 size={14} aria-hidden="true" />
-                Delete entry
+                {tl("Delete entry")}
               </>
             }
-            confirm={tb.remote ? "Delete this entry? It can be brought back from Deleted, without its history." : "Delete this entry? It can be brought back from Deleted."}
-            action="Delete"
+            confirm={tb.remote ? tl("Delete this entry? It can be brought back from Deleted, without its history.") : tl("Delete this entry? It can be brought back from Deleted.")}
+            action={tl("Delete")}
             onConfirm={() => {
               dispatch({ type: "deleteEntries", entryIds: [entry.id] });
-              notify(`Deleted the entry${head ? ` “${head.text}”` : ""}`);
+              notify(tl("Deleted the entry{x}", { x: head ? ` “${head.text}”` : "" }));
               go({ page: "terminology", termbaseId: tb.id });
             }}
           />}
@@ -841,8 +841,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
         <div className="pane-sub">
           {latest && (
             <span>
-              Last changed {fmtTime(latest.at)} by {latest.by}
-            </span>
+              {tlx("Last changed {at} by {by}", { at: fmtTime(latest.at), by: latest.by })}</span>
           )}
           {base && (
             <span>
@@ -851,16 +850,15 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
           )}
           {entry.externalId && (
             <span className="muted">
-              ID in the imported file: {entry.externalId}
-            </span>
+              {tlx("ID in the imported file: {externalId}", { externalId: entry.externalId })}</span>
           )}
           {tb.kind === "project" && !entry.base && (
-            <span className="tag">Not in a master yet</span>
+            <span className="tag">{tl("Not in a master yet")}</span>
           )}
         </div>
       </div>
 
-      <div className="tabs" role="tablist" aria-label="Entry views">
+      <div className="tabs" role="tablist" aria-label={tl("Entry views")}>
         <button
           type="button"
           role="tab"
@@ -869,7 +867,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
           aria-controls="panel-entry"
           onClick={() => setTab("entry")}
         >
-          Entry
+          {tl("Entry")}
         </button>
         <button
           type="button"
@@ -944,7 +942,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
                   </dl>
                 )}
                 {terms.length === 0 ? (
-                  <p className="missing">No term yet</p>
+                  <p className="missing">{tl("No term yet")}</p>
                 ) : (
                   <ul className="terms">
                     {terms.map((t, i) => (
@@ -962,7 +960,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
                             terms.map((x, j) =>
                               j === i ? { ...x, status: s } : x,
                             ),
-                            `Set “${t.text}” to ${s}`,
+                            tl("Set “{text}” to {s}", { text: t.text, s }),
                           )
                         }
                         onRename={(v) =>
@@ -971,16 +969,16 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
                             terms.map((x, j) =>
                               j === i ? { ...x, text: v } : x,
                             ),
-                            `Changed “${t.text}” to “${v}”`,
+                            tl("Changed “{text}” to “{v}”", { text: t.text, v }),
                           )
                         }
                         onRemove={() => {
                           saveTerms(
                             code,
                             terms.filter((_, j) => j !== i),
-                            `Removed “${t.text}”`,
+                            tl("Removed “{text}”", { text: t.text }),
                           );
-                          notify(`Removed “${t.text}”`);
+                          notify(tl("Removed “{text}”", { text: t.text }));
                         }}
                       >
                         {termTypes.length > 0 && (
@@ -1016,7 +1014,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
                     saveTerms(
                       code,
                       [...terms, { text, status: s }],
-                      `Added “${text}”`,
+                      tl("Added “{text}”", { text }),
                     )
                   }
                 />
@@ -1036,8 +1034,8 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
           />
 
           {entry.history.find((c) => c.segment) && (
-            <section className="context" aria-label="Context">
-              <h3 className="lang-title">Found in</h3>
+            <section className="context" aria-label={tl("Context")}>
+              <h3 className="lang-title">{tl("Found in")}</h3>
               {entry.history
                 .filter((c) => c.segment)
                 .map((c) => (
@@ -1108,7 +1106,7 @@ function TermItem({
           }}
         >
           <label htmlFor={`${id}-t`} className="sr-only">
-            Term
+            {tl("Term")}
           </label>
           <input
             id={`${id}-t`}
@@ -1126,7 +1124,7 @@ function TermItem({
             className="btn btn-primary btn-small"
             disabled={!draft.trim() || dup}
           >
-            Save
+            {tl("Save")}
           </button>
           <button
             type="button"
@@ -1136,11 +1134,11 @@ function TermItem({
               setEditing(false);
             }}
           >
-            Cancel
+            {tl("Cancel")}
           </button>
           {dup && (
             <p className="error">
-              This entry already has “{draft.trim()}” in {lang(code).name}.
+              {tlx("This entry already has “{trim}” in {name}.", { trim: draft.trim(), name: lang(code).name })}
             </p>
           )}
         </form>
@@ -1152,23 +1150,22 @@ function TermItem({
           <StatusBadge status={status} />
           <span className="term-tools">
             <label htmlFor={`${id}-s`} className="sr-only">
-              Status of {text}
-            </label>
+              {tlx("Status of {text}", { text: text })}</label>
             <select
               id={`${id}-s`}
               className="select-small"
               value={status}
               onChange={(e) => onStatus(e.target.value as TermStatus)}
             >
-              <option value="approved">Approved</option>
-              <option value="proposed">Proposed</option>
-              <option value="forbidden">Forbidden</option>
+              <option value="approved">{tl("Approved")}</option>
+              <option value="proposed">{tl("Proposed")}</option>
+              <option value="forbidden">{tl("Forbidden")}</option>
             </select>
             <button
               type="button"
               className="icon-button"
               onClick={() => setEditing(true)}
-              aria-label={`Edit ${text}`}
+              aria-label={tl("Edit {text}", { text })}
             >
               <Pencil size={14} aria-hidden="true" />
             </button>
@@ -1176,10 +1173,10 @@ function TermItem({
               label={
                 <>
                   <Trash2 size={14} aria-hidden="true" />
-                  <span className="sr-only">Remove {text}</span>
+                  <span className="sr-only">{tl("Remove")}{" "}{text}</span>
                 </>
               }
-              confirm={`Remove “${text}”?`}
+              confirm={tl("Remove “{text}”?", { text })}
               onConfirm={onRemove}
             />
           </span>
@@ -1216,7 +1213,7 @@ function AddTerm({
         onClick={() => setOpen(true)}
       >
         <Plus size={13} aria-hidden="true" />
-        {existing.length ? "Add a synonym" : "Add a term"}
+        {existing.length ? tl("Add a synonym") : tl("Add a term")}
       </button>
     );
   return (
@@ -1232,20 +1229,19 @@ function AddTerm({
       }}
     >
       <label htmlFor={`${id}-t`} className="sr-only">
-        New term in {lang(code).name}
-      </label>
+        {tlx("New term in {name}", { name: lang(code).name })}</label>
       <input
         id={`${id}-t`}
         ref={ref}
         value={text}
         lang={primary(code)}
-        placeholder={`Term in ${lang(code).name}`}
+        placeholder={tl("Term in {name}", { name: lang(code).name })}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
         aria-invalid={dup}
       />
       <label htmlFor={`${id}-s`} className="sr-only">
-        Status
+        {tl("Status")}
       </label>
       <select
         id={`${id}-s`}
@@ -1253,25 +1249,25 @@ function AddTerm({
         value={st}
         onChange={(e) => setSt(e.target.value as TermStatus)}
       >
-        <option value="approved">Approved</option>
-        <option value="proposed">Proposed</option>
-        <option value="forbidden">Forbidden</option>
+        <option value="approved">{tl("Approved")}</option>
+        <option value="proposed">{tl("Proposed")}</option>
+        <option value="forbidden">{tl("Forbidden")}</option>
       </select>
       <button
         type="submit"
         className="btn btn-primary btn-small"
         disabled={!text.trim() || dup}
       >
-        Add
+        {tl("Add")}
       </button>
       <button
         type="button"
         className="btn btn-quiet btn-small"
         onClick={() => setOpen(false)}
       >
-        Cancel
+        {tl("Cancel")}
       </button>
-      {dup && <p className="error">This entry already has “{text.trim()}”.</p>}
+      {dup && <p className="error">{tlx("This entry already has “{trim}”.", { trim: text.trim() })}</p>}
     </form>
   );
 }
@@ -1290,14 +1286,13 @@ function AddLanguage({
   return (
     <div className="add-lang">
       <label htmlFor="ed-add-lang" className="sr-only">
-        Add a language to {tb.name}
-      </label>
+        {tlx("Add a language to {name}", { name: tb.name })}</label>
       <select
         id="ed-add-lang"
         value=""
         onChange={(e) => e.target.value && onAdd(e.target.value)}
       >
-        <option value="">Add a language to the termbase…</option>
+        <option value="">{tl("Add a language to the termbase…")}</option>
         {options.map((l) => (
           <option key={l.code} value={l.code}>
             {l.name}
@@ -1336,14 +1331,14 @@ function Duplicates({ tb, entries }: { tb: Termbase; entries: Entry[] }) {
     <div className="duplicates">
       <div className="filters">
         <label htmlFor="dup-lang" className="inline-label">
-          Shared term in
+          {tl("Shared term in")}
         </label>
         <select
           id="dup-lang"
           value={code}
           onChange={(e) => setCode(e.target.value)}
         >
-          <option value="">Any language</option>
+          <option value="">{tl("Any language")}</option>
           {tb.languages.map((l) => (
             <option key={l} value={l}>
               {lang(l).name}
@@ -1352,16 +1347,16 @@ function Duplicates({ tb, entries }: { tb: Termbase; entries: Entry[] }) {
         </select>
       </div>
       {!c ? (
-        <p className="help">Loading the core…</p>
+        <p className="help">{tl("Loading the core…")}</p>
       ) : visible.length === 0 ? (
         <div className="empty">
-          <p className="empty-title">No duplicates</p>
+          <p className="empty-title">{tl("No duplicates")}</p>
           <p>
-            No two entries share a term{code ? ` in ${lang(code).name}` : ""}.
+            {code ? tl("No two entries share a term in {language}.", { language: lang(code).name }) : tl("No two entries share a term.")}
           </p>
         </div>
       ) : (
-        <ul className="dup-list" aria-label="Groups of duplicate entries">
+        <ul className="dup-list" aria-label={tl("Groups of duplicate entries")}>
           {visible.map((g) => {
             const group = g.map((i) => entries[i]!);
             const key = group.map((e) => e.id).join("|");
@@ -1404,21 +1399,21 @@ function Duplicates({ tb, entries }: { tb: Termbase; entries: Entry[] }) {
                         keepId: keep!.id,
                         removeIds: rest.map((r) => r.id),
                         content: fromCoreEntry(merged, ids, "proposed"),
-                        summary: `Merged with ${plural(rest.length, "duplicate entry", "duplicate entries")}`,
+                        summary: tl("Merged with {x}", { x: plural(rest.length, "duplicate entry", "duplicate entries") }),
                         now: new Date().toISOString(),
                       });
-                      notify(`Merged ${group.length} entries into one`);
+                      notify(tl("Merged {length} entries into one", { length: group.length }));
                     }}
                   >
                     <Merge size={14} aria-hidden="true" />
-                    Merge into one entry
+                    {tl("Merge into one entry")}
                   </button>
                   <button
                     type="button"
                     className="btn btn-quiet btn-small"
                     onClick={() => setDismissed((d) => new Set([...d, key]))}
                   >
-                    Not duplicates
+                    {tl("Not duplicates")}
                   </button>
                 </div>
               </li>
@@ -1476,7 +1471,7 @@ function AddInfoType({ tb }: { tb: Termbase }) {
             )
             .then(
               () => {
-                notify(`Added field “${f.name}” to ${tb.name}`);
+                notify(tl("Added field “{name}” to {name2}", { name: f.name, name2: tb.name }));
                 return r.openTermbase(tb.name);
               },
               (e) => notify(errorText(e)),
@@ -1494,7 +1489,7 @@ function AddInfoType({ tb }: { tb: Termbase }) {
             ...(f.kind === "picklist" ? { values: f.values } : {}),
           },
         });
-        notify(`Added field “${f.name}” to ${tb.name}`);
+        notify(tl("Added field “{name}” to {name2}", { name: f.name, name2: tb.name }));
       }}
     />
   );

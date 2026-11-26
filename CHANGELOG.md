@@ -40,6 +40,17 @@ takes its notes from its section here.
 - The browser client keeps the notes of document strings (keys, subtitle
   times) as the desktop app and the server do.
 
+### The interface in German and Korean
+
+- Both apps can be shown in English, German or Korean, chosen under
+  Settings; by default they follow the language of the browser or the
+  system. The browser client switches at once, the desktop app when it
+  starts again. Dates, numbers and lists follow the interface language.
+- The translations are one catalog per language, shared by the browser
+  client and the desktop app (`i18n/`). CI fails when a string of either
+  app has no translation, and the desktop tests show every page in German
+  and Korean through the layout check.
+
 ### Spelling dictionaries included
 
 - Spelling dictionaries for 22 languages and regions come with the desktop

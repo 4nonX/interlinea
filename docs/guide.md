@@ -10,6 +10,11 @@ browser client works on its own too, with your work kept in the browser.
 Both sign in to team servers, where projects, memories and termbases are
 shared.
 
+The interface is in English, German or Korean: Settings, Interface
+language. By default it follows the language of the browser or the
+system; the browser client switches at once, the desktop app when it is
+started again. Documents, projects and termbases keep their own languages.
+
 ## Trying it out
 
 The browser client starts empty. Your work is saved in the browser (IndexedDB) as you go:

@@ -3,6 +3,7 @@
 
 import hofmann from "./hofmann.json";
 import hofmannDocx from "../../samples/Mietvertrag_Hofmann_2026.docx?inline";
+import { tl } from "../i18n";
 
 export interface TagRun {
   kind: "open" | "close" | "standalone";
@@ -138,20 +139,20 @@ export interface Timing {
 /** A remark on a segment by someone working on the project. */
 /** The kinds of issue a reviewer marks, and what they are called. */
 export const ISSUE_CATEGORIES = [
-  ["accuracy", "Accuracy"],
-  ["fluency", "Fluency"],
-  ["terminology", "Terminology"],
-  ["style", "Style"],
-  ["locale", "Locale conventions"],
-  ["formatting", "Formatting"],
-  ["other", "Other"],
+  ["accuracy", tl("Accuracy")],
+  ["fluency", tl("Fluency")],
+  ["terminology", tl("Terminology")],
+  ["style", tl("Style")],
+  ["locale", tl("Locale conventions")],
+  ["formatting", tl("Formatting")],
+  ["other", tl("Other")],
 ] as const;
 
 /** How much an issue weighs: its name and its penalty points. */
 export const ISSUE_SEVERITIES = [
-  ["minor", "Minor", 1],
-  ["major", "Major", 5],
-  ["critical", "Critical", 25],
+  ["minor", tl("Minor"), 1],
+  ["major", tl("Major"), 5],
+  ["critical", tl("Critical"), 25],
 ] as const;
 
 export type IssueCategory = (typeof ISSUE_CATEGORIES)[number][0];

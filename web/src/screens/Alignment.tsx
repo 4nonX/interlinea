@@ -6,6 +6,7 @@ import { confirm, draw, fixedOf, joined, linkKey, linksOf, needsLook, scoresOf, 
 import { fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { Modal } from "./TermbaseDialogs";
+import { tl, tlx } from "../i18n";
 
 const ACCEPT = ".docx,.docm,.pptx,.pptm,.ppsx,.xlsx,.xlsm,.html,.htm,.xhtml,.idml,.odt,.ods,.odp,.xml,.md,.markdown,.properties,.json,.yaml,.yml,.po,.resx,.srt,.vtt,.sbv,.ass,.ssa,.sub,.ttml,.dfxp,.itt,.stl,.scc,.pdf,.txt,text/plain";
 
@@ -84,11 +85,11 @@ export function AlignDocuments({
   const destination = existing
     ? ""
     : !name
-      ? "Give the memory a name."
+      ? tl("Give the memory a name.")
       : choice?.taken(name) && made.current?.name !== name
-        ? "A memory with this name exists already."
+        ? tl("A memory with this name exists already.")
         : newSource === newTarget
-          ? "Source and target language must differ."
+          ? tl("Source and target language must differ.")
           : "";
   const [past, setPast] = useState<Snap[]>([]);
   const [future, setFuture] = useState<Snap[]>([]);
@@ -189,7 +190,7 @@ export function AlignDocuments({
 
   if (!result)
     return (
-      <Modal title={into ? `Align documents into ${into.name}` : "Align documents"} onClose={onClose} wide>
+      <Modal title={into ? tl("Align documents into {name}", { name: into.name }) : tl("Align documents")} onClose={onClose} wide>
         <form
           className="dialog-form"
           onSubmit={(e) => {
@@ -198,31 +199,30 @@ export function AlignDocuments({
           }}
         >
           <p className="help">
-            Choose a document and its translation. Their sentences are paired, and you check the pairs before they go into the memory. The two files need not be
-            of the same format: DOCX, PPTX, XLSX, ODT, HTML, IDML, XML, Markdown, PDF, subtitles, software strings or text.
+            {tl("Choose a document and its translation. Their sentences are paired, and you check the pairs before they go into the memory. The two files need not be of the same format: DOCX, PPTX, XLSX, ODT, HTML, IDML, XML, Markdown, PDF, subtitles, software strings or text.")}
           </p>
           {choice && (
             <label className="field">
-              <span className="field-label">Memory the units go into</span>
+              <span className="field-label">{tl("Memory the units go into")}</span>
               <select value={chosen} onChange={(e) => setChosen(e.target.value)}>
                 {choice.memories.map((m) => (
                   <option key={m.name} value={m.name}>
-                    {m.name} ({m.sourceLang} to {m.targetLang})
+                    {tlx("{name} ({sourceLang} to {targetLang})", { name: m.name, sourceLang: m.sourceLang, targetLang: m.targetLang })}
                   </option>
                 ))}
-                <option value={NEW}>A new memory</option>
+                <option value={NEW}>{tl("A new memory")}</option>
               </select>
             </label>
           )}
           {choice && !existing && (
             <div className="field-grid">
               <label className="field">
-                <span className="field-label">Name of the new memory</span>
+                <span className="field-label">{tl("Name of the new memory")}</span>
                 <input value={newName} onChange={(e) => setNewName(e.target.value)} aria-invalid={!!destination && !!newName} />
               </label>
               <span />
               <label className="field">
-                <span className="field-label">Source language</span>
+                <span className="field-label">{tl("Source language")}</span>
                 <select value={newSource} onChange={(e) => setNewSource(e.target.value)}>
                   {LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>
@@ -232,7 +232,7 @@ export function AlignDocuments({
                 </select>
               </label>
               <label className="field">
-                <span className="field-label">Target language</span>
+                <span className="field-label">{tl("Target language")}</span>
                 <select value={newTarget} onChange={(e) => setNewTarget(e.target.value)}>
                   {LANGUAGES.map((l) => (
                     <option key={l.code} value={l.code}>
@@ -244,11 +244,11 @@ export function AlignDocuments({
             </div>
           )}
           <label className="field">
-            <span className="field-label">Document in {lang(sourceLang).name}</span>
+            <span className="field-label">{tl("Document in")}{" "}{lang(sourceLang).name}</span>
             <input type="file" accept={ACCEPT} onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
           </label>
           <label className="field">
-            <span className="field-label">Its translation in {lang(targetLang).name}</span>
+            <span className="field-label">{tl("Its translation in")}{" "}{lang(targetLang).name}</span>
             <input type="file" accept={ACCEPT} onChange={(e) => setTarget(e.target.files?.[0] ?? null)} />
           </label>
           {(problem || (destination && newName)) && (
@@ -258,10 +258,10 @@ export function AlignDocuments({
           )}
           <div className="row">
             <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-              Cancel
+              {tl("Cancel")}
             </button>
             <button type="submit" className="btn btn-primary btn-small" disabled={!source || !target || busy || !!destination}>
-              {busy ? "Pairing…" : "Pair the sentences"}
+              {busy ? tl("Pairing…") : tl("Pair the sentences")}
             </button>
           </div>
         </form>
@@ -304,7 +304,7 @@ export function AlignDocuments({
 
   const column = (side: Side) => {
     const segments = side === "source" ? result.source : result.target;
-    const what = side === "source" ? "Sentence" : "Translation";
+    const what = side === "source" ? tl("Sentence") : tl("Translation");
     return (
       <div className="align-column" data-column={side} lang={side === "source" ? sourceLang : targetLang}>
         {segments.map((runs, i) => {
@@ -318,7 +318,7 @@ export function AlignDocuments({
               data-side={side}
               data-i={i}
               aria-pressed={on}
-              aria-label={`${what} ${i + 1}${lone ? ", no pair" : ""}: ${plain(coreToRuns(runs))}`}
+              aria-label={`${what} ${i + 1}${lone ? tl(", no pair") : ""}: ${plain(coreToRuns(runs))}`}
               onClick={() => choose({ side, i })}
               onPointerDown={() => {
                 pulling.current = { side, i };
@@ -352,29 +352,21 @@ export function AlignDocuments({
   };
 
   return (
-    <Modal title={`Align documents into ${name}`} onClose={() => leave("close")} wide>
+    <Modal title={tl("Align documents into {name}", { name })} onClose={() => leave("close")} wide>
       <div className="dialog-form align-review">
         <p role="status">
-          {plural(units.length, "unit", "units")} from {fmtNum(result.source.length)} and {plural(result.target.length, "segment", "segments")}.{" "}
-          {fixed.length > 0 && `${plural(fixed.length, "unit is", "units are")} checked. `}
-          {alone > 0 && `${plural(alone, "segment has", "segments have")} no pair and ${alone === 1 ? "is" : "are"} left out. `}
-          {look.length > 0 && `${plural(look.length, "pair needs", "pairs need")} a look: the lengths or numbers do not fit.`}
-          {alone === 0 && look.length === 0 && "All of them fit."}
-        </p>
+          {tlx("{length} from {length2} and {length3}. {x}{x2}{x3}{x4}", { length: plural(units.length, "unit", "units"), length2: fmtNum(result.source.length), length3: plural(result.target.length, "segment", "segments"), x: fixed.length > 0 && (fixed.length === 1 ? tl("1 unit is checked. ") : tl("{n} units are checked. ", { n: fmtNum(fixed.length) })), x2: alone > 0 && (alone === 1 ? tl("1 segment has no pair and is left out. ") : tl("{n} segments have no pair and are left out. ", { n: fmtNum(alone) })), x3: look.length > 0 && (look.length === 1 ? tl("1 pair needs a look: the lengths or numbers do not fit.") : tl("{n} pairs need a look: the lengths or numbers do not fit.", { n: fmtNum(look.length) })), x4: alone === 0 && look.length === 0 && tl("All of them fit.") })}</p>
         <p className="help">
-          A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means nothing is joined
-          there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same takes a line away, as does choosing
-          the line. Sentences joined by lines become one unit. A dotted line was paired for you; one you draw or confirm is solid, and stays when the rest is
-          paired again around it.
+          {tl("A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means nothing is joined there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same takes a line away, as does choosing the line. Sentences joined by lines become one unit. A dotted line was paired for you; one you draw or confirm is solid, and stays when the rest is paired again around it.")}
         </p>
         <div className="align-head">
           <LangChip code={sourceLang} />
           <span className="row">
             <button type="button" className="btn btn-quiet btn-small" disabled={!past.length} onClick={undo} title="Ctrl+Z">
-              Undo
+              {tl("Undo")}
             </button>
             <button type="button" className="btn btn-quiet btn-small" disabled={!future.length} onClick={redo} title="Ctrl+Y">
-              Redo
+              {tl("Redo")}
             </button>
             <button
               type="button"
@@ -386,16 +378,16 @@ export function AlignDocuments({
                 setPicked(null);
               }}
             >
-              Confirm
+              {tl("Confirm")}
             </button>
             <button type="button" className="btn btn-quiet btn-small" disabled={links.every((l) => l.mine)} onClick={() => change(links.map((l) => ({ ...l, mine: true })))}>
-              Confirm all
+              {tl("Confirm all")}
             </button>
             <button type="button" className="btn btn-quiet btn-small" disabled={busy || fixed.length === 0 || (fixed.length === units.length && alone === 0)} onClick={() => void pair(fixed)}>
-              {busy ? "Pairing…" : "Pair the rest again"}
+              {busy ? tl("Pairing…") : tl("Pair the rest again")}
             </button>
             <button type="button" className="btn btn-quiet btn-small" disabled={alone === 0 && look.length === 0} onClick={next}>
-              Next to look at
+              {tl("Next to look at")}
             </button>
           </span>
           <LangChip code={targetLang} />
@@ -420,7 +412,7 @@ export function AlignDocuments({
             <div className="align-gutter" />
             {column("target")}
             {places && (
-              <svg className="align-lines" width="100%" height={places.height} aria-label="Lines" role="group">
+              <svg className="align-lines" width="100%" height={places.height} aria-label={tl("Lines")} role="group">
                 {links.map((l) => {
                   const y1 = places.source[l.source];
                   const y2 = places.target[l.target];
@@ -434,7 +426,7 @@ export function AlignDocuments({
                     <g key={k} data-line={k}>
                       <path d={d} className={`align-line${l.mine ? " is-mine" : ""}${lookLines.has(k) ? " is-look" : ""}`} />
                       <path d={d} className="align-hit" onClick={() => change(toggle(links, l))}>
-                        <title>Take this line away</title>
+                        <title>{tl("Take this line away")}</title>
                       </path>
                     </g>
                   );
@@ -444,7 +436,7 @@ export function AlignDocuments({
           </div>
         </div>
         <label className="check">
-          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} /> Replace other translations of these sentences
+          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />{" "}{tl("Replace other translations of these sentences")}
         </label>
         {problem && (
           <p className="error" role="alert">
@@ -452,22 +444,22 @@ export function AlignDocuments({
           </p>
         )}
         {leaving && (
-          <div className="row align-leave" role="alertdialog" aria-label="Leave the alignment">
-            <span>{leaving === "close" ? "Close without adding? What you did to the lines is lost." : "Choose other documents? What you did to the lines is lost."}</span>
+          <div className="row align-leave" role="alertdialog" aria-label={tl("Leave the alignment")}>
+            <span>{leaving === "close" ? tl("Close without adding? What you did to the lines is lost.") : tl("Choose other documents? What you did to the lines is lost.")}</span>
             <button type="button" className="btn btn-small" autoFocus onClick={() => setLeaving(null)}>
-              Stay
+              {tl("Stay")}
             </button>
             <button type="button" className="btn btn-danger btn-small" onClick={() => leave(leaving)}>
-              {leaving === "close" ? "Close" : "Other documents"}
+              {leaving === "close" ? tl("Close") : tl("Other documents")}
             </button>
           </div>
         )}
         <div className="row">
           <button type="button" className="btn btn-quiet btn-small" disabled={!!leaving} onClick={() => leave("other")}>
-            Other documents
+            {tl("Other documents")}
           </button>
           <button type="button" className="btn btn-quiet btn-small" disabled={!!leaving} onClick={() => leave("close")}>
-            Cancel
+            {tl("Cancel")}
           </button>
           <button
             type="button"
@@ -489,8 +481,7 @@ export function AlignDocuments({
               );
             }}
           >
-            Add {plural(units.length, "unit", "units")} to {name}
-          </button>
+            {tlx("Add {length} to {name}", { length: plural(units.length, "unit", "units"), name: name })}</button>
         </div>
       </div>
     </Modal>

@@ -9,8 +9,9 @@ import {
   type ChangeKind,
   type Decision,
 } from "../merge";
-import { fmtDate, fmtTime, plural } from "../format";
+import { fmtDate, fmtTime, inSentence, plural } from "../format";
 import { InLang, LangChip, LocationBadge, PageHeader } from "../components/ui";
+import { tl, tlx } from "../i18n";
 
 export function MergeReview({ projectId }: { projectId: string }) {
   const { state } = useLocalStore();
@@ -30,10 +31,10 @@ export function MergeReview({ projectId }: { projectId: string }) {
       <div className="page page-narrow">
         <PageHeader title={w("reviewMerge")} />
         <div className="empty">
-          <p className="empty-title">Nothing to merge</p>
-          <p>This project writes directly into its master or has no master.</p>
+          <p className="empty-title">{tl("Nothing to merge")}</p>
+          <p>{tl("This project writes directly into its master or has no master.")}</p>
           <a className="btn btn-small" href="#/projects">
-            Back to projects
+            {tl("Back to projects")}
           </a>
         </div>
       </div>
@@ -46,18 +47,17 @@ export function MergeReview({ projectId }: { projectId: string }) {
         title={`${w("reviewMerge")}: ${project.name}`}
         description={
           <>
-            New and changed terms from this project go into its master. The
-            master changes only when you merge.
+            {tl("New and changed terms from this project go into its master. The master changes only when you merge.")}
           </>
         }
       >
         <a className="btn btn-quiet" href="#/projects">
-          Back to projects
+          {tl("Back to projects")}
         </a>
       </PageHeader>
 
       {masters.length > 1 && (
-        <div className="tabs" role="tablist" aria-label="Masters">
+        <div className="tabs" role="tablist" aria-label={tl("Masters")}>
           {masters.map((m) => (
             <button
               key={m.id}
@@ -136,19 +136,15 @@ function MergeIntoMaster({
       <div className="panel done">
         <CheckCircle2 size={28} aria-hidden="true" className="done-icon" />
         <h2 className="panel-title" tabIndex={-1} ref={(el) => el?.focus()}>
-          {w("merged")} {plural(done, w("change"), w("changes"))} into{" "}
-          {master.name}
-        </h2>
+          {tlx("{w} {done} into {name}", { w: w("merged"), done: plural(done, w("change"), w("changes")), name: master.name })}</h2>
         <p>
-          Every merged entry keeps its {w("history").toLowerCase()}: who added
-          it, when, and the sentence it came from.
+          {tlx("Every merged entry keeps its {history}: who added it, when, and the sentence it came from.", { history: inSentence(w("history")) })}
         </p>
         <div className="row">
           <a className="btn btn-primary" href={`#/terminology/${master.id}`}>
-            Open {master.name}
-          </a>
+            {tlx("Open {name}", { name: master.name })}</a>
           <a className="btn btn-quiet" href="#/projects">
-            Back to projects
+            {tl("Back to projects")}
           </a>
         </div>
       </div>
@@ -157,9 +153,9 @@ function MergeIntoMaster({
 
   return (
     <>
-      <section className="merge-head" aria-label="Termbases">
+      <section className="merge-head" aria-label={tl("Termbases")}>
         <div className="merge-side">
-          <span className="merge-label">From</span>
+          <span className="merge-label">{tl("From")}</span>
           <span className="cell-title">{project.name}</span>
           <span className="cell-sub">
             {w("projectTermbase")}{" "}
@@ -168,11 +164,10 @@ function MergeIntoMaster({
         </div>
         <GitMerge size={20} aria-hidden="true" className="merge-arrow" />
         <div className="merge-side">
-          <span className="merge-label">Into</span>
+          <span className="merge-label">{tl("Into")}</span>
           <span className="cell-title">{master.name}</span>
           <span className="cell-sub">
-            Master{" "}
-            <LocationBadge location={master.location} server={master.server} />
+            {tl("Master")}{" "}<LocationBadge location={master.location} server={master.server} />
           </span>
         </div>
         <dl className="merge-counts">
@@ -187,12 +182,12 @@ function MergeIntoMaster({
             <dd>{counts.changed}</dd>
           </div>
           <div>
-            <dt>New</dt>
+            <dt>{tl("New")}</dt>
             <dd>{counts.new}</dd>
           </div>
           {counts.removed > 0 && (
             <div>
-              <dt>Left out</dt>
+              <dt>{tl("Left out")}</dt>
               <dd>{counts.removed}</dd>
             </div>
           )}
@@ -204,9 +199,7 @@ function MergeIntoMaster({
           <ArrowDownToLine size={18} aria-hidden="true" />
           <div className="notice-body">
             <h2 id="incoming-title" className="notice-title">
-              {master.name} has {plural(incomingCount, "change", "changes")}{" "}
-              since {fmtDate(branchedAt)}
-            </h2>
+              {tlx("{name} has {incomingCount} since {branchedAt}", { name: master.name, incomingCount: plural(incomingCount, "change", "changes"), branchedAt: fmtDate(branchedAt) })}</h2>
             <ul className="incoming">
               {[...incoming.created, ...incoming.changed].map((e) => (
                 <li key={e.id}>
@@ -238,12 +231,12 @@ function MergeIntoMaster({
 
       {changes.length === 0 ? (
         <div className="empty">
-          <p className="empty-title">No {w("changes")} to merge</p>
-          <p>Terms you add or change in this project appear here.</p>
+          <p className="empty-title">{tlx("No {w} to merge", { w: w("changes") })}</p>
+          <p>{tl("Terms you add or change in this project appear here.")}</p>
         </div>
       ) : (
         <>
-          <div className="segmented" role="radiogroup" aria-label="Show">
+          <div className="segmented" role="radiogroup" aria-label={tl("Show")}>
             {(["all", "conflict", "changed", "new", ...(counts.removed ? (["removed"] as const) : [])] as const).map((k) => (
               <label key={k} className="segment">
                 <input
@@ -254,14 +247,14 @@ function MergeIntoMaster({
                 />
                 <span>
                   {k === "all"
-                    ? "All"
+                    ? tl("All")
                     : k === "conflict"
                       ? `${w("conflict")}s`
                       : k === "changed"
                         ? w("changedEntry")
                         : k === "removed"
-                          ? "Left out"
-                          : "New"}{" "}
+                          ? tl("Left out")
+                          : tl("New")}{" "}
                   ({k === "all" ? changes.length : counts[k]})
                 </span>
               </label>
@@ -287,11 +280,10 @@ function MergeIntoMaster({
           {covered.length > 0 && (
             <section className="changes-covered" aria-labelledby="covered-title">
               <h2 id="covered-title" className="tb-group-title">
-                Need no review ({covered.length})
+                {tlx("Need no review ({length})", { length: covered.length })}
               </h2>
               <p className="help">
-                The rules of {master.name} cover these. They are merged with
-                the rest unless you take them out.
+                {tlx("The rules of {name} cover these. They are merged with the rest unless you take them out.", { name: master.name })}
               </p>
               <ul className="changes">
                 {covered.map((c) => (
@@ -313,8 +305,8 @@ function MergeIntoMaster({
           <div className="merge-bar">
             <p className="merge-bar-text" aria-live="polite">
               {unresolved > 0
-                ? `Resolve ${plural(unresolved, "conflict", "conflicts")} to merge.`
-                : `${plural(included, w("change"), w("changes"))} will be merged. What you do not accept stays in the project.`}
+                ? tl("Resolve {unresolved} to merge.", { unresolved: plural(unresolved, "conflict", "conflicts") })
+                : tl("{included} will be merged. What you do not accept stays in the project.", { included: plural(included, w("change"), w("changes")) })}
             </p>
             <button
               type="button"
@@ -373,7 +365,7 @@ function IncomingItem({
 
 function TermsLine({ entry, code }: { entry: Entry; code: string }) {
   const ts = entry.terms[code] ?? [];
-  if (!ts.length) return <span className="missing">no term</span>;
+  if (!ts.length) return <span className="missing">{tl("no term")}</span>;
   return (
     <InLang code={code}>
       {ts.map((t, i) => (
@@ -402,7 +394,7 @@ function ChangeItem({
 }) {
   const w = useWords();
   const src = master.languages[0]!;
-  const head = change.project.terms[src]?.[0]?.text ?? "(no term)";
+  const head = change.project.terms[src]?.[0]?.text ?? tl("(no term)");
   const field = (k: string) =>
     master.infoTypes.find((i) => i.id === k)?.name ?? k;
   const kindLabel =
@@ -411,18 +403,18 @@ function ChangeItem({
       : change.kind === "changed"
         ? w("changedEntry")
         : change.kind === "removed"
-          ? "Left out of the project"
+          ? tl("Left out of the project")
           : w("newEntry");
   const fieldNames = change.fields.map((f) => field(f.field)).join(", ");
   const ruleNote =
     change.rule === "identical"
-      ? `${master.name} has this entry as it is: the two are linked, nothing is added.`
+      ? tl("{name} has this entry as it is: the two are linked, nothing is added.", { name: master.name })
       : change.rule === "minor-fields"
-        ? `Changed in ${fieldNames} only, which needs no approval.`
+        ? tl("Changed in {fieldNames} only, which needs no approval.", { fieldNames })
         : change.rule === "trusted"
-          ? `By ${change.author}, whose entries need no review.`
+          ? tl("By {author}, whose entries need no review.", { author: change.author })
           : change.identicalTo
-            ? `${master.name} has this entry as it is: accepting links the two, nothing is added.`
+            ? tl("{name} has this entry as it is: accepting links the two, nothing is added.", { name: master.name })
             : "";
   const origin = change.kind === "removed" ? undefined : change.project.history.find((c) => c.segment);
   const name = `d-${change.project.id}`;
@@ -463,13 +455,10 @@ function ChangeItem({
             ))}
           </dl>
           <p className="change-context">
-            Left out {change.leftOutAt ? fmtTime(change.leftOutAt) : ""}
-            {change.author ? ` by ${change.author}` : ""}. Accepting deletes the
-            entry in {master.name}; it can be brought back from Deleted there.
-            {change.masterHistory[0]
-              ? ` ${master.name} changed it since, last ${change.masterHistory[change.masterHistory.length - 1]!.by} on ${fmtDate(change.masterHistory[change.masterHistory.length - 1]!.at)}.`
-              : ""}
-          </p>
+            {(change.author ? tl("Left out {at} by {by}.", { at: change.leftOutAt ? fmtTime(change.leftOutAt) : "", by: change.author }) : tl("Left out {at}.", { at: change.leftOutAt ? fmtTime(change.leftOutAt) : "" })) + " "}
+            {tlx("Accepting deletes the entry in {name}; it can be brought back from Deleted there.{x3}", { name: master.name, x3: change.masterHistory[0]
+              ? tl(" {name} changed it since, last {by} on {at}.", { name: master.name, by: change.masterHistory[change.masterHistory.length - 1]!.by, at: fmtDate(change.masterHistory[change.masterHistory.length - 1]!.at) })
+              : "" })}</p>
         </>
       )}
 
@@ -517,7 +506,7 @@ function ChangeItem({
       {change.kind === "conflict" && change.master && (
         <div className="conflict">
           <div className="conflict-side">
-            <h4>This project</h4>
+            <h4>{tl("This project")}</h4>
             {change.terms.map((t) => (
               <p key={t.lang}>
                 <LangChip code={t.lang} />{" "}
@@ -527,11 +516,9 @@ function ChangeItem({
           </div>
           <div className="conflict-side">
             <h4>
-              {master.name}, changed{" "}
               {change.masterHistory[0]
-                ? `by ${change.masterHistory[0].by} on ${fmtDate(change.masterHistory[0].at)}`
-                : "meanwhile"}
-            </h4>
+                ? tl("{name}, changed by {by} on {at}", { name: master.name, by: change.masterHistory[0].by, at: fmtDate(change.masterHistory[0].at) })
+                : tl("{name}, changed meanwhile", { name: master.name })}</h4>
             {change.terms.map((t) => (
               <p key={t.lang}>
                 <LangChip code={t.lang} />{" "}
@@ -544,14 +531,13 @@ function ChangeItem({
 
       {origin?.segment && (
         <p className="change-context">
-          From: <q lang={src}>{origin.segment}</q>
-        </p>
+          {tlx("From: {q}", { q: <q lang={src}>{origin.segment}</q> })}</p>
       )}
 
       <div
         className="decision"
         role="radiogroup"
-        aria-label={`Decision for ${head}`}
+        aria-label={tl("Decision for {head}", { head })}
       >
         {change.kind === "conflict" ? (
           <>
@@ -580,7 +566,7 @@ function ChangeItem({
                 checked={decision === "keep-both"}
                 onChange={() => onDecide("keep-both")}
               />
-              <span>{w("keepBoth")}, as synonyms</span>
+              <span>{w("keepBoth")}{tl(", as synonyms")}</span>
             </label>
           </>
         ) : (
@@ -590,7 +576,7 @@ function ChangeItem({
               checked={decision !== "skip"}
               onChange={(e) => onDecide(e.target.checked ? "accept" : "skip")}
             />
-            <span>{change.kind === "removed" ? `Delete in ${master.name}` : `${w("accept")} in the merge`}</span>
+            <span>{change.kind === "removed" ? tl("Delete in {name}", { name: master.name }) : tl("{w} in the merge", { w: w("accept") })}</span>
           </label>
         )}
       </div>

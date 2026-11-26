@@ -11,6 +11,7 @@ import { coreSettings, type Draft } from "./project";
 import { runsToCore } from "./editor/model";
 import { term, toCoreTermbase } from "./termio";
 import { ApiError, base64, type Client, type CoreSettings, type FileUpload, type ServerProject } from "./server";
+import { tl } from "./i18n";
 
 export interface PublishInput {
   project: Project;
@@ -40,12 +41,12 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
   for (const name of new Set(Object.values(p.memories).flat().map((m) => m.memory))) {
     if (onServer.has(fold(name))) continue;
     const m = x.memories.find((y) => y.name === name);
-    if (!m) throw new Error(`The memory ${name} is not on this computer or the server.`);
+    if (!m) throw new Error(tl("The memory {name} is not on this computer or the server.", { name }));
     try {
       await api.createMemory({ name: m.name, sourceLang: m.sourceLang, targetLang: m.targetLang });
     } catch (e) {
       if (e instanceof ApiError && e.status === 403)
-        throw new Error(`${name} is only on this computer, and you may not make memories on the server. Ask its administrator to upload it, or take it out of the project.`);
+        throw new Error(tl("{name} is only on this computer, and you may not make memories on the server. Ask its administrator to upload it, or take it out of the project.", { name }));
       throw e;
     }
     openMemory(c, m, x.projects);
@@ -61,7 +62,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
   const masterNames: Record<string, string> = {};
   for (const id of masterIds) {
     const tb = x.termbases.find((y) => y.id === id);
-    if (!tb) throw new Error(`A master termbase of the project is missing.`);
+    if (!tb) throw new Error(tl("A master termbase of the project is missing."));
     masterNames[id] = tb.name;
     if (tbOnServer.has(fold(tb.name))) continue;
     const full = toCoreTermbase(tb, x.entries.filter((e) => e.termbaseId === id));
@@ -69,7 +70,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
       await api.createTermbase({ name: tb.name, languages: full.languages ?? [], fields: full.fields ?? [] });
     } catch (e) {
       if (e instanceof ApiError && e.status === 403)
-        throw new Error(`The termbase ${tb.name} is not on the server, and you may not make termbases there. Ask its administrator to upload it, or choose other terminology.`);
+        throw new Error(tl("The termbase {name} is not on the server, and you may not make termbases there. Ask its administrator to upload it, or choose other terminology.", { name: tb.name }));
       throw e;
     }
     if ((full.entries ?? []).length) await api.importTermbase(tb.name, term.write(c, full, "tbx"));
@@ -84,7 +85,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
     : [];
   for (const m of newMemories)
     if (onServer.has(fold(m.Name)))
-      throw new Error(`A memory called ${m.Name} is on the server already. Rename the project, or keep it without its own memory.`);
+      throw new Error(tl("A memory called {Name} is on the server already. Rename the project, or keep it without its own memory.", { Name: m.Name }));
   const memories: CoreSettings["memories"] = {};
   for (const l of p.targetLangs) {
     memories[l] = [

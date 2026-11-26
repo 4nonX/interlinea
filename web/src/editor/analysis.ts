@@ -8,6 +8,7 @@ import { lookupAll, type MemHit } from "./memory";
 import type { CoreApi } from "../core";
 import type { ContextRule } from "../data";
 import type { MemoryRef } from "../project";
+import { tl } from "../i18n";
 
 export type Band = "cm" | "rep" | "100" | "95" | "85" | "75" | "50" | "new";
 
@@ -28,9 +29,9 @@ export function scoreLabel(score: number, context = false): string {
 
 export function scoreDescription(score: number, context = false): string {
   if (context && score === 100)
-    return "Context match (101%): the text and the segment before it match";
-  if (score === 100) return "Exact match (100%)";
-  return `Fuzzy match, ${score}%`;
+    return tl("Context match (101%): the text and the segment before it match");
+  if (score === 100) return tl("Exact match (100%)");
+  return tl("Fuzzy match, {score}%", { score });
 }
 
 export interface ScoredMatch {

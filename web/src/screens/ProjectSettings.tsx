@@ -64,6 +64,7 @@ import { ConfirmButton } from "./TermbaseDialogs";
 import { LangChip, PageHeader } from "../components/ui";
 import { fmtNum, plural } from "../format";
 import { go } from "../App";
+import { tl, tlx } from "../i18n";
 
 export function ProjectSettings({ projectId }: { projectId: string }) {
   const { state } = useLocalStore();
@@ -72,9 +73,9 @@ export function ProjectSettings({ projectId }: { projectId: string }) {
     return (
       <div className="page page-narrow">
         <div className="empty">
-          <p className="empty-title">Project not found</p>
+          <p className="empty-title">{tl("Project not found")}</p>
           <a className="btn btn-small" href="#/projects">
-            Back to projects
+            {tl("Back to projects")}
           </a>
         </div>
       </div>
@@ -95,7 +96,7 @@ function SettingsForm({ project }: { project: Project }) {
       (e: unknown) =>
         live &&
         notify(
-          `The core could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -178,7 +179,7 @@ function SettingsForm({ project }: { project: Project }) {
           p.name.toLowerCase() === full.name.trim().toLowerCase(),
       )
     )
-      ps.push({ field: "name", message: "Another project has this name." });
+      ps.push({ field: "name", message: tl("Another project has this name.") });
     const otherSource = added.find(
       (d) =>
         d.role === "translatable" &&
@@ -188,13 +189,13 @@ function SettingsForm({ project }: { project: Project }) {
     if (otherSource)
       ps.push({
         field: "files",
-        message: `${docName(otherSource)} is a bilingual file from ${lang(knownLang(otherSource.doc.bilingual!.sourceLang)).name}, but the project translates from ${lang(project.sourceLang).name}.`,
+        message: tl("{otherSource} is a bilingual file from {name}, but the project translates from {name2}.", { otherSource: docName(otherSource), name: lang(knownLang(otherSource.doc.bilingual!.sourceLang)).name, name2: lang(project.sourceLang).name }),
       });
     if (added.some((d) => d.doc.sdlPackage))
       ps.push({
         field: "files",
         message:
-          "Files of a package come with the project they were made for; start a new project from the package.",
+          tl("Files of a package come with the project they were made for; start a new project from the package."),
       });
     return ps;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -326,9 +327,9 @@ function SettingsForm({ project }: { project: Project }) {
         },
       });
       notify(
-        `Saved the settings of “${next.name}”` +
+        tl("Saved the settings of “{name}”", { name: next.name }) +
           (newTargets.length
-            ? `; ${newTargets.map((x) => lang(x).name).join(", ")} added to every file`
+            ? tl("; {x} added to every file", { x: newTargets.map((x) => lang(x).name).join(", ") })
             : ""),
       );
     } catch (e) {
@@ -343,21 +344,21 @@ function SettingsForm({ project }: { project: Project }) {
       <PageHeader title={`${project.name}: settings`}>
         <a className="btn btn-quiet" href="#/projects">
           <ArrowLeft size={14} aria-hidden="true" />
-          Projects
+          {tl("Projects")}
         </a>
         <a className="btn" href={`#/editor/${project.id}`}>
           <PencilLine size={14} aria-hidden="true" />
-          Open in the editor
+          {tl("Open in the editor")}
         </a>
       </PageHeader>
 
       <section className="panel" aria-labelledby="ps-details">
         <h2 id="ps-details" className="panel-title">
-          Details
+          {tl("Details")}
         </h2>
         <div className="field-grid">
           <div className="field">
-            <label htmlFor="ps-name">Project name</label>
+            <label htmlFor="ps-name">{tl("Project name")}</label>
             <input
               id="ps-name"
               value={draft.name}
@@ -370,8 +371,7 @@ function SettingsForm({ project }: { project: Project }) {
           </div>
           <div className="field">
             <label htmlFor="ps-client">
-              Client <span className="optional">optional</span>
-            </label>
+              {tlx("Client {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
             <input
               id="ps-client"
               value={draft.client}
@@ -383,8 +383,7 @@ function SettingsForm({ project }: { project: Project }) {
           </div>
           <div className="field">
             <label htmlFor="ps-due">
-              Due <span className="optional">optional</span>
-            </label>
+              {tlx("Due {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
             <input
               id="ps-due"
               type="datetime-local"
@@ -397,8 +396,7 @@ function SettingsForm({ project }: { project: Project }) {
           </div>
           <div className="field">
             <label htmlFor="ps-desc">
-              Description <span className="optional">optional</span>
-            </label>
+              {tlx("Description {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
             <input
               id="ps-desc"
               value={draft.description}
@@ -412,20 +410,20 @@ function SettingsForm({ project }: { project: Project }) {
 
       <section className="panel" aria-labelledby="ps-files">
         <h2 id="ps-files" className="panel-title">
-          Files
+          {tl("Files")}
         </h2>
         <div className="table-wrap">
           <table className="table file-table">
-            <caption className="sr-only">Files of the project</caption>
+            <caption className="sr-only">{tl("Files of the project")}</caption>
             <thead>
               <tr>
-                <th scope="col">File</th>
+                <th scope="col">{tl("File")}</th>
                 <th scope="col" className="num">
-                  Words
+                  {tl("Words")}
                 </th>
-                <th scope="col">Done</th>
+                <th scope="col">{tl("Done")}</th>
                 <th scope="col">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">{tl("Actions")}</span>
                 </th>
               </tr>
             </thead>
@@ -441,13 +439,13 @@ function SettingsForm({ project }: { project: Project }) {
                       </span>
                       <span className="cell-sub">
                         {f.role === "reference"
-                          ? "Reference file"
+                          ? tl("Reference file")
                           : f.targetLang
-                            ? `Bilingual file for ${lang(f.targetLang).name}`
+                            ? tl("Bilingual file for {name}", { name: lang(f.targetLang).name })
                             : Object.keys(f.segments).length
-                              ? "Translated into every target language"
-                              : "No text Interlinea can read"}
-                        {gone && " (removed when you save)"}
+                              ? tl("Translated into every target language")
+                              : tl("No text Interlinea can read")}
+                        {gone && tl(" (removed when you save)")}
                       </span>
                     </th>
                     <td className="num">{f.words ? fmtNum(f.words) : "–"}</td>
@@ -470,7 +468,7 @@ function SettingsForm({ project }: { project: Project }) {
                             onClick={() => void downloadOriginal(f)}
                           >
                             <Download size={14} aria-hidden="true" />
-                            Original
+                            {tl("Original")}
                           </button>
                         )}
                         {gone ? (
@@ -485,7 +483,7 @@ function SettingsForm({ project }: { project: Project }) {
                               })
                             }
                           >
-                            Keep
+                            {tl("Keep")}
                           </button>
                         ) : (
                           <button
@@ -496,7 +494,7 @@ function SettingsForm({ project }: { project: Project }) {
                             }
                           >
                             <Trash2 size={14} aria-hidden="true" />
-                            Remove
+                            {tl("Remove")}
                           </button>
                         )}
                       </span>
@@ -508,7 +506,7 @@ function SettingsForm({ project }: { project: Project }) {
           </table>
         </div>
         <FilesField
-          label="Add files"
+          label={tl("Add files")}
           docs={added}
           setDocs={setAdded}
           existing={kept.map((f) => f.name)}
@@ -517,9 +515,7 @@ function SettingsForm({ project }: { project: Project }) {
           <p className="detect detect-warn">
             <AlertTriangle size={16} aria-hidden="true" />
             <span>
-              Removing files drops{" "}
-              {plural(removedWork, "translated segment", "translated segments")}
-              . Confirmed ones stay in the memories they were stored in.
+              {tlx("Removing files drops {removedWork}. Confirmed ones stay in the memories they were stored in.", { removedWork: plural(removedWork, "translated segment", "translated segments") })}
             </span>
           </p>
         )}
@@ -528,20 +524,20 @@ function SettingsForm({ project }: { project: Project }) {
 
       <section className="panel" aria-labelledby="ps-langs">
         <h2 id="ps-langs" className="panel-title">
-          Languages
+          {tl("Languages")}
         </h2>
         <div className="field">
-          <span className="field-label">Source language</span>
+          <span className="field-label">{tl("Source language")}</span>
           <p className="lang-fixed">
             {lang(project.sourceLang).name}{" "}
             <LangChip code={project.sourceLang} />
           </p>
           <p className="help">
-            The source language stays: every file was segmented by its rules.
+            {tl("The source language stays: every file was segmented by its rules.")}
           </p>
         </div>
         <fieldset className="field">
-          <legend>Target languages</legend>
+          <legend>{tl("Target languages")}</legend>
           <TargetPicker
             source={project.sourceLang}
             targets={draft.targetLangs}
@@ -550,20 +546,15 @@ function SettingsForm({ project }: { project: Project }) {
             fixed={fixedTargets}
           />
           <p className="help">
-            A language you add gets every file to translate, with nothing
-            translated yet.
+            {tl("A language you add gets every file to translate, with nothing translated yet.")}
           </p>
           {lostWork > 0 && (
             <p className="detect detect-warn">
               <AlertTriangle size={16} aria-hidden="true" />
               <span>
-                Removing {removedTargets.map((x) => lang(x).name).join(", ")}{" "}
-                drops{" "}
-                {plural(lostWork, "translated segment", "translated segments")}
-                {draft.projectMemory
-                  ? " and the project memory of that language"
-                  : ""}
-                .
+                {tlx("Removing {join} drops {lostWork}{x}.", { join: removedTargets.map((x) => lang(x).name).join(", "), lostWork: plural(lostWork, "translated segment", "translated segments"), x: draft.projectMemory
+                  ? tl(" and the project memory of that language")
+                  : "" })}
               </span>
             </p>
           )}
@@ -573,7 +564,7 @@ function SettingsForm({ project }: { project: Project }) {
 
       <section className="panel" aria-labelledby="ps-mem">
         <h2 id="ps-mem" className="panel-title">
-          Memories
+          {tl("Memories")}
         </h2>
         <MemoriesSection
           c={c}
@@ -589,7 +580,7 @@ function SettingsForm({ project }: { project: Project }) {
 
       <section className="panel" aria-labelledby="ps-terms">
         <h2 id="ps-terms" className="panel-title">
-          Terminology
+          {tl("Terminology")}
         </h2>
         <TerminologySection
           draft={draft}
@@ -601,14 +592,14 @@ function SettingsForm({ project }: { project: Project }) {
 
       <section className="panel" aria-labelledby="ps-seg">
         <h2 id="ps-seg" className="panel-title">
-          Segmentation
+          {tl("Segmentation")}
         </h2>
         <SegmentationSection rules={draft.segmentation} setRules={(segmentation) => setDraft((d) => ({ ...d, segmentation }))} problems={problems} existing />
       </section>
 
       <section className="panel" aria-labelledby="ps-checks">
         <h2 id="ps-checks" className="panel-title">
-          Checks and analysis
+          {tl("Checks and analysis")}
         </h2>
         <ChecksSection
           c={c}
@@ -638,7 +629,7 @@ function SettingsForm({ project }: { project: Project }) {
 
       <section className="panel" aria-labelledby="ps-prep">
         <h2 id="ps-prep" className="panel-title">
-          Pre-translation
+          {tl("Pre-translation")}
         </h2>
         <PrepareSection
           prepare={draft.prepare}
@@ -652,13 +643,11 @@ function SettingsForm({ project }: { project: Project }) {
       <div className="page-actions save-bar">
         {saveError && (
           <p className="error" role="alert">
-            Could not save: {saveError}
-          </p>
+            {tlx("Could not save: {saveError}", { saveError: saveError })}</p>
         )}
         {problems.length > 0 && changed && (
           <p className="error" role="alert">
-            {plural(problems.length, "setting needs", "settings need")}{" "}
-            attention before saving.
+            {tlx("{length} attention before saving.", { length: plural(problems.length, "setting needs", "settings need") })}
           </p>
         )}
         <button
@@ -673,7 +662,7 @@ function SettingsForm({ project }: { project: Project }) {
             setSaveError("");
           }}
         >
-          Discard changes
+          {tl("Discard changes")}
         </button>
         <button
           type="button"
@@ -681,42 +670,41 @@ function SettingsForm({ project }: { project: Project }) {
           disabled={!changed || saving || problems.length > 0 || !c}
           onClick={() => void save()}
         >
-          {saving ? "Saving…" : "Save changes"}
+          {saving ? tl("Saving…") : tl("Save changes")}
         </button>
       </div>
 
       <section className="panel" aria-labelledby="ps-tpl">
         <h2 id="ps-tpl" className="panel-title">
-          Template
+          {tl("Template")}
         </h2>
         <SaveAsTemplate project={project} unsaved={changed} />
       </section>
 
       <section className="panel settings-danger" aria-labelledby="ps-del">
         <h2 id="ps-del" className="panel-title">
-          Delete the project
+          {tl("Delete the project")}
         </h2>
         <p className="help">
-          Deletes its files, translations, project termbase and project
-          memories. Main memories and masters stay as they are.
+          {tl("Deletes its files, translations, project termbase and project memories. Main memories and masters stay as they are.")}
         </p>
         <ConfirmButton
           label={
             <>
               <Trash2 size={14} aria-hidden="true" />
-              Delete project
+              {tl("Delete project")}
             </>
           }
           small={false}
-          confirm={`Delete “${project.name}” and everything in it?`}
-          action="Delete"
+          confirm={tl("Delete “{name}” and everything in it?", { name: project.name })}
+          action={tl("Delete")}
           onConfirm={() => {
             for (const m of state.memories.filter(
               (x) => x.projectId === project.id,
             ))
               void dropMemory(m.name);
             dispatch({ type: "deleteProject", projectId: project.id });
-            notify(`Deleted the project “${project.name}”`);
+            notify(tl("Deleted the project “{name}”", { name: project.name }));
             go({ page: "projects" });
           }}
         />
@@ -769,7 +757,7 @@ function ProjectMemoryTransfer({
   if (!own.length) return null;
   return (
     <div className="field">
-      <span className="field-label">Project memories</span>
+      <span className="field-label">{tl("Project memories")}</span>
       <ul className="settings-list">
         {own.map((m) => {
           openMemory(c, m, state.projects);
@@ -791,8 +779,7 @@ function ProjectMemoryTransfer({
               {mains.length > 0 ? (
                 <>
                   <label htmlFor={id} className="sr-only">
-                    Main memory for the units of {m.name}
-                  </label>
+                    {tlx("Main memory for the units of {name}", { name: m.name })}</label>
                   <select
                     id={id}
                     className="select-small"
@@ -825,12 +812,12 @@ function ProjectMemoryTransfer({
                       );
                     }}
                   >
-                    Add its units
+                    {tl("Add its units")}
                   </button>
                 </>
               ) : (
                 <span className="muted">
-                  No main memory for {lang(m.targetLang).name} to add them to.
+                  {tlx("No main memory for {name} to add them to.", { name: lang(m.targetLang).name })}
                 </span>
               )}
             </li>
@@ -838,8 +825,7 @@ function ProjectMemoryTransfer({
         })}
       </ul>
       <p className="help">
-        Units already in the main memory with the same translation are updated,
-        not added twice.
+        {tl("Units already in the main memory with the same translation are updated, not added twice.")}
       </p>
     </div>
   );
@@ -901,17 +887,17 @@ function PretranslateNow({
             notify(
               filled
                 ? `Pre-translated ${plural(filled, "segment", "segments")}, ${confirmed} confirmed`
-                : "No empty segment has a match good enough to insert",
+                : tl("No empty segment has a match good enough to insert"),
             );
           }}
         >
-          Pre-translate now
+          {tl("Pre-translate now")}
         </button>
       </div>
       <p className="help">
         {unsaved
-          ? "Save your changes first; pre-translation uses the saved settings."
-          : `Fills the empty segments of every file and language with matches of ${project.prepare.minScore}% or more from the memories set for lookup.`}
+          ? tl("Save your changes first; pre-translation uses the saved settings.")
+          : tl("Fills the empty segments of every file and language with matches of {minScore}% or more from the memories set for lookup.", { minScore: project.prepare.minScore })}
       </p>
     </div>
   );
@@ -934,7 +920,7 @@ function SaveAsTemplate({
   );
   return (
     <div className="field">
-      <label htmlFor="tpl-from">Template name</label>
+      <label htmlFor="tpl-from">{tl("Template name")}</label>
       <div className="row">
         <input
           id="tpl-from"
@@ -958,18 +944,18 @@ function SaveAsTemplate({
             });
             notify(
               clash
-                ? `Updated the template “${name.trim()}”`
-                : `Saved the template “${name.trim()}”`,
+                ? tl("Updated the template “{trim}”", { trim: name.trim() })
+                : tl("Saved the template “{trim}”", { trim: name.trim() }),
             );
           }}
         >
-          {clash ? "Replace template" : "Save as template"}
+          {clash ? tl("Replace template") : tl("Save as template")}
         </button>
       </div>
       <p className="help">
         {unsaved
-          ? "Save your changes first; the template takes the saved settings."
-          : "Languages, memories, termbases, checks and pre-translation; not the files, name or due date. New projects can start from it."}
+          ? tl("Save your changes first; the template takes the saved settings.")
+          : tl("Languages, memories, termbases, checks and pre-translation; not the files, name or due date. New projects can start from it.")}
       </p>
     </div>
   );

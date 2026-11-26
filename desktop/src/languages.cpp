@@ -5,6 +5,7 @@
 #include "languagelist.h"
 
 #include <QLineEdit>
+#include <QCoreApplication>
 #include <QLocale>
 #include <QRegularExpression>
 
@@ -63,7 +64,7 @@ QString normalize(const QString &typed)
 QString name(const QString &tag)
 {
     if (const ListedLanguage *known = listed(tag))
-        return QString::fromUtf8(known->name);
+        return QCoreApplication::translate("Languages", known->name);
     const QLocale l(QString(tag).replace(QLatin1Char('-'), QLatin1Char('_')));
     if (l.language() == QLocale::C)
         return tag;

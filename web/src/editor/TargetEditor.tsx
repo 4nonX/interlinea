@@ -8,6 +8,7 @@ import {
   type Ref,
 } from "react";
 import { normalize, type Run, type TagRun } from "./model";
+import { tl } from "../i18n";
 
 export interface TargetEditorHandle {
   focus(): void;
@@ -25,7 +26,7 @@ export function tagDescription(t: TagRun): string {
       : t.label === "fn"
         ? "footnote"
         : t.label === "br"
-          ? "line break"
+          ? tl("line break")
           : t.label);
   return t.kind === "open"
     ? `Tag ${t.id} start, ${what}`
@@ -323,7 +324,7 @@ export function TargetEditor({
         }}
       />
       {offer && (
-        <ul id={listId} className="completions" role="listbox" aria-label="Completions" style={{ left: offer.left, top: offer.top }}>
+        <ul id={listId} className="completions" role="listbox" aria-label={tl("Completions")} style={{ left: offer.left, top: offer.top }}>
           {offer.items.map((item, i) => (
             <li
               key={item}

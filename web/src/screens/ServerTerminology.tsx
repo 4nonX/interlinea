@@ -6,6 +6,7 @@ import { errorText, useRemote } from "../remote";
 import type { MergeRequest } from "../server";
 import { fmtDate } from "../format";
 import { LocationBadge } from "../components/ui";
+import { tl, tlx } from "../i18n";
 
 /** The termbases on the team server the signed-in person may read, in the termbase list. */
 export function ServerTermbaseGroup({ current }: { current: string }) {
@@ -28,11 +29,11 @@ export function ServerTermbaseGroup({ current }: { current: string }) {
   const host = new URL(r.conn.url).host;
   return (
     <div className="tb-group">
-      <h2 className="tb-group-title">On the team server</h2>
+      <h2 className="tb-group-title">{tl("On the team server")}</h2>
       {list === null ? (
-        <p className="muted tb-group-note">Loading…</p>
+        <p className="muted tb-group-note">{tl("Loading…")}</p>
       ) : list.length === 0 ? (
-        <p className="muted tb-group-note">No termbases on {host} for you yet.</p>
+        <p className="muted tb-group-note">{tlx("No termbases on {host} for you yet.", { host: host })}</p>
       ) : (
         <ul>
           {list.map((t) => {
@@ -63,10 +64,10 @@ export function ReloadButton({ tb }: { tb: Termbase }) {
     <button
       type="button"
       className="btn btn-quiet btn-small"
-      onClick={() => void r.openTermbase(tb.name).then(() => notify(`Loaded ${tb.name} again from the server`), (e) => notify(errorText(e)))}
+      onClick={() => void r.openTermbase(tb.name).then(() => notify(tl("Loaded {name} again from the server", { name: tb.name })), (e) => notify(errorText(e)))}
     >
       <RefreshCw size={14} aria-hidden="true" />
-      Reload
+      {tl("Reload")}
     </button>
   );
 }
@@ -99,7 +100,7 @@ export function ServerReviewNote({ tb }: { tb: Termbase }) {
     e.preventDefault();
     try {
       const mr = await r.api!.openMergeRequest(tb.name, master || masters[0]!, title.trim() || `${tb.name} into ${master || masters[0]}`);
-      notify(`Submitted ${tb.name} to ${mr.target} for review`);
+      notify(tl("Submitted {name} to {target} for review", { name: tb.name, target: mr.target }));
       setTitle("");
       await load();
       window.location.hash = `#/review/${mr.id}`;
@@ -118,17 +119,16 @@ export function ServerReviewNote({ tb }: { tb: Termbase }) {
                 <GitPullRequest size={14} aria-hidden="true" /> {m.title}
               </a>{" "}
               <span className="cell-sub">
-                {m.project} into {m.target}, {m.state === "open" ? `open since ${fmtDate(m.createdAt)}` : `closed ${fmtDate(m.closedAt ?? m.createdAt)}`}
-              </span>
+                {tlx("{project} into {target}, {x}", { project: m.project, target: m.target, x: m.state === "open" ? tl("open since {createdAt}", { createdAt: fmtDate(m.createdAt) }) : tl("closed {at}", { at: fmtDate(m.closedAt ?? m.createdAt) }) })}</span>
             </li>
           ))}
         </ul>
       )}
       {tb.kind === "project" && masters.length > 0 && (
-        <form className="role-add" onSubmit={submit} aria-label="Submit for review">
+        <form className="role-add" onSubmit={submit} aria-label={tl("Submit for review")}>
           {masters.length > 1 && (
             <label>
-              <span className="field-label">Into</span>
+              <span className="field-label">{tl("Into")}</span>
               <select value={master || masters[0]} onChange={(e) => setMaster(e.target.value)}>
                 {masters.map((m) => (
                   <option key={m} value={m}>
@@ -139,11 +139,11 @@ export function ServerReviewNote({ tb }: { tb: Termbase }) {
             </label>
           )}
           <label className="field">
-            <span className="field-label">Title of the request</span>
+            <span className="field-label">{tl("Title of the request")}</span>
             <input value={title} placeholder={`${tb.name} into ${master || masters[0]}`} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <button type="submit" className="btn btn-small">
-            <GitPullRequest size={14} aria-hidden="true" /> Submit to {masters.length > 1 ? "the master" : masters[0]} for review
+            <GitPullRequest size={14} aria-hidden="true" />{" "}{tlx("Submit to {x} for review", { x: masters.length > 1 ? tl("the master") : masters[0] })}
           </button>
         </form>
       )}

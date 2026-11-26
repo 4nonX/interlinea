@@ -7,6 +7,7 @@ import type { SegmentIssue, CoreRun, Timing } from "./editor/model";
 import type { CoreReport } from "./project";
 import type { MemoryImport } from "./core";
 import type { MtService } from "./editor/provider";
+import { tl } from "./i18n";
 
 /** An account, as the server shows it. */
 export interface ServerUser {
@@ -102,12 +103,12 @@ async function request(
     res = await fetch(url + path, { ...init, headers });
   } catch (e) {
     throw new OfflineError(
-      `The server at ${url} can't be reached${e instanceof Error && e.message ? ` (${e.message})` : ""}.`,
+      tl("The server at {url} can't be reached{x}.", { url, x: e instanceof Error && e.message ? ` (${e.message})` : "" }),
     );
   }
   if (!res.ok) {
     let code = "server";
-    let message = `The server answered ${res.status}.`;
+    let message = tl("The server answered {status}.", { status: res.status });
     let problems: Problem[] = [];
     try {
       const b = (await res.json()) as { code?: string; message?: string; problems?: Problem[] };
@@ -130,7 +131,7 @@ async function json<T>(res: Response): Promise<T> {
 /** What the server at an address is; fails if it isn't an Interlinea server. */
 export async function serverInfo(url: string): Promise<ServerInfo> {
   const info = await json<ServerInfo>(await request(url, "/api/server"));
-  if (info?.name !== "Interlinea") throw new ApiError(0, "notInterlinea", `${url} is not an Interlinea server.`);
+  if (info?.name !== tl("Interlinea")) throw new ApiError(0, "notInterlinea", tl("{url} is not an Interlinea server.", { url }));
   return info;
 }
 

@@ -20,7 +20,7 @@ import {
 } from "../data";
 import { useLocalStore, type ImportInput } from "../store";
 import { AddFieldForm, KindSelect, ValuesEditor } from "./TermbaseFields";
-import { plural } from "../format";
+import { listOf, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { go } from "../App";
 import {
@@ -44,6 +44,7 @@ import {
   type Policy,
   type ReadReport,
 } from "../termio";
+import { tl, tlx } from "../i18n";
 
 /** The loaded core, loading it on first use. */
 export function useCore(): CoreApi | null {
@@ -57,7 +58,7 @@ export function useCore(): CoreApi | null {
       (e: unknown) =>
         live &&
         notify(
-          `The core could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -113,7 +114,7 @@ export function ConfirmButton({
   onConfirm,
   disabled,
   small = true,
-  action = "Remove",
+  action = tl("Remove"),
   plain = false,
 }: {
   label: ReactNode;
@@ -161,7 +162,7 @@ export function ConfirmButton({
         className="btn btn-quiet btn-small"
         onClick={() => setAsking(false)}
       >
-        Cancel
+        {tl("Cancel")}
       </button>
     </span>
   );
@@ -208,9 +209,9 @@ function ReviewRulesSection({ tb }: { tb: Termbase }) {
   return (
     <section className="settings-section" aria-labelledby="tbs-review">
       <h3 id="tbs-review" className="settings-title">
-        Review
+        {tl("Review")}
       </h3>
-      <p className="help">Projects merge their new and changed entries into this master, and the merge is reviewed first. These rules say what needs no review.</p>
+      <p className="help">{tl("Projects merge their new and changed entries into this master, and the merge is reviewed first. These rules say what needs no review.")}</p>
       <label className="check">
         <input
           type="checkbox"
@@ -218,18 +219,18 @@ function ReviewRulesSection({ tb }: { tb: Termbase }) {
           onChange={(e) =>
             put(
               { ...rules, keepIdentical: e.target.checked ? undefined : true },
-              e.target.checked ? "Entries the master already has are merged without review" : "Entries the master already has wait for review, too",
+              e.target.checked ? tl("Entries the master already has are merged without review") : tl("Entries the master already has wait for review, too"),
             )
           }
         />
-        Entries the master already has as they are need no review
+        {tl("Entries the master already has as they are need no review")}
       </label>
-      <span className="field-label">Fields that need no approval</span>
+      <span className="field-label">{tl("Fields that need no approval")}</span>
       {tb.infoTypes.length === 0 ? (
-        <p className="help">The termbase has no fields yet. A change to notes or sources only could be merged at once.</p>
+        <p className="help">{tl("The termbase has no fields yet. A change to notes or sources only could be merged at once.")}</p>
       ) : (
         <>
-          <div className="row-start" role="group" aria-label="Fields that need no approval">
+          <div className="row-start" role="group" aria-label={tl("Fields that need no approval")}>
             {tb.infoTypes.map((f) => (
               <label key={f.id} className="check">
                 <input
@@ -239,7 +240,7 @@ function ReviewRulesSection({ tb }: { tb: Termbase }) {
                     const next = e.target.checked ? [...minor, f.id] : minor.filter((m) => m !== f.id);
                     put(
                       { ...rules, minorFields: next.length ? next : undefined },
-                      e.target.checked ? `Changes to ${f.name} only are merged without review` : `Changes to ${f.name} wait for review`,
+                      e.target.checked ? tl("Changes to {name} only are merged without review", { name: f.name }) : tl("Changes to {name} wait for review", { name: f.name }),
                     );
                   }}
                 />
@@ -247,28 +248,28 @@ function ReviewRulesSection({ tb }: { tb: Termbase }) {
               </label>
             ))}
           </div>
-          <p className="help">An entry changed in these fields only needs no review.</p>
+          <p className="help">{tl("An entry changed in these fields only needs no review.")}</p>
         </>
       )}
-      <span className="field-label">Trusted authors</span>
+      <span className="field-label">{tl("Trusted authors")}</span>
       {trusted.length === 0 ? (
-        <p className="help">Nobody yet: every entry waits for review.</p>
+        <p className="help">{tl("Nobody yet: every entry waits for review.")}</p>
       ) : (
         <ul className="mr-reviewers">
           {trusted.map((t, i) => (
             <li key={t.author}>
               <span className="cell-title">{t.author}</span>
-              <span className="cell-sub">{t.lang ? `entries with terms in ${lang(t.lang).name}` : "all entries"}</span>
+              <span className="cell-sub">{t.lang ? tl("entries with terms in {name}", { name: lang(t.lang).name }) : tl("all entries")}</span>
               <button
                 type="button"
                 className="btn btn-quiet btn-small"
-                aria-label={`No longer trust ${t.author}`}
+                aria-label={tl("No longer trust {author}", { author: t.author })}
                 onClick={() => {
                   const next = trusted.filter((_, j) => j !== i);
-                  put({ ...rules, trusted: next.length ? next : undefined }, `The entries of ${t.author} wait for review again`);
+                  put({ ...rules, trusted: next.length ? next : undefined }, tl("The entries of {author} wait for review again", { author: t.author }));
                 }}
               >
-                Remove
+                {tl("Remove")}
               </button>
             </li>
           ))}
@@ -276,24 +277,24 @@ function ReviewRulesSection({ tb }: { tb: Termbase }) {
       )}
       <form
         className="role-add"
-        aria-label="Trust an author"
+        aria-label={tl("Trust an author")}
         onSubmit={(e) => {
           e.preventDefault();
           if (!who) {
-            setProblem("Say whose entries to trust.");
+            setProblem(tl("Say whose entries to trust."));
             return;
           }
           // One rule an author: a new one replaces the old.
           const next = [...trusted.filter((t) => t.author.toLowerCase() !== who.toLowerCase()), forLang ? { author: who, lang: forLang } : { author: who }];
           setWho("");
           setForLang("");
-          put({ ...rules, trusted: next }, `The entries of ${who} need no review`);
+          put({ ...rules, trusted: next }, tl("The entries of {who} need no review", { who }));
         }}
       >
         <label>
-          <span className="field-label">Author</span>
+          <span className="field-label">{tl("Author")}</span>
           <select value={who} onChange={(e) => setWho(e.target.value)}>
-            <option value="">Choose a person…</option>
+            <option value="">{tl("Choose a person…")}</option>
             {authors.map((a) => (
               <option key={a} value={a}>
                 {a}
@@ -302,18 +303,17 @@ function ReviewRulesSection({ tb }: { tb: Termbase }) {
           </select>
         </label>
         <label>
-          <span className="field-label">For</span>
+          <span className="field-label">{tl("For")}</span>
           <select value={forLang} onChange={(e) => setForLang(e.target.value)}>
-            <option value="">All entries</option>
+            <option value="">{tl("All entries")}</option>
             {tb.languages.map((l) => (
               <option key={l} value={l}>
-                Terms in {lang(l).name}
-              </option>
+                {tlx("Terms in {name}", { name: lang(l).name })}</option>
             ))}
           </select>
         </label>
         <button type="submit" className="btn btn-small">
-          Trust
+          {tl("Trust")}
         </button>
       </form>
       {problem && (
@@ -321,7 +321,7 @@ function ReviewRulesSection({ tb }: { tb: Termbase }) {
           {problem}
         </p>
       )}
-      <p className="help">Their new and changed entries need no review. An entry that conflicts with the master always does.</p>
+      <p className="help">{tl("Their new and changed entries need no review. An entry that conflicts with the master always does.")}</p>
     </section>
   );
 }
@@ -362,7 +362,7 @@ export function SettingsDialog({
       return;
     }
     dispatch({ type: "updateTermbase", termbaseId: tb.id, patch: { name: v } });
-    notify(`Renamed to “${v}”`);
+    notify(tl("Renamed to “{v}”", { v }));
   };
   const setInfo = (id: string, patch: Partial<InfoType>) =>
     dispatch({
@@ -376,9 +376,9 @@ export function SettingsDialog({
     });
 
   return (
-    <Modal title="Termbase settings" onClose={onClose} wide>
+    <Modal title={tl("Termbase settings")} onClose={onClose} wide>
       <div className="field">
-        <label htmlFor="tb-name">Name</label>
+        <label htmlFor="tb-name">{tl("Name")}</label>
         <input
           id="tb-name"
           value={name}
@@ -390,12 +390,11 @@ export function SettingsDialog({
 
       <section className="settings-section" aria-labelledby="tbs-langs">
         <h3 id="tbs-langs" className="settings-title">
-          Languages
+          {tl("Languages")}
         </h3>
         {tb.languages.length === 0 ? (
           <p className="help">
-            No languages yet. They are added when you add terms or import a
-            file.
+            {tl("No languages yet. They are added when you add terms or import a file.")}
           </p>
         ) : (
           <ul className="settings-list">
@@ -411,12 +410,12 @@ export function SettingsDialog({
                     label={
                       <>
                         <Trash2 size={14} aria-hidden="true" />
-                        <span className="sr-only">Remove {lang(l).name}</span>
+                        <span className="sr-only">{tl("Remove")}{" "}{lang(l).name}</span>
                       </>
                     }
                     confirm={
                       n
-                        ? `Remove ${lang(l).name} and its ${plural(n, "term", "terms")}?`
+                        ? tl("Remove {name} and its {n}?", { name: lang(l).name, n: plural(n, "term", "terms") })
                         : `Remove ${lang(l).name}?`
                     }
                     onConfirm={() => {
@@ -427,7 +426,7 @@ export function SettingsDialog({
                         now: now(),
                       });
                       notify(
-                        `Removed ${lang(l).name}${n ? ` and ${plural(n, "term", "terms")}` : ""}`,
+                        (n ? tl("Removed {name} and {terms}", { name: lang(l).name, terms: plural(n, "term", "terms") }) : tl("Removed {name}", { name: lang(l).name })),
                       );
                     }}
                   />
@@ -446,12 +445,12 @@ export function SettingsDialog({
               termbaseId: tb.id,
               patch: { languages: [...tb.languages, addLang] },
             });
-            notify(`Added ${lang(addLang).name}`);
+            notify(tl("Added {name}", { name: lang(addLang).name }));
             setAddLang("");
           }}
         >
           <label htmlFor="tbs-add-lang" className="sr-only">
-            Language to add
+            {tl("Language to add")}
           </label>
           <select
             id="tbs-add-lang"
@@ -459,7 +458,7 @@ export function SettingsDialog({
             value={addLang}
             onChange={(e) => setAddLang(e.target.value)}
           >
-            <option value="">Add a language…</option>
+            <option value="">{tl("Add a language…")}</option>
             {LANGUAGES.filter((l) => !tb.languages.includes(l.code)).map(
               (l) => (
                 <option key={l.code} value={l.code}>
@@ -469,31 +468,31 @@ export function SettingsDialog({
             )}
           </select>
           <button type="submit" className="btn btn-small" disabled={!addLang}>
-            Add
+            {tl("Add")}
           </button>
         </form>
       </section>
 
       <section className="settings-section" aria-labelledby="tbs-fields">
         <h3 id="tbs-fields" className="settings-title">
-          Fields
+          {tl("Fields")}
         </h3>
         {tb.infoTypes.length === 0 ? (
           <p className="help">
-            No fields yet: entries hold their terms and each term's status.
+            {tl("No fields yet: entries hold their terms and each term's status.")}
           </p>
         ) : (
           <table className="table settings-fields">
             <thead>
               <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Applies to</th>
-                <th scope="col">Values</th>
+                <th scope="col">{tl("Name")}</th>
+                <th scope="col">{tl("Applies to")}</th>
+                <th scope="col">{tl("Values")}</th>
                 <th scope="col" className="num">
-                  Used
+                  {tl("Used")}
                 </th>
                 <th scope="col">
-                  <span className="sr-only">Remove</span>
+                  <span className="sr-only">{tl("Remove")}</span>
                 </th>
               </tr>
             </thead>
@@ -511,7 +510,7 @@ export function SettingsDialog({
                       infoTypeId: it.id,
                       now: now(),
                     });
-                    notify(`Removed the field “${it.name}”`);
+                    notify(tl("Removed the field “{name}”", { name: it.name }));
                   }}
                 />
               ))}
@@ -533,7 +532,7 @@ export function SettingsDialog({
                 ...(f.kind === "picklist" ? { values: f.values } : {}),
               },
             });
-            notify(`Added field “${f.name}” to ${tb.name}`);
+            notify(tl("Added field “{name}” to {name2}", { name: f.name, name2: tb.name }));
           }}
         />
       </section>
@@ -546,27 +545,24 @@ export function SettingsDialog({
           aria-labelledby="tbs-delete"
         >
           <h3 id="tbs-delete" className="settings-title">
-            Delete termbase
+            {tl("Delete termbase")}
           </h3>
           {usedBy.length ? (
             <p className="help">
-              {usedBy.map((p) => p.name).join(", ")}{" "}
-              {usedBy.length === 1 ? "uses" : "use"} this termbase. Remove it
-              from the project first.
+              {usedBy.length === 1 ? tl("{name} uses this termbase. Remove it from the project first.", { name: usedBy[0]!.name }) : tl("{names} use this termbase. Remove it from the projects first.", { names: listOf(usedBy.map((p) => p.name)) })}
             </p>
           ) : (
             <>
               <p className="help">
-                Deletes {plural(entries.length, "entry", "entries")} and their
-                history. Export the termbase first if you may need it again.
+                {tlx("Deletes {length} and their history. Export the termbase first if you may need it again.", { length: plural(entries.length, "entry", "entries") })}
               </p>
               <ConfirmButton
-                label="Delete termbase"
-                action="Delete"
-                confirm={`Delete ${tb.name} for good?`}
+                label={tl("Delete termbase")}
+                action={tl("Delete")}
+                confirm={tl("Delete {name} for good?", { name: tb.name })}
                 onConfirm={() => {
                   dispatch({ type: "deleteTermbase", termbaseId: tb.id });
-                  notify(`Deleted ${tb.name}`);
+                  notify(tl("Deleted {name}", { name: tb.name }));
                   onClose();
                   go({ page: "terminology" });
                 }}
@@ -585,7 +581,7 @@ export function SettingsDialog({
             onClose();
           }}
         >
-          Done
+          {tl("Done")}
         </button>
       </div>
     </Modal>
@@ -593,9 +589,9 @@ export function SettingsDialog({
 }
 
 const LEVEL_LABEL: Record<InfoType["level"], string> = {
-  concept: "Entry",
-  language: "Language",
-  term: "Term",
+  concept: tl("Entry"),
+  language: tl("Language"),
+  term: tl("Term"),
 };
 
 function FieldSettingsRow({
@@ -615,7 +611,7 @@ function FieldSettingsRow({
     <tr>
       <th scope="row">
         <label htmlFor={`${id}-n`} className="sr-only">
-          Field name
+          {tl("Field name")}
         </label>
         <input
           id={`${id}-n`}
@@ -633,7 +629,7 @@ function FieldSettingsRow({
         <div className="settings-kind">
           <KindSelect
             id={`${id}-k`}
-            label={`Values of ${it.name}`}
+            label={tl("Values of {name}", { name: it.name })}
             value={it.kind}
             onChange={(kind) =>
               onChange({
@@ -644,7 +640,7 @@ function FieldSettingsRow({
           />
           {it.kind === "picklist" && (
             <ValuesEditor
-              label={`The values of ${it.name}, one a line`}
+              label={tl("The values of {name}, one a line", { name: it.name })}
               values={it.values ?? []}
               onChange={(values) => onChange({ values })}
             />
@@ -657,13 +653,13 @@ function FieldSettingsRow({
           label={
             <>
               <Trash2 size={14} aria-hidden="true" />
-              <span className="sr-only">Remove {it.name}</span>
+              <span className="sr-only">{tl("Remove")}{" "}{it.name}</span>
             </>
           }
           confirm={
             used
-              ? `Remove “${it.name}” and ${plural(used, "value", "values")}?`
-              : `Remove “${it.name}”?`
+              ? tl("Remove “{name}” and {used}?", { name: it.name, used: plural(used, "value", "values") })
+              : tl("Remove “{name}”?", { name: it.name })
           }
           onConfirm={onRemove}
         />
@@ -683,11 +679,11 @@ interface Loaded {
 }
 
 const ROLE_LABEL: Record<ColumnRole, string> = {
-  term: "Terms",
-  status: "Status",
-  field: "Field",
-  id: "Entry ID",
-  ignore: "Leave out",
+  term: tl("Terms"),
+  status: tl("Status"),
+  field: tl("Field"),
+  id: tl("Entry ID"),
+  ignore: tl("Leave out"),
 };
 
 /**
@@ -747,7 +743,7 @@ export function ImportDialog({
         readFile({ name: f.name, bytes, detected }, undefined);
       }
     } catch (e) {
-      setError(`${f.name} could not be read: ${errText(e)}`);
+      setError(tl("{name} could not be read: {e}", { name: f.name, e: errText(e) }));
     } finally {
       setBusy(false);
     }
@@ -758,7 +754,7 @@ export function ImportDialog({
     try {
       const r = term.read(c, l.bytes, l.detected.format, m);
       if (!r.termbase.entries?.length && l.detected.format !== "xdt")
-        throw new Error("the file has no entries with terms");
+        throw new Error(tl("the file has no entries with terms"));
       const map: Record<string, LangCode | null> = {};
       for (const fl of fileLanguages(r.termbase))
         map[fl] = suggestLanguage(fl, destLangs);
@@ -767,7 +763,7 @@ export function ImportDialog({
       setError("");
       setStep("languages");
     } catch (e) {
-      setError(`${l.name} could not be read: ${errText(e)}`);
+      setError(tl("{name} could not be read: {e}", { name: l.name, e: errText(e) }));
     }
   };
 
@@ -793,7 +789,7 @@ export function ImportDialog({
       const p = term.plan(c, coreExisting, incoming.entries, effective);
       return { actions: p.actions ?? [], report: p.report };
     } catch (e) {
-      return `The import could not be planned: ${errText(e)}`;
+      return tl("The import could not be planned: {x}", { x: errText(e) });
     }
   }, [
     c,
@@ -829,7 +825,7 @@ export function ImportDialog({
       target === "new"
         ? {
             id: nextId("tb"),
-            name: newName.trim() || read.termbase.name || "Imported termbase",
+            name: newName.trim() || read.termbase.name || tl("Imported termbase"),
             kind: "master",
             location: "local",
             languages: [],
@@ -850,13 +846,13 @@ export function ImportDialog({
             id: nextId("c"),
             at: a.entry.createdAt,
             by: a.entry.createdBy || "unknown",
-            summary: "Created (date from the imported file)",
+            summary: tl("Created (date from the imported file)"),
           });
         history.push({
           id: nextId("c"),
           at: now,
           by: state.userName,
-          summary: `Imported from ${loaded.name}`,
+          summary: tl("Imported from {name}", { name: loaded.name }),
         });
         adds.push({
           id: nextId("e"),
@@ -872,7 +868,7 @@ export function ImportDialog({
           updates.set(id, {
             entryId: id,
             content,
-            summary: `${a.kind === "merge" ? "Merged with" : "Replaced by"} an entry from ${loaded.name}`,
+            summary: (a.kind === "merge" ? tl("Merged with an entry from {name}", { name: loaded.name }) : tl("Replaced by an entry from {name}", { name: loaded.name })),
           });
       }
     }
@@ -893,10 +889,10 @@ export function ImportDialog({
       r.added && `${r.added} added`,
       r.merged && `${r.merged} merged`,
       r.overwritten && `${r.overwritten} replaced`,
-      r.skipped + r.unchanged && `${r.skipped + r.unchanged} left as they were`,
+      r.skipped + r.unchanged && tl("{x} left as they were", { x: r.skipped + r.unchanged }),
     ].filter(Boolean);
     notify(
-      `Imported ${loaded.name} into ${create?.name ?? dest!.name}: ${parts.join(", ") || "nothing changed"}`,
+      tl("Imported {name} into {x}: {x2}", { name: loaded.name, x: create?.name ?? dest!.name, x2: parts.join(", ") || tl("nothing changed") }),
     );
     onClose();
     go({ page: "terminology", termbaseId });
@@ -906,21 +902,21 @@ export function ImportDialog({
     ? ["file", "columns", "languages", "review"]
     : ["file", "languages", "review"];
   const stepNames: Record<Step, string> = {
-    file: "File",
-    columns: "Columns",
-    languages: "Languages",
-    review: "Review",
+    file: tl("File"),
+    columns: tl("Columns"),
+    languages: tl("Languages"),
+    review: tl("Review"),
   };
 
   return (
     <Modal
       title={
-        tb && target === "this" ? `Import into ${tb.name}` : "Import a termbase"
+        tb && target === "this" ? tl("Import into {name}", { name: tb.name }) : tl("Import a termbase")
       }
       onClose={onClose}
       wide
     >
-      <ol className="stepper stepper-small" aria-label="Steps">
+      <ol className="stepper stepper-small" aria-label={tl("Steps")}>
         {steps.map((s, i) => (
           <li
             key={s}
@@ -939,7 +935,7 @@ export function ImportDialog({
         <>
           {tb && (
             <fieldset className="field">
-              <legend>Import into</legend>
+              <legend>{tl("Import into")}</legend>
               <label className="check">
                 <input
                   type="radio"
@@ -956,7 +952,7 @@ export function ImportDialog({
                   checked={target === "new"}
                   onChange={() => setTarget("new")}
                 />
-                <span>A new master termbase</span>
+                <span>{tl("A new master termbase")}</span>
               </label>
             </fieldset>
           )}
@@ -964,8 +960,7 @@ export function ImportDialog({
             <div className="field-grid">
               <div className="field">
                 <label htmlFor="imp-name">
-                  Name <span className="optional">from the file if empty</span>
-                </label>
+                  {tlx("Name {span}", { span: <span className="optional">{tl("from the file if empty")}</span> })}</label>
                 <input
                   id="imp-name"
                   value={newName}
@@ -984,14 +979,12 @@ export function ImportDialog({
             <span className="cell-title">
               {c
                 ? busy
-                  ? "Reading…"
-                  : "Choose a termbase file"
-                : "Loading the core…"}
+                  ? tl("Reading…")
+                  : tl("Choose a termbase file")
+                : tl("Loading the core…")}
             </span>
             <span className="help">
-              TBX (2 or 3), an .sdltb termbase or its XML export, an XLSX
-              workbook, CSV or tab-separated text. A termbase definition (.xdt)
-              brings only the languages.
+              {tl("TBX (2 or 3), an .sdltb termbase or its XML export, an XLSX workbook, CSV or tab-separated text. A termbase definition (.xdt) brings only the languages.")}
             </span>
           </button>
           <input
@@ -1019,16 +1012,16 @@ export function ImportDialog({
             {plural(read.report.entries, "entry", "entries")},{" "}
             {plural(read.report.terms, "term", "terms")}
             {read.report.skipped
-              ? `, ${read.report.skipped} rows without terms skipped`
+              ? tl(", {skipped} rows without terms skipped", { skipped: read.report.skipped })
               : ""}
             .
           </p>
           <table className="table">
-            <caption className="sr-only">Languages of the file</caption>
+            <caption className="sr-only">{tl("Languages of the file")}</caption>
             <thead>
               <tr>
-                <th scope="col">In the file</th>
-                <th scope="col">In the termbase</th>
+                <th scope="col">{tl("In the file")}</th>
+                <th scope="col">{tl("In the termbase")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1039,8 +1032,7 @@ export function ImportDialog({
                   </th>
                   <td>
                     <label htmlFor={`lm-${fl}`} className="sr-only">
-                      Termbase language for {fl}
-                    </label>
+                      {tlx("Termbase language for {fl}", { fl: fl })}</label>
                     <select
                       id={`lm-${fl}`}
                       value={langMap[fl] ?? ""}
@@ -1051,7 +1043,7 @@ export function ImportDialog({
                         }))
                       }
                     >
-                      <option value="">Leave out</option>
+                      <option value="">{tl("Leave out")}</option>
                       {[
                         ...new Set([
                           ...destLangs,
@@ -1072,28 +1064,25 @@ export function ImportDialog({
           </table>
           {fields && fields.created.length > 0 && (
             <p className="help">
-              New fields:{" "}
-              {fields.created
+              {tlx("New fields: {join}.", { join: fields.created
                 .map(
                   (f) =>
                     `${f.name} (${LEVEL_LABEL[f.level].toLocaleLowerCase()})`,
                 )
-                .join(", ")}
-              .
+                .join(", ") })}
             </p>
           )}
           {incoming.dropped > 0 && (
             <p className="detect detect-warn">
               <AlertTriangle size={16} aria-hidden="true" />
               <span>
-                {plural(incoming.dropped, "entry has", "entries have")} no terms
-                in the languages you import and will be left out.
+                {tlx("{dropped} no terms in the languages you import and will be left out.", { dropped: plural(incoming.dropped, "entry has", "entries have") })}
               </span>
             </p>
           )}
           <Warnings items={read.report.warnings} />
           <fieldset className="field">
-            <legend>Terms without a status</legend>
+            <legend>{tl("Terms without a status")}</legend>
             <label className="check">
               <input
                 type="radio"
@@ -1101,7 +1090,7 @@ export function ImportDialog({
                 checked={fallback === "approved"}
                 onChange={() => setFallback("approved")}
               />
-              <span>Approved</span>
+              <span>{tl("Approved")}</span>
             </label>
             <label className="check">
               <input
@@ -1110,7 +1099,7 @@ export function ImportDialog({
                 checked={fallback === "proposed"}
                 onChange={() => setFallback("proposed")}
               />
-              <span>Proposed, for lists nobody has checked</span>
+              <span>{tl("Proposed, for lists nobody has checked")}</span>
             </label>
           </fieldset>
         </>
@@ -1121,7 +1110,7 @@ export function ImportDialog({
           {existing.length > 0 && (
             <div className="field-grid">
               <fieldset className="field">
-                <legend>Find existing entries by</legend>
+                <legend>{tl("Find existing entries by")}</legend>
                 <label className="check">
                   <input
                     type="radio"
@@ -1129,12 +1118,12 @@ export function ImportDialog({
                     checked={policy.match === "term"}
                     onChange={() => setPolicy((p) => ({ ...p, match: "term" }))}
                   />
-                  <span>A shared term</span>
+                  <span>{tl("A shared term")}</span>
                 </label>
                 {policy.match === "term" && (
                   <div className="nested">
                     <label htmlFor="imp-match-lang" className="sr-only">
-                      Language of the shared term
+                      {tl("Language of the shared term")}
                     </label>
                     <select
                       id="imp-match-lang"
@@ -1146,11 +1135,10 @@ export function ImportDialog({
                         }))
                       }
                     >
-                      <option value="">In any language</option>
+                      <option value="">{tl("In any language")}</option>
                       {usedLangs.map((l) => (
                         <option key={l} value={l}>
-                          In {lang(l).name}
-                        </option>
+                          {tlx("In {name}", { name: lang(l).name })}</option>
                       ))}
                     </select>
                   </div>
@@ -1163,7 +1151,7 @@ export function ImportDialog({
                     onChange={() => setPolicy((p) => ({ ...p, match: "id" }))}
                   />
                   <span>
-                    The entry ID (for a file exported from this termbase)
+                    {tl("The entry ID (for a file exported from this termbase)")}
                   </span>
                 </label>
                 <label className="check">
@@ -1173,18 +1161,18 @@ export function ImportDialog({
                     checked={policy.match === "none"}
                     onChange={() => setPolicy((p) => ({ ...p, match: "none" }))}
                   />
-                  <span>Nothing: add every entry</span>
+                  <span>{tl("Nothing: add every entry")}</span>
                 </label>
               </fieldset>
               {policy.match !== "none" && (
                 <fieldset className="field">
-                  <legend>When an entry exists</legend>
+                  <legend>{tl("When an entry exists")}</legend>
                   {(
                     [
-                      ["merge", "Merge: add the new terms and field values"],
-                      ["overwrite", "Replace it with the entry from the file"],
-                      ["skip", "Keep it and leave the file's entry out"],
-                      ["add", "Add the file's entry as a separate entry"],
+                      ["merge", tl("Merge: add the new terms and field values")],
+                      ["overwrite", tl("Replace it with the entry from the file")],
+                      ["skip", tl("Keep it and leave the file's entry out")],
+                      ["add", tl("Add the file's entry as a separate entry")],
                     ] as const
                   ).map(([v, label]) => (
                     <label key={v} className="check">
@@ -1226,7 +1214,7 @@ export function ImportDialog({
           className="btn btn-quiet btn-small"
           onClick={onClose}
         >
-          Cancel
+          {tl("Cancel")}
         </button>
         {step !== "file" && (
           <button
@@ -1237,7 +1225,7 @@ export function ImportDialog({
               setStep(steps[steps.indexOf(step) - 1]!);
             }}
           >
-            Back
+            {tl("Back")}
           </button>
         )}
         {step === "columns" && (
@@ -1249,7 +1237,7 @@ export function ImportDialog({
             }
             onClick={() => loaded && mapping && readFile(loaded, mapping)}
           >
-            Continue
+            {tl("Continue")}
           </button>
         )}
         {step === "languages" && (
@@ -1259,7 +1247,7 @@ export function ImportDialog({
             disabled={incoming.entries.length === 0}
             onClick={() => setStep("review")}
           >
-            Continue
+            {tl("Continue")}
           </button>
         )}
         {step === "review" && (
@@ -1273,7 +1261,7 @@ export function ImportDialog({
             }
             onClick={doImport}
           >
-            Import
+            {tl("Import")}
           </button>
         )}
       </div>
@@ -1292,7 +1280,7 @@ function Warnings({ items }: { items?: string[] }) {
         </li>
       ))}
       {items.length > 6 && (
-        <li className="help">and {items.length - 6} more notes</li>
+        <li className="help">{tlx("and {x} more notes", { x: items.length - 6 })}</li>
       )}
     </ul>
   );
@@ -1329,14 +1317,11 @@ function ColumnStep({
   return (
     <>
       <p className="help">
-        {loaded.name}:{" "}
-        {plural(
+        {tlx("{name}: {plural} of entries. Each row is one entry. Check what each column holds; the guess comes from the column names.", { name: loaded.name, plural: plural(
           (loaded.detected.total ?? rows.length) - (mapping.header ? 1 : 0),
           "row",
           "rows",
-        )}{" "}
-        of entries. Each row is one entry. Check what each column holds; the
-        guess comes from the column names.
+        ) })}
       </p>
       <div className="row row-start">
         <label className="check">
@@ -1347,10 +1332,10 @@ function ColumnStep({
               setMapping({ ...mapping, header: e.target.checked })
             }
           />
-          <span>The first row holds column names</span>
+          <span>{tl("The first row holds column names")}</span>
         </label>
         <label htmlFor="imp-sep" className="inline-label">
-          Synonyms in one cell separated by
+          {tl("Synonyms in one cell separated by")}
         </label>
         <input
           id="imp-sep"
@@ -1364,7 +1349,7 @@ function ColumnStep({
       </div>
       <div className="table-wrap mapping-wrap">
         <table className="table mapping">
-          <caption className="sr-only">Columns of {loaded.name}</caption>
+          <caption className="sr-only">{tl("Columns of")}{" "}{loaded.name}</caption>
           <thead>
             <tr>
               {Array.from({ length: width }, (_, i) => {
@@ -1375,10 +1360,10 @@ function ColumnStep({
                 return (
                   <th key={i} scope="col">
                     <span className="mapping-head">
-                      {col.header || `Column ${i + 1}`}
+                      {col.header || tl("Column {x}", { x: i + 1 })}
                     </span>
                     <label htmlFor={`col-${i}-role`} className="sr-only">
-                      Column {i + 1} holds
+                      {tlx("Column {x} holds", { x: i + 1 })}
                     </label>
                     <select
                       id={`col-${i}-role`}
@@ -1408,8 +1393,7 @@ function ColumnStep({
                       (col.role === "field" && col.level !== "entry")) && (
                       <>
                         <label htmlFor={`col-${i}-lang`} className="sr-only">
-                          Language of column {i + 1}
-                        </label>
+                          {tlx("Language of column {x}", { x: i + 1 })}</label>
                         <select
                           id={`col-${i}-lang`}
                           value={col.lang ?? ""}
@@ -1417,7 +1401,7 @@ function ColumnStep({
                             set(i, { lang: e.target.value || undefined })
                           }
                         >
-                          <option value="">Language…</option>
+                          <option value="">{tl("Language…")}</option>
                           {langCodes.map((code) => (
                             <option key={code} value={code}>
                               {lang(code).name}
@@ -1429,16 +1413,15 @@ function ColumnStep({
                     {col.role === "field" && (
                       <>
                         <label htmlFor={`col-${i}-field`} className="sr-only">
-                          Field name of column {i + 1}
-                        </label>
+                          {tlx("Field name of column {x}", { x: i + 1 })}</label>
                         <input
                           id={`col-${i}-field`}
                           value={col.field ?? ""}
-                          placeholder="Field name"
+                          placeholder={tl("Field name")}
                           onChange={(e) => set(i, { field: e.target.value })}
                         />
                         <label htmlFor={`col-${i}-level`} className="sr-only">
-                          Column {i + 1} applies to
+                          {tlx("Column {x} applies to", { x: i + 1 })}
                         </label>
                         <select
                           id={`col-${i}-level`}
@@ -1447,9 +1430,9 @@ function ColumnStep({
                             set(i, { level: e.target.value as CoreLevel })
                           }
                         >
-                          <option value="entry">Whole entry</option>
-                          <option value="language">One language</option>
-                          <option value="term">The terms</option>
+                          <option value="entry">{tl("Whole entry")}</option>
+                          <option value="language">{tl("One language")}</option>
+                          <option value="term">{tl("The terms")}</option>
                         </select>
                       </>
                     )}
@@ -1481,7 +1464,7 @@ function ColumnStep({
       </div>
       {!hasTerms && (
         <p className="error" role="alert">
-          Mark at least one column as terms and give it a language.
+          {tl("Mark at least one column as terms and give it a language.")}
         </p>
       )}
     </>
@@ -1496,10 +1479,10 @@ function termsOf(e: CoreEntry): string {
 }
 
 const KIND_LABEL: Record<PlanAction["kind"], string> = {
-  add: "New",
-  merge: "Merged",
-  overwrite: "Replaced",
-  skip: "Unchanged",
+  add: tl("New"),
+  merge: tl("Merged"),
+  overwrite: tl("Replaced"),
+  skip: tl("Unchanged"),
 };
 
 function PlanSummary({
@@ -1529,23 +1512,23 @@ function PlanSummary({
   return (
     <section aria-labelledby="plan-title" className="plan">
       <h3 id="plan-title" className="settings-title">
-        What the import does
+        {tl("What the import does")}
       </h3>
       <dl className="plan-counts">
         <div>
-          <dt>New entries</dt>
+          <dt>{tl("New entries")}</dt>
           <dd>{r.added}</dd>
         </div>
         <div>
-          <dt>Merged</dt>
+          <dt>{tl("Merged")}</dt>
           <dd>{r.merged}</dd>
         </div>
         <div>
-          <dt>Replaced</dt>
+          <dt>{tl("Replaced")}</dt>
           <dd>{r.overwritten}</dd>
         </div>
         <div>
-          <dt>Unchanged</dt>
+          <dt>{tl("Unchanged")}</dt>
           <dd>{r.skipped + r.unchanged}</dd>
         </div>
       </dl>
@@ -1553,13 +1536,13 @@ function PlanSummary({
       <div className="table-wrap plan-wrap">
         <table className="table">
           <caption className="sr-only">
-            Entries of the file and what happens to them
+            {tl("Entries of the file and what happens to them")}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Entry in the file</th>
-              <th scope="col">Result</th>
-              <th scope="col">Existing entry</th>
+              <th scope="col">{tl("Entry in the file")}</th>
+              <th scope="col">{tl("Result")}</th>
+              <th scope="col">{tl("Existing entry")}</th>
             </tr>
           </thead>
           <tbody>
@@ -1573,7 +1556,7 @@ function PlanSummary({
                 </td>
                 <td>
                   {a.kind === "add" ? (
-                    <span className="muted">none</span>
+                    <span className="muted">{tl("none")}</span>
                   ) : (
                     label(a.existing)
                   )}
@@ -1585,13 +1568,11 @@ function PlanSummary({
       </div>
       {plan.actions.length > shown.length && (
         <p className="help">
-          and{" "}
-          {plural(
+          {tlx("and {plural}", { plural: plural(
             plan.actions.length - shown.length,
             "more entry",
             "more entries",
-          )}
-        </p>
+          ) })}</p>
       )}
     </section>
   );

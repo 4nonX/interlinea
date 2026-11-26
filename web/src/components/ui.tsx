@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { Cloud, HardDrive } from "lucide-react";
 import { lang, type LangCode, type Location, type TermStatus } from "../data";
 import { useStore } from "../store";
+import { tl } from "../i18n";
 
 export function LocationBadge({
   location,
@@ -13,23 +14,23 @@ export function LocationBadge({
   return location === "server" ? (
     <span
       className="badge badge-server"
-      title={server ? `On server ${server}` : "On server"}
+      title={server ? tl("On server {server}", { server }) : tl("On server")}
     >
       <Cloud size={13} aria-hidden="true" />
-      Server
+      {tl("Server")}
     </span>
   ) : (
-    <span className="badge" title="Stored on this computer">
+    <span className="badge" title={tl("Stored on this computer")}>
       <HardDrive size={13} aria-hidden="true" />
-      Local
+      {tl("Local")}
     </span>
   );
 }
 
 const STATUS_LABEL: Record<TermStatus, string> = {
-  approved: "Approved",
-  proposed: "Proposed",
-  forbidden: "Forbidden",
+  approved: tl("Approved"),
+  proposed: tl("Proposed"),
+  forbidden: tl("Forbidden"),
 };
 
 export function StatusBadge({ status }: { status: TermStatus }) {

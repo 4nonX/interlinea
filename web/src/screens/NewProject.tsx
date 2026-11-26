@@ -53,7 +53,7 @@ import { AnalysisTable } from "../components/AnalysisTable";
 import { takePendingDocs, type PendingDoc } from "../draft";
 import { useDictionaries } from "../editor/spelling";
 import { useLocalStore } from "../store";
-import { fmtDate, fmtNum, plural } from "../format";
+import { fmtDate, fmtNum, listOf, plural } from "../format";
 import { LangChip, PageHeader } from "../components/ui";
 import { go } from "../App";
 import { errorText, remoteId, useRemote } from "../remote";
@@ -85,13 +85,14 @@ import {
   type NewMemory,
 } from "./ProjectSections";
 import { droppedFiles, chosenFiles } from "../files";
+import { tl, tlx } from "../i18n";
 
 const STEPS = [
-  "Start",
-  "Files and languages",
-  "Memories",
-  "Terminology",
-  "Review",
+  tl("Start"),
+  tl("Files and languages"),
+  tl("Memories"),
+  tl("Terminology"),
+  tl("Review"),
 ] as const;
 
 /** The fields each step sets, for its problems and its Continue button. */
@@ -182,7 +183,7 @@ export function NewProject() {
       (e: unknown) =>
         live &&
         notify(
-          `The core could not be loaded: ${e instanceof Error ? e.message : String(e)}`,
+          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -427,22 +428,22 @@ export function NewProject() {
     )
       ps.push({
         field: "name",
-        message: "A project with this name exists already.",
+        message: tl("A project with this name exists already."),
       });
     if (bilingualSources.length > 1)
       ps.push({
         field: "files",
-        message: `The bilingual files have different source languages (${bilingualSources.map((l) => lang(l).name).join(", ")}). A project has one source language.`,
+        message: tl("The bilingual files have different source languages ({join}). A project has one source language.", { join: bilingualSources.map((l) => lang(l).name).join(", ") }),
       });
     if (packages.length > 1)
       ps.push({
         field: "files",
         message:
-          "A project holds the files of one package, so it can be saved back as one return package.",
+          tl("A project holds the files of one package, so it can be saved back as one return package."),
       });
     if (asTemplate && step === 4) {
       if (!templateName.trim())
-        ps.push({ field: "template", message: "Give the template a name." });
+        ps.push({ field: "template", message: tl("Give the template a name.") });
       else if (
         state.templates.some(
           (t) => t.name.toLowerCase() === templateName.trim().toLowerCase(),
@@ -450,7 +451,7 @@ export function NewProject() {
       )
         ps.push({
           field: "template",
-          message: "A template with this name exists already.",
+          message: tl("A template with this name exists already."),
         });
     }
     return ps;
@@ -677,7 +678,7 @@ export function NewProject() {
             template: templateOf(`tpl-${Date.now().toString(36)}`, templateName, full, now),
           });
         notify(
-          `Created project “${name}” on ${new URL(remote.conn.url).host}` +
+          tl("Created project “{name}” on {host}", { name, host: new URL(remote.conn.url).host }) +
             (done.uploaded.length ? `; uploaded ${done.uploaded.join(", ")}` : "") +
             (filled ? `; ${plural(filled, "segment", "segments")} pre-translated` : ""),
         );
@@ -710,11 +711,11 @@ export function NewProject() {
         ),
       });
     notify(
-      `Created project “${name}”` +
+      tl("Created project “{name}”", { name }) +
         (filled
           ? `; ${plural(filled, "segment", "segments")} pre-translated`
           : "") +
-        (asTemplate ? `; template “${templateName.trim()}” saved` : "") +
+        (asTemplate ? tl("; template “{x}” saved", { x: templateName.trim() }) : "") +
         (kept
           ? ""
           : ". The new memories are kept only until you close this page: this browser does not allow saving"),
@@ -735,13 +736,13 @@ export function NewProject() {
 
   return (
     <div className="page page-narrow">
-      <PageHeader title="New project">
+      <PageHeader title={tl("New project")}>
         <a className="btn btn-quiet" href="#/projects">
-          Cancel
+          {tl("Cancel")}
         </a>
       </PageHeader>
 
-      <ol className="stepper" aria-label="Steps">
+      <ol className="stepper" aria-label={tl("Steps")}>
         {STEPS.map((s, i) => (
           <li
             key={s}
@@ -774,10 +775,10 @@ export function NewProject() {
             tabIndex={-1}
             className="panel-title"
           >
-            Start
+            {tl("Start")}
           </h2>
           <fieldset className="field">
-            <legend>Start from</legend>
+            <legend>{tl("Start from")}</legend>
             <ul className="choice-list">
               <li>
                 <label className="choice">
@@ -788,10 +789,9 @@ export function NewProject() {
                     onChange={() => applyStart({ kind: "blank" })}
                   />
                   <span className="choice-body">
-                    <span className="choice-title">A blank project</span>
+                    <span className="choice-title">{tl("A blank project")}</span>
                     <span className="choice-desc">
-                      Languages from the files, memories and termbases suggested
-                      for the client.
+                      {tl("Languages from the files, memories and termbases suggested for the client.")}
                     </span>
                   </span>
                 </label>
@@ -809,9 +809,7 @@ export function NewProject() {
                     />
                     <span className="choice-body">
                       <span className="choice-title">
-                        Template: {t.name}
-                        {t.client && <span className="tag">{t.client}</span>}
-                      </span>
+                        {tlx("Template: {name}{x}", { name: t.name, x: t.client && <span className="tag">{t.client}</span> })}</span>
                       <span className="choice-meta">
                         <span className="lang-pair">
                           <LangChip code={t.sourceLang} /> →{" "}
@@ -851,15 +849,14 @@ export function NewProject() {
                     />
                     <span className="choice-body">
                       <label className="choice-title" htmlFor="start-project">
-                        Like an earlier project
+                        {tl("Like an earlier project")}
                       </label>
                       <span className="choice-desc">
-                        Its languages, memories, termbases and checks; new files
-                        and a new name.
+                        {tl("Its languages, memories, termbases and checks; new files and a new name.")}
                       </span>
                       {start.kind === "project" && (
                         <span className="choice-inline">
-                          <label htmlFor="start-project-pick">Project</label>
+                          <label htmlFor="start-project-pick">{tl("Project")}</label>
                           <select
                             id="start-project-pick"
                             value={start.id}
@@ -886,8 +883,7 @@ export function NewProject() {
             </ul>
             {state.templates.length === 0 && (
               <p className="help">
-                You can save any project's settings as a template, here at the
-                end or later from the project's settings.
+                {tl("You can save any project's settings as a template, here at the end or later from the project's settings.")}
               </p>
             )}
           </fieldset>
@@ -897,7 +893,7 @@ export function NewProject() {
               className="btn btn-primary"
               onClick={() => setStep(1)}
             >
-              Continue to files and languages
+              {tl("Continue to files and languages")}
             </button>
           </div>
         </section>
@@ -911,25 +907,25 @@ export function NewProject() {
             tabIndex={-1}
             className="panel-title"
           >
-            Files and languages
+            {tl("Files and languages")}
           </h2>
           <FilesField docs={docs} setDocs={setDocs} />
           <Problems messages={problemsAt(problems, "files")} />
 
           {bilingualSources.length === 1 ? (
             <div className="field">
-              <span className="field-label">Source language</span>
+              <span className="field-label">{tl("Source language")}</span>
               <p className="lang-fixed">
                 {lang(draft.sourceLang).name}{" "}
                 <LangChip code={draft.sourceLang} />
               </p>
               <p className="help">
-                From the bilingual files, which are made for it.
+                {tl("From the bilingual files, which are made for it.")}
               </p>
             </div>
           ) : (
             <div className="field">
-              <label htmlFor="source">Source language</label>
+              <label htmlFor="source">{tl("Source language")}</label>
               <SourceDetection
                 detection={detection}
                 source={draft.sourceLang}
@@ -963,15 +959,14 @@ export function NewProject() {
                   )}
               </select>
               <p id="source-help" className="help">
-                Text shows the language, not the region. Check the variant (for
-                example German (Austria)) if the client needs it.
+                {tl("Text shows the language, not the region. Check the variant (for example German (Austria)) if the client needs it.")}
               </p>
               <Problems messages={problemsAt(problems, "sourceLang")} />
             </div>
           )}
 
           <fieldset className="field">
-            <legend>Target languages</legend>
+            <legend>{tl("Target languages")}</legend>
             <TargetPicker
               source={draft.sourceLang}
               targets={draft.targetLangs}
@@ -984,8 +979,7 @@ export function NewProject() {
             />
             {draft.targetLangs.length > 1 && (
               <p className="help">
-                Each file is translated into every target language; a bilingual
-                file only into the language it was made for.
+                {tl("Each file is translated into every target language; a bilingual file only into the language it was made for.")}
               </p>
             )}
             <Problems messages={problemsAt(problems, "targetLangs")} />
@@ -993,7 +987,7 @@ export function NewProject() {
 
           <div className="field-grid">
             <div className="field">
-              <label htmlFor="pname">Project name</label>
+              <label htmlFor="pname">{tl("Project name")}</label>
               <input
                 id="pname"
                 value={draft.name}
@@ -1011,8 +1005,7 @@ export function NewProject() {
             </div>
             <div className="field">
               <label htmlFor="client">
-                Client <span className="optional">optional</span>
-              </label>
+                {tlx("Client {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
               <input
                 id="client"
                 list="clients"
@@ -1028,14 +1021,13 @@ export function NewProject() {
                 ))}
               </datalist>
               <p id="client-help" className="help">
-                Used to suggest the client's memories and termbases.
+                {tl("Used to suggest the client's memories and termbases.")}
               </p>
               <Problems messages={problemsAt(problems, "client")} />
             </div>
             <div className="field">
               <label htmlFor="due">
-                Due <span className="optional">optional</span>
-              </label>
+                {tlx("Due {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
               <input
                 id="due"
                 type="datetime-local"
@@ -1051,8 +1043,7 @@ export function NewProject() {
             </div>
             <div className="field">
               <label htmlFor="desc">
-                Description <span className="optional">optional</span>
-              </label>
+                {tlx("Description {span}", { span: <span className="optional">{tl("optional")}</span> })}</label>
               <input
                 id="desc"
                 value={draft.description}
@@ -1069,7 +1060,7 @@ export function NewProject() {
               className="btn btn-quiet"
               onClick={() => setStep(0)}
             >
-              Back
+              {tl("Back")}
             </button>
             <button
               type="button"
@@ -1077,7 +1068,7 @@ export function NewProject() {
               disabled={!c || !canContinue(1)}
               onClick={() => setStep(2)}
             >
-              Continue to memories
+              {tl("Continue to memories")}
             </button>
           </div>
         </section>
@@ -1091,7 +1082,7 @@ export function NewProject() {
             tabIndex={-1}
             className="panel-title"
           >
-            Memories
+            {tl("Memories")}
           </h2>
           <MemoriesSection
             c={c}
@@ -1110,7 +1101,7 @@ export function NewProject() {
               className="btn btn-quiet"
               onClick={() => setStep(1)}
             >
-              Back
+              {tl("Back")}
             </button>
             <button
               type="button"
@@ -1118,7 +1109,7 @@ export function NewProject() {
               disabled={!canContinue(2)}
               onClick={() => setStep(3)}
             >
-              Continue to terminology
+              {tl("Continue to terminology")}
             </button>
           </div>
         </section>
@@ -1132,7 +1123,7 @@ export function NewProject() {
             tabIndex={-1}
             className="panel-title"
           >
-            Terminology
+            {tl("Terminology")}
           </h2>
           <TerminologySection
             draft={draft}
@@ -1146,7 +1137,7 @@ export function NewProject() {
               className="btn btn-quiet"
               onClick={() => setStep(2)}
             >
-              Back
+              {tl("Back")}
             </button>
             <button
               type="button"
@@ -1154,7 +1145,7 @@ export function NewProject() {
               disabled={!canContinue(3)}
               onClick={() => setStep(4)}
             >
-              Continue to review
+              {tl("Continue to review")}
             </button>
           </div>
         </section>
@@ -1168,37 +1159,30 @@ export function NewProject() {
             tabIndex={-1}
             className="panel-title"
           >
-            Review
+            {tl("Review")}
           </h2>
           <dl className="summary">
-            <dt>Project</dt>
+            <dt>{tl("Project")}</dt>
             <dd>
               {draft.name.trim()}
               {draft.client.trim() && (
-                <span className="muted"> for {draft.client.trim()}</span>
+                <span className="muted">{" "}{tl("for")}{" "}{draft.client.trim()}</span>
               )}
               {draft.due && (
-                <span className="muted">, due {fmtDate(draft.due)}</span>
+                <span className="muted">{tl(", due")}{" "}{fmtDate(draft.due)}</span>
               )}
             </dd>
-            <dt>Files</dt>
+            <dt>{tl("Files")}</dt>
             <dd>
-              {plural(translatable.length, "file", "files")} to translate
-              {docs.length > translatable.length &&
-                `, ${plural(docs.length - translatable.length, "reference file", "reference files")}`}
-              {packages[0] && (
+              {tlx("{length} to translate{x}{x2}", { length: plural(translatable.length, "file", "files"), x: docs.length > translatable.length &&
+                `, ${plural(docs.length - translatable.length, "reference file", "reference files")}`, x2: packages[0] && (
                 <span className="muted">
-                  {" "}
-                  from the {packageKind(packages[0])} {packages[0]}
-                </span>
-              )}
-            </dd>
-            <dt>Languages</dt>
+                  {" "}{tlx("from the {packageKind} {x}", { packageKind: packageKind(packages[0]), x: packages[0] })}</span>
+              ) })}</dd>
+            <dt>{tl("Languages")}</dt>
             <dd>
-              {lang(draft.sourceLang).name} into{" "}
-              {draft.targetLangs.map((t) => lang(t).name).join(", ")}
-            </dd>
-            <dt>Memories</dt>
+              {tlx("{name} into {join}", { name: lang(draft.sourceLang).name, join: draft.targetLangs.map((t) => lang(t).name).join(", ") })}</dd>
+            <dt>{tl("Memories")}</dt>
             <dd>
               {draft.targetLangs.map((t) => (
                 <div key={t}>
@@ -1212,12 +1196,12 @@ export function NewProject() {
                         .join(", ")
                     : "none"}
                   {draft.projectMemory && (
-                    <span className="muted">, and a project memory</span>
+                    <span className="muted">{tl(", and a project memory")}</span>
                   )}
                 </div>
               ))}
             </dd>
-            <dt>Terminology</dt>
+            <dt>{tl("Terminology")}</dt>
             <dd>
               <TerminologySummary draft={draft} />
             </dd>
@@ -1225,12 +1209,10 @@ export function NewProject() {
 
           <details className="settings-details">
             <summary>
-              Checks and context matches
-              <span className="muted">
+              {tlx("Checks and context matches{span}", { span: <span className="muted">
                 {c &&
-                  ` ${checksOn(c, draft.qa).on} of ${checksOn(c, draft.qa).of} checks on, context matches by ${draft.context === "both" ? "the segments before and after" : "the segment before"}`}
-              </span>
-            </summary>
+                  (draft.context === "both" ? tl(" {on} of {of} checks on, context matches by the segments before and after", { on: checksOn(c, draft.qa).on, of: checksOn(c, draft.qa).of }) : tl(" {on} of {of} checks on, context matches by the segment before", { on: checksOn(c, draft.qa).on, of: checksOn(c, draft.qa).of }))}
+              </span> })}</summary>
             <ChecksSection
               c={c}
               targetLangs={draft.targetLangs}
@@ -1247,11 +1229,9 @@ export function NewProject() {
 
           <details className="settings-details">
             <summary>
-              Segmentation
-              <span className="muted">
-                {draft.segmentation.length ? ` ${plural(draft.segmentation.length, "rule", "rules")} of your own` : " as usual for the language"}
-              </span>
-            </summary>
+              {tlx("Segmentation{span}", { span: <span className="muted">
+                {draft.segmentation.length ? tl(" {length} of your own", { length: plural(draft.segmentation.length, "rule", "rules") }) : tl(" as usual for the language")}
+              </span> })}</summary>
             <SegmentationSection rules={draft.segmentation} setRules={(segmentation) => setDraft((d) => ({ ...d, segmentation }))} problems={problems} />
           </details>
 
@@ -1273,15 +1253,14 @@ export function NewProject() {
 
           <section className="field" aria-labelledby="an-title">
             <h3 id="an-title" className="field-label">
-              Match analysis
+              {tl("Match analysis")}
             </h3>
             {prepareError ? (
               <p className="error" role="alert">
-                A document could not be read: {prepareError}
-              </p>
+                {tlx("A document could not be read: {prepareError}", { prepareError: prepareError })}</p>
             ) : !review || !projectFiles ? (
               <p className="muted" role="status">
-                Analysing the files…
+                {tl("Analysing the files…")}
               </p>
             ) : (
               <>
@@ -1289,7 +1268,7 @@ export function NewProject() {
                   <div
                     className="tabs tabs-small"
                     role="tablist"
-                    aria-label="Target language"
+                    aria-label={tl("Target language")}
                   >
                     {draft.targetLangs.map((t) => (
                       <button
@@ -1308,13 +1287,13 @@ export function NewProject() {
                   <>
                     <p className="help">
                       {review[shownLang]!.memories.length
-                        ? `Against ${review[shownLang]!.memories.join(" and ")}, counted in this order: context matches first, then repetitions within a file and across files, then the best match.`
-                        : "No memory for this language, so only repetitions count."}
+                        ? tl("Against {join}, counted in this order: context matches first, then repetitions within a file and across files, then the best match.", { join: listOf(review[shownLang]!.memories) })
+                        : tl("No memory for this language, so only repetitions count.")}
                     </p>
                     <AnalysisTable
                       rows={review[shownLang]!.report.rows}
                       total={review[shownLang]!.report.total}
-                      caption={`Match analysis, ${lang(shownLang).name}`}
+                      caption={tl("Match analysis, {name}", { name: lang(shownLang).name })}
                     />
                   </>
                 )}
@@ -1329,19 +1308,18 @@ export function NewProject() {
                 checked={asTemplate}
                 onChange={(e) => setAsTemplate(e.target.checked)}
               />
-              <span>Save these settings as a template</span>
+              <span>{tl("Save these settings as a template")}</span>
             </label>
             {asTemplate && (
               <div className="nested field">
-                <label htmlFor="tpl-name">Template name</label>
+                <label htmlFor="tpl-name">{tl("Template name")}</label>
                 <input
                   id="tpl-name"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
                 />
                 <p className="help">
-                  Languages, memories, termbases, checks and pre-translation;
-                  not the files, name or due date.
+                  {tl("Languages, memories, termbases, checks and pre-translation; not the files, name or due date.")}
                 </p>
                 <Problems messages={problemsAt(problems, "template")} />
               </div>
@@ -1350,23 +1328,20 @@ export function NewProject() {
 
           {remote.conn && (
             <fieldset className="field">
-              <legend className="field-label">Where the project is kept</legend>
+              <legend className="field-label">{tl("Where the project is kept")}</legend>
               <label className="choice">
                 <input type="radio" name="where" checked={where === "here"} onChange={() => setWhere("here")} />
                 <span className="choice-body">
-                  <span className="choice-title">On this computer</span>
-                  <span className="choice-desc">Only you work on it, in this browser.</span>
+                  <span className="choice-title">{tl("On this computer")}</span>
+                  <span className="choice-desc">{tl("Only you work on it, in this browser.")}</span>
                 </span>
               </label>
               <label className="choice">
                 <input type="radio" name="where" checked={where === "server"} onChange={() => setWhere("server")} />
                 <span className="choice-body">
-                  <span className="choice-title">On the team server {new URL(remote.conn.url).host}</span>
+                  <span className="choice-title">{tl("On the team server")}{" "}{new URL(remote.conn.url).host}</span>
                   <span className="choice-desc">
-                    Shared: you give work to translators and reviewers there, and
-                    everyone's translations are saved on the server. Memories and
-                    master termbases the server doesn't have yet are uploaded
-                    with it; the project termbase is kept there.
+                    {tl("Shared: you give work to translators and reviewers there, and everyone's translations are saved on the server. Memories and master termbases the server doesn't have yet are uploaded with it; the project termbase is kept there.")}
                   </span>
                 </span>
               </label>
@@ -1377,7 +1352,7 @@ export function NewProject() {
             <div className="notice" role="alert">
               <AlertTriangle size={18} aria-hidden="true" />
               <div className="notice-body">
-                <p className="notice-title">The project was not made on the server</p>
+                <p className="notice-title">{tl("The project was not made on the server")}</p>
                 <p>{publishProblem}</p>
               </div>
             </div>
@@ -1387,7 +1362,7 @@ export function NewProject() {
             <div className="notice" role="alert">
               <AlertTriangle size={18} aria-hidden="true" />
               <div className="notice-body">
-                <p className="notice-title">The project can't be created yet</p>
+                <p className="notice-title">{tl("The project can't be created yet")}</p>
                 <ul>
                   {problems.map((p) => (
                     <li key={p.field + p.message}>{p.message}</li>
@@ -1403,7 +1378,7 @@ export function NewProject() {
               className="btn btn-quiet"
               onClick={() => setStep(3)}
             >
-              Back
+              {tl("Back")}
             </button>
             <button
               type="button"
@@ -1411,7 +1386,7 @@ export function NewProject() {
               onClick={create}
               disabled={creating || !projectFiles || problems.length > 0}
             >
-              {creating ? "Creating…" : where === "server" ? "Create on the server" : "Create project"}
+              {creating ? tl("Creating…") : where === "server" ? tl("Create on the server") : tl("Create project")}
             </button>
           </div>
         </section>
@@ -1425,7 +1400,7 @@ export function FilesField({
   docs,
   setDocs,
   existing = [],
-  label = "Files",
+  label = tl("Files"),
 }: {
   /** Heading of the list. */
   label?: string;
@@ -1471,13 +1446,13 @@ export function FilesField({
           <table className="table file-table" aria-labelledby="files-label">
             <thead>
               <tr>
-                <th scope="col">File</th>
+                <th scope="col">{tl("File")}</th>
                 <th scope="col" className="num">
-                  Words
+                  {tl("Words")}
                 </th>
-                <th scope="col">Use</th>
+                <th scope="col">{tl("Use")}</th>
                 <th scope="col">
-                  <span className="sr-only">Remove</span>
+                  <span className="sr-only">{tl("Remove")}</span>
                 </th>
               </tr>
             </thead>
@@ -1511,13 +1486,13 @@ export function FilesField({
                         <span className="detect detect-warn">
                           <AlertTriangle size={14} aria-hidden="true" />
                           <span>
-                            {whyNot(d.doc)} It is added as a reference file.
+                            {tlx("{doc} It is added as a reference file.", { doc: whyNot(d.doc) })}
                           </span>
                         </span>
                       )}
                       {twice && (
                         <span className="error">
-                          This file name is in the project twice.
+                          {tl("This file name is in the project twice.")}
                         </span>
                       )}
                     </th>
@@ -1526,8 +1501,7 @@ export function FilesField({
                     </td>
                     <td>
                       <label className="sr-only" htmlFor={`role-${d.key}`}>
-                        Use of {name}
-                      </label>
+                        {tlx("Use of {name}", { name: name })}</label>
                       <select
                         id={`role-${d.key}`}
                         className="select-small"
@@ -1543,15 +1517,15 @@ export function FilesField({
                           )
                         }
                       >
-                        <option value="translatable">Translate</option>
-                        <option value="reference">Reference</option>
+                        <option value="translatable">{tl("Translate")}</option>
+                        <option value="reference">{tl("Reference")}</option>
                       </select>
                     </td>
                     <td>
                       <button
                         type="button"
                         className="icon-button"
-                        aria-label={`Remove ${name}`}
+                        aria-label={tl("Remove {name}", { name })}
                         onClick={() =>
                           setDocs((ds) => ds.filter((x) => x.key !== d.key))
                         }
@@ -1578,8 +1552,8 @@ export function FilesField({
         <Upload size={18} aria-hidden="true" className="dropzone-icon" />
         <p className="dropzone-text">
           {reading
-            ? "Reading the files…"
-            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf) and packages (.sdlppx, .mqout) keep their translations and states, and so do bilingual tables for review in .docx and .rtf."}
+            ? tl("Reading the files…")
+            : tl("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf) and packages (.sdlppx, .mqout) keep their translations and states, and so do bilingual tables for review in .docx and .rtf.")}
         </p>
         <div className="row">
           <button
@@ -1589,7 +1563,7 @@ export function FilesField({
             disabled={reading}
           >
             <FileText size={14} aria-hidden="true" />
-            Add files
+            {tl("Add files")}
           </button>
           <button
             type="button"
@@ -1598,7 +1572,7 @@ export function FilesField({
             disabled={reading}
           >
             <FolderOpen size={14} aria-hidden="true" />
-            Add a folder
+            {tl("Add a folder")}
           </button>
         </div>
         <input
@@ -1631,9 +1605,7 @@ export function FilesField({
         </p>
       )}
       <p className="help">
-        <Info size={14} aria-hidden="true" /> Reference files (a style guide, an
-        earlier version) travel with the project for the translators to read;
-        they are not translated.
+        <Info size={14} aria-hidden="true" />{" "}{tl("Reference files (a style guide, an earlier version) travel with the project for the translators to read; they are not translated.")}
       </p>
     </div>
   );
@@ -1645,7 +1617,7 @@ function describe(doc: PendingDoc): string {
     const done = bi.segments.filter((s) => s.status === "confirmed").length;
     const locked = bi.segments.filter((s) => s.locked).length;
     const what = doc.sdlPackage
-      ? `From the ${packageKind(doc.sdlPackage.name)} ${doc.sdlPackage.name}`
+      ? tl("From the {x} {name}", { x: packageKind(doc.sdlPackage.name), name: doc.sdlPackage.name })
       : (XLIFF_FORMAT_NAME[bi.format] ?? "XLIFF");
     const langs = bi.targetLang
       ? `, ${lang(knownLang(bi.sourceLang)).name} to ${lang(knownLang(bi.targetLang)).name}`
@@ -1656,13 +1628,13 @@ function describe(doc: PendingDoc): string {
     case "docx":
       return `${DOCUMENT_FORMAT_NAME[documentFormat(doc.file) ?? "docx"]}, ${DOCUMENT_FORMAT_KEEPS[documentFormat(doc.file) ?? "docx"]}`;
     default:
-      return "No text Interlinea can read";
+      return tl("No text Interlinea can read");
   }
 }
 
 function whyNot(doc: PendingDoc): string {
-  if (doc.error) return `It could not be read: ${doc.error}`;
-  return "Interlinea can't read text from this file (for example a scan, or a format it has no filter for). It can travel with the project for reference.";
+  if (doc.error) return tl("It could not be read: {error}", { error: doc.error });
+  return tl("Interlinea can't read text from this file (for example a scan, or a format it has no filter for). It can travel with the project for reference.");
 }
 
 function TerminologySummary({ draft }: { draft: Draft }) {
@@ -1675,22 +1647,18 @@ function TerminologySummary({ draft }: { draft: Draft }) {
   if (t.mode === "direct")
     return (
       <>
-        New terms go straight into{" "}
-        {state.termbases.find((x) => x.id === t.writeTo)?.name ?? names}.
+        {tlx("New terms go straight into {x}.", { x: state.termbases.find((x) => x.id === t.writeTo)?.name ?? names })}
       </>
     );
-  if (t.mode === "own") return <>A new project termbase on this computer, no master.</>;
+  if (t.mode === "own") return <>{tl("A new project termbase on this computer, no master.")}</>;
   return (
     <>
-      A new project termbase on this computer, based on {names}.{" "}
-      {t.autoUpdate
-        ? "Takes in master changes each time the project opens."
-        : "Master changes wait until you take them in."}
-      {t.addLanguages.length > 0 &&
-        ` Languages are added to ${t.addLanguages
+      {tlx("A new project termbase on this computer, based on {names}. {x}{x2}", { names: names, x: t.autoUpdate
+        ? tl("Takes in master changes each time the project opens.")
+        : tl("Master changes wait until you take them in."), x2: t.addLanguages.length > 0 &&
+        tl(" Languages are added to {join}.", { join: t.addLanguages
           .map((id) => state.termbases.find((x) => x.id === id)?.name)
-          .join(", ")}.`}
-    </>
+          .join(", ") }) })}</>
   );
 }
 
@@ -1718,10 +1686,8 @@ function SourceDetection({
           <Info size={16} aria-hidden="true" />
         )}
         <span>
-          Set to {lang(source).name}.
-          {differs &&
-            ` The files look ${lang(detection.code!).name} (${Math.round(detection.confidence * 100)}%). Check the source language.`}
-        </span>
+          {tlx("Set to {name}.{x}", { name: lang(source).name, x: differs &&
+            tl(" The files look {name} ({round}%). Check the source language.", { name: lang(detection.code!).name, round: Math.round(detection.confidence * 100) }) })}</span>
       </p>
     );
   }
@@ -1730,9 +1696,7 @@ function SourceDetection({
       <p className="detect detect-warn">
         <AlertTriangle size={16} aria-hidden="true" />
         <span>
-          No text found in the files (for example a scanned PDF), so the
-          language can't be detected. Preselected {lang(fallback).name}, the
-          source language of most of your projects. Change it if it's wrong.
+          {tlx("No text found in the files (for example a scanned PDF), so the language can't be detected. Preselected {name}, the source language of most of your projects. Change it if it's wrong.", { name: lang(fallback).name })}
         </span>
       </p>
     );
@@ -1742,9 +1706,7 @@ function SourceDetection({
       <p className="detect detect-warn">
         <AlertTriangle size={16} aria-hidden="true" />
         <span>
-          Too little text to tell ({plural(detection.basis, "word", "words")}).
-          Preselected {lang(fallback).name}, the source language of most of your
-          projects.
+          {tlx("Too little text to tell ({basis}). Preselected {name}, the source language of most of your projects.", { basis: plural(detection.basis, "word", "words"), name: lang(fallback).name })}
         </span>
       </p>
     );
@@ -1758,8 +1720,7 @@ function SourceDetection({
       <p className="detect detect-warn">
         <AlertTriangle size={16} aria-hidden="true" />
         <span>
-          Probably {lang(detection.code).name} ({pct}%)
-          {alt ? `, but it could also be ${alt}` : ""}. Please check.
+          {tlx("Probably {name} ({pct}%){x}. Please check.", { name: lang(detection.code).name, pct: pct, x: alt ? tl(", but it could also be {alt}", { alt }) : "" })}
         </span>
       </p>
     );
@@ -1768,11 +1729,9 @@ function SourceDetection({
     <p className="detect detect-ok">
       <CheckCircle2 size={16} aria-hidden="true" />
       <span>
-        Detected {lang(detection.code).name}, {pct}% confident, from{" "}
-        {detection.unit === "characters"
+        {tlx("Detected {name}, {pct}% confident, from {x} of the files.", { name: lang(detection.code).name, pct: pct, x: detection.unit === "characters"
           ? plural(detection.basis, "character", "characters")
-          : plural(detection.basis, "word", "words")}{" "}
-        of the files.
+          : plural(detection.basis, "word", "words") })}
       </span>
     </p>
   );

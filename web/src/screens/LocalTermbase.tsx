@@ -11,6 +11,7 @@ import { fmtTime } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { headOf, ReadEntry, termsLine } from "./ServerTermbase";
+import { tl, tlx } from "../i18n";
 
 let seq = 0;
 const newId = (p: string) => `${p}-${Date.now().toString(36)}-l${(seq++).toString(36)}`;
@@ -23,22 +24,22 @@ export function LocalHistory({ tb, entry }: { tb: Termbase; entry: Entry }) {
     <ol className="history">
       {[...entry.history].reverse().map((c) => (
         <li key={c.id}>
-          <div className="history-summary">{c.summary || "Changed"}</div>
+          <div className="history-summary">{c.summary || tl("Changed")}</div>
           <div className="history-meta">
             {c.by ? `${c.by}, ` : ""}
             {fmtTime(c.at)}
-            {c.project && <> in {c.project}</>}
+            {c.project && <>{" "}{tl("in")}{" "}{c.project}</>}
           </div>
           {c.snapshot && <div className="history-held">{termsLine(toCoreEntry({ ...entry, ...c.snapshot }, tb))}</div>}
           {c.snapshot && c.id !== newest && (
             <ConfirmButton
               plain
-              label="Restore this version"
-              confirm="Set the entry back to this version? What it is now stays in the history."
-              action="Restore"
+              label={tl("Restore this version")}
+              confirm={tl("Set the entry back to this version? What it is now stays in the history.")}
+              action={tl("Restore")}
               onConfirm={() => {
                 dispatch({ type: "restoreVersion", entryId: entry.id, commitId: c.id, now: new Date().toISOString() });
-                notify(`Restored the version of ${fmtTime(c.at)}`);
+                notify(tl("Restored the version of {at}", { at: fmtTime(c.at) }));
               }}
             />
           )}
@@ -55,12 +56,12 @@ export function LocalDeleted({ tb }: { tb: Termbase }) {
   if (gone.length === 0)
     return (
       <div className="empty">
-        <p className="empty-title">Nothing deleted</p>
-        <p>Entries you delete are kept here and can be brought back.</p>
+        <p className="empty-title">{tl("Nothing deleted")}</p>
+        <p>{tl("Entries you delete are kept here and can be brought back.")}</p>
       </div>
     );
   return (
-    <ul className="deleted-list" aria-label={`Deleted entries of ${tb.name}`}>
+    <ul className="deleted-list" aria-label={tl("Deleted entries of {name}", { name: tb.name })}>
       {gone.map((d) => {
         const core = toCoreEntry(d.entry, tb);
         return (
@@ -78,20 +79,17 @@ export function LocalDeleted({ tb }: { tb: Termbase }) {
                 ))}
             </dl>
             <p className="history-meta">
-              Deleted {fmtTime(d.at)}
-              {d.by ? ` by ${d.by}` : ""}
-              {d.summary && d.summary !== "Deleted" ? `. ${d.summary}` : ""}
-            </p>
+              {(d.by ? tl("Deleted {at} by {by}", { at: fmtTime(d.at), by: d.by }) : tl("Deleted {at}", { at: fmtTime(d.at) })) + (d.summary && d.summary !== tl("Deleted") ? `. ${d.summary}` : "")}</p>
             <button
               type="button"
               className="btn btn-small"
               onClick={() => {
                 const head = headOf(core, tb.languages[0]);
                 dispatch({ type: "restoreDeleted", entryId: d.entry.id, now: new Date().toISOString() });
-                notify(head ? `Brought back “${head}”` : "Brought the entry back");
+                notify(head ? tl("Brought back “{head}”", { head }) : tl("Brought the entry back"));
               }}
             >
-              Bring back
+              {tl("Bring back")}
             </button>
           </li>
         );
@@ -128,7 +126,7 @@ export function useLocalMasters(tb: Termbase): { masters: LocalMasterEntry[]; re
     const entry = master && state.entries.find((e) => e.id === x.entryId && e.termbaseId === master.id);
     // An entry the master no longer has is left out of nothing.
     if (!master || !entry) return [];
-    return [{ ...x, master: master.name, head: headOf(toCoreEntry(entry, master), tb.languages[0]) || "No term" }];
+    return [{ ...x, master: master.name, head: headOf(toCoreEntry(entry, master), tb.languages[0]) || tl("No term") }];
   });
   return { masters, removals };
 }
@@ -150,19 +148,19 @@ export function LocalMasterList({
   const { dispatch, notify } = useLocalStore();
   return (
     <>
-      <p className="help pane-bar">The master's entries this project uses as they are. Change one for this project only, or leave it out.</p>
-      {masters.length === 0 && <p className="muted pane-pad">The masters have no entries the project does not have itself.</p>}
-      <ul className="entry-list entry-list-fit" aria-label={`Entries of the masters of ${tb.name}`}>
+      <p className="help pane-bar">{tl("The master's entries this project uses as they are. Change one for this project only, or leave it out.")}</p>
+      {masters.length === 0 && <p className="muted pane-pad">{tl("The masters have no entries the project does not have itself.")}</p>}
+      <ul className="entry-list entry-list-fit" aria-label={tl("Entries of the masters of {name}", { name: tb.name })}>
         {masters.map(({ entry, master }) => {
           const parts = tb.languages.map((l) => (entry.terms[l] ?? []).map((t) => t.text).join(", ")).filter(Boolean);
           return (
             <li key={entry.id}>
               <button type="button" className="entry-row" aria-current={entry.id === selected ? "true" : undefined} onClick={() => onSelect(entry.id)}>
                 <span className="entry-head">
-                  <span className="entry-term">{parts[0] ?? "No term"}</span>
+                  <span className="entry-term">{parts[0] ?? tl("No term")}</span>
                 </span>
                 {parts.length > 1 && <span className="entry-other">{parts.slice(1).join(" · ")}</span>}
-                <span className="tb-count">In {master.name}</span>
+                <span className="tb-count">{tl("In")}{" "}{master.name}</span>
               </button>
             </li>
           );
@@ -171,26 +169,24 @@ export function LocalMasterList({
       {removals.length > 0 && (
         <section className="left-out" aria-labelledby="left-out-title">
           <h3 id="left-out-title" className="tb-group-title">
-            Left out of this project
+            {tl("Left out of this project")}
           </h3>
-          <p className="history-meta">Merging deletes these in the master, if you accept it there.</p>
+          <p className="history-meta">{tl("Merging deletes these in the master, if you accept it there.")}</p>
           <ul>
             {removals.map((x) => (
               <li key={`${x.masterId}\n${x.entryId}`}>
                 <span className="entry-term">{x.head}</span>
                 <span className="history-meta">
-                  In {x.master}, left out {fmtTime(x.at)}
-                  {x.by ? ` by ${x.by}` : ""}
-                </span>
+                  {(x.by ? tl("In {master}, left out {at} by {by}", { master: x.master, at: fmtTime(x.at), by: x.by }) : tl("In {master}, left out {at}", { master: x.master, at: fmtTime(x.at) }))}</span>
                 <button
                   type="button"
                   className="btn btn-small"
                   onClick={() => {
                     dispatch({ type: "bringBack", termbaseId: tb.id, masterId: x.masterId, entryId: x.entryId });
-                    notify("Brought the entry back into the project");
+                    notify(tl("Brought the entry back into the project"));
                   }}
                 >
-                  Bring back
+                  {tl("Bring back")}
                 </button>
               </li>
             ))}
@@ -213,19 +209,17 @@ export function LocalMasterDetail({ tb, item, onTaken }: { tb: Termbase; item: L
       <div className="pane-head">
         <div className="pane-head-row">
           <h2 id="master-entry-title" className="pane-title">
-            {head || "Entry"}
+            {head || tl("Entry")}
           </h2>
         </div>
         <div className="pane-sub">
           <span>
-            In {master.name}
-            {changed ? `, last changed ${fmtTime(changed)}` : ""}
-          </span>
+            {tlx("In {name}{x}", { name: master.name, x: changed ? tl(", last changed {changed}", { changed: fmtTime(changed) }) : "" })}</span>
         </div>
       </div>
       <div className="detail-body">
         <p className="notice-plain">
-          This is the master's entry. To change it, take it into the project: your version is used here and goes into the master when you merge.
+          {tl("This is the master's entry. To change it, take it into the project: your version is used here and goes into the master when you merge.")}
         </p>
         <div className="row-start">
           <button
@@ -234,19 +228,19 @@ export function LocalMasterDetail({ tb, item, onTaken }: { tb: Termbase; item: L
             onClick={() => {
               const id = newId("e");
               dispatch({ type: "takeFromMaster", termbaseId: tb.id, masterEntryId: entry.id, id, now: new Date().toISOString() });
-              notify("Took the entry into the project");
+              notify(tl("Took the entry into the project"));
               onTaken(id);
             }}
           >
-            <Pencil size={14} aria-hidden="true" /> Change in this project
+            <Pencil size={14} aria-hidden="true" />{" "}{tl("Change in this project")}
           </button>
           <ConfirmButton
-            label="Leave out of this project"
-            confirm="Leave this entry out of the project? Merging deletes it in the master, if you accept it there."
-            action="Leave out"
+            label={tl("Leave out of this project")}
+            confirm={tl("Leave this entry out of the project? Merging deletes it in the master, if you accept it there.")}
+            action={tl("Leave out")}
             onConfirm={() => {
               dispatch({ type: "leaveOut", termbaseId: tb.id, masterId: master.id, entryId: entry.id, now: new Date().toISOString() });
-              notify("Left the entry out of the project");
+              notify(tl("Left the entry out of the project"));
             }}
           />
         </div>

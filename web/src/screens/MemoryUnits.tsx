@@ -3,10 +3,11 @@ import { Columns2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { lang, type LangCode } from "../data";
 import { coreToRuns, plain, runsToCore, type CoreRun, type Run } from "../editor/model";
 import { chipText, TargetEditor, tagDescription } from "../editor/TargetEditor";
-import { fmtDate, plural } from "../format";
+import { fmtDate, fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton, Modal } from "./TermbaseDialogs";
 import { AlignDocuments } from "./Alignment";
+import { tl, tlx } from "../i18n";
 
 /** A unit as a search finds it. */
 export interface FoundUnit {
@@ -104,39 +105,39 @@ export function MemoryUnits({
     <>
       <form
         className="role-add unit-search"
-        aria-label={`Search ${name}`}
+        aria-label={tl("Search {name}", { name })}
         onSubmit={(e: FormEvent) => {
           e.preventDefault();
           if (query.trim()) void run(query, inTarget);
         }}
       >
         <label className="field">
-          <span className="field-label">Search the units</span>
+          <span className="field-label">{tl("Search the units")}</span>
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <label className="check">
-          <input type="checkbox" checked={inTarget} onChange={(e) => setInTarget(e.target.checked)} /> In the translations
+          <input type="checkbox" checked={inTarget} onChange={(e) => setInTarget(e.target.checked)} />{" "}{tl("In the translations")}
         </label>
         <button type="submit" className="btn" disabled={!query.trim()}>
-          <Search size={15} aria-hidden="true" /> Search
+          <Search size={15} aria-hidden="true" />{" "}{tl("Search")}
         </button>
         {edit && (
           <button type="button" className="btn unit-add" onClick={() => setAdding(true)}>
-            <Plus size={15} aria-hidden="true" /> Add a unit
+            <Plus size={15} aria-hidden="true" />{" "}{tl("Add a unit")}
           </button>
         )}
         {edit && (
           <button type="button" className="btn" onClick={() => setAligning(true)}>
-            <Columns2 size={15} aria-hidden="true" /> Align documents
+            <Columns2 size={15} aria-hidden="true" />{" "}{tl("Align documents")}
           </button>
         )}
       </form>
       {hits &&
         (hits.length === 0 ? (
-          <p className="muted">Nothing found.</p>
+          <p className="muted">{tl("Nothing found.")}</p>
         ) : (
           <>
-            <table className="table" aria-label="Units found">
+            <table className="table" aria-label={tl("Units found")}>
               <thead>
                 <tr>
                   <th scope="col">
@@ -145,10 +146,10 @@ export function MemoryUnits({
                   <th scope="col">
                     <LangChip code={targetLang} />
                   </th>
-                  <th scope="col">Changed</th>
+                  <th scope="col">{tl("Changed")}</th>
                   {edit && (
                     <th scope="col">
-                      <span className="sr-only">Actions</span>
+                      <span className="sr-only">{tl("Actions")}</span>
                     </th>
                   )}
                 </tr>
@@ -167,24 +168,24 @@ export function MemoryUnits({
                             <button
                               type="button"
                               className="btn btn-quiet btn-small"
-                              aria-label={`Change the translation of “${said}”`}
+                              aria-label={tl("Change the translation of “{said}”", { said })}
                               onClick={() => setChanging(u)}
                             >
-                              <Pencil size={14} aria-hidden="true" /> Change
+                              <Pencil size={14} aria-hidden="true" />{" "}{tl("Change")}
                             </button>
                             <ConfirmButton
                               label={
                                 <>
                                   <Trash2 size={14} aria-hidden="true" />
-                                  <span className="sr-only">Delete the unit “{said}”</span>
+                                  <span className="sr-only">{tlx("Delete the unit “{said}”", { said: said })}</span>
                                 </>
                               }
-                              confirm="Delete this unit?"
-                              action="Delete"
+                              confirm={tl("Delete this unit?")}
+                              action={tl("Delete")}
                               onConfirm={() =>
                                 void backend.remove(u).then(
                                   async () => {
-                                    notify("Deleted the unit");
+                                    notify(tl("Deleted the unit"));
                                     await again();
                                     await onChanged();
                                   },
@@ -200,7 +201,7 @@ export function MemoryUnits({
                 })}
               </tbody>
             </table>
-            {hits.length >= 50 && <p className="cell-sub">The first 50 units found. Search for more of the sentence to narrow it down.</p>}
+            {hits.length >= 50 && <p className="cell-sub">{tl("The first 50 units found. Search for more of the sentence to narrow it down.")}</p>}
           </>
         ))}
       {adding && (
@@ -212,7 +213,7 @@ export function MemoryUnits({
           onClose={() => setAdding(false)}
           onAdded={async () => {
             setAdding(false);
-            notify(`Added the unit to ${name}`);
+            notify(tl("Added the unit to {name}", { name }));
             await again();
             await onChanged();
           }}
@@ -224,7 +225,7 @@ export function MemoryUnits({
           onClose={() => setAligning(false)}
           onAdded={async (n) => {
             setAligning(false);
-            notify(`Added ${plural(n, "unit", "units")} to ${name}`);
+            notify(tl("Added {n} to {name}", { n: plural(n, "unit", "units"), name }));
             await again();
             await onChanged();
           }}
@@ -239,7 +240,7 @@ export function MemoryUnits({
           onClose={() => setChanging(null)}
           onSaved={async () => {
             setChanging(null);
-            notify("Saved the unit");
+            notify(tl("Saved the unit"));
             await again();
           }}
         />
@@ -269,7 +270,7 @@ function AddUnit({
   const [overwrite, setOverwrite] = useState(false);
   const [problem, setProblem] = useState("");
   return (
-    <Modal title={`Add a unit to ${name}`} onClose={onClose} wide>
+    <Modal title={tl("Add a unit to {name}", { name })} onClose={onClose} wide>
       <form
         className="dialog-form"
         onSubmit={(e) => {
@@ -286,9 +287,9 @@ function AddUnit({
           <textarea rows={3} lang={targetLang} value={target} onChange={(e) => setTarget(e.target.value)} />
         </label>
         <label className="check">
-          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} /> Replace other translations of this sentence
+          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />{" "}{tl("Replace other translations of this sentence")}
         </label>
-        <p className="help">Without it, a sentence that is there already keeps its translations and gets this one as well.</p>
+        <p className="help">{tl("Without it, a sentence that is there already keeps its translations and gets this one as well.")}</p>
         {problem && (
           <p className="error" role="alert">
             {problem}
@@ -296,10 +297,10 @@ function AddUnit({
         )}
         <div className="row">
           <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-            Cancel
+            {tl("Cancel")}
           </button>
           <button type="submit" className="btn btn-primary btn-small" disabled={!source.trim() || !target.trim()}>
-            Add the unit
+            {tl("Add the unit")}
           </button>
         </div>
       </form>
@@ -330,16 +331,16 @@ function ChangeUnit({
 
   function save() {
     if (!plain(runs).trim()) {
-      setProblem("A unit needs a translation. Delete the unit instead.");
+      setProblem(tl("A unit needs a translation. Delete the unit instead."));
       return;
     }
     backend.change(unit, runsToCore(runs)).then(onSaved, (err) =>
-      setProblem(err instanceof SavedElsewhere ? "Someone else changed this unit in the meantime. Search again to see it as it is now." : text(err)),
+      setProblem(err instanceof SavedElsewhere ? tl("Someone else changed this unit in the meantime. Search again to see it as it is now.") : text(err)),
     );
   }
 
   return (
-    <Modal title="Change the unit" onClose={onClose} wide>
+    <Modal title={tl("Change the unit")} onClose={onClose} wide>
       <div className="dialog-form">
         <div className="field">
           <span className="field-label">{lang(sourceLang).name}</span>
@@ -369,8 +370,7 @@ function ChangeUnit({
         </div>
         {who && (
           <p className="help">
-            Last changed by {who}.{used > 0 ? ` Used ${used === 1 ? "once" : `${used} times`}.` : ""}
-          </p>
+            {tl("Last changed by {who}.", { who }) + (used === 1 ? " " + tl("Used once.") : used > 1 ? " " + tl("Used {n} times.", { n: fmtNum(used) }) : "")}</p>
         )}
         {problem && (
           <p className="error" role="alert">
@@ -379,10 +379,10 @@ function ChangeUnit({
         )}
         <div className="row">
           <button type="button" className="btn btn-quiet btn-small" onClick={onClose}>
-            Cancel
+            {tl("Cancel")}
           </button>
           <button type="button" className="btn btn-primary btn-small" onClick={save}>
-            Save
+            {tl("Save")}
           </button>
         </div>
       </div>

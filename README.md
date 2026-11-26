@@ -25,7 +25,8 @@ memory matches with their differences, terms from the termbases recognized
 in the source (inflected forms included), checks as you type, spelling (with
 dictionaries for 22 languages included) and grammar, suggestions from DeepL, Google, Microsoft or a language model with
 the key of your own account, and a preview of the translated document. Repetitions are filled, confirmed segments go
-into the memories, and the keyboard shortcuts are the familiar ones.
+into the memories, and the keyboard shortcuts are the familiar ones. The
+interface is in English, German or Korean.
 
 **Run projects.** Projects from documents, folders, bilingual files and
 packages. The source language is detected and memories and termbases are
