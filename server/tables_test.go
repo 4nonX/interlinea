@@ -97,7 +97,7 @@ func TestReviewTables(t *testing.T) {
 	// An RTF file that is no bilingual table is refused with a reason.
 	var in inspection
 	te.call("POST", "/api/files/inspect?name=Brief.rtf", te.pm, []byte(`{\rtf1\ansi Lieber Herr Weber,\par}`), 200, &in, "Content-Type", "application/octet-stream")
-	if in.Problem == "" || !strings.Contains(in.Problem, "memoQ") {
+	if in.Problem == "" || !strings.Contains(in.Problem, "not a bilingual table") {
 		t.Errorf("plain RTF inspected: %+v", in)
 	}
 }
