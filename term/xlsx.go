@@ -9,6 +9,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/4nonX/interlinea/internal/unzip"
 )
 
 const maxXLSXPart = 128 << 20
@@ -32,7 +34,7 @@ func zipFile(zr *zip.Reader, name string) ([]byte, error) {
 
 // readXLSX returns the rows of the first worksheet of an Excel workbook.
 func readXLSX(data []byte) ([][]string, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := unzip.Open(data)
 	if err != nil {
 		return nil, fmt.Errorf("xlsx: %w", err)
 	}

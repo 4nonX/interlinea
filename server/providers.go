@@ -193,7 +193,19 @@ func (s *Server) providerClient() *http.Client {
 	if s.cfg.ProviderClient != nil {
 		return s.cfg.ProviderClient
 	}
-	return &http.Client{Timeout: 60 * time.Second}
+	return &http.Client{Timeout: 60 * time.Second, CheckRedirect: sameHost}
+}
+
+// sameHost follows a service's redirects only on its own host: a request
+// carries the service's secret header, which another host must not get.
+func sameHost(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 {
+		return errors.New("too many redirects")
+	}
+	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) || (via[0].URL.Scheme == "https" && req.URL.Scheme != "https") {
+		return fmt.Errorf("the service sent the request on to %s", req.URL.Host)
+	}
+	return nil
 }
 
 type wireSegment struct {

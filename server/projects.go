@@ -525,6 +525,9 @@ func (s *Server) createProject(w http.ResponseWriter, r *http.Request, me sessio
 		s.fail(w, r, err)
 		return
 	}
+	if !s.mayUse(w, r, me, nil, set, cat) {
+		return
+	}
 	for i, m := range req.Memories {
 		info, err := tm.ValidateInfo(m)
 		if err != nil {
@@ -662,6 +665,141 @@ func mastersLanguages(cat project.Catalog, masters []string) []string {
 
 // lookupFold finds a name in a map ignoring case, as the stores compare
 // memory and termbase names.
+// mayUse checks that someone may use the memories and termbases settings
+// name. A project is a way into what it uses: its people look up and
+// search its memories and termbases, store confirmed translations and
+// add terms, and its managers manage its own termbase.
+//
+// Those who make projects (manage on all projects) set them up with any
+// memory and master, as the catalog offers them. Anyone else managing a
+// project must have the right on what they make it use: read on a memory
+// or master it looks things up in, edit on a memory it stores
+// translations in and on the master new terms go into. Taking an
+// existing termbase as the project's own, which makes its managers
+// manage it, needs manage on that termbase for everyone: the apps never
+// do it, the server makes a project's own termbase.
+//
+// What the project used already (old; nil for a new project) needs
+// nothing: a manager changes the deadline without a grant on the
+// memories another manager chose. Only what is on the server is checked;
+// a name that is not is a problem of the settings themselves, reported
+// with them. Administrators may use everything.
+func (s *Server) mayUse(w http.ResponseWriter, r *http.Request, me session, old *project.Settings, set project.Settings, cat project.Catalog) bool {
+	if me.User.Admin {
+		return true
+	}
+	ctx := r.Context()
+	makesProjects, err := s.mayCreate(ctx, me, authdb.KindProject)
+	if err != nil {
+		s.fail(w, r, err)
+		return false
+	}
+	// The most each memory is used for: 1 to look up or search, 2 to
+	// store into.
+	uses := func(st *project.Settings) map[string]int {
+		out := map[string]int{}
+		if st == nil {
+			return out
+		}
+		for _, ms := range st.Memories {
+			for _, m := range ms {
+				n := 1
+				if m.Update {
+					n = 2
+				}
+				k := strings.ToLower(strings.TrimSpace(m.Memory))
+				out[k] = max(out[k], n)
+			}
+		}
+		return out
+	}
+	before, now := uses(old), uses(&set)
+	var oldTerms project.Terminology
+	if old != nil {
+		oldTerms = old.Terminology
+	}
+	type need struct {
+		kind     authdb.Kind
+		name     string
+		role     authdb.Role
+		field    string
+		mustHave string
+	}
+	var needs []need
+	for k, n := range now {
+		if makesProjects {
+			break
+		}
+		name, ok := keyFold(cat.Memories, k)
+		if !ok || n <= before[k] {
+			continue
+		}
+		if n == 2 {
+			needs = append(needs, need{authdb.KindMemory, name, authdb.RoleEdit, "memories", "store translations in"})
+		} else {
+			needs = append(needs, need{authdb.KindMemory, name, authdb.RoleRead, "memories", "read"})
+		}
+	}
+	t := set.Terminology
+	for _, m := range t.Masters {
+		if name, ok := keyFold(cat.Termbases, m); ok && !makesProjects && !containsFold(oldTerms.Masters, m) {
+			needs = append(needs, need{authdb.KindTermbase, name, authdb.RoleRead, "terminology.masters", "read"})
+		}
+	}
+	if t.Mode == project.Direct && !makesProjects && !(oldTerms.Mode == project.Direct && strings.EqualFold(oldTerms.WriteTo, t.WriteTo)) {
+		if name, ok := keyFold(cat.Termbases, t.WriteTo); ok {
+			needs = append(needs, need{authdb.KindTermbase, name, authdb.RoleEdit, "terminology.writeTo", "add terms to"})
+		}
+	}
+	if t.Mode != project.Direct && t.Location == project.Server && !(oldTerms.Location == project.Server && strings.EqualFold(oldTerms.Termbase, t.Termbase)) {
+		if name, ok := keyFold(cat.Termbases, t.Termbase); ok {
+			needs = append(needs, need{authdb.KindTermbase, name, authdb.RoleManage, "terminology.termbase", "manage"})
+		}
+	}
+	for _, n := range needs {
+		role, err := s.cfg.Auth.RoleOn(ctx, me.User, n.kind, n.name)
+		if err != nil {
+			s.fail(w, r, err)
+			return false
+		}
+		if !role.Includes(n.role) {
+			kind := "memory"
+			if n.kind == authdb.KindTermbase {
+				kind = "termbase"
+			}
+			writeJSON(w, http.StatusForbidden, apiError{Code: "forbidden",
+				Message:  fmt.Sprintf("You may not %s the %s %s, so a project of yours may not either. Ask its managers for access.", n.mustHave, kind, n.name),
+				Problems: []project.Problem{{Field: n.field, Message: fmt.Sprintf("You may not %s %s.", n.mustHave, n.name)}}})
+			return false
+		}
+	}
+	return true
+}
+
+// keyFold finds a name in a map whatever its case, and returns it as the
+// map has it.
+func keyFold[V any](m map[string]V, name string) (string, bool) {
+	name = strings.TrimSpace(name)
+	if _, ok := m[name]; ok {
+		return name, true
+	}
+	for k := range m {
+		if strings.EqualFold(k, name) {
+			return k, true
+		}
+	}
+	return "", false
+}
+
+func containsFold(list []string, s string) bool {
+	for _, x := range list {
+		if strings.EqualFold(x, s) {
+			return true
+		}
+	}
+	return false
+}
+
 func lookupFold[V any](m map[string]V, name string) (V, bool) {
 	for k, v := range m {
 		if strings.EqualFold(k, name) {
@@ -709,6 +847,9 @@ func (s *Server) updateProjectSettings(w http.ResponseWriter, r *http.Request, m
 	cat, err := s.catalog(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
+		return
+	}
+	if !s.mayUse(w, r, me, &p.Settings, set, cat) {
 		return
 	}
 	got, err := s.cfg.Projects.UpdateSettings(r.Context(), p.ID, set, v, cat, me.by())

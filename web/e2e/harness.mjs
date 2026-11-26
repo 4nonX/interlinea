@@ -30,6 +30,15 @@ const TYPES = {
   ".woff2": "font/woff2",
 };
 
+// The pages get the team server's Content-Security-Policy, read from its
+// source, so every test runs the app under the policy it is served with.
+const POLICY = (() => {
+  const go = readFileSync(join(here, "..", "..", "server", "server.go"), "utf8");
+  const decl = go.match(/const WebPolicy = ([\s\S]*?)\n\n/);
+  if (!decl) throw new Error("server/server.go has no WebPolicy");
+  return [...decl[1].matchAll(/"([^"]*)"/g)].map((m) => m[1]).join("");
+})();
+
 function serve() {
   if (!existsSync(join(dist, "index.html")))
     throw new Error(
@@ -46,6 +55,7 @@ function serve() {
       file = join(dist, "index.html");
     res.writeHead(200, {
       "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
+      "Content-Security-Policy": POLICY,
     });
     res.end(readFileSync(file));
   });
@@ -337,9 +347,13 @@ export async function start({ teamServer = false } = {}) {
       );
     if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error")
       errors.push(d.params.args.map((a) => a.value ?? a.description).join(" "));
+    // What the Content-Security-Policy blocked.
+    if (d.method === "Log.entryAdded" && d.params.entry.source === "security")
+      errors.push(d.params.entry.text);
   });
   await send("Runtime.enable");
   await send("Page.enable");
+  await send("Log.enable");
   await send("Page.setDownloadBehavior", {
     behavior: "allow",
     downloadPath: downloads,

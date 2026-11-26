@@ -4286,7 +4286,7 @@
           }
         },
         "security": [],
-        "summary": "Takes the browser back from the identity provider and sends it on to the app's return address, with a one-time code (#interlinea-code=), a linked identity (#interlinea-linked=) or an error (#interlinea-error=) in the fragment.",
+        "summary": "Takes the browser back from the identity provider and sends it on to the app's return address, with a one-time code to sign in (#interlinea-code=) or to confirm a link (#interlinea-link=), or an error (#interlinea-error=) in the fragment.",
         "tags": [
           "Signing in"
         ]
@@ -5089,7 +5089,7 @@
         ]
       },
       "post": {
-        "description": "The callback sends the browser back with #interlinea-linked= in the fragment.\n\nAccess: signed in, when the server has an identity provider.",
+        "description": "The callback sends the browser back with a one-time code in the fragment (#interlinea-link=), which the app confirms at /api/me/identities/confirm.\n\nAccess: signed in, when the server has an identity provider.",
         "operationId": "linkOwnIdentity",
         "requestBody": {
           "content": {
@@ -5129,6 +5129,58 @@
           }
         },
         "summary": "Begins linking a provider sign-in to the signed-in person's account, and answers with the provider's address to open.",
+        "tags": [
+          "The signed-in person"
+        ]
+      }
+    },
+    "/api/me/identities/confirm": {
+      "post": {
+        "description": "A code works once and for a few minutes.\n\nAccess: signed in; only the account that began the linking.",
+        "operationId": "confirmOwnIdentity",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "$ref": "#/components/responses/401"
+          },
+          "403": {
+            "$ref": "#/components/responses/403"
+          },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
+          "default": {
+            "$ref": "#/components/responses/error"
+          }
+        },
+        "summary": "Links the provider sign-in that the one-time code from the callback (#interlinea-link=) stands for to the signed-in person's account, if they began the linking.",
         "tags": [
           "The signed-in person"
         ]

@@ -204,14 +204,15 @@ export async function exchangeCode(url: string, code: string): Promise<Connectio
 }
 
 /** What a provider sign-in left in the address's fragment, if anything. */
-export function providerResult(hash: string): { code?: string; error?: string; linked?: string } | null {
+export function providerResult(hash: string): { code?: string; error?: string; link?: string } | null {
   const h = hash.replace(/^#/, "");
-  if (!/^interlinea-(code|error|linked)=/.test(h)) return null;
+  if (!/^interlinea-(code|error|link)=/.test(h)) return null;
   const q = new URLSearchParams(h);
   return {
     code: q.get("interlinea-code") ?? undefined,
     error: q.get("interlinea-error") ?? undefined,
-    linked: q.get("interlinea-linked") ?? undefined,
+    // A provider sign-in to link, once the account confirms this code.
+    link: q.get("interlinea-link") ?? undefined,
   };
 }
 

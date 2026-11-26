@@ -175,8 +175,28 @@ func TestProviderSignIn(t *testing.T) {
 	var start map[string]string
 	e.call("POST", "/api/me/identities", evaTok, oidcStartRequest{Return: "http://localhost:5173/settings"}, 200, &start)
 	to = e.followCallback(p.login(start["url"], "eva-1", "eva", nil))
-	if fragment(to, "interlinea-linked") != "Agentur" || to.Path != "/settings" {
-		t.Fatalf("linked: %v", to)
+	link := fragment(to, "interlinea-link")
+	if link == "" || to.Path != "/settings" {
+		t.Fatalf("link: %v", to)
+	}
+	// The provider's answer alone links nothing: Eva's account confirms.
+	if _, err := e.st.Auth.UserByIdentity(ctx, p.srv.URL, "eva-1"); err == nil {
+		t.Fatal("linked before Eva confirmed")
+	}
+	_, otherTok := e.user("otto", false)
+	if r := e.do("POST", "/api/me/identities/confirm", otherTok, map[string]string{"code": link}); r.status != 403 {
+		t.Fatalf("another account confirms Eva's link: %d %s", r.status, r.body)
+	}
+	// That attempt used the code up; Eva links again and confirms.
+	e.call("POST", "/api/me/identities", evaTok, oidcStartRequest{Return: "http://localhost:5173/settings"}, 200, &start)
+	to = e.followCallback(p.login(start["url"], "eva-1", "eva", nil))
+	var linked map[string]string
+	e.call("POST", "/api/me/identities/confirm", evaTok, map[string]string{"code": fragment(to, "interlinea-link")}, 200, &linked)
+	if linked["linked"] != "Agentur" {
+		t.Fatalf("linked: %v", linked)
+	}
+	if r := e.do("POST", "/api/me/identities/confirm", evaTok, map[string]string{"code": fragment(to, "interlinea-link")}); r.status != 404 {
+		t.Fatalf("a code confirmed twice: %d", r.status)
 	}
 	// Now the provider signs her in: the app exchanges the code once.
 	to = e.signInThrough(p, "https://il.example/", "eva-1", "eva")

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/4nonX/interlinea/internal/unzip"
 	"github.com/4nonX/interlinea/internal/xmlraw"
 )
 
@@ -55,21 +56,14 @@ type Package struct {
 }
 
 func readZip(data []byte) (*zip.Reader, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := unzip.Open(data)
 	if err != nil {
 		return nil, fmt.Errorf("sdlpackage: %w", err)
 	}
 	return zr, nil
 }
 
-func readEntry(f *zip.File) ([]byte, error) {
-	rc, err := f.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer rc.Close()
-	return io.ReadAll(rc)
-}
+func readEntry(f *zip.File) ([]byte, error) { return unzip.Read(f, 0) }
 
 // projectFile finds the package's .sdlproj (at the root, else the first).
 func projectFile(zr *zip.Reader) *zip.File {

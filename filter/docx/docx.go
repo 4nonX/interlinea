@@ -24,7 +24,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io"
 	"path"
 	"regexp"
 	"sort"
@@ -32,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/internal/unzip"
 	"github.com/4nonX/interlinea/segment"
 )
 
@@ -144,7 +144,7 @@ func parseAs(data []byte, lang string, opts Options, k kind) (*document, error) 
 	if k == presentation {
 		notThis = ErrNotPresentation
 	}
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := unzip.Open(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", notThis, err)
 	}
@@ -331,22 +331,7 @@ func readFile(zr *zip.Reader, name string) ([]byte, error) {
 		if f.Name != name {
 			continue
 		}
-		if f.UncompressedSize64 > maxPartSize {
-			return nil, fmt.Errorf("docx: %s is too large", name)
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return nil, err
-		}
-		defer rc.Close()
-		b, err := io.ReadAll(io.LimitReader(rc, maxPartSize+1))
-		if err != nil {
-			return nil, err
-		}
-		if len(b) > maxPartSize {
-			return nil, fmt.Errorf("docx: %s is too large", name)
-		}
-		return b, nil
+		return unzip.Read(f, maxPartSize)
 	}
 	return nil, fmt.Errorf("docx: missing %s", name)
 }

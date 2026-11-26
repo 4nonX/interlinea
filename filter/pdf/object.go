@@ -362,6 +362,8 @@ type file struct {
 	trailer dict
 	// unpacked object streams: the objects of each, by place.
 	streams map[int][]any
+	// decoded is how many bytes its streams decoded to so far.
+	decoded int
 }
 
 func open(data []byte) (*file, error) {

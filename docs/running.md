@@ -115,7 +115,9 @@ behind a reverse proxy that ends HTTPS, and then:
   (server-sent events, with a keep-alive every 25 seconds). Turn off
   response buffering for it and allow idle reads of a minute or more;
 - allow large requests: a file is uploaded as base64 in JSON, up to 256 MB
-  per request (other JSON requests up to 4 MB).
+  per request (other JSON requests up to 4 MB);
+- send `Strict-Transport-Security`, so browsers keep to HTTPS. The server
+  sends it itself only when it serves HTTPS with its own certificate.
 
 For nginx:
 
@@ -126,6 +128,7 @@ location / {
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
     client_max_body_size 260m;
+    add_header Strict-Transport-Security "max-age=31536000" always;
 }
 location /api/events {
     proxy_pass http://127.0.0.1:8080;
@@ -140,6 +143,16 @@ location /api/events {
 The web app the server serves signs in with an HttpOnly, SameSite=Strict
 cookie scoped to `/api/`, which its scripts can't read. A web app served
 from another address (listed in `-origins`) and the desktop app use tokens.
+Its pages carry a Content-Security-Policy that runs only the app's own
+scripts and its WebAssembly core, and lets no other site frame them; a
+proxy should pass it on unchanged.
+
+Files people bring are read within limits: an archive (a Word, Excel,
+PowerPoint, InDesign or OpenDocument file, a package, a dictionary) with
+more than 100,000 entries or that unpacks to more than 1 GB is refused,
+and so is a PDF whose streams decode to more than 1 GB. Even so, reading a
+large file takes memory: plan for about 1 GB per upload being read at
+the same time.
 
 ## Signing in through an identity provider
 

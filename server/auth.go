@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -473,8 +475,8 @@ func deadEnd(w http.ResponseWriter, msg string) {
 }
 
 // oidcCallback takes the browser back from the identity provider and sends it
-// on to the app's return address, with a one-time code (#interlinea-code=), a
-// linked identity (#interlinea-linked=) or an error (#interlinea-error=) in
+// on to the app's return address, with a one-time code to sign in
+// (#interlinea-code=) or to confirm a link (#interlinea-link=), or an error (#interlinea-error=) in
 // the fragment. A sign-in that expired or was used already gets a page that
 // says so.
 //
@@ -521,17 +523,25 @@ func (s *Server) oidcCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	if f.LinkTo != 0 {
-		if err := s.cfg.Auth.LinkIdentity(ctx, f.LinkTo, claims.Issuer, claims.Subject, f.LinkedBy); err != nil {
-			var inv *authdb.InvalidError
-			if errors.As(err, &inv) {
-				back(w, r, backTo, "interlinea-error", inv.Message)
-				return
+		// The identity is not linked yet: whoever signed in at the
+		// provider may not be the one who began the linking (they may
+		// have been sent its address). The browser gets a one-time code,
+		// and the link is made when the account that began it confirms
+		// the code (POST /api/me/identities/confirm).
+		code, err := randomCode()
+		if err == nil {
+			var data []byte
+			data, err = json.Marshal(pendingLink{UserID: f.LinkTo, Issuer: claims.Issuer, Subject: claims.Subject, LinkedBy: f.LinkedBy})
+			if err == nil {
+				err = s.cfg.Auth.SaveFlow(ctx, linkKey(code), data, s.cfg.Now().Add(exchangeTTL))
 			}
+		}
+		if err != nil {
 			s.cfg.Log.Error("linking an identity failed", "err", err)
 			back(w, r, backTo, "interlinea-error", "The identity could not be linked.")
 			return
 		}
-		back(w, r, backTo, "interlinea-linked", s.cfg.OIDC.Name)
+		back(w, r, backTo, "interlinea-link", code)
 		return
 	}
 	u, err := s.cfg.Auth.UserByIdentity(ctx, claims.Issuer, claims.Subject)
@@ -772,7 +782,8 @@ func (s *Server) revokeOwnToken(w http.ResponseWriter, r *http.Request, me sessi
 
 // linkOwnIdentity begins linking a provider sign-in to the signed-in person's
 // account, and answers with the provider's address to open.
-// The callback sends the browser back with #interlinea-linked= in the fragment.
+// The callback sends the browser back with a one-time code in the fragment
+// (#interlinea-link=), which the app confirms at /api/me/identities/confirm.
 //
 // Access: signed in, when the server has an identity provider.
 func (s *Server) linkOwnIdentity(w http.ResponseWriter, r *http.Request, me session) {
@@ -781,6 +792,71 @@ func (s *Server) linkOwnIdentity(w http.ResponseWriter, r *http.Request, me sess
 		return
 	}
 	s.startFlow(w, r, req.Return, "", me.User.ID, me.by())
+}
+
+// pendingLink is a provider sign-in waiting to be linked to an account.
+type pendingLink struct {
+	UserID   int64  `json:"userId"`
+	Issuer   string `json:"issuer"`
+	Subject  string `json:"subject"`
+	LinkedBy string `json:"linkedBy"`
+}
+
+// linkKey is where a pending link is kept: by a hash of its code, so the
+// store holds nothing that confirms it.
+func linkKey(code string) string {
+	h := sha256.Sum256([]byte(code))
+	return "link:" + hex.EncodeToString(h[:])
+}
+
+// confirmOwnIdentity links the provider sign-in that the one-time code
+// from the callback (#interlinea-link=) stands for to the signed-in
+// person's account, if they began the linking. A code works once and for
+// a few minutes.
+//
+// Access: signed in; only the account that began the linking.
+func (s *Server) confirmOwnIdentity(w http.ResponseWriter, r *http.Request, me session) {
+	var req struct {
+		Code string `json:"code"`
+	}
+	if !readJSON(w, r, &req, maxBody) {
+		return
+	}
+	gone := func() {
+		writeError(w, http.StatusNotFound, "notFound", "The linking has expired or was already used. Link the sign-in again.")
+	}
+	if req.Code == "" {
+		gone()
+		return
+	}
+	data, err := s.cfg.Auth.TakeFlow(r.Context(), linkKey(req.Code))
+	if errors.Is(err, authdb.ErrNotFound) {
+		gone()
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	var l pendingLink
+	if err := json.Unmarshal(data, &l); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if l.UserID != me.User.ID {
+		s.cfg.Log.Warn("an identity link confirmed by another account", "began", l.UserID, "confirmed", me.User.ID)
+		forbidden(w, "Another account began this linking. Link the sign-in from your own account.")
+		return
+	}
+	if err := s.cfg.Auth.LinkIdentity(r.Context(), me.User.ID, l.Issuer, l.Subject, l.LinkedBy); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	name := ""
+	if s.cfg.OIDC != nil {
+		name = s.cfg.OIDC.Name
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"linked": name})
 }
 
 // unlinkOwnIdentity removes a provider sign-in (?issuer=&subject=) from the

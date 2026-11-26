@@ -114,7 +114,7 @@ func odf(t *testing.T, content, styles string) []byte {
 	return buf.Bytes()
 }
 
-func unzip(t *testing.T, data []byte) (map[string]string, []string) {
+func unpack(t *testing.T, data []byte) (map[string]string, []string) {
 	t.Helper()
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -160,7 +160,7 @@ func TestOpenDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, order := unzip(t, out)
+	files, order := unpack(t, out)
 	if order[0] != "mimetype" || files["mimetype"] != "application/vnd.oasis.opendocument.text" || files["META-INF/manifest.xml"] != "<manifest/>" {
 		t.Errorf("entries %v", order)
 	}
@@ -183,7 +183,7 @@ func TestOpenDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files, _ := unzip(t, same); files["content.xml"] != body || files["styles.xml"] != styles {
+	if files, _ := unpack(t, same); files["content.xml"] != body || files["styles.xml"] != styles {
 		t.Error("without translations the parts changed")
 	}
 	if _, err := Extract(Text, []byte("not a zip"), "en"); err == nil {

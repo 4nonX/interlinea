@@ -28,6 +28,7 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/para"
+	"github.com/4nonX/interlinea/internal/unzip"
 	"github.com/4nonX/interlinea/segment"
 )
 
@@ -409,7 +410,7 @@ func parse(format string, data []byte, lang string) (*parsed, error) {
 		p.docs[""], p.enc = d, enc
 		return p, nil
 	}
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := unzip.Open(data)
 	if err != nil {
 		return nil, fmt.Errorf("the file is not an OpenDocument file: %v", err)
 	}

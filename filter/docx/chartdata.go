@@ -1,12 +1,12 @@
 package docx
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/xml"
 	"strings"
 
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/internal/unzip"
 )
 
 // updateChartData writes translated chart labels into the workbook each
@@ -56,7 +56,7 @@ func (d *document) updateChartData(changed map[string][]byte, tr filter.Translat
 // translateSharedStrings replaces shared strings of a workbook that equal a
 // key of labels. It reports whether anything changed.
 func translateSharedStrings(wb []byte, labels map[string]string) ([]byte, bool, error) {
-	zr, err := zip.NewReader(bytes.NewReader(wb), int64(len(wb)))
+	zr, err := unzip.Open(wb)
 	if err != nil {
 		return nil, false, nil // not a workbook we understand; leave it
 	}

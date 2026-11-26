@@ -14,7 +14,7 @@ import (
 	"github.com/4nonX/interlinea/filter/xliff"
 )
 
-func pack(t *testing.T, files [][2]string) []byte {
+func pack(t testing.TB, files [][2]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
@@ -54,7 +54,7 @@ const info = `<?xml version="1.0" encoding="utf-8"?>
 </HandoffPackageInfo>
 `
 
-func handoff(t *testing.T) ([]byte, string) {
+func handoff(t testing.TB) ([]byte, string) {
 	t.Helper()
 	doc, err := os.ReadFile("../xliff/testdata/memoq.mqxliff")
 	if err != nil {

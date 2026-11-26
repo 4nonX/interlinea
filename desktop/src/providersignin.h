@@ -27,8 +27,9 @@ public:
 signals:
     // A one-time code to exchange for a sign-in (#interlinea-code=).
     void code(const QString &code);
-    // A provider sign-in was linked to the account (#interlinea-linked=).
-    void linked(const QString &what);
+    // A one-time code that links a provider sign-in to the account once
+    // the account confirms it (#interlinea-link=).
+    void linkCode(const QString &code);
     void failed(const QString &message);
 
 private:

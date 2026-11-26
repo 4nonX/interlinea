@@ -1,6 +1,9 @@
 package pdf
 
 import (
+	"bytes"
+	"compress/zlib"
+	"errors"
 	"math"
 	"testing"
 )
@@ -19,5 +22,26 @@ func TestOrderOfBrokenBlocks(t *testing.T) {
 		if got := inOrder(blocks); len(got) != len(blocks) {
 			t.Errorf("%s: %d blocks of %d", name, len(got), len(blocks))
 		}
+	}
+}
+
+// The streams of one file decode to at most maxTotalDecoded together: a
+// small file of many packed streams is refused, not unpacked for hours.
+func TestDecodingBudget(t *testing.T) {
+	var packed bytes.Buffer
+	zw := zlib.NewWriter(&packed)
+	zw.Write(bytes.Repeat([]byte(" "), 1<<20))
+	zw.Close()
+	s := &stream{dict: dict{"Filter": name("FlateDecode")}, raw: packed.Bytes()}
+	f := &file{cache: map[int]any{}, loading: map[int]bool{}}
+	if data, err := decodeStream(f, s); err != nil || len(data) != 1<<20 || f.decoded != 1<<20 {
+		t.Fatalf("decoded %d bytes, %d in all, %v", len(data), f.decoded, err)
+	}
+	f.decoded = maxTotalDecoded - 100
+	if _, err := decodeStream(f, s); !errors.Is(err, errTooMuch) {
+		t.Fatalf("past the budget: %v", err)
+	}
+	if _, err := decodeStream(f, s); !errors.Is(err, errTooMuch) {
+		t.Fatalf("again: %v", err)
 	}
 }

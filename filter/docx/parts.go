@@ -2,10 +2,10 @@ package docx
 
 import (
 	"archive/zip"
-	"bytes"
 	"fmt"
 
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/internal/unzip"
 	"github.com/4nonX/interlinea/segment"
 )
 
@@ -81,7 +81,7 @@ func Rels(zr *zip.Reader, part string) ([]Rel, error) {
 
 // OpenPackage opens an Office package.
 func OpenPackage(data []byte) (*zip.Reader, error) {
-	return zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	return unzip.Open(data)
 }
 
 // RewritePackage returns the package with the changed parts replaced.

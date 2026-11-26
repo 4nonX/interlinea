@@ -118,8 +118,8 @@ void ProviderSignIn::answer(QTcpSocket *s)
     m_done = true;
     if (q.hasQueryItem(QStringLiteral("interlinea-code")))
         emit code(value("interlinea-code"));
-    else if (q.hasQueryItem(QStringLiteral("interlinea-linked")))
-        emit linked(value("interlinea-linked"));
+    else if (q.hasQueryItem(QStringLiteral("interlinea-link")))
+        emit linkCode(value("interlinea-link"));
     else if (q.hasQueryItem(QStringLiteral("interlinea-error")))
         emit failed(value("interlinea-error"));
     else

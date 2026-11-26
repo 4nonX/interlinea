@@ -23,7 +23,7 @@ const manifest = "\ufeff" + `<?xml version="1.0" encoding="utf-8"?>
   <ProjectFiles />
 </PackageProject>`
 
-func sdlxliff(t *testing.T) []byte {
+func sdlxliff(t testing.TB) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "xliff", "testdata", "trados.sdlxliff"))
 	if err != nil {
@@ -32,7 +32,7 @@ func sdlxliff(t *testing.T) []byte {
 	return b
 }
 
-func makePackage(t *testing.T, project string, files map[string][]byte) []byte {
+func makePackage(t testing.TB, project string, files map[string][]byte) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)

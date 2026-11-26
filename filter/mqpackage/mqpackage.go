@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/4nonX/interlinea/filter/xliff"
+	"github.com/4nonX/interlinea/internal/unzip"
 	"github.com/4nonX/interlinea/internal/xmlraw"
 )
 
@@ -72,7 +73,7 @@ type Package struct {
 }
 
 func readZip(data []byte, notThis error) (*zip.Reader, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := unzip.Open(data)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", notThis, err)
 	}

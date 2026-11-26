@@ -111,6 +111,9 @@ type Server struct {
 
 	dicts dictionaries
 	terms termIndexes
+
+	// patterns are the routes, in the order they were made (tests).
+	patterns []string
 }
 
 // New makes a server.
@@ -185,6 +188,7 @@ func (s *Server) routes() {
 	s.handle("GET /api/me/tokens", s.signedIn(s.ownTokens))
 	s.handle("DELETE /api/me/tokens/{id}", s.signedIn(s.revokeOwnToken))
 	s.handle("POST /api/me/identities", s.signedIn(s.linkOwnIdentity))
+	s.handle("POST /api/me/identities/confirm", s.signedIn(s.confirmOwnIdentity))
 	s.handle("DELETE /api/me/identities", s.signedIn(s.unlinkOwnIdentity))
 	s.handle("GET /api/me/assignments", s.signedIn(s.ownAssignments))
 	s.handle("GET /api/people", s.signedIn(s.people))
@@ -232,7 +236,10 @@ func (s *Server) routes() {
 	}
 }
 
-func (s *Server) handle(pattern string, h http.HandlerFunc) { s.mux.HandleFunc(pattern, h) }
+func (s *Server) handle(pattern string, h http.HandlerFunc) {
+	s.patterns = append(s.patterns, pattern)
+	s.mux.HandleFunc(pattern, h)
+}
 
 // ServeHTTP answers a request.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -243,6 +250,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Referrer-Policy", "no-referrer")
+	if r.TLS != nil {
+		// Served over HTTPS by the server itself: browsers keep to HTTPS.
+		// Behind a proxy that ends HTTPS, the proxy says so.
+		h.Set("Strict-Transport-Security", "max-age=31536000")
+	}
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		h.Set("Cache-Control", "no-store")
 		if origin := r.Header.Get("Origin"); origin != "" && s.origins[origin] {
@@ -260,11 +272,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// WebPolicy is the Content-Security-Policy of the web app's pages: its
+// own scripts and its WebAssembly core only, no page may frame it, and no
+// plugin, base address or form elsewhere. A script injected into a page
+// (through a document's text, say) is not run. The app may still talk to
+// another team server, so requests go anywhere over http(s), and it
+// reads back the files it holds in the browser (blob:, data:).
+const WebPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data: http: https:; worker-src 'self' blob:; " +
+	"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+
 // webApp serves the web app's files, and its page for any other path so
 // the app's own addresses work on reload.
 func webApp(files fs.FS) http.Handler {
 	fileServer := http.FileServerFS(files)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", WebPolicy)
+		w.Header().Set("X-Frame-Options", "DENY")
 		p := strings.TrimPrefix(r.URL.Path, "/")
 		if p != "" {
 			if st, err := fs.Stat(files, p); err == nil && !st.IsDir() {

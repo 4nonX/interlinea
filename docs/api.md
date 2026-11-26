@@ -47,7 +47,7 @@ Access: anyone with a code.
 
 ### `GET /api/auth/oidc/callback`
 
-Takes the browser back from the identity provider and sends it on to the app's return address, with a one-time code (#interlinea-code=), a linked identity (#interlinea-linked=) or an error (#interlinea-error=) in the fragment.
+Takes the browser back from the identity provider and sends it on to the app's return address, with a one-time code to sign in (#interlinea-code=) or to confirm a link (#interlinea-link=), or an error (#interlinea-error=) in the fragment.
 
 A sign-in that expired or was used already gets a page that says so.
 
@@ -144,7 +144,7 @@ Access: signed in.
 
 Begins linking a provider sign-in to the signed-in person's account, and answers with the provider's address to open.
 
-The callback sends the browser back with #interlinea-linked= in the fragment.
+The callback sends the browser back with a one-time code in the fragment (#interlinea-link=), which the app confirms at /api/me/identities/confirm.
 
 Access: signed in, when the server has an identity provider.
 
@@ -162,6 +162,18 @@ Access: signed in.
 
 - Parameters: `issuer` (query), `subject` (query)
 - Answer: 204 No Content
+- Errors: 401, 403, 422 (see [Error](#error))
+
+### `POST /api/me/identities/confirm`
+
+Links the provider sign-in that the one-time code from the callback (#interlinea-link=) stands for to the signed-in person's account, if they began the linking.
+
+A code works once and for a few minutes.
+
+Access: signed in; only the account that began the linking.
+
+- Body: {`code`: string}
+- Answer: 200 OK: map of string
 - Errors: 401, 403, 422 (see [Error](#error))
 
 ### `PUT /api/me/password`

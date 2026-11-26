@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -467,6 +469,27 @@ func TestRoutesNeedSignIn(t *testing.T) {
 			t.Errorf("%s without signing in: %d", route, r.status)
 		}
 	}
+	// Every route the server has, not only those above: those open to
+	// anyone are named here, and every other one needs a sign-in. A new
+	// route that forgets it fails here.
+	public := map[string]bool{
+		"GET /api/server": true, "GET /api/openapi.json": true, "POST /api/setup": true,
+		"POST /api/auth/password": true, "POST /api/auth/oidc/start": true,
+		"GET /api/auth/oidc/callback": true, "POST /api/auth/exchange": true, "GET /mcp": true,
+	}
+	if len(e.srv.patterns) < 150 {
+		t.Fatalf("only %d routes recorded", len(e.srv.patterns))
+	}
+	for _, route := range e.srv.patterns {
+		if public[route] {
+			continue
+		}
+		method, path, _ := strings.Cut(route, " ")
+		path = regexp.MustCompile(`\{[^}]+\}`).ReplaceAllString(path, "1")
+		if r := e.do(method, path, "", nil); r.status != 401 {
+			t.Errorf("%s without signing in: %d %s", route, r.status, r.body)
+		}
+	}
 	if r := e.do("GET", "/api/nothing", "", nil); r.status != 404 || r.err().Code != "notFound" {
 		t.Fatalf("unknown route: %d %s", r.status, r.body)
 	}
@@ -500,6 +523,16 @@ func TestRequestChecks(t *testing.T) {
 	}
 	if r := e.do("GET", "/api/server", "", nil); r.header.Get("Cache-Control") != "no-store" || r.header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("headers %v", r.header)
+	}
+	if r := e.do("GET", "/api/server", "", nil); r.header.Get("Strict-Transport-Security") != "" {
+		t.Fatal("HSTS over plain HTTP")
+	}
+	req := httptest.NewRequest("GET", "/api/server", nil)
+	req.TLS = &tls.ConnectionState{}
+	rec := httptest.NewRecorder()
+	e.srv.ServeHTTP(rec, req)
+	if rec.Header().Get("Strict-Transport-Security") == "" {
+		t.Fatalf("no HSTS over HTTPS: %v", rec.Header())
 	}
 }
 
@@ -550,6 +583,10 @@ func TestWebApp(t *testing.T) {
 	r := e.do("GET", "/", "", nil)
 	if r.status != 200 || !strings.Contains(string(r.body), "<title>Interlinea") || r.header.Get("Cache-Control") != "no-cache" {
 		t.Fatalf("page: %d %v", r.status, r.header)
+	}
+	// Its pages run only its own scripts, and no other site frames them.
+	if csp := r.header.Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self' 'wasm-unsafe-eval';") || !strings.Contains(csp, "frame-ancestors 'none'") || r.header.Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("page policy: %v", r.header)
 	}
 	// The app's own addresses get the page, so reloading works.
 	if r := e.do("GET", "/projects/12/editor", "", nil); r.status != 200 || !strings.Contains(string(r.body), "Interlinea") {

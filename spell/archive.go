@@ -2,7 +2,6 @@ package spell
 
 import (
 	"archive/zip"
-	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"github.com/4nonX/interlinea/internal/unzip"
 )
 
 // Bundled is a dictionary found in an archive: a LibreOffice extension
@@ -31,7 +32,7 @@ const maxArchiveFile = 200 << 20
 
 // ReadArchive lists the Hunspell dictionaries in a zip archive.
 func ReadArchive(data []byte) ([]Bundled, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := unzip.Open(data)
 	if err != nil {
 		return nil, fmt.Errorf("spell: not a zip archive: %w", err)
 	}

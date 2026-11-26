@@ -10,8 +10,18 @@ import (
 	"io"
 )
 
-// maxDecoded is how large one decoded stream may be.
-const maxDecoded = 256 << 20
+// maxDecoded is how large one decoded stream may be, and maxTotalDecoded
+// how much all the streams of a file may decode to together: a small
+// file of many packed streams would otherwise unpack to far more than
+// any memory holds, or keep the reader busy for hours.
+const (
+	maxDecoded      = 256 << 20
+	maxTotalDecoded = 1 << 30
+)
+
+// errTooMuch means the streams of a file decode to more than
+// maxTotalDecoded.
+var errTooMuch = fmt.Errorf("the file unpacks to more than %d MB", maxTotalDecoded>>20)
 
 // decodeStream undoes the filters of a stream.
 func decodeStream(f *file, s *stream) ([]byte, error) {
@@ -39,33 +49,38 @@ func decodeStream(f *file, s *stream) ([]byte, error) {
 		if i < len(parms) {
 			p = parms[i]
 		}
+		limit := min(maxDecoded, maxTotalDecoded-f.decoded)
+		if limit <= 0 {
+			return nil, errTooMuch
+		}
 		var err error
 		switch flt {
 		case "FlateDecode", "Fl":
-			data, err = inflate(data)
+			data, err = inflate(data, limit)
 			if err == nil {
 				data, err = unpredict(f, data, p)
 			}
 		case "LZWDecode", "LZW":
 			r := lzw.NewReader(bytes.NewReader(data), lzw.MSB, 8)
-			data, err = readSome(r)
+			data, err = readSome(r, limit)
 			r.Close()
 			if err == nil {
 				data, err = unpredict(f, data, p)
 			}
 		case "ASCII85Decode", "A85":
-			data, err = unascii85(data)
+			data, err = unascii85(data, limit)
 		case "ASCIIHexDecode", "AHx":
 			l := &lexer{b: data}
 			data = []byte(l.hex())
 		case "RunLengthDecode", "RL":
-			data = unrunlength(data)
+			data, err = unrunlength(data, limit)
 		default:
 			return nil, fmt.Errorf("the filter %s is not read", flt)
 		}
 		if err != nil {
 			return nil, err
 		}
+		f.decoded += len(data)
 	}
 	return data, nil
 }
@@ -81,11 +96,11 @@ func first(d dict, keys ...name) any {
 
 // readSome reads all a reader gives; what was read before an error in the
 // data counts, as writers of PDF files leave such errors behind.
-func readSome(r io.Reader) ([]byte, error) {
+func readSome(r io.Reader, limit int) ([]byte, error) {
 	var out bytes.Buffer
-	_, err := io.Copy(&out, io.LimitReader(r, maxDecoded+1))
-	if out.Len() > maxDecoded {
-		return nil, errors.New("a stream is too large")
+	_, err := io.Copy(&out, io.LimitReader(r, int64(limit)+1))
+	if out.Len() > limit {
+		return nil, tooLarge(limit)
 	}
 	if err != nil && out.Len() == 0 {
 		return nil, err
@@ -93,25 +108,34 @@ func readSome(r io.Reader) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func inflate(data []byte) ([]byte, error) {
+// tooLarge is the error of a stream that decodes to more than limit: too
+// large on its own, or more than the file has left to decode.
+func tooLarge(limit int) error {
+	if limit < maxDecoded {
+		return errTooMuch
+	}
+	return errors.New("a stream is too large")
+}
+
+func inflate(data []byte, limit int) ([]byte, error) {
 	r, err := zlib.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
-	return readSome(r)
+	return readSome(r, limit)
 }
 
-func unascii85(data []byte) ([]byte, error) {
+func unascii85(data []byte, limit int) ([]byte, error) {
 	data = bytes.TrimSpace(data)
 	data = bytes.TrimPrefix(data, []byte("<~"))
 	if end := bytes.Index(data, []byte("~>")); end >= 0 {
 		data = data[:end]
 	}
-	return readSome(ascii85.NewDecoder(bytes.NewReader(data)))
+	return readSome(ascii85.NewDecoder(bytes.NewReader(data)), limit)
 }
 
-func unrunlength(data []byte) []byte {
+func unrunlength(data []byte, limit int) ([]byte, error) {
 	var out []byte
 	for i := 0; i < len(data); {
 		n := int(data[i])
@@ -127,13 +151,13 @@ func unrunlength(data []byte) []byte {
 				i++
 			}
 		default:
-			return out
+			return out, nil
 		}
-		if len(out) > maxDecoded {
-			return out
+		if len(out) > limit {
+			return nil, tooLarge(limit)
 		}
 	}
-	return out
+	return out, nil
 }
 
 // unpredict undoes the PNG and TIFF predictors of Flate and LZW data.

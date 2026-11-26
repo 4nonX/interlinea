@@ -66,6 +66,39 @@ takes its notes from its section here.
   are read as forbidden instead of proposed.
 - A Trados segment from a memory or machine translation that is changed
   keeps where it came from in an `sdl:prev-origin`, as Trados writes it.
+- A PDF file whose text has broken coordinates no longer ends the
+  program (on a team server, the whole server) while its reading order is
+  worked out.
+- Importing a spreadsheet or CSV file whose header has a cell of many
+  words no longer takes seconds to minutes.
+
+### Security
+
+- Someone who manages a project may make it use only the memories and
+  termbases they may use themselves: read on what it looks things up in,
+  edit on a memory it stores translations in and on the master new terms
+  go into. Before, a manager of one project could add any memory or
+  termbase of the server to it and read it, or write into it, through the
+  project. Those who make projects (manage on all projects) still choose
+  among all memories and masters, as the catalog offers them. Taking an
+  existing termbase as a project's own termbase, which makes the
+  project's managers manage it, needs manage on that termbase.
+- Linking a sign-in of the identity provider to an account needs the
+  account to confirm it: the provider's answer brings a one-time code
+  (`#interlinea-link=`) that the account sends to
+  `POST /api/me/identities/confirm`. Before, someone could begin a link
+  and get another person to sign in at the provider, and that person's
+  sign-in was linked to the first one's account.
+- The web app's pages carry a Content-Security-Policy that runs only the
+  app's own scripts and lets no other site frame them. A server serving
+  HTTPS itself sends Strict-Transport-Security.
+- Archives (Word, Excel, PowerPoint, InDesign and OpenDocument files,
+  packages, dictionaries) with more than 100,000 entries, or that unpack
+  to more than 1 GB, are refused before they are unpacked; a PDF's streams
+  decode to at most 1 GB together. A small file can no longer fill a
+  server's memory.
+- Requests to a translation or grammar service follow redirects only on
+  its own host, so its secret header goes nowhere else.
 
 ### Tests
 
@@ -74,6 +107,16 @@ takes its notes from its section here.
   SDLXLIFF files, two MultiTerm termbases, four memoQ XLIFF files and a
   memoQ archive. Where each comes from is in
   `internal/realworld/testdata/README.md`.
+- Fuzz tests for every reader of files people bring: bilingual files,
+  documents in every format, PDF, memories, termbases, project and handoff
+  packages, spelling dictionaries and RTF. `go test` runs them on the
+  sample files; `go test -fuzz=FuzzExtract ./filter/xliff` (and so on)
+  goes on with inputs of its own.
+- Every route of the server is called without signing in, and by someone
+  without grants on things others made; only the routes for everyone
+  answer.
+- The web app's end-to-end tests run under the server's
+  Content-Security-Policy and fail on anything it blocks.
 
 ## [0.2.0] - 2026-11-25
 
