@@ -172,7 +172,7 @@ func readMQRTF(doc *rtf.Doc) (*rtfTable, error) {
 		data = append(data, i)
 	}
 	if len(data) == 0 {
-		return nil, fmt.Errorf("xliff: the memoQ RTF file has no segments")
+		return nil, fmt.Errorf("xliff: the two-column RTF file has no segments")
 	}
 	srcName, tgtName := "", ""
 	if header >= 0 {
@@ -225,7 +225,7 @@ func readMQRTF(doc *rtf.Doc) (*rtfTable, error) {
 			}
 		}
 		if _, dup := f.byID[id]; dup {
-			return nil, fmt.Errorf("xliff: two segments of the memoQ RTF file have the ID %q", id)
+			return nil, fmt.Errorf("xliff: two segments of the two-column RTF file have the ID %q", id)
 		}
 		f.byID[id] = sg
 		f.segments = append(f.segments, sg)

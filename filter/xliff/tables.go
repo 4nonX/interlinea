@@ -25,8 +25,8 @@ func (f rtfTableFile) merge(_ []byte, updates map[string]Update) ([]byte, error)
 }
 
 var (
-	errNotTable  = errors.New("xliff: the RTF file is not a bilingual table of memoQ (two-column RTF) or D\u00e9j\u00e0 Vu (RTF external view)")
-	errNotReview = errors.New("xliff: the Word document is not a bilingual table of Trados (review document) or memoQ (two-column DOCX)")
+	errNotTable  = errors.New("xliff: the RTF file is not a bilingual table (two columns, or an external view)")
+	errNotReview = errors.New("xliff: the Word document is not a bilingual table for review")
 )
 
 // noLanguagesNote is the warning for a table that does not say its

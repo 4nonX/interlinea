@@ -690,7 +690,7 @@ export default () =>
       );
       await evaluate("window.__saved = null");
       await evaluate(
-        "[...document.querySelectorAll('dialog[open] tr')].find(r => r.textContent.includes('project memory')).querySelector('button[aria-label$=\"as a Wordfast memory\"]').click()",
+        "[...document.querySelectorAll('dialog[open] tr')].find(r => r.textContent.includes('project memory')).querySelector('button[aria-label$=\"as a .txt memory\"]').click()",
       );
       await sleep(300);
       const wfOut = await evaluate(

@@ -317,7 +317,7 @@ function MemoryTable({
                         type="button"
                         className="btn btn-quiet btn-small"
                         disabled={units === 0}
-                        aria-label={`Export ${m.name} as a Wordfast memory`}
+                        aria-label={`Export ${m.name} as a .txt memory`}
                         onClick={() =>
                           download(
                             tm.exportWordfast(c, m.name),
@@ -327,7 +327,7 @@ function MemoryTable({
                         }
                       >
                         <Download size={14} aria-hidden="true" />
-                        Export Wordfast
+                        Export .txt
                       </button>
                       {!m.projectId && (
                         <ConfirmButton

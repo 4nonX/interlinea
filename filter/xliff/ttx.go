@@ -84,7 +84,7 @@ func readTTX(doc *xmlraw.Document) (*ttxFile, error) {
 		return nil, errNoLanguage
 	}
 	if body == nil {
-		return nil, fmt.Errorf("xliff: the TagEditor file has no body")
+		return nil, fmt.Errorf("xliff: the .ttx file has no body")
 	}
 	f.seg = segmenter.New(nil, f.ext.SourceLang)
 	f.ext.Blocks = append(f.ext.Blocks, filter.Block{ID: "b1", Part: filter.PartBody, File: f.settings.Get("SourceDocumentPath")})
@@ -98,7 +98,7 @@ func readTTX(doc *xmlraw.Document) (*ttxFile, error) {
 		}
 	}
 	if unsegmented > 0 {
-		f.ext.Warnings = append(f.ext.Warnings, fmt.Sprintf("%d sentences were not yet segmented in TagEditor; they are segmented here and written back as segments of their own.", unsegmented))
+		f.ext.Warnings = append(f.ext.Warnings, fmt.Sprintf("%d sentences were not yet segmented in the file; they are segmented here and written back as segments of their own.", unsegmented))
 	}
 	return f, nil
 }
@@ -514,7 +514,7 @@ func (f *ttxFile) merge(updates map[string]Update, targetLang string) ([]byte, e
 			continue
 		}
 		if tgtTag == "" {
-			return nil, fmt.Errorf("xliff: the TagEditor file names no target language")
+			return nil, fmt.Errorf("xliff: the .ttx file names no target language")
 		}
 		inner, err := render(u.Target, s.tags)
 		if err != nil {

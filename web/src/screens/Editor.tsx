@@ -1319,7 +1319,7 @@ export function Editor({
                         <button
                           type="button"
                           className="btn btn-quiet btn-small"
-                          aria-label={`Export ${name} as a Wordfast memory`}
+                          aria-label={`Export ${name} as a .txt memory`}
                           onClick={() =>
                             download(
                               tm.exportWordfast(c, name),
@@ -1330,7 +1330,7 @@ export function Editor({
                           disabled={tm.count(c, name) === 0}
                         >
                           <Download size={14} aria-hidden="true" />
-                          Export Wordfast
+                          Export .txt
                         </button>
                       </td>
                     </tr>

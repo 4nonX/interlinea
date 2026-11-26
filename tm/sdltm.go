@@ -35,7 +35,7 @@ func ReadSDLTM(data []byte) (*File, error) {
 		return nil, fmt.Errorf("sdltm: %w", err)
 	}
 	if db.Columns("translation_units") == nil || db.Columns("translation_memories") == nil {
-		return nil, errors.New("sdltm: this SQLite database is not a Trados translation memory: it has no table of translation units")
+		return nil, errors.New("sdltm: this SQLite database is not an .sdltm translation memory: it has no table of translation units")
 	}
 	f := &File{Format: FormatSDLTM}
 	type memory struct{ name, src, tgt string }

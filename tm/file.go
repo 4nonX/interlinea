@@ -59,9 +59,9 @@ func FormatOf(data []byte) string {
 func FormatName(format string) string {
 	switch format {
 	case FormatSDLTM:
-		return "Trados Studio translation memory"
+		return ".sdltm memory"
 	case FormatWordfast:
-		return "Wordfast translation memory"
+		return ".txt memory"
 	}
 	return "TMX"
 }

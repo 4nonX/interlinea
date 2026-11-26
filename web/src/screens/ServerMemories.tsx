@@ -207,10 +207,10 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
           <button
             type="button"
             className="btn"
-            aria-label={`Export ${m.name} as a Wordfast memory`}
+            aria-label={`Export ${m.name} as a .txt memory`}
             onClick={() => void api.exportMemory(m.name, "wordfast").then((b) => download(b, `${m.name}.txt`, WORDFAST_TYPE), (e) => notify(errorText(e)))}
           >
-            <Download size={15} aria-hidden="true" /> Export Wordfast
+            <Download size={15} aria-hidden="true" /> Export .txt
           </button>
           {edit && (
             <>

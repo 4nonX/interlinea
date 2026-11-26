@@ -192,7 +192,7 @@ export default () =>
       await click("button", "Continue to files and languages");
       await sleep(300);
       await setFiles([`${docs}/Mietvertrag.mqxlz`]);
-      check(await waitFor("document.body.innerText.includes('MQXLIFF')", 15000), "an archive is read as memoQ XLIFF");
+      check(await waitFor("document.body.innerText.includes('.mqxliff')", 15000), "an archive is read as memoQ XLIFF");
       await setValue("#pname", "Archiv");
       await sleep(200);
       await through();

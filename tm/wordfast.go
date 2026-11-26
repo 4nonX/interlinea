@@ -75,7 +75,7 @@ func ReadWordfast(data []byte) (*File, error) {
 	}
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	if len(lines) == 0 || !wordfastHeader(lines[0]) {
-		return nil, errors.New("wordfast: the first line is not the header of a Wordfast translation memory")
+		return nil, errors.New("wordfast: the first line is not the header of a .txt translation memory")
 	}
 	f := &File{Format: FormatWordfast}
 	head := strings.Split(strings.TrimLeft(lines[0], "\ufeff"), "\t")

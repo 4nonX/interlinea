@@ -273,7 +273,7 @@ export function memoryFileName(name: string, ext: string): string {
 
 /** The memory files people can choose, in words. */
 export const MEMORY_FILES_NOTE =
-  "TMX, a Trados Studio memory (.sdltm) or a Wordfast memory (.txt).";
+  "A memory file: .tmx, .sdltm or .txt.";
 
 /** What an import says it did, for a notice. */
 export function importNotice(st: MemoryImport, into: string, from?: string): string {
@@ -750,15 +750,15 @@ export interface Bilingual extends Extracted {
 export const XLIFF_FORMAT_NAME: Record<string, string> = {
   "xliff-1.2": "XLIFF 1.2",
   "xliff-2": "XLIFF 2",
-  sdlxliff: "SDLXLIFF",
-  mqxliff: "MQXLIFF",
-  mxliff: "Phrase XLIFF",
-  txml: "Wordfast TXML",
-  ttx: "TagEditor TTX",
-  sdlreview: "Trados review DOCX",
-  mqrtf: "memoQ two-column RTF",
-  mqdocx: "memoQ two-column DOCX",
-  dvrtf: "Déjà Vu RTF external view",
+  sdlxliff: ".sdlxliff",
+  mqxliff: ".mqxliff",
+  mxliff: ".mxliff",
+  txml: ".txml",
+  ttx: ".ttx",
+  sdlreview: "Review table (.docx)",
+  mqrtf: "Two-column table (.rtf)",
+  mqdocx: "Two-column table (.docx)",
+  dvrtf: "External view (.rtf)",
 };
 
 // A segment's state in the file becomes the editor's: confirmed for

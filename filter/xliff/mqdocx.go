@@ -154,14 +154,14 @@ func (f *reviewFile) readMQ(table *xmlraw.Node, header int) (*reviewFile, error)
 			}
 		}
 		if _, dup := f.byID[id]; dup {
-			return nil, fmt.Errorf("xliff: two segments of the memoQ document have the ID %q", id)
+			return nil, fmt.Errorf("xliff: two segments of the two-column document have the ID %q", id)
 		}
 		f.byID[id] = sg
 		f.segments = append(f.segments, sg)
 		f.ext.Units = append(f.ext.Units, sg.unit)
 	}
 	if len(f.segments) == 0 {
-		return nil, fmt.Errorf("xliff: the memoQ document has no segments")
+		return nil, fmt.Errorf("xliff: the two-column document has no segments")
 	}
 	f.ext.SourceLang = rtfLang(cellText(head[srcCol]), 0)
 	f.ext.TargetLang = rtfLang(cellText(head[tgtCol]), 0)

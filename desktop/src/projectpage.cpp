@@ -508,7 +508,7 @@ void ProjectPage::fillFiles()
     icon->setPixmap(Icons::get(QStringLiteral("upload"), Theme::color("text2")).pixmap(18, 18));
     zh->addWidget(icon, 0, Qt::AlignVCenter);
     zh->addWidget(Web::text(m_busy.isEmpty()
-                                ? tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf) keep their translations and states, and so do bilingual tables for review: Trados review documents, memoQ two-column RTF and DOCX, Déjà Vu RTF external views.")
+                                ? tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf) keep their translations and states, and so do bilingual tables for review in .docx and .rtf.")
                                 : m_busy,
                             "secondary", zone),
                   1);

@@ -51,7 +51,7 @@ func readDVRTF(doc *rtf.Doc) (*rtfTable, error) {
 	f.ext.Format = FormatDVRTF
 	data := dvRows(doc)
 	if len(data) == 0 {
-		return nil, fmt.Errorf("xliff: the D\u00e9j\u00e0 Vu external view has no segments")
+		return nil, fmt.Errorf("xliff: the RTF external view has no segments")
 	}
 	srcCol, tgtCol, commentCol := 1, 2, -1
 	if len(doc.Rows[data[0]].Cells) >= 4 {
@@ -91,7 +91,7 @@ func readDVRTF(doc *rtf.Doc) (*rtfTable, error) {
 			}
 		}
 		if _, dup := f.byID[id]; dup {
-			return nil, fmt.Errorf("xliff: two rows of the D\u00e9j\u00e0 Vu external view have the segment ID %s", id)
+			return nil, fmt.Errorf("xliff: two rows of the RTF external view have the segment ID %s", id)
 		}
 		f.byID[id] = sg
 		f.segments = append(f.segments, sg)

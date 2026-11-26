@@ -1577,7 +1577,7 @@ export function FilesField({
         <p className="dropzone-text">
           {reading
             ? "Reading the files…"
-            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states, and so do bilingual tables for review: Trados review documents, memoQ two-column RTF and DOCX, Déjà Vu RTF external views."}
+            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf) and packages (.sdlppx, .mqout) keep their translations and states, and so do bilingual tables for review in .docx and .rtf."}
         </p>
         <div className="row">
           <button

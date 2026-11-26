@@ -142,23 +142,23 @@ QString packageKind(const QString &name)
 QString bilingualName(const QString &format)
 {
     if (format == QLatin1String("sdlxliff"))
-        return QStringLiteral("SDLXLIFF");
+        return QStringLiteral(".sdlxliff");
     if (format == QLatin1String("mqxliff"))
-        return QStringLiteral("MQXLIFF");
+        return QStringLiteral(".mqxliff");
     if (format == QLatin1String("mxliff"))
-        return QStringLiteral("Phrase XLIFF");
+        return QStringLiteral(".mxliff");
     if (format == QLatin1String("txml"))
-        return QStringLiteral("Wordfast TXML");
+        return QStringLiteral(".txml");
     if (format == QLatin1String("ttx"))
-        return QStringLiteral("TagEditor TTX");
+        return QStringLiteral(".ttx");
     if (format == QLatin1String("sdlreview"))
-        return QStringLiteral("Trados review DOCX");
+        return NewProjectPage::tr("Review table (.docx)");
     if (format == QLatin1String("mqrtf"))
-        return QStringLiteral("memoQ two-column RTF");
+        return NewProjectPage::tr("Two-column table (.rtf)");
     if (format == QLatin1String("mqdocx"))
-        return QStringLiteral("memoQ two-column DOCX");
+        return NewProjectPage::tr("Two-column table (.docx)");
     if (format == QLatin1String("dvrtf"))
-        return QStringLiteral("Déjà Vu RTF external view");
+        return NewProjectPage::tr("External view (.rtf)");
     if (format == QLatin1String("xliff-2"))
         return QStringLiteral("XLIFF 2");
     if (format == QLatin1String("xliff-1.2"))
@@ -877,7 +877,7 @@ void NewProjectPage::fillFiles()
     auto *icon = new QLabel(zone);
     icon->setPixmap(Icons::get(QStringLiteral("upload"), Theme::color("text2")).pixmap(18, 18));
     zh->addWidget(icon, 0, Qt::AlignVCenter);
-    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states, and so do bilingual tables for review: Trados review documents, memoQ two-column RTF and DOCX, Déjà Vu RTF external views."),
+    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf) and packages (.sdlppx, .mqout) keep their translations and states, and so do bilingual tables for review in .docx and .rtf."),
                             "secondary", zone),
                   1);
     auto *addFilesButton = Web::button(tr("Add files"), Web::Small, zone, QStringLiteral("file-text"));

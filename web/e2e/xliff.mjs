@@ -31,14 +31,14 @@ export default () =>
         `${fixtures}/Mietvertrag.docx.sdlxliff`,
       );
       check(
-        await waitFor("document.body.innerText.includes('SDLXLIFF')"),
+        await waitFor("document.body.innerText.includes('.sdlxliff')"),
         "file read as Trados SDLXLIFF",
       );
       let t = await text();
       check(
         t.includes("2 of 5 segments confirmed, 1 locked"),
         "summary of the file's segments: " +
-          (t.match(/SDLXLIFF[^\n]*/)?.[0] ?? ""),
+          (t.match(/\.sdlxliff[^\n]*/)?.[0] ?? ""),
       );
       check(
         t.includes("German (Germany)") &&
@@ -336,7 +336,7 @@ export default () =>
       await click("button", "Continue to files and languages");
       await sleep(300);
       await setFile("input[type=file]", resolve(fixtures, "../../../internal/realworld/testdata/tageditor/okapi-issue-164.doc.ttx"));
-      check(await waitFor("document.body.innerText.includes('TagEditor TTX')", 15000), "file read as a TagEditor file");
+      check(await waitFor("document.body.innerText.includes('.ttx')", 15000), "file read as a TagEditor file");
       await evaluate("[...document.querySelectorAll('.target-list input')].forEach(i => { const want = i.closest('label').textContent.includes('German (Germany)'); if (i.checked !== want) i.click(); })");
       await sleep(300);
       await setValue("#pname", "TagEditor");
@@ -368,8 +368,8 @@ export default () =>
       // external view as RTF; each goes back with its target cells written.
       const tables = resolve(fixtures, "../../../filter/xliff/testdata/tables");
       for (const c of [
-        { file: "lieferschein.docx.review.docx", kind: "Trados review DOCX", save: "Save DOCX", text: "Caution: do not fold." },
-        { file: "dejavu-external-view.rtf", kind: "Déjà Vu RTF external view", save: "Save RTF", text: "Please do not fold." },
+        { file: "lieferschein.docx.review.docx", kind: "Review table (.docx)", save: "Save DOCX", text: "Caution: do not fold." },
+        { file: "dejavu-external-view.rtf", kind: "External view (.rtf)", save: "Save RTF", text: "Please do not fold." },
       ]) {
         await open("/new", { keep: true, wait: 0 });
         await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
