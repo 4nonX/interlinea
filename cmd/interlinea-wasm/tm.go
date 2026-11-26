@@ -301,17 +301,33 @@ func tmExportTMX(args []js.Value) (any, error) {
 	return arr, nil
 }
 
+// tmExportWordfast(name) -> Uint8Array: the memory as a Wordfast memory.
+func tmExportWordfast(args []js.Value) (any, error) {
+	m, err := memory(args[0].String())
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	if err := tm.ExportWordfast(context.Background(), m, &buf); err != nil {
+		return nil, err
+	}
+	arr := js.Global().Get("Uint8Array").New(buf.Len())
+	js.CopyBytesToJS(arr, buf.Bytes())
+	return arr, nil
+}
+
 func tmFuncs() map[string]any {
 	return map[string]any{
-		"tmOpen":        guard(tmOpen),
-		"tmAdd":         guard(tmAdd),
-		"tmLookup":      guard(tmLookup),
-		"tmConcordance": guard(tmConcordance),
-		"tmCount":       guard(tmCount),
-		"tmSetTarget":   guard(tmSetTarget),
-		"tmDelete":      guard(tmDelete),
-		"tmImportTMX":   guard(tmImportTMX),
-		"tmInspect":     guard(tmInspect),
-		"tmExportTMX":   guard(tmExportTMX),
+		"tmOpen":           guard(tmOpen),
+		"tmAdd":            guard(tmAdd),
+		"tmLookup":         guard(tmLookup),
+		"tmConcordance":    guard(tmConcordance),
+		"tmCount":          guard(tmCount),
+		"tmSetTarget":      guard(tmSetTarget),
+		"tmDelete":         guard(tmDelete),
+		"tmImportTMX":      guard(tmImportTMX),
+		"tmInspect":        guard(tmInspect),
+		"tmExportTMX":      guard(tmExportTMX),
+		"tmExportWordfast": guard(tmExportWordfast),
 	}
 }

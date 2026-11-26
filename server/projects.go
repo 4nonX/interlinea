@@ -1732,9 +1732,9 @@ func (s *Server) projectConcordance(w http.ResponseWriter, r *http.Request, me s
 }
 
 // projectMemoryExport sends a memory the project looks up in, or searches
-// with the concordance, as TMX, to the project's people: the apps match
-// against it while translating. Memories the project only updates are
-// not sent.
+// with the concordance, as TMX (or with ?format=wordfast as a Wordfast
+// memory), to the project's people: the apps match against it while
+// translating. Memories the project only updates are not sent.
 //
 // Access: read on the project, or work in it.
 func (s *Server) projectMemoryExport(w http.ResponseWriter, r *http.Request, me session) {
@@ -1760,11 +1760,7 @@ func (s *Server) projectMemoryExport(w http.ResponseWriter, r *http.Request, me 
 		s.fail(w, r, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/x-tmx+xml; charset=utf-8")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": m.Info().Name + ".tmx"}))
-	if err := tm.ExportTMX(r.Context(), m, w, "Interlinea server "+s.cfg.Version); err != nil {
-		s.cfg.Log.Error("TMX export failed", "memory", m.Info().Name, "err", err)
-	}
+	s.sendMemory(w, r, m)
 }
 
 // Extracts take what the editor can show: matches from 50%, a few per

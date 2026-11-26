@@ -46,6 +46,12 @@ const QString memoryFilter()
     return MemoriesPage::tr("Memory files (*.tmx *.sdltm *.txt);;TMX (*.tmx);;Trados Studio memories (*.sdltm);;Wordfast memories (*.txt);;All files (*)");
 }
 
+// What a Wordfast memory is saved as.
+const QString wordfastFilter()
+{
+    return MemoriesPage::tr("Wordfast memories (*.txt);;All files (*)");
+}
+
 // The same in words, as the browser client says it.
 const QString memoryFilesNote()
 {
@@ -459,14 +465,23 @@ QWidget *MemoriesPage::localTable(Part *p, const QList<QJsonObject> &memories, b
         auto *exportButton = Web::button(tr("Export TMX"), Web::Quiet | Web::Small, table, QStringLiteral("download"));
         exportButton->setAccessibleName(tr("Export %1 as TMX").arg(name));
         exportButton->setEnabled(count > 0);
-        connect(exportButton, &QPushButton::clicked, this, [this, id, name] {
-            QString file = name;
-            file.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}]+")), QStringLiteral("_"));
+        QString file = name;
+        file.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}]+")), QStringLiteral("_"));
+        connect(exportButton, &QPushButton::clicked, this, [this, id, name, file] {
             const QString path = QFileDialog::getSaveFileName(this, tr("Export %1 as TMX").arg(name), file + QStringLiteral(".tmx"), tmxFilter());
             if (!path.isEmpty())
                 exportFile(id, name, path);
         });
         actions << exportButton;
+        auto *wordfastButton = Web::button(tr("Export Wordfast"), Web::Quiet | Web::Small, table, QStringLiteral("download"));
+        wordfastButton->setAccessibleName(tr("Export %1 as a Wordfast memory").arg(name));
+        wordfastButton->setEnabled(count > 0);
+        connect(wordfastButton, &QPushButton::clicked, this, [this, id, name, file] {
+            const QString path = QFileDialog::getSaveFileName(this, tr("Export %1 as a Wordfast memory").arg(name), file + QStringLiteral(".txt"), wordfastFilter());
+            if (!path.isEmpty())
+                exportFile(id, name, path, QStringLiteral("wordfast"));
+        });
+        actions << wordfastButton;
         if (main) {
             auto *del = new Web::ConfirmButton(tr("Delete"), tr("Delete %1 and its %2?").arg(name, units(count)), tr("Delete"), table, true, QStringLiteral("trash"));
             del->button()->setAccessibleName(tr("Delete %1").arg(name));
@@ -730,12 +745,15 @@ void MemoriesPage::importFile(const QString &connectionId, const QString &memory
              });
 }
 
-void MemoriesPage::exportFile(const QString &connectionId, const QString &memoryName, const QString &path)
+void MemoriesPage::exportFile(const QString &connectionId, const QString &memoryName, const QString &path, const QString &format)
 {
     Part *p = part(connectionId);
     if (!p)
         return;
-    onResult(p->conn->api()->get(QStringLiteral("/api/memories/%1/export").arg(ApiClient::seg(memoryName))), this, [this, path](const ApiResult &r) {
+    QUrlQuery q;
+    if (format != QLatin1String("tmx"))
+        q.addQueryItem(QStringLiteral("format"), format);
+    onResult(p->conn->api()->get(QStringLiteral("/api/memories/%1/export").arg(ApiClient::seg(memoryName)), q), this, [this, path](const ApiResult &r) {
         if (!r.ok()) {
             notify(r.error.message);
             return;
@@ -1168,7 +1186,7 @@ void MemoriesPage::showDetail(Part *p)
         p->detail->addWidget(panel);
         return;
     }
-    // TMX out and in, and deleting, for those who may.
+    // Memory files out and in, and deleting, for those who may.
     QList<QWidget *> actions;
     auto *exportButton = Web::button(tr("Export TMX"), Web::Normal, panel, QStringLiteral("download"));
     connect(exportButton, &QPushButton::clicked, this, [this, id, name] {
@@ -1177,11 +1195,20 @@ void MemoriesPage::showDetail(Part *p)
             exportFile(id, name, path);
     });
     actions << exportButton;
+    auto *wordfastButton = Web::button(tr("Export Wordfast"), Web::Normal, panel, QStringLiteral("download"));
+    wordfastButton->setAccessibleName(tr("Export %1 as a Wordfast memory").arg(name));
+    connect(wordfastButton, &QPushButton::clicked, this, [this, id, name] {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Export %1 as a Wordfast memory").arg(name), name + QStringLiteral(".txt"), wordfastFilter());
+        if (!path.isEmpty())
+            exportFile(id, name, path, QStringLiteral("wordfast"));
+    });
+    actions << wordfastButton;
     if (edit) {
-        auto *import = Web::button(tr("Import TMX"), Web::Normal, panel, QStringLiteral("upload"));
-        import->setAccessibleName(tr("TMX file for %1").arg(name));
+        auto *import = Web::button(tr("Import"), Web::Normal, panel, QStringLiteral("upload"));
+        import->setAccessibleName(tr("Import a memory file into %1").arg(name));
+        import->setToolTip(memoryFilesNote());
         connect(import, &QPushButton::clicked, this, [this, id, name] {
-            const QString path = QFileDialog::getOpenFileName(this, tr("TMX file for %1").arg(name), QString(), tmxFilter());
+            const QString path = QFileDialog::getOpenFileName(this, tr("Import a memory file into %1").arg(name), QString(), memoryFilter());
             if (!path.isEmpty())
                 importFile(id, name, path);
         });

@@ -676,7 +676,7 @@ export default () =>
       );
       await evaluate("window.__saved = null");
       await evaluate(
-        "[...document.querySelectorAll('dialog[open] tr')].find(r => r.textContent.includes('project memory')).querySelector('button:last-child').click()",
+        "[...[...document.querySelectorAll('dialog[open] tr')].find(r => r.textContent.includes('project memory')).querySelectorAll('button')].find(b => b.textContent.includes('Export TMX')).click()",
       );
       await sleep(300);
       const tmxOut = await evaluate(
@@ -687,6 +687,21 @@ export default () =>
           tmxOut.includes("x-context-pre") &&
           tmxOut.includes("repaid after it ends"),
         "project memory exports as TMX with context",
+      );
+      await evaluate("window.__saved = null");
+      await evaluate(
+        "[...document.querySelectorAll('dialog[open] tr')].find(r => r.textContent.includes('project memory')).querySelector('button[aria-label$=\"as a Wordfast memory\"]').click()",
+      );
+      await sleep(300);
+      const wfOut = await evaluate(
+        "window.__saved ? window.__saved.arrayBuffer().then(b => { const u = new Uint8Array(b); return u[0] === 0xff && u[1] === 0xfe ? new TextDecoder('utf-16le').decode(u.subarray(2)) : '' }) : ''",
+      );
+      check(
+        wfOut.split("\r\n")[0].includes("%Wordfast TM") &&
+          wfOut.includes("%DE-DE") &&
+          wfOut.includes("repaid after it ends"),
+        "project memory exports as a Wordfast memory in UTF-16: " +
+          wfOut.slice(0, 120),
       );
       await click("dialog[open] button", "Close");
       await sleep(150);

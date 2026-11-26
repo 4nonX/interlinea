@@ -7,7 +7,7 @@ import {
   type LangCode,
   type TranslationMemory,
 } from "../data";
-import { core, download, importNotice, loadCore, MEMORY_FILES, MEMORY_FILES_NOTE, tm, type CoreApi } from "../core";
+import { core, download, importNotice, loadCore, MEMORY_FILES, MEMORY_FILES_NOTE, memoryFileName, tm, WORDFAST_TYPE, type CoreApi } from "../core";
 import { ServerMemories } from "./ServerMemories";
 import { useLocalStore } from "../store";
 import {
@@ -312,6 +312,22 @@ function MemoryTable({
                       >
                         <Download size={14} aria-hidden="true" />
                         Export TMX
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-small"
+                        disabled={units === 0}
+                        aria-label={`Export ${m.name} as a Wordfast memory`}
+                        onClick={() =>
+                          download(
+                            tm.exportWordfast(c, m.name),
+                            memoryFileName(m.name, "txt"),
+                            WORDFAST_TYPE,
+                          )
+                        }
+                      >
+                        <Download size={14} aria-hidden="true" />
+                        Export Wordfast
                       </button>
                       {!m.projectId && (
                         <ConfirmButton

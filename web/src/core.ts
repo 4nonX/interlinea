@@ -93,6 +93,7 @@ export interface CoreApi {
   tmImportTMX(name: string, bytes: Uint8Array): Res<string>;
   tmInspect(bytes: Uint8Array): Res<string>;
   tmExportTMX(name: string): Res<Uint8Array>;
+  tmExportWordfast(name: string): Res<Uint8Array>;
   // Termbase functions: see termio.ts.
   xliffDetect(bytes: Uint8Array): Res<string>;
   xliffExtract(bytes: Uint8Array): Res<string>;
@@ -229,6 +230,10 @@ export const tm = {
   exportTMX(c: CoreApi, name: string): Uint8Array {
     return unwrap(c.tmExportTMX(name));
   },
+  /** The memory as a Wordfast memory (UTF-16 text). */
+  exportWordfast(c: CoreApi, name: string): Uint8Array {
+    return unwrap(c.tmExportWordfast(name));
+  },
 };
 
 /** What an import of a memory file did. */
@@ -257,6 +262,14 @@ export interface MemoryFileInfo {
 /** The memory files people can choose, for a file input's accept. */
 export const MEMORY_FILES =
   ".tmx,.sdltm,.txt,application/x-tmx+xml,text/xml,text/plain";
+
+/** The type of a Wordfast memory, for a download. */
+export const WORDFAST_TYPE = "text/plain;charset=utf-16";
+
+/** A memory's name as a file name, without what file systems refuse. */
+export function memoryFileName(name: string, ext: string): string {
+  return `${name.replace(/[^\p{L}\p{N}]+/gu, "_")}.${ext}`;
+}
 
 /** The memory files people can choose, in words. */
 export const MEMORY_FILES_NOTE =

@@ -9,6 +9,7 @@
 #include "flowlayout.h"
 #include "icons.h"
 #include "languages.h"
+#include "memoriespage.h"
 #include "roles.h"
 #include "segmentcontent.h"
 #include "webui.h"
@@ -53,6 +54,7 @@
 #include <QTableWidget>
 #include <QTextBrowser>
 #include <QTextDocument>
+#include <QUrlQuery>
 #include <QVBoxLayout>
 
 #include <memory>
@@ -3441,9 +3443,13 @@ Web::Dialog *EditorPage::showMemoriesDialog()
             fillUnits();
             QList<QWidget *> actions;
             if (isProject) {
-                auto *imp = Web::button(tr("Import TMX"), Web::Quiet | Web::Small, t, QStringLiteral("upload"));
+                auto *imp = Web::button(tr("Import"), Web::Small, t, QStringLiteral("upload"));
+                imp->setAccessibleName(tr("Import a memory file into %1").arg(name));
+                imp->setToolTip(tr("TMX, a Trados Studio memory (.sdltm) or a Wordfast memory (.txt)."));
                 connect(imp, &QPushButton::clicked, this, [this, name, fillUnits, dlg] {
-                    const QString path = QFileDialog::getOpenFileName(dlg, tr("Import TMX"), QString(), tr("TMX files (*.tmx)"));
+                    const QString path = QFileDialog::getOpenFileName(
+                        dlg, tr("Import a memory file into %1").arg(name), QString(),
+                        tr("Memory files (*.tmx *.sdltm *.txt);;TMX (*.tmx);;Trados Studio memories (*.sdltm);;Wordfast memories (*.txt);;All files (*)"));
                     if (path.isEmpty())
                         return;
                     QFile f(path);
@@ -3453,30 +3459,33 @@ Web::Dialog *EditorPage::showMemoriesDialog()
                         return;
                     }
                     onResult(m_conn->api()->upload("POST", QStringLiteral("/api/memories/%1/import").arg(ApiClient::seg(name)), f.readAll(),
-                                                   QStringLiteral("application/x-tmx+xml")),
-                             this, [this, fileName, fillUnits](const ApiResult &r) {
+                                                   QStringLiteral("application/octet-stream")),
+                             this, [this, name, fileName, fillUnits](const ApiResult &r) {
                                  if (!r.ok()) {
                                      notify(tr("Could not import %1: %2").arg(fileName, r.error.message));
                                      return;
                                  }
-                                 const QJsonObject st = r.object();
-                                 const int stored = st.value(QLatin1String("stored")).toInt(st.value(QLatin1String("imported")).toInt());
-                                 notify(tr("Imported %1 from %2").arg(plural(stored, tr("unit"), tr("units")), fileName));
+                                 notify(MemoriesPage::importNotice(r.object(), name, fileName));
                                  fillUnits();
                              });
                 });
                 actions << imp;
             }
-            auto *exp = Web::button(tr("Export TMX"), Web::Quiet | Web::Small, t, QStringLiteral("download"));
-            connect(exp, &QPushButton::clicked, this, [this, name, dlg] {
+            // The memory out as TMX or as a Wordfast memory.
+            const auto exportAs = [this, name, dlg](const QString &format) {
                 QString base = name;
                 base.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}]+")), QStringLiteral("_"));
+                const bool wordfast = format == QLatin1String("wordfast");
                 const QString to = QFileDialog::getSaveFileName(
-                    dlg, tr("Export TMX"), QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QLatin1Char('/') + base + QStringLiteral(".tmx"),
-                    tr("TMX files (*.tmx)"));
+                    dlg, wordfast ? tr("Export %1 as a Wordfast memory").arg(name) : tr("Export TMX"),
+                    QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + QLatin1Char('/') + base + (wordfast ? QStringLiteral(".txt") : QStringLiteral(".tmx")),
+                    wordfast ? tr("Wordfast memories (*.txt)") : tr("TMX files (*.tmx)"));
                 if (to.isEmpty())
                     return;
-                onResult(m_conn->api()->get(projectPath() + QStringLiteral("/memories/%1/export").arg(ApiClient::seg(name))), this, [this, to](const ApiResult &r) {
+                QUrlQuery q;
+                if (wordfast)
+                    q.addQueryItem(QStringLiteral("format"), format);
+                onResult(m_conn->api()->get(projectPath() + QStringLiteral("/memories/%1/export").arg(ApiClient::seg(name)), q), this, [this, to](const ApiResult &r) {
                     if (!r.ok()) {
                         notify(r.error.message);
                         return;
@@ -3488,8 +3497,14 @@ Web::Dialog *EditorPage::showMemoriesDialog()
                     }
                     notify(tr("Saved %1").arg(QFileInfo(to).fileName()));
                 });
-            });
+            };
+            auto *exp = Web::button(tr("Export TMX"), Web::Quiet | Web::Small, t, QStringLiteral("download"));
+            connect(exp, &QPushButton::clicked, this, [exportAs] { exportAs(QStringLiteral("tmx")); });
             actions << exp;
+            auto *wf = Web::button(tr("Export Wordfast"), Web::Quiet | Web::Small, t, QStringLiteral("download"));
+            wf->setAccessibleName(tr("Export %1 as a Wordfast memory").arg(name));
+            connect(wf, &QPushButton::clicked, this, [exportAs] { exportAs(QStringLiteral("wordfast")); });
+            actions << wf;
             t->addRow({Web::cell(name, isProject ? tr("project memory") : QString(), t), Web::cellText(uses.join(QLatin1String(", ")), t), units,
                        Web::cellActions(actions, t)});
         }

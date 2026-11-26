@@ -37,7 +37,7 @@ var tmCommands = []command{
 	{"list", "list translation memories", runTMList},
 	{"delete", "delete a translation memory and all its units", runTMDelete},
 	{"import", "import a memory file (TMX, Trados .sdltm, Wordfast .txt) into a memory", runTMImport},
-	{"export", "export a memory as TMX", runTMExport},
+	{"export", "export a memory as TMX or as a Wordfast memory", runTMExport},
 	{"lookup", "fuzzy-match a segment against a memory", runTMLookup},
 	{"concordance", "search a memory for a word or phrase", runTMConcordance},
 }
@@ -238,8 +238,17 @@ func runTMExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	dbPath := dbFlag(fs)
 	name := fs.String("name", "", "memory name (required)")
 	outPath := fs.String("o", "", "output file (default: standard output)")
+	format := fs.String("format", "tmx", "tmx, or wordfast for a Wordfast memory (UTF-16 text)")
 	if err := parseFlags(fs, args); err != nil {
 		return err
+	}
+	export := func(w io.Writer, m tm.Memory) error { return tm.ExportTMX(context.Background(), m, w, version) }
+	switch *format {
+	case "tmx":
+	case "wordfast":
+		export = func(w io.Writer, m tm.Memory) error { return tm.ExportWordfast(context.Background(), m, w) }
+	default:
+		return usageErr("-format is tmx or wordfast")
 	}
 	ctx := context.Background()
 	db, m, err := openMemory(ctx, *dbPath, *name)
@@ -248,13 +257,13 @@ func runTMExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	defer db.Close()
 	if *outPath == "" {
-		return tm.ExportTMX(ctx, m, stdout, version)
+		return export(stdout, m)
 	}
 	f, err := os.Create(*outPath)
 	if err != nil {
 		return err
 	}
-	if err := tm.ExportTMX(ctx, m, f, version); err != nil {
+	if err := export(f, m); err != nil {
 		f.Close()
 		return err
 	}

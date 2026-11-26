@@ -5672,12 +5672,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/x-tmx+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/plain": {
                 "schema": {
                   "type": "string"
                 }
@@ -5694,11 +5706,14 @@
           "404": {
             "$ref": "#/components/responses/404"
           },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
           "default": {
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Sends the whole memory as TMX.",
+        "summary": "Sends the whole memory as TMX, or with ?format=wordfast as a Wordfast memory (UTF-16 text, for Wordfast Classic, Pro and Anywhere).",
         "tags": [
           "Memories"
         ]
@@ -8369,12 +8384,24 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/x-tmx+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/plain": {
                 "schema": {
                   "type": "string"
                 }
@@ -8391,11 +8418,14 @@
           "404": {
             "$ref": "#/components/responses/404"
           },
+          "422": {
+            "$ref": "#/components/responses/422"
+          },
           "default": {
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Sends a memory the project looks up in, or searches with the concordance, as TMX, to the project's people: the apps match against it while translating.",
+        "summary": "Sends a memory the project looks up in, or searches with the concordance, as TMX (or with ?format=wordfast as a Wordfast memory), to the project's people: the apps match against it while translating.",
         "tags": [
           "Projects"
         ]

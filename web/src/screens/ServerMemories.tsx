@@ -5,7 +5,7 @@ import { errorText, useRemote } from "../remote";
 import { allows, ApiError, type CatalogMemory, type Role, type ServerUnit } from "../server";
 import { MemoryUnits, SavedElsewhere, type UnitsBackend } from "./MemoryUnits";
 import { AlignDocuments } from "./Alignment";
-import { download, importNotice, MEMORY_FILES, MEMORY_FILES_NOTE } from "../core";
+import { download, importNotice, MEMORY_FILES, MEMORY_FILES_NOTE, WORDFAST_TYPE } from "../core";
 import { fmtDate, fmtNum } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
@@ -203,6 +203,14 @@ function ServerMemory({ memory: m, onChanged, onDeleted }: { memory: ServerMemor
             onClick={() => void api.exportMemory(m.name).then((b) => download(b, `${m.name}.tmx`, "application/x-tmx+xml"), (e) => notify(errorText(e)))}
           >
             <Download size={15} aria-hidden="true" /> Export TMX
+          </button>
+          <button
+            type="button"
+            className="btn"
+            aria-label={`Export ${m.name} as a Wordfast memory`}
+            onClick={() => void api.exportMemory(m.name, "wordfast").then((b) => download(b, `${m.name}.txt`, WORDFAST_TYPE), (e) => notify(errorText(e)))}
+          >
+            <Download size={15} aria-hidden="true" /> Export Wordfast
           </button>
           {edit && (
             <>

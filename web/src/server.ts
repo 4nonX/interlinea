@@ -718,8 +718,9 @@ export function client(conn: Connection) {
         u.version,
       ),
     deleteUnit: (name: string, id: number) => send<void>("DELETE", `/api/memories/${encodeURIComponent(name)}/units/${id}`),
-    exportMemory: async (name: string) =>
-      new Uint8Array(await (await call(`/api/memories/${encodeURIComponent(name)}/export`)).arrayBuffer()),
+    /** The memory as TMX, or as a Wordfast memory. */
+    exportMemory: async (name: string, format: "tmx" | "wordfast" = "tmx") =>
+      new Uint8Array(await (await call(`/api/memories/${encodeURIComponent(name)}/export${format === "wordfast" ? "?format=wordfast" : ""}`)).arrayBuffer()),
     // Termbases on the server.
     termbases: () => get<(CatalogTermbase & { upstreams?: string[]; role: Role; terms: number })[]>("/api/termbases"),
     termbase: (name: string) => get<TermbaseDetail>(`/api/termbases/${encodeURIComponent(name)}`),

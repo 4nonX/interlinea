@@ -107,6 +107,8 @@ import {
   importNotice,
   MEMORY_FILES,
   MEMORY_FILES_NOTE,
+  memoryFileName,
+  WORDFAST_TYPE,
   tm,
   XLIFF_TYPE,
   type CoreApi,
@@ -1309,6 +1311,22 @@ export function Editor({
                         >
                           <Download size={14} aria-hidden="true" />
                           Export TMX
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-quiet btn-small"
+                          aria-label={`Export ${name} as a Wordfast memory`}
+                          onClick={() =>
+                            download(
+                              tm.exportWordfast(c, name),
+                              memoryFileName(name, "txt"),
+                              WORDFAST_TYPE,
+                            )
+                          }
+                          disabled={tm.count(c, name) === 0}
+                        >
+                          <Download size={14} aria-hidden="true" />
+                          Export Wordfast
                         </button>
                       </td>
                     </tr>

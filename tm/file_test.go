@@ -1,6 +1,7 @@
 package tm
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"os"
@@ -254,5 +255,65 @@ func TestReadWordfast(t *testing.T) {
 	// Not Wordfast: a text file that merely starts with "%".
 	if IsWordfastTM([]byte("%PDF-1.4\tx\ty\tz\tw\tv\n")) {
 		t.Fatal("a PDF is Wordfast")
+	}
+}
+
+func TestExportWordfast(t *testing.T) {
+	ctx := context.Background()
+	wordfastNow = func() time.Time { return time.Date(2026, 11, 25, 22, 30, 0, 0, time.UTC) }
+	defer func() { wordfastNow = func() time.Time { return time.Now().UTC() } }()
+	m, _ := NewInMemory(Info{Name: "Weber", SourceLang: "de-DE", TargetLang: "en"})
+	at := time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC)
+	src := content.Text("Der ").AppendTag(content.Tag{Kind: content.TagOpen, ID: "1"}).Append("Mieter").AppendTag(content.Tag{Kind: content.TagClose, ID: "1"}).Append(" zahlt\t& „zahlt“…\nweiter.")
+	tgt := content.Text("The ").AppendTag(content.Tag{Kind: content.TagOpen, ID: "1"}).Append("tenant").AppendTag(content.Tag{Kind: content.TagClose, ID: "1"}).Append(" pays – “pays”…\nmore.")
+	if _, err := m.Add(ctx, Unit{Source: src, Target: tgt, CreatedAt: at, CreatedBy: "Eva", ChangedAt: at.Add(time.Hour), ChangedBy: "Dan", UsageCount: 3,
+		Attributes: []Attribute{{"Client", "Weber GmbH"}, {"x-tmx-tuid", "7"}, {"Domain", "Mietrecht"}}}, KeepBoth); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.Add(ctx, Unit{Source: content.Text("Frei."), Target: content.Text("Free.")}, KeepBoth); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := ExportWordfast(ctx, m, &buf); err != nil {
+		t.Fatal(err)
+	}
+	data := buf.Bytes()
+	if !bytes.HasPrefix(data, []byte{0xff, 0xfe}) {
+		t.Fatal("no byte order mark")
+	}
+	text, _ := wordfastText(data)
+	lines := strings.Split(text, "\r\n")
+	if lines[0] != "%20261125~223000\t%User ID,IL,IL Interlinea\t%TU=00000002\t%DE-DE\t%Wordfast TM v.546/00\t%EN-01\t%-----------\t%Client\t%Domain\t\t\t" {
+		t.Fatalf("header %q", lines[0])
+	}
+	want := "20250301~110000\tDan\t3\tDE-DE\tDer &tA;Mieter&tB; zahlt\\t&'26; „zahlt&'93;&'85;\\nweiter.\tEN-01\tThe &tA;tenant&tB; pays &'96; &'93;pays&'94;&'85;\\nmore.\tWeber GmbH\tMietrecht"
+	if lines[1] != want {
+		t.Fatalf("unit\n%q\nwant\n%q", lines[1], want)
+	}
+	// It reads back as it was, the tags as Wordfast's codes.
+	f, err := ReadWordfast(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.SourceLang != "de-DE" || f.TargetLang != "en" || len(f.Units) != 2 {
+		t.Fatalf("%+v", f)
+	}
+	u := f.Units[0]
+	if u.Source.Plain() != src.Plain() || u.Target.Plain() != tgt.Plain() || len(u.Source.Tags()) != 2 || u.ChangedBy != "Dan" || u.UsageCount != 3 ||
+		!u.CreatedAt.Equal(at.Add(time.Hour)) || !reflect.DeepEqual(u.Attributes, []Attribute{{"Client", "Weber GmbH"}, {"Domain", "Mietrecht"}}) {
+		t.Fatalf("read back %+v", u.Unit)
+	}
+	// A unit read from Wordfast keeps its own codes going out again.
+	again, _ := NewInMemory(Info{Name: "again", SourceLang: "de-DE", TargetLang: "en"})
+	if _, err := ImportUnits(ctx, again, f, ImportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	var buf2 bytes.Buffer
+	if err := ExportWordfast(ctx, again, &buf2); err != nil {
+		t.Fatal(err)
+	}
+	text2, _ := wordfastText(buf2.Bytes())
+	if l := strings.Split(text2, "\r\n")[1]; !strings.Contains(l, "Der &tA;Mieter&tB; zahlt") {
+		t.Fatalf("codes changed: %q", l)
 	}
 }

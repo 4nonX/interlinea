@@ -14,6 +14,7 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/term"
 	"github.com/4nonX/interlinea/term/termdb"
+	"github.com/4nonX/interlinea/tm"
 	"github.com/4nonX/interlinea/tm/tmdb"
 )
 
@@ -96,6 +97,17 @@ func TestMemories(t *testing.T) {
 	r := e.call("GET", base+"/export", benTok, nil, 200, nil)
 	if !strings.Contains(string(r.body), "<tmx") || !strings.Contains(string(r.body), "The tenant pays rent.") || !strings.Contains(r.header.Get("Content-Disposition"), "Weber DE-EN.tmx") {
 		t.Fatalf("export %s %v", r.body, r.header)
+	}
+	// The same as a Wordfast memory.
+	wf0 := e.call("GET", base+"/export?format=wordfast", benTok, nil, 200, nil)
+	if !strings.Contains(wf0.header.Get("Content-Disposition"), "Weber DE-EN.txt") || !strings.HasPrefix(wf0.header.Get("Content-Type"), "text/plain") {
+		t.Fatalf("wordfast export %v", wf0.header)
+	}
+	if f, err := tm.ReadWordfast(wf0.body); err != nil || len(f.Units) != 1 || f.Units[0].Target.Plain() != "The tenant pays rent." || f.SourceLang != "de-DE" || f.TargetLang != "en-GB" {
+		t.Fatalf("wordfast export reads as %+v %v", f, err)
+	}
+	if r := e.do("GET", base+"/export?format=sdltm", benTok, nil); r.status != 422 {
+		t.Fatalf("unknown format: %d", r.status)
 	}
 	var other memoryView
 	e.call("POST", "/api/memories", carl, map[string]string{"name": "Copy", "sourceLang": "de-DE", "targetLang": "en-GB"}, 201, &other)

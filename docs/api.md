@@ -648,15 +648,15 @@ Access: read on the project, or work in it.
 
 ### `GET /api/projects/{id}/memories/{name}/export`
 
-Sends a memory the project looks up in, or searches with the concordance, as TMX, to the project's people: the apps match against it while translating.
+Sends a memory the project looks up in, or searches with the concordance, as TMX (or with ?format=wordfast as a Wordfast memory), to the project's people: the apps match against it while translating.
 
 Memories the project only updates are not sent.
 
 Access: read on the project, or work in it.
 
-- Parameters: `id` (path), `name` (path)
-- Answer: 200 OK: `application/x-tmx+xml`
-- Errors: 401, 403, 404 (see [Error](#error))
+- Parameters: `id` (path), `name` (path), `format` (query)
+- Answer: 200 OK: `application/x-tmx+xml`, `text/plain`
+- Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `GET /api/projects/{id}/memories/{name}/extract`
 
@@ -1041,13 +1041,13 @@ Access: read on the memory.
 
 ### `GET /api/memories/{name}/export`
 
-Sends the whole memory as TMX.
+Sends the whole memory as TMX, or with ?format=wordfast as a Wordfast memory (UTF-16 text, for Wordfast Classic, Pro and Anywhere).
 
 Access: read on the memory.
 
-- Parameters: `name` (path)
-- Answer: 200 OK: `application/x-tmx+xml`
-- Errors: 401, 403, 404 (see [Error](#error))
+- Parameters: `name` (path), `format` (query)
+- Answer: 200 OK: `application/x-tmx+xml`, `text/plain`
+- Errors: 401, 403, 404, 422 (see [Error](#error))
 
 ### `POST /api/memories/{name}/import`
 

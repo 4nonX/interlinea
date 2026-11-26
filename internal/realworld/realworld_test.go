@@ -4,6 +4,7 @@
 package realworld
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -298,6 +299,26 @@ func TestMemoryFiles(t *testing.T) {
 			ms, err := m.Lookup(context.Background(), u.Source, tm.LookupOptions{MinScore: 100})
 			if err != nil || len(ms) == 0 || ms[0].Score < 100 {
 				t.Fatalf("lookup of %q: %+v %v", u.Source.String(), ms, err)
+			}
+			// Out as a Wordfast memory and in again, every unit is as it was.
+			var out bytes.Buffer
+			if err := tm.ExportWordfast(context.Background(), m, &out); err != nil {
+				t.Fatal(err)
+			}
+			back, err := tm.ReadWordfast(out.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var stored []tm.Unit
+			m.Each(context.Background(), func(u tm.Unit) error { stored = append(stored, u); return nil })
+			if len(back.Units) != len(stored) || back.Skipped != 0 {
+				t.Fatalf("exported %d units, read %d back (%d skipped)", len(stored), len(back.Units), back.Skipped)
+			}
+			for i, b := range back.Units {
+				a := stored[i]
+				if a.Source.Plain() != b.Source.Plain() || a.Target.Plain() != b.Target.Plain() || len(a.Source.Tags()) != len(b.Source.Tags()) || len(a.Target.Tags()) != len(b.Target.Tags()) || a.UsageCount != b.UsageCount {
+					t.Fatalf("unit %d: %q => %q, read back %q => %q", i, a.Source.String(), a.Target.String(), b.Source.String(), b.Target.String())
+				}
 			}
 		})
 	}

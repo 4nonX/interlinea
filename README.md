@@ -101,7 +101,7 @@ The Go packages:
 | `segment` | SRX 2.0 parser and segmenter, built-in rules for German, English, CJK and a generic fallback |
 | `fuzzy` | Match percentages: a weighted edit distance over words, numbers, punctuation and tags, aware of case, marks, word forms, the digits and punctuation of every script, and scripts written without spaces |
 | `tmx` | Streaming TMX 1.4b reader and writer (UTF-8, UTF-16, ISO-8859-1, Windows-1252), inline markup mapped to tags |
-| `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export, import of Trados Studio memories (.sdltm) and Wordfast memories (.txt), penalties for less trusted memories |
+| `tm` | Translation memory model, the `Memory` interface, an in-memory backend, TMX import and export, import of Trados Studio memories (.sdltm), Wordfast memories (.txt) in and out, penalties for less trusted memories |
 | `tm/tmdb` | Persistent backend: any number of memories in a SQLite file (desktop) or PostgreSQL (server); term index for fuzzy candidates, trigram index for concordance, unit versions that refuse stale edits, change log for syncing |
 | `tm/tmtest` | Conformance suite every `tm.Memory` backend must pass |
 | `align` | Alignment of a document with its translation into pairs for a memory: sentence lengths after Gale and Church, numbers as anchors in any notation, paragraphs kept where both documents have the same ones; pairs of one to one, two to one, one to two, two to two, and segments left out |
@@ -333,6 +333,7 @@ interlinea tm list
 interlinea tm lookup -name Mietrecht "Der Mieter haftet für Schäden."
 interlinea tm concordance -name Mietrecht -target "leased property"
 interlinea tm export -name Mietrecht -o mietrecht.tmx
+interlinea tm export -name Mietrecht -format wordfast -o mietrecht.txt
 interlinea tm delete -name Mietrecht -yes
 ```
 
@@ -514,7 +515,12 @@ language only (`de-AT` for `de-DE`).
 - Wordfast memories (.txt, UTF-16 or Latin-1) are read with their dates,
   users, usage counts and the five fields of one's own; Wordfast's escapes
   (`&'92;` for a closing quote) become the characters, and its formatting
-  codes (`&tA;`) placeholders.
+  codes (`&tA;`) placeholders. A memory is written out as one too, as
+  Wordfast writes it (UTF-16, Windows line ends): its tags become Wordfast's
+  codes (a tag that came from Wordfast keeps its own; Wordfast has 52, and
+  tags beyond them are left out), and the first five fields of its units
+  that are not Interlinea's or TMX's own (`x-…`) are Wordfast's attribute
+  fields.
 - A memory file whose languages are the memory's the other way round is
   read the other way round; one of other languages stores nothing, and the
   import says so.

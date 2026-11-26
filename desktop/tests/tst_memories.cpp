@@ -249,6 +249,20 @@ private slots:
             QVERIFY(written.contains("<tmx"));
             QVERIFY(written.contains("The deposit is due."));
         }
+        // And as a Wordfast memory: UTF-16 text, its header first.
+        const QString wf = m_tmp.filePath(QStringLiteral("Leer.txt"));
+        page.exportFile(here, QStringLiteral("Leer"), wf, QStringLiteral("wordfast"));
+        QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Saved Leer.txt"), 10000);
+        {
+            QFile f(wf);
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            const QByteArray written = f.readAll();
+            QVERIFY(written.startsWith("\xff\xfe"));
+            const QString text = QString::fromUtf16(reinterpret_cast<const char16_t *>(written.constData() + 2), (written.size() - 2) / 2);
+            const QStringList lines = text.split(QStringLiteral("\r\n"));
+            QVERIFY2(lines[0].contains(QStringLiteral("%Wordfast TM")) && lines[0].contains(QStringLiteral("%TU=00000005")) && lines[0].contains(QStringLiteral("%DE-DE")) && lines[0].contains(QStringLiteral("%EN-GB")), qPrintable(lines[0]));
+            QVERIFY(text.contains(QStringLiteral("The deposit is due.")));
+        }
 
         // A project that uses a memory keeps it from being deleted, and its
         // own memory is listed with the project memories.

@@ -20,6 +20,13 @@ takes its notes from its section here.
 - A memory file in the memory's languages the other way round is read the
   other way round; one of other languages stores nothing, and the import
   says why.
+- Memories are exported as Wordfast memories too, beside TMX: UTF-16 text
+  as Wordfast writes it, with dates, users, usage counts, up to five fields
+  and the tags as Wordfast's codes. On the Memories page, a project's
+  memories in the editor, on the team server, and with `tm export -format
+  wordfast`.
+- The team server's memory page and the editor's list of memories in the
+  desktop app import every memory file the other places do.
 
 ### Bilingual files
 

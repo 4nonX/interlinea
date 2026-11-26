@@ -507,7 +507,8 @@ type memoryFileInspection struct {
 	Warnings []string `json:"warnings"`
 }
 
-// exportTMX sends the whole memory as TMX.
+// exportTMX sends the whole memory as TMX, or with ?format=wordfast as a
+// Wordfast memory (UTF-16 text, for Wordfast Classic, Pro and Anywhere).
 //
 // Access: read on the memory.
 func (s *Server) exportTMX(w http.ResponseWriter, r *http.Request, me session) {
@@ -515,11 +516,28 @@ func (s *Server) exportTMX(w http.ResponseWriter, r *http.Request, me session) {
 	if !ok {
 		return
 	}
-	w.Header().Set("Content-Type", "application/x-tmx+xml; charset=utf-8")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": m.Info().Name + ".tmx"}))
-	if err := tm.ExportTMX(r.Context(), m, w, "Interlinea server "+s.cfg.Version); err != nil {
-		// The answer has started; the log says what went wrong.
-		s.cfg.Log.Error("TMX export failed", "memory", m.Info().Name, "err", err)
+	s.sendMemory(w, r, m)
+}
+
+// sendMemory sends a memory as TMX, or with ?format=wordfast as a Wordfast
+// memory.
+func (s *Server) sendMemory(w http.ResponseWriter, r *http.Request, m tm.Memory) {
+	switch f := r.URL.Query().Get("format"); f {
+	case "", "tmx":
+		w.Header().Set("Content-Type", "application/x-tmx+xml; charset=utf-8")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": m.Info().Name + ".tmx"}))
+		if err := tm.ExportTMX(r.Context(), m, w, "Interlinea server "+s.cfg.Version); err != nil {
+			// The answer has started; the log says what went wrong.
+			s.cfg.Log.Error("TMX export failed", "memory", m.Info().Name, "err", err)
+		}
+	case "wordfast":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-16")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": m.Info().Name + ".txt"}))
+		if err := tm.ExportWordfast(r.Context(), m, w); err != nil {
+			s.cfg.Log.Error("Wordfast export failed", "memory", m.Info().Name, "err", err)
+		}
+	default:
+		invalid(w, "format", "A memory is exported as tmx or wordfast, not "+f+".")
 	}
 }
 
