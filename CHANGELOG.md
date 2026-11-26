@@ -7,9 +7,11 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-26
+
 ### Bilingual files
 
-- Bilingual tables for review in Word open as the bilingual files they
+- Bilingual tables for review (Word and RTF) open as the bilingual files they
   are, in the desktop app, the browser client, on the team server and on
   the command line: Trados Studio review documents (.docx), memoQ
   two-column RTF and DOCX, and Déjà Vu RTF external views. Tags, locked
@@ -19,6 +21,17 @@ takes its notes from its section here.
   Their segments are not split or joined.
 - A Word document is taken for a review table by its content, so a Trados
   review document renamed by hand is still one.
+- Phrase (Memsource) files (.mxliff) open with their translations, states,
+  locks and match values; Phrase's codes in the text are tags, and a file
+  for review counts confirming as the reviewer's.
+- Wordfast Pro files (.txml) open with their translations and drafts, and
+  are written back as Wordfast writes them. Wordfast Pro 5 files (.txlf)
+  are XLIFF.
+- Trados TagEditor files (.ttx) open with their segments; text TagEditor
+  had not segmented is cut into sentences and written back as segments of
+  their own. A file that names no target language is for the project's
+  first.
+- Bilingual files of these programs keep their segments as made.
 
 ### Memories
 
@@ -41,19 +54,14 @@ takes its notes from its section here.
 - The team server's memory page and the editor's list of memories in the
   desktop app import every memory file the other places do.
 
-### Bilingual files
+### Changed
 
-- Phrase (Memsource) files (.mxliff) open with their translations, states,
-  locks and match values; Phrase's codes in the text are tags, and a file
-  for review counts confirming as the reviewer's.
-- Wordfast Pro files (.txml) open with their translations and drafts, and
-  are written back as Wordfast writes them. Wordfast Pro 5 files (.txlf)
-  are XLIFF.
-- Trados TagEditor files (.ttx) open with their segments; text TagEditor
-  had not segmented is cut into sentences and written back as segments of
-  their own. A file that names no target language is for the project's
-  first.
-- Bilingual files of these programs keep their segments as made.
+- The apps name file formats by their extension (.sdlxliff, .mxliff,
+  .txml, .ttx, .sdltm, .txt), and the review tables by what they are
+  (review table, two-column table, external view).
+- The README is a short overview; using the apps, the file formats,
+  matching and checks, the command line, the team server and development
+  each have a document of their own in `docs/`, with new screenshots.
 
 ### Fixed
 
@@ -66,6 +74,9 @@ takes its notes from its section here.
   are read as forbidden instead of proposed.
 - A Trados segment from a memory or machine translation that is changed
   keeps where it came from in an `sdl:prev-origin`, as Trados writes it.
+- In the desktop app, a change to a termbase's settings that was saved
+  while the page was being read again (after another change came in) is
+  announced and shown; its notice was dropped.
 - A PDF file whose text has broken coordinates no longer ends the
   program (on a team server, the whole server) while its reading order is
   worked out.
@@ -356,6 +367,7 @@ version 3.
   a test, and the steps of each store's schema can no longer be changed
   once recorded.
 
-[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/4nonX/interlinea/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/4nonX/interlinea/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/4nonX/interlinea/releases/tag/v0.1.0
