@@ -24,7 +24,7 @@ Studio and memoQ.
 | Terminologists | Termbases with one concept per entry, review of what projects add and change, and exchange as TBX, MultiTerm, CSV and Excel |
 | Project managers | Projects from documents, bilingual files and packages, analysis, pre-translation, work given to translators and reviewers, scored review |
 | Teams | A team server that keeps terminology, memories and projects in one place, with accounts, roles and sign-in through a provider |
-| Files | DOCX, PPTX, XLSX, ODT, ODS, ODP, HTML, IDML, XML, Markdown, PDF, software strings, subtitles, text, XLIFF, SDLXLIFF, MQXLIFF, Phrase MXLIFF, Wordfast TXML, TagEditor TTX, Trados and memoQ packages; memories from TMX, Trados Studio (.sdltm) and Wordfast |
+| Files | DOCX, PPTX, XLSX, ODT, ODS, ODP, HTML, IDML, XML, Markdown, PDF, software strings, subtitles, text, XLIFF, SDLXLIFF, MQXLIFF, Phrase MXLIFF, Wordfast TXML, TagEditor TTX, Trados and memoQ packages, bilingual review tables of Trados (DOCX), memoQ (RTF, DOCX) and Déjà Vu (RTF); memories from TMX, Trados Studio (.sdltm) and Wordfast |
 
 This repository holds the Go core, the team server, the native desktop app
 (Qt 6) and the browser client.
@@ -72,7 +72,9 @@ sign-in through a provider, backups.
   strings (properties, JSON, YAML, PO, RESX), subtitles (SRT, WebVTT),
   XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF (also as .mqxlz), Phrase (.mxliff),
   Wordfast Pro (.txml, .txlf), Trados TagEditor (.ttx), Trados packages,
-  memoQ handoff packages, plain text, and the text of PDF files; alignment
+  memoQ handoff packages, the bilingual tables for review in Word (Trados
+  review documents, memoQ two-column RTF and DOCX, Déjà Vu RTF external
+  views), plain text, and the text of PDF files; alignment
   of documents done
   before; translation memories; termbases with
   TBX, MultiTerm, CSV and Excel exchange; QA, spelling, analysis and
@@ -120,7 +122,7 @@ The Go packages:
 | `filter/pdf` | Reads the text of PDF files, without any other program: the objects of the file (also packed in streams, also with a broken table of objects), fonts with their maps to text, encodings and glyph names, and the text shown on each page with where it stands. Lines, columns and paragraphs are found from the places, a word divided at the end of a line is whole again, and the text is handed on as a Word document, which is what the translation is saved as |
 | `filter/para` | What the document filters share: a paragraph's content cut into sentence units, and translations put back with their tags matched and nested |
 | `filter/formats` | The formats by file name, and one way to extract and merge any document |
-| `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, Phrase MXLIFF, XLIFF 2.0 to 2.2, Wordfast Pro TXML and Trados TagEditor TTX; segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
+| `filter/xliff` | Bilingual files: XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF, Phrase MXLIFF, XLIFF 2.0 to 2.2, Wordfast Pro TXML, Trados TagEditor TTX, and the review tables of Trados (DOCX), memoQ (RTF, DOCX) and Déjà Vu (RTF); segments with targets, states, locks, match values and notes; writes translations and states back, changing only those bytes |
 | `filter/sdlpackage` | Trados project packages (.sdlppx): languages and bilingual files; return packages (.sdlrpx) with the translated files |
 | `filter/mqpackage` | memoQ handoff packages (.mqout) and memoQ XLIFF archives (.mqxlz): the documents as memoQ XLIFF; delivery packages (.mqback) |
 | `term` | Termbase model (concept entries, languages, terms, statuses, fields at entry, language and term level); reads and writes TBX 3, TBX 2, MultiTerm XML, CSV, TSV and Excel, and reads MultiTerm termbase files (.sdltb); import planning (merge, overwrite, skip, add), duplicate detection, term recognition and terminology checks |
@@ -556,6 +558,27 @@ language only (`de-AT` for `de-DE`).
   formatting instead. A file that was never segmented names no target
   language: it is the project's first target language, and the file
   delivered names it.
+- Bilingual tables for review in Word, each segment a table row:
+  - A Trados Studio review document (Export for bilingual review, .docx):
+    the segment number and translation unit in the first cell, the status
+    and match ("Draft (77%)"), source and target. Tags are text in the
+    character style Tag (`<1>`, `</1>`, `<2/>`), locked content is in the
+    style LockedContent, and Word comments in a row are the segment's
+    comments. A Word document is read as one by its content, whatever its
+    name.
+  - A memoQ two-column RTF or DOCX: the document and project in the first
+    row, the languages by name in the header, then a segment in each row
+    with its number and GUID, comment and status ("Pre-translated (99%)").
+    memoQ's tags are text in the style mqInternal: `[1]` stands alone,
+    `[2}` opens, `{3]` closes; the same code written twice is told apart by
+    its place.
+  - A Déjà Vu RTF external view: the segment ID, source, target and
+    comment; Déjà Vu's codes (`{00108}`) are tags.
+  - The files are read as their program wrote them or as Word saved them
+    again. Only the target cells (and the status shown) are written; every
+    other byte stays, so the program reads the file back by its segment
+    IDs. Tags a reviewer typed without the tag style are the source's tags.
+    A file that does not say its languages takes the project's.
 - Bilingual files of these programs keep their segments as the program
   made them: they are not split or joined.
 - PowerPoint: slides in the order of the show, each followed by its

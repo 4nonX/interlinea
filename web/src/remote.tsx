@@ -57,7 +57,7 @@ import {
   type TranslationMemory,
 } from "./data";
 import { coreToRuns, runsToCore, runsToCoreWhole, type IssueCategory, type IssueSeverity, type Run, type Segment } from "./editor/model";
-import { core, documentFormat, extractDocx, extractXliff, loadCore, resegment as resegmentHere, type Resegment } from "./core";
+import { bilingualDocx, core, documentFormat, extractDocx, extractXliff, loadCore, resegment as resegmentHere, type Resegment } from "./core";
 import { openRemoteMemory } from "./editor/memory";
 import { fromCoreEntry, infoTypesFromCore, toCoreEntry } from "./termio";
 import { go } from "./App";
@@ -349,15 +349,18 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
         const fid = `f${i + 1}`;
         fileNames[fid] = f.name;
         const before = old?.files.find((x) => x.name === f.name);
+        const bytes = before?.bytes ?? (await api.fileBytes(p.id, f.name));
+        // A Word document can be a bilingual table for review (Trados, memoQ).
         const kind: ProjectFile["kind"] =
           f.role === "reference"
             ? "none"
-            : documentFormat(f.name)
-              ? "docx"
-              : /^(xlf|xliff|sdlxliff|mqxliff|mxliff|txlf|txml|ttx|mqxlz)$/.test(ext(f.name))
+            : before?.kind ??
+              (/^(xlf|xliff|sdlxliff|mqxliff|mxliff|txlf|txml|ttx|mqxlz|rtf)$/.test(ext(f.name)) ||
+              (ext(f.name) === "docx" && (await bilingualDocx(bytes)))
                 ? "xliff"
-                : "text";
-        const bytes = before?.bytes ?? (await api.fileBytes(p.id, f.name));
+                : documentFormat(f.name)
+                  ? "docx"
+                  : "text");
         const file: ProjectFile = { id: fid, name: f.name, role: f.role, words: 0, kind, bytes, segments: {} };
         if (f.role === "translatable") {
           // The file read here gives what the server doesn't keep: the

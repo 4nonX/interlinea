@@ -131,6 +131,13 @@ func Merge(data []byte, updates map[string]Update) ([]byte, error) {
 // as a TagEditor file that was never segmented: targetLang is the one it
 // is translated into.
 func MergeTo(data []byte, updates map[string]Update, targetLang string) ([]byte, error) {
+	if isRTF(data) || isZip(data) {
+		t, err := readTable(data)
+		if err != nil {
+			return nil, err
+		}
+		return t.merge(data, updates)
+	}
 	if doc, err := xmlraw.Read(data); err == nil {
 		switch doc.Root.Local {
 		case "txml":

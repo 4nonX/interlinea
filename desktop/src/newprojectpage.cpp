@@ -151,6 +151,14 @@ QString bilingualName(const QString &format)
         return QStringLiteral("Wordfast TXML");
     if (format == QLatin1String("ttx"))
         return QStringLiteral("TagEditor TTX");
+    if (format == QLatin1String("sdlreview"))
+        return QStringLiteral("Trados review DOCX");
+    if (format == QLatin1String("mqrtf"))
+        return QStringLiteral("memoQ two-column RTF");
+    if (format == QLatin1String("mqdocx"))
+        return QStringLiteral("memoQ two-column DOCX");
+    if (format == QLatin1String("dvrtf"))
+        return QStringLiteral("Déjà Vu RTF external view");
     if (format == QLatin1String("xliff-2"))
         return QStringLiteral("XLIFF 2");
     if (format == QLatin1String("xliff-1.2"))
@@ -802,7 +810,7 @@ void NewProjectPage::fillFiles()
                                plural(pkg.value(QLatin1String("files")).toArray().size(), tr("1 file"), tr("%1 files")));
             } else if (const QJsonObject b = in.value(QLatin1String("bilingual")).toObject(); !b.isEmpty()) {
                 sub = bilingualName(b.value(QLatin1String("format")).toString());
-                if (!b.value(QLatin1String("targetLang")).toString().isEmpty())
+                if (!b.value(QLatin1String("targetLang")).toString().isEmpty() && !b.value(QLatin1String("sourceLang")).toString().isEmpty())
                     sub += tr(", %1 to %2").arg(Languages::name(Languages::normalize(b.value(QLatin1String("sourceLang")).toString())),
                                                 Languages::name(Languages::normalize(b.value(QLatin1String("targetLang")).toString())));
                 sub += tr(", %1 of %2 translated").arg(QLocale().toString(b.value(QLatin1String("translated")).toInt()),
@@ -869,7 +877,7 @@ void NewProjectPage::fillFiles()
     auto *icon = new QLabel(zone);
     icon->setPixmap(Icons::get(QStringLiteral("upload"), Theme::color("text2")).pixmap(18, 18));
     zh->addWidget(icon, 0, Qt::AlignVCenter);
-    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."),
+    zh->addWidget(Web::text(tr("Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states, and so do bilingual tables for review: Trados review documents, memoQ two-column RTF and DOCX, Déjà Vu RTF external views."),
                             "secondary", zone),
                   1);
     auto *addFilesButton = Web::button(tr("Add files"), Web::Small, zone, QStringLiteral("file-text"));

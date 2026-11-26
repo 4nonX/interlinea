@@ -207,6 +207,8 @@ private:
     QJsonArray m_layout;
     QString m_layoutFile;
     bool m_layoutAsked = false;
+    // The file is a Word document that is a bilingual table for review.
+    bool m_table = false;
     void loadLayout();
     QString m_lang;
     QJsonObject m_project;

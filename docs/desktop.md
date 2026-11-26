@@ -72,7 +72,8 @@ browser client's editor:
    language, read and write termbase files, QA checks and reports, spelling
    with installed dictionaries, analysis and pre-translation of files that
    are not yet in a project. Bilingual files of Trados (SDLXLIFF, TagEditor
-   TTX), memoQ, Phrase and Wordfast. Documented in the API reference; tests.
+   TTX, review documents), memoQ (also two-column RTF and DOCX), Phrase,
+   Wordfast and Déjà Vu (RTF external views). Documented in the API reference; tests.
 2. **App foundation.** CMake project, CI on Windows, macOS and Linux with
    Qt 6.8, tests with Qt Test on the offscreen platform. Starting and
    supervising the core, the API client, the live feed, the keychain,

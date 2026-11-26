@@ -143,7 +143,7 @@
       "BilingualInfo": {
         "properties": {
           "format": {
-            "description": "Format is xliff-1.2, xliff-2, sdlxliff, mqxliff, mxliff (Phrase), txml (Wordfast Pro) or ttx (Trados TagEditor).",
+            "description": "Format is xliff-1.2, xliff-2, sdlxliff, mqxliff, mxliff (Phrase), txml (Wordfast Pro), ttx (Trados TagEditor), sdlreview (a Trados review document), mqrtf or mqdocx (a memoQ two-column RTF or DOCX) or dvrtf (a Déjà Vu RTF external view).",
             "type": "string"
           },
           "sourceLang": {

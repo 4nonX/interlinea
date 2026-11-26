@@ -234,7 +234,7 @@ static bool isDocument(const QString &name)
 
 static bool isBilingual(const QString &name)
 {
-    return hasSuffix(name, {".xlf", ".xliff", ".sdlxliff", ".mqxliff", ".mxliff", ".txlf", ".txml", ".ttx", ".mqxlz"});
+    return hasSuffix(name, {".xlf", ".xliff", ".sdlxliff", ".mqxliff", ".mxliff", ".txlf", ".txml", ".ttx", ".mqxlz", ".rtf"});
 }
 
 EditorPage::EditorPage(Connection *connection, qint64 projectId, const QString &file, const QString &lang,
@@ -1158,11 +1158,15 @@ void EditorPage::loadProject()
         m_targetChip->setVisible(targets.size() <= 1);
         // Saved as the file came: a document, a bilingual file, or a
         // return package for a package's file.
-        const bool document = isDocument(m_file);
-        const bool xliff = !document && isBilingual(m_file);
+        const bool document = isDocument(m_file) && !m_table;
+        const bool xliff = !document && (isBilingual(m_file) || m_table);
         m_save->setVisible(document || xliff);
         if (!fileInfo.value(QLatin1String("package")).toString().isEmpty())
             m_save->setText(tr("Save return package"));
+        else if (xliff && hasSuffix(m_file, {".rtf"}))
+            m_save->setText(tr("Save RTF"));
+        else if (xliff && hasSuffix(m_file, {".docx"}))
+            m_save->setText(tr("Save DOCX"));
         else if (xliff)
             m_save->setText(tr("Save XLIFF"));
         else
@@ -1212,6 +1216,17 @@ void EditorPage::load()
             return;
         }
         m_model->setSegments(r.array());
+        // A Word document whose segments carry the state of a bilingual
+        // file is a table for review (Trados, memoQ): it is saved as the
+        // file it is, and has no preview of its own.
+        if (!m_table && hasSuffix(m_file, {".docx"}) && m_model->rowCount() > 0
+            && m_model->segment(0).value(QLatin1String("file")).isObject()) {
+            m_table = true;
+            m_preview->setChecked(false);
+            m_preview->hide();
+            if (m_save->text() == tr("Save translated document"))
+                m_save->setText(tr("Save DOCX"));
+        }
         applyFilter();
         updateProgress();
         reloadPresence();
@@ -3129,9 +3144,9 @@ void EditorPage::updateCut()
     const QJsonObject s = m_model->segment(row);
     const QJsonObject next = row >= 0 && row + 1 < m_model->rowCount() ? m_model->segment(row + 1) : QJsonObject();
     const auto locked = [this](int r) { return m_model->index(r, 0).data(SegmentModel::LockedRole).toBool(); };
-    // Trados, memoQ, Phrase, Wordfast and TagEditor keep their own record of every segment of their files.
+    // Trados, memoQ, Phrase, Wordfast, TagEditor and Déjà Vu keep their own record of every segment of their files.
     const auto kept = [](const QJsonObject &seg) { return seg.value(QLatin1String("file")).toObject().value(QLatin1String("fixed")).toBool(); };
-    const bool fixed = kept(s) || hasSuffix(m_file, {".sdlxliff", ".mqxliff", ".mxliff", ".txml", ".ttx", ".mqxlz"});
+    const bool fixed = kept(s) || hasSuffix(m_file, {".sdlxliff", ".mqxliff", ".mxliff", ".txml", ".ttx", ".mqxlz", ".rtf"});
     const bool cuts = row >= 0 && !locked(row) && !fixed;
     const int joinedFrom = int(s.value(QLatin1String("joined")).toArray().size());
     const QString part = s.value(QLatin1String("split")).toObject().value(QLatin1String("unit")).toString();

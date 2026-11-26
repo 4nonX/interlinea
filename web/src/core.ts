@@ -698,18 +698,45 @@ export async function mergeDocx(
   return r.value;
 }
 
-/** File names the XLIFF filter reads: XLIFF 1.2 and 2, Trados SDLXLIFF, memoQ MQXLIFF, also in its archive. */
-export const XLIFF_FILE = /\.(xlf|xliff|sdlxliff|mqxliff|mxliff|txlf|txml|ttx|mqxlz)$/i;
+/**
+ * File names the XLIFF filter reads: XLIFF 1.2 and 2, Trados SDLXLIFF, memoQ MQXLIFF, also in its archive,
+ * Phrase, Wordfast, TagEditor, and the RTF tables for review of memoQ and Déjà Vu.
+ * A Word document can be a table for review too: see bilingualDocx.
+ */
+export const XLIFF_FILE = /\.(xlf|xliff|sdlxliff|mqxliff|mxliff|txlf|txml|ttx|mqxlz|rtf)$/i;
 
-/** Whether the bytes are a ZIP file: a memoQ XLIFF in its archive (.mqxlz). */
+/** Whether the bytes are a ZIP file: a memoQ XLIFF in its archive (.mqxlz), or a Word document. */
 function archived(bytes: Uint8Array): boolean {
   return bytes.length > 3 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04;
 }
 export const XLIFF_TYPE = "application/xliff+xml";
 
+/** The type a bilingual file is saved as: a table for review is a Word document or RTF. */
+export function bilingualType(name: string): string {
+  if (/\.docx$/i.test(name)) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (/\.rtf$/i.test(name)) return "application/rtf";
+  return XLIFF_TYPE;
+}
+
+/** The bilingual file in the bytes: a memoQ archive's XLIFF, or the bytes themselves. */
+function bilingualBytes(core: CoreApi, bytes: Uint8Array): Uint8Array {
+  if (!archived(bytes) || core.xliffDetect(bytes).ok) return bytes;
+  return unwrap(core.archiveRead(bytes));
+}
+
+/** Whether a Word document is a bilingual table for review: a Trados review document or a memoQ two-column DOCX. */
+export async function bilingualDocx(bytes: Uint8Array): Promise<boolean> {
+  if (!archived(bytes)) return false;
+  const core = await loadCore();
+  return core.xliffDetect(bytes).ok;
+}
+
 /** What a bilingual file holds besides its segments. */
 export interface Bilingual extends Extracted {
-  /** The variant: "xliff-1.2", "sdlxliff", "mqxliff", "mxliff" (Phrase), "txml" (Wordfast Pro), "ttx" (TagEditor) or "xliff-2". */
+  /**
+   * The variant: "xliff-1.2", "sdlxliff", "mqxliff", "mxliff" (Phrase), "txml" (Wordfast Pro), "ttx" (TagEditor),
+   * "xliff-2", or a table for review: "sdlreview" (Trados), "mqrtf" and "mqdocx" (memoQ), "dvrtf" (Déjà Vu).
+   */
   format: string;
   sourceLang: string;
   targetLang: string;
@@ -723,6 +750,10 @@ export const XLIFF_FORMAT_NAME: Record<string, string> = {
   mxliff: "Phrase XLIFF",
   txml: "Wordfast TXML",
   ttx: "TagEditor TTX",
+  sdlreview: "Trados review DOCX",
+  mqrtf: "memoQ two-column RTF",
+  mqdocx: "memoQ two-column DOCX",
+  dvrtf: "Déjà Vu RTF external view",
 };
 
 // A segment's state in the file becomes the editor's: confirmed for
@@ -745,12 +776,12 @@ function editorStatus(
 }
 
 /** Bilingual formats whose program keeps its own record of every segment. */
-const FIXED_FORMATS = new Set(["sdlxliff", "mqxliff", "mxliff", "txml", "ttx"]);
+const FIXED_FORMATS = new Set(["sdlxliff", "mqxliff", "mxliff", "txml", "ttx", "sdlreview", "mqrtf", "mqdocx", "dvrtf"]);
 
 /** Reads a bilingual XLIFF file with its translations and states. */
 export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
   const core = await loadCore();
-  const doc = archived(bytes) ? unwrap(core.archiveRead(bytes)) : bytes;
+  const doc = bilingualBytes(core, bytes);
   const ex = JSON.parse(unwrap(core.xliffExtract(doc))) as CoreExtraction;
   return {
     format: ex.format ?? "xliff-1.2",
@@ -801,11 +832,11 @@ function fileState(s: Segment): FileState {
 
 /**
  * Whether a bilingual file comes from a program that keeps its own record
- * of every segment (Trados, memoQ, Phrase, Wordfast, TagEditor), so its segments are not split or joined.
+ * of every segment (Trados, memoQ, Phrase, Wordfast, TagEditor, Déjà Vu), so its segments are not split or joined.
  */
 export async function keepsItsSegments(bytes: Uint8Array): Promise<boolean> {
   const core = await loadCore();
-  const doc = archived(bytes) ? unwrap(core.archiveRead(bytes)) : bytes;
+  const doc = bilingualBytes(core, bytes);
   const r = core.xliffDetect(doc);
   return !r.ok || FIXED_FORMATS.has(r.value);
 }
@@ -821,7 +852,7 @@ export async function mergeXliff(
   // Each segment with its state in the file; the core writes segments
   // that were split or joined as the file has them.
   const updates = segments.map((s) => ({ ...coreSegment(s), target: runsToCore(s.target), locked: !!s.locked, file: undefined, state: fileState(s) }));
-  if (!archived(bytes))
+  if (bilingualBytes(core, bytes) === bytes)
     return unwrap(core.xliffMerge(bytes, JSON.stringify(updates), targetLang ?? ""));
   // A memoQ XLIFF in its archive goes back into it.
   const merged = unwrap(

@@ -110,7 +110,7 @@ import {
   memoryFileName,
   WORDFAST_TYPE,
   tm,
-  XLIFF_TYPE,
+  bilingualType,
   type CoreApi,
 } from "../core";
 import {
@@ -881,7 +881,7 @@ export function Editor({
         // A bilingual file goes back under its own name, for the tool it came from.
         const out = await mergeXliff(await bytesOf(file), segments, file.targetLang);
         const name = file.name.split("/").pop() ?? file.name;
-        download(out, name, XLIFF_TYPE);
+        download(out, name, bilingualType(name));
         notify(`Saved ${name}.${pending}`);
         return;
       }
@@ -1182,7 +1182,11 @@ export function Editor({
                   : project.sdlPackage && file.packagePath
                     ? "Save return package"
                     : file.kind === "xliff"
-                      ? "Save XLIFF"
+                      ? /\.rtf$/i.test(file.name)
+                        ? "Save RTF"
+                        : /\.docx$/i.test(file.name)
+                          ? "Save DOCX"
+                          : "Save XLIFF"
                       : "Save translated document"}
               </button>
             )}

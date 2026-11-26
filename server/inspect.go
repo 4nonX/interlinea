@@ -44,7 +44,9 @@ type inspection struct {
 
 type bilingualInfo struct {
 	// Format is xliff-1.2, xliff-2, sdlxliff, mqxliff, mxliff (Phrase),
-	// txml (Wordfast Pro) or ttx (Trados TagEditor).
+	// txml (Wordfast Pro), ttx (Trados TagEditor), sdlreview (a Trados
+	// review document), mqrtf or mqdocx (a memoQ two-column RTF or DOCX)
+	// or dvrtf (a Déjà Vu RTF external view).
 	Format     string `json:"format"`
 	SourceLang string `json:"sourceLang"`
 	TargetLang string `json:"targetLang"`
@@ -91,7 +93,7 @@ func (s *Server) inspectFile(w http.ResponseWriter, r *http.Request, me session)
 }
 
 func inspect(name string, data []byte) inspection {
-	out := inspection{Name: name, Format: formatOf(name), Warnings: []string{}}
+	out := inspection{Name: name, Format: formatOfFile(name, data), Warnings: []string{}}
 	if out.Format == formats.Text && !formats.TextName(name) {
 		out.Format = "other"
 		return out

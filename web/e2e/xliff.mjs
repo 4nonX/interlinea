@@ -362,6 +362,49 @@ export default () =>
         ttx[0] === 0xff && ttx[1] === 0xfe && ttxText.includes('TargetLanguage="DE-DE"') && /<Tu Origin="manual" MatchPercent="0"><Tuv Lang="EN-US">[^<]+<\/Tuv><Tuv Lang="DE-DE">Erster Satz\.<\/Tuv><\/Tu>/.test(ttxText),
         "written in UTF-16 as TagEditor writes, naming the language, the sentence a segment: " + (ttxText.match(/<Tu .{0,200}/)?.[0] ?? ttxText.slice(0, 300)),
       );
+
+      // Bilingual tables for review: a Trados review document is a Word
+      // document, but it opens as the bilingual file it is, and a Déjà Vu
+      // external view as RTF; each goes back with its target cells written.
+      const tables = resolve(fixtures, "../../../filter/xliff/testdata/tables");
+      for (const c of [
+        { file: "lieferschein.docx.review.docx", kind: "Trados review DOCX", save: "Save DOCX", text: "Caution: do not fold." },
+        { file: "dejavu-external-view.rtf", kind: "Déjà Vu RTF external view", save: "Save RTF", text: "Please do not fold." },
+      ]) {
+        await open("/new", { keep: true, wait: 0 });
+        await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+        await click("button", "Continue to files and languages");
+        await sleep(300);
+        await setFile("input[type=file]", `${tables}/${c.file}`);
+        check(await waitFor(`document.body.innerText.includes(${JSON.stringify(c.kind)})`, 15000), `${c.file} read as a ${c.kind}`);
+        const shown = await text();
+        check(shown.includes("German (Germany)") && shown.includes("English (United Kingdom)") && shown.includes("From the bilingual files"), `${c.file}: languages from the file`);
+        await setValue("#pname", c.kind);
+        for (const b of ["Continue to memories", "Continue to terminology", "Continue to review"]) {
+          await click("button", b);
+          await sleep(300);
+        }
+        await waitFor("!!document.querySelector('.analysis')");
+        await click("button", "Create project");
+        check(await waitFor("document.querySelectorAll('.seg').length === 3", 15000), `${c.file}: the table's 3 rows are the segments`);
+        await waitFor("!!document.querySelector('.seg.is-active .target-editor')", 5000);
+        await evaluate("document.querySelector('.seg.is-active .target-editor').focus()");
+        await key("a", "KeyA", 65, 2);
+        await send("Input.insertText", { text: c.text });
+        await key("Enter", "Enter", 13, 2);
+        await sleep(400);
+        await click("button", c.save);
+        check(await waitFor(`document.body.innerText.includes(${JSON.stringify("Saved " + c.file)})`), `${c.file} is saved under its own name`);
+        await sleep(500);
+        const out = readFileSync(`${downloads}/${c.file}`);
+        if (c.file.endsWith(".docx")) {
+          const doc = unzip(out)["word/document.xml"].toString("utf8");
+          check(doc.includes(`>${c.text}</w:t>`) && doc.includes(">Translated</w:t>") && !!unzip(out)["customXML/item.xml"], "the review document has the translation, its status, and Studio's record: " + doc.slice(doc.indexOf("Achtung") - 200, doc.indexOf("Achtung") + 900));
+        } else {
+          const rtf = out.toString("latin1");
+          check(rtf.includes(`{\\uc1 ${c.text}}\\cell }`) && rtf.includes("0000002"), "the external view has the translation in the target cell: " + rtf.slice(rtf.indexOf("0000001"), rtf.indexOf("0000001") + 500));
+        }
+      }
     },
   );
 

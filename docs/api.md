@@ -1834,7 +1834,7 @@ alignedFile is one of the two documents of an alignment: its name, which tells t
 
 | Field | Type | Description |
 |---|---|---|
-| `format` | string | Format is xliff-1.2, xliff-2, sdlxliff, mqxliff, mxliff (Phrase), txml (Wordfast Pro) or ttx (Trados TagEditor). |
+| `format` | string | Format is xliff-1.2, xliff-2, sdlxliff, mqxliff, mxliff (Phrase), txml (Wordfast Pro), ttx (Trados TagEditor), sdlreview (a Trados review document), mqrtf or mqdocx (a memoQ two-column RTF or DOCX) or dvrtf (a Déjà Vu RTF external view). |
 | `sourceLang` | string |  |
 | `targetLang` | string |  |
 | `translated` | integer | Translated counts the segments the file has translations for. |

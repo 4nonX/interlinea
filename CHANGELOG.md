@@ -7,6 +7,19 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Bilingual files
+
+- Bilingual tables for review in Word open as the bilingual files they
+  are, in the desktop app, the browser client, on the team server and on
+  the command line: Trados Studio review documents (.docx), memoQ
+  two-column RTF and DOCX, and Déjà Vu RTF external views. Tags, locked
+  content, comments, states and match values are read; translations go
+  back into the target cells, and the status shown with them, with every
+  other byte as it was, so Studio, memoQ and Déjà Vu read the file back.
+  Their segments are not split or joined.
+- A Word document is taken for a review table by its content, so a Trados
+  review document renamed by hand is still one.
+
 ### Memories
 
 - Trados Studio memories (.sdltm) and Wordfast memories (.txt) are

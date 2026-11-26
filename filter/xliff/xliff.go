@@ -89,8 +89,13 @@ type scan struct {
 }
 
 // Detect reports whether data is a bilingual file this package reads and
-// which: an XLIFF variant, Wordfast Pro (txml) or Trados TagEditor (ttx).
+// which: an XLIFF variant, Wordfast Pro (txml), Trados TagEditor (ttx), a
+// Trados review document (sdlreview), a memoQ two-column RTF (mqrtf) or a
+// Déjà Vu RTF external view (dvrtf).
 func Detect(data []byte) (string, bool) {
+	if f, ok := detectTable(data); ok {
+		return f, true
+	}
 	doc, err := xmlraw.Read(data)
 	if err != nil {
 		return "", false
@@ -511,8 +516,17 @@ func (s *scan) unit2(fi int, file, u *xmlraw.Node) error {
 }
 
 // Extract lists the segments of a bilingual file: XLIFF in any of its
-// variants, Wordfast Pro (.txml) or Trados TagEditor (.ttx).
+// variants, Wordfast Pro (.txml), Trados TagEditor (.ttx), or a bilingual
+// table for review: a Trados review document (.docx), a memoQ two-column
+// RTF or a Déjà Vu RTF external view (.rtf).
 func Extract(data []byte) (*filter.Extraction, error) {
+	if isRTF(data) || isZip(data) {
+		t, err := readTable(data)
+		if err != nil {
+			return nil, err
+		}
+		return t.extraction(), nil
+	}
 	if doc, err := xmlraw.Read(data); err == nil {
 		switch doc.Root.Local {
 		case "txml":

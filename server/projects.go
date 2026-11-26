@@ -864,7 +864,7 @@ func (s *Server) projectTranslatedFile(w http.ResponseWriter, r *http.Request, m
 		writeError(w, http.StatusUnprocessableEntity, "badFile", fmt.Sprintf("%s could not be written in %s: %v", f.Name, lang, err))
 		return
 	}
-	ct := contentTypes[format]
+	ct := fileType(format, f.Name)
 	if ext := formats.TranslatedExt(format); ext != "" {
 		ct = contentTypes[strings.TrimPrefix(ext, ".")]
 	}
@@ -1052,6 +1052,21 @@ var contentTypes = map[string]string{
 	"pdf":      "application/pdf",
 	"txt":      "text/plain; charset=utf-8",
 	"sdlppx":   "application/octet-stream",
+	"rtf":      "application/rtf",
+}
+
+// fileType is the content type of a stored file: a bilingual file that is
+// a table for review is a Word document or RTF, as its name says.
+func fileType(format, name string) string {
+	if format == "xliff" {
+		switch strings.ToLower(path.Ext(name)) {
+		case ".docx", ".docm":
+			return contentTypes["docx"]
+		case ".rtf":
+			return contentTypes["rtf"]
+		}
+	}
+	return contentTypes[format]
 }
 
 // projectFileContent sends a project file (?name=) as it was uploaded.
@@ -1067,7 +1082,7 @@ func (s *Server) projectFileContent(w http.ResponseWriter, r *http.Request, me s
 		s.fail(w, r, err)
 		return
 	}
-	ct := contentTypes[strings.ToLower(f.Format)]
+	ct := fileType(strings.ToLower(f.Format), f.Name)
 	if ct == "" {
 		ct = "application/octet-stream"
 	}

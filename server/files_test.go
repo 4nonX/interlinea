@@ -86,7 +86,7 @@ func TestCheckDocx(t *testing.T) {
 	wantProblem(t, checkFile(bad, "de-DE"), "could not be read")
 	asText := up(segmentsOf(ex))
 	asText.Format = "txt"
-	wantProblem(t, checkFile(asText, "de-DE"), `its name says "docx"`)
+	wantProblem(t, checkFile(asText, "de-DE"), `but it is a "docx" file`)
 }
 
 func TestCheckDocxRevisions(t *testing.T) {

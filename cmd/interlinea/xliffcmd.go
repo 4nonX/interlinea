@@ -27,7 +27,9 @@ func runXLIFF(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		for _, c := range xliffCommands {
 			fmt.Fprintf(stderr, "  %-8s %s\n", c.name, c.summary)
 		}
-		fmt.Fprintln(stderr, "\nReads XLIFF 1.2, Trados SDLXLIFF, memoQ MQXLIFF and XLIFF 2.")
+		fmt.Fprintln(stderr, "\nReads XLIFF 1.2 and 2, Trados SDLXLIFF, memoQ MQXLIFF, Phrase MXLIFF, Wordfast TXML,")
+		fmt.Fprintln(stderr, "TagEditor TTX, and the tables for review in Word: Trados review documents (.docx),")
+		fmt.Fprintln(stderr, "memoQ two-column RTF and DOCX, and D\u00e9j\u00e0 Vu RTF external views.")
 		if len(args) == 0 {
 			return usageErr("missing xliff command")
 		}
@@ -78,7 +80,7 @@ func runXLIFFInfo(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 	fmt.Fprintf(stdout, "Format:    %s\n", ex.Format)
-	fmt.Fprintf(stdout, "Languages: %s → %s\n", ex.SourceLang, ex.TargetLang)
+	fmt.Fprintf(stdout, "Languages: %s \u2192 %s\n", ex.SourceLang, ex.TargetLang)
 	fmt.Fprintf(stdout, "Segments:  %d (%d locked)\n", len(ex.Units), locked)
 	for _, s := range stateOrder {
 		if counts[s] > 0 {

@@ -9,6 +9,7 @@ import { countWords, type PendingDoc } from "./draft";
 import {
   documentFormat,
   extractDocx,
+  bilingualDocx,
   extractXliff,
   openSdlPackage,
   readSdlPackage,
@@ -427,10 +428,19 @@ async function readPackage(file: File): Promise<PendingDoc[]> {
  * keeps its bytes, so a reference file can be opened from the project.
  */
 async function readDocument(file: File): Promise<PendingDoc> {
-  if (XLIFF_FILE.test(file.name)) {
+  // A Word document can be a bilingual table for review (Trados, memoQ).
+  let wordBytes: Uint8Array | undefined;
+  if (/\.docx$/i.test(file.name)) {
+    try {
+      wordBytes = new Uint8Array(await file.arrayBuffer());
+    } catch (e) {
+      return { file: file.name, words: 0, text: null, error: unreadable(e) };
+    }
+  }
+  if (XLIFF_FILE.test(file.name) || (wordBytes && (await bilingualDocx(wordBytes)))) {
     let bytes: Uint8Array;
     try {
-      bytes = new Uint8Array(await file.arrayBuffer());
+      bytes = wordBytes ?? new Uint8Array(await file.arrayBuffer());
     } catch (e) {
       return {
         file: file.name,
@@ -462,7 +472,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
   if (documentFormat(file.name)) {
     let bytes: Uint8Array;
     try {
-      bytes = new Uint8Array(await file.arrayBuffer());
+      bytes = wordBytes ?? new Uint8Array(await file.arrayBuffer());
     } catch (e) {
       return {
         file: file.name,

@@ -218,7 +218,12 @@ export function NewProject() {
   const translatable = docs.filter((d) => d.role === "translatable");
   const bilingual = translatable.filter((d) => d.doc.bilingual);
   const bilingualSources = [
-    ...new Set(bilingual.map((d) => knownLang(d.doc.bilingual!.sourceLang))),
+    ...new Set(
+      bilingual
+        .map((d) => d.doc.bilingual!.sourceLang)
+        .filter(Boolean)
+        .map((l) => knownLang(l)),
+    ),
   ];
   const fixedTargets = [
     ...new Set(
@@ -235,7 +240,9 @@ export function NewProject() {
     () =>
       detectLanguage(
         translatable
-          .filter((d) => !d.doc.bilingual)
+          // A bilingual file that does not say its source language is
+          // read like any other text.
+          .filter((d) => !d.doc.bilingual?.sourceLang)
           .map((d) => d.doc.text ?? "")
           .join("\n")
           .slice(0, 20000),
@@ -1570,7 +1577,7 @@ export function FilesField({
         <p className="dropzone-text">
           {reading
             ? "Reading the files…"
-            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states."}
+            : "Drop files or folders here. DOCX, PPTX, XLSX, IDML and web page files keep their formatting; of a PDF the text is read, and its translation is a DOCX document; bilingual files (.sdlxliff, .mqxliff, .mqxlz, .mxliff, .txml, .ttx, .xlf), project packages (.sdlppx) and handoff packages (.mqout) keep their translations and states, and so do bilingual tables for review: Trados review documents, memoQ two-column RTF and DOCX, Déjà Vu RTF external views."}
         </p>
         <div className="row">
           <button

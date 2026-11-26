@@ -50,6 +50,15 @@ func formatOf(name string) string {
 	return f
 }
 
+// formatOfFile is formatOf for a file whose content is at hand: a Word
+// document that is a bilingual table for review is a bilingual file.
+func formatOfFile(name string, data []byte) string {
+	if f := formatOf(name); f != formats.Word {
+		return f
+	}
+	return formats.OfFile(name, data)
+}
+
 // prepareFiles reads the uploaded files of a project with the given source
 // and target languages: a Trados package becomes the package and its
 // bilingual files, and each translatable file gets its segments, made or
@@ -164,9 +173,9 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 	if f.Role != project.Translatable {
 		return nil
 	}
-	want := formatOf(f.Name)
+	want := formatOfFile(f.Name, f.Data)
 	if f.Format != "" && f.Format != want {
-		return problemf("%s is sent as a %q file, but its name says %q.", f.Name, f.Format, want)
+		return problemf("%s is sent as a %q file, but it is a %q file.", f.Name, f.Format, want)
 	}
 	f.Format = want
 	if f.Format == "package" {
@@ -216,9 +225,9 @@ func prepareFile(f *fileUpload, sourceLang string, targets []string) error {
 // fill gives a file the extraction's segments for each language, or checks
 // and completes the ones the app sent.
 func fill(f *fileUpload, ex *filter.Extraction, langs []string) error {
-	// Trados, memoQ, Phrase, Wordfast and TagEditor keep their own record
-	// of every segment.
-	fixed := ex.Format == xliff.FormatSDL || ex.Format == xliff.FormatMQ || ex.Format == xliff.FormatPhrase || ex.Format == xliff.FormatTXML || ex.Format == xliff.FormatTTX
+	// Trados, memoQ, Phrase, Wordfast, TagEditor and Déjà Vu keep their
+	// own record of every segment.
+	fixed := xliff.Fixed(ex.Format)
 	if len(f.Segments) == 0 {
 		if len(ex.Units) == 0 {
 			return problemf("%s has no text to translate.", f.Name)

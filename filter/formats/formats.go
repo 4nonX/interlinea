@@ -16,6 +16,7 @@ import (
 	"github.com/4nonX/interlinea/filter/plaintext"
 	"github.com/4nonX/interlinea/filter/pptx"
 	"github.com/4nonX/interlinea/filter/textfmt"
+	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/filter/xlsx"
 	"github.com/4nonX/interlinea/filter/xmlfmt"
 )
@@ -42,7 +43,10 @@ const (
 	OpenSlides = xmlfmt.Presentation
 	Markdown   = markdown.Format
 	// XLIFF is a bilingual file: XLIFF 1.2 and 2.0, Trados SDLXLIFF, memoQ
-	// MQXLIFF. MemoQArchive is a memoQ XLIFF in its archive (.mqxlz).
+	// MQXLIFF, and the other bilingual files package xliff reads, the
+	// tables for review in Word among them (a Trados review document, a
+	// memoQ two-column RTF or DOCX, a Déjà Vu RTF external view).
+	// MemoQArchive is a memoQ XLIFF in its archive (.mqxlz).
 	XLIFF        = "xliff"
 	MemoQArchive = "mqxlz"
 	// TradosPackage and MemoQPackage are packages of bilingual files.
@@ -74,7 +78,7 @@ var byExtension = map[string]string{
 	".odp":  OpenSlides,
 	".md":   Markdown, ".markdown": Markdown,
 	".xlf": XLIFF, ".xliff": XLIFF, ".sdlxliff": XLIFF, ".mqxliff": XLIFF, ".mxliff": XLIFF, ".txlf": XLIFF,
-	".txml": XLIFF, ".ttx": XLIFF,
+	".txml": XLIFF, ".ttx": XLIFF, ".rtf": XLIFF,
 	".mqxlz":  MemoQArchive,
 	".sdlppx": TradosPackage,
 	".mqout":  MemoQPackage,
@@ -87,6 +91,17 @@ func Of(name string) string {
 		return f
 	}
 	return Text
+}
+
+// OfFile is the format of a file by its name and, where the name leaves
+// it open, by its content: a Word document that is a bilingual table for
+// review (Trados, memoQ) is a bilingual file.
+func OfFile(name string, data []byte) string {
+	f := Of(name)
+	if f == Word && xliff.IsReviewDOCX(data) {
+		return XLIFF
+	}
+	return f
 }
 
 // textNames are the endings of files read as plain text.
