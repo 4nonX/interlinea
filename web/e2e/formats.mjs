@@ -372,21 +372,39 @@ export default () =>
       check(await waitFor("!!document.querySelector('#seg-rule-0-before') && document.querySelector('#seg-rule-0-before').value === 'Miete\\\\.'", 10000), "the project's settings show its rule: " + (await evaluate("location.hash + ' ' + (document.querySelector('#seg-rule-0-before')?.value ?? 'no field')")));
       check((await text()).includes("They cut the documents added from now on"), "and say it is for files added from now on");
       // The other subtitle formats: YouTube, SubStation Alpha, MicroDVD,
-      // Timed Text and EBU STL, each written back with its times.
+      // Timed Text, EBU STL and closed captions, each written back with
+      // its times.
       await open("/new", { keep: true, wait: 0 });
       await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
       await click("button", "Continue to files and languages");
       await sleep(300);
-      await setFiles(["film.sbv", "film.ass", "film.sub", "film.ttml", "Untertitel.stl"].map((f) => `${docs}/${f}`));
-      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 5", 15000), "five subtitle files are listed");
+      await setFiles(["film.sbv", "film.ass", "film.sub", "film.ttml", "Untertitel.stl", "Untertitel.scc"].map((f) => `${docs}/${f}`));
+      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 6", 15000), "six subtitle files are listed");
       t = await text();
-      check(["SBV subtitles, times kept", "ASS subtitles, times and styles kept", "SUB subtitles, frames kept", "TTML subtitles, times and styles kept", "EBU STL subtitles, times and positions kept"].every((x) => t.includes(x)), "each is named with what it keeps");
-      check(await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable')"), "all five are files to translate");
+      check(["SBV subtitles, times kept", "ASS subtitles, times and styles kept", "SUB subtitles, frames kept", "TTML subtitles, times and styles kept", "EBU STL subtitles, times and positions kept", "SCC captions, times and positions kept"].every((x) => t.includes(x)), "each is named with what it keeps");
+      check(await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable')"), "all six are files to translate");
       await setValue("#pname", "Untertitel");
       await sleep(200);
       await through();
       await click("button", "Create project");
       check(await waitFor("!!document.querySelector('#ed-file')"), "the editor offers them");
+      {
+        // A subtitle is checked against the project's limits as it is typed.
+        await setValue("#ed-file", await evaluate(`[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes("film.sbv")).value`));
+        await waitFor("document.querySelector('#ed-file option:checked')?.textContent.includes('film.sbv') && document.querySelectorAll('.seg').length === 2");
+        await sleep(300);
+        await evaluate("(document.querySelectorAll('.seg')[0].querySelector('.seg-target-view') ?? document.querySelectorAll('.seg')[0].querySelector('.target-editor')).click()");
+        await sleep(400);
+        await evaluate("document.querySelector('.seg.is-active .target-editor')?.focus()");
+        await key("a", "KeyA", 65, 2);
+        await send("Input.insertText", { text: "Good evening and a very warm welcome to everybody watching tonight." });
+        check(await waitFor("document.querySelector('.subtitle-counter')?.textContent.includes('Longest line 67 of 42')"), "the editor counts the longest line against the limit: " + (await evaluate("document.querySelector('.subtitle-counter')?.textContent")));
+        check(await waitFor("(t => t.includes('Line 1 has 67 characters; at most 42 are allowed.') && t.includes('characters per second'))([...document.querySelectorAll('.issue')].map(i => i.textContent).join(' | '))", 8000), "the checks find the long line and the reading speed: " + (await evaluate("[...document.querySelectorAll('.issue')].map(i => i.textContent).join(' | ')")));
+        check((await evaluate("document.querySelector('.subtitle-counter .is-over')?.textContent")).includes("Longest line"), "and mark what is over");
+        await key("a", "KeyA", 65, 2);
+        await key("Backspace", "Backspace", 8);
+        await sleep(300);
+      }
       for (const [file, saved, want] of [
         ["film.sbv", "film_en-GB.sbv", "0:00:04.000,0:00:05.000\nGoodbye.\n"],
         ["film.ass", "film_en-GB.ass", "Dialogue: 0,0:00:04.00,0:00:05.00,Default,Anna,0,0,0,,Goodbye.\r\n"],
@@ -407,6 +425,12 @@ export default () =>
         const stl = readFileSync(`${downloads}/Untertitel_en-GB.stl`);
         check(stl.length === 1024 + 2 * 128 && stl.toString("latin1", 14, 16) === "09" && stl.toString("latin1", 1024 + 128 + 16).startsWith("The deposit is three months' rent.\x8f"), "with the translation in its block, and English as its language");
         check(stl.toString("latin1", 1024 + 16).startsWith("Der \x80Mieter\x81 zahlt\x8adie Miete."), "and the subtitle not translated as it was");
+      }
+      check(await translate("Untertitel.scc", "Die Kaution beträgt.", "The deposit is due."), "a caption of the SCC file is a segment");
+      check(await save("Save translated document", "Untertitel_en-GB.scc"), "the caption file is saved");
+      {
+        const scc = readFileSync(`${downloads}/Untertitel_en-GB.scc`, "utf8");
+        check(scc.startsWith("Scenarist_SCC V1.0") && scc.includes("\n00:00:01:00\t9420 9420 94ae 94ae 9452") && /\t9420 9420 94ae 94ae 94f2 94f2 [0-9a-f ]*5468 e520 64e5/.test(scc) && scc.includes("942f 942f"), "with the translation as caption codes, and the caption not translated as it was: " + JSON.stringify(scc));
       }
       check(errors.length === 0, "no console errors: " + errors.join(" | "));
     },

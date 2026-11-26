@@ -12,6 +12,7 @@ import {
   type FileState,
   type Run,
   type Segment,
+  type Timing,
 } from "./editor/model";
 
 export { unwrap };
@@ -37,6 +38,8 @@ interface CoreUnit {
   notes?: string[];
   /** Longest the translation may be, in characters (XLIFF maxwidth). */
   maxLength?: number;
+  /** Subtitles: when the subtitle is shown. */
+  timing?: Timing;
 }
 
 interface CoreExtraction {
@@ -400,6 +403,7 @@ export type DocumentFormat =
   | "sub"
   | "ttml"
   | "stl"
+  | "scc"
   | "txt"
   | "pdf";
 
@@ -426,6 +430,7 @@ const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.sub$/i, "sub"],
   [/\.(ttml|dfxp|itt)$/i, "ttml"],
   [/\.stl$/i, "stl"],
+  [/\.scc$/i, "scc"],
   [/\.(txt|csv|tsv)$/i, "txt"],
   [/\.pdf$/i, "pdf"],
 ];
@@ -459,6 +464,7 @@ export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
   sub: "SUB subtitles",
   ttml: "TTML subtitles",
   stl: "EBU STL subtitles",
+  scc: "SCC captions",
   txt: "Text file",
   pdf: "PDF document",
 };
@@ -499,6 +505,7 @@ export const DOCUMENT_FORMAT_KEEPS: Record<DocumentFormat, string> = {
   sub: "frames kept",
   ttml: "times and styles kept",
   stl: "times and positions kept",
+  scc: "times and positions kept",
   txt: "line breaks kept",
   pdf: "text only, saved as a DOCX document",
 };
@@ -527,6 +534,7 @@ export const DOCUMENT_TYPE: Record<DocumentFormat, string> = {
   sub: "text/plain",
   ttml: "application/ttml+xml",
   stl: "application/octet-stream",
+  scc: "text/plain",
   txt: "text/plain",
   pdf: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
@@ -556,6 +564,9 @@ export async function extractDocx(
       source: coreToRuns(u.source),
       target: [],
       status: "new" as const,
+      ...(u.notes?.length ? { notes: u.notes } : {}),
+      ...(u.maxLength ? { maxLength: u.maxLength } : {}),
+      ...(u.timing ? { timing: u.timing } : {}),
     })),
     blocks: ex.blocks,
     warnings: ex.warnings ?? [],
@@ -572,6 +583,7 @@ function coreSegment(s: Segment) {
     locked: !!s.locked && !s.lockedReason,
     block: s.block,
     maxLength: s.maxLength,
+    timing: s.timing,
     notes: s.notes,
     comments: s.comments,
     issues: s.issues,
@@ -589,6 +601,7 @@ interface CoreCut {
   status: Segment["status"];
   block?: string;
   maxLength?: number;
+  timing?: Timing;
   notes?: string[];
   comments?: Segment["comments"];
   issues?: Segment["issues"];
@@ -605,6 +618,7 @@ function segmentOfCut(x: CoreCut, rev?: number): Segment {
     status: x.status,
     block: x.block,
     maxLength: x.maxLength || undefined,
+    timing: x.timing ?? undefined,
     notes: x.notes?.length ? x.notes : undefined,
     comments: x.comments?.length ? x.comments : undefined,
     issues: x.issues?.length ? x.issues : undefined,
@@ -838,6 +852,7 @@ export async function extractXliff(bytes: Uint8Array): Promise<Bilingual> {
         locked: u.locked || undefined,
         notes: u.notes,
         maxLength: u.maxLength || undefined,
+        timing: u.timing ?? undefined,
         file: {
           fixed: FIXED_FORMATS.has(ex.format ?? "") || undefined,
           state: u.state ?? "new",

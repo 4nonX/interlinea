@@ -68,7 +68,9 @@ files. One added under the name of an included dictionary is used in its
 place, and deleting it brings the included one back. In the editor a spelling
 warning offers the dictionary's suggestions and adding the word to the
 project's words, and a segment with a length limit from its file (XLIFF
-maxwidth) counts its characters.
+maxwidth) counts its characters. A subtitle shows its longest line, its
+lines and its reading speed against the project's limits as it is typed
+([how they are counted](matching.md#subtitles)).
 
 ## The editor
 

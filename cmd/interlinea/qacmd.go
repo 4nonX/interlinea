@@ -237,7 +237,7 @@ func runQA(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 		var segs []qa.Segment
 		for _, u := range ex.Units {
-			segs = append(segs, qa.Segment{ID: u.ID, Source: u.Source, Target: u.Target, MaxLength: u.MaxLength, Skip: u.Locked})
+			segs = append(segs, qa.Segment{ID: u.ID, Source: u.Source, Target: u.Target, MaxLength: u.MaxLength, Timing: u.Timing, Skip: u.Locked})
 		}
 		issues, err := qa.Check(segs, o)
 		if err != nil {

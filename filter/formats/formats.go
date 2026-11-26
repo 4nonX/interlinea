@@ -16,6 +16,7 @@ import (
 	"github.com/4nonX/interlinea/filter/pdf"
 	"github.com/4nonX/interlinea/filter/plaintext"
 	"github.com/4nonX/interlinea/filter/pptx"
+	"github.com/4nonX/interlinea/filter/scc"
 	"github.com/4nonX/interlinea/filter/textfmt"
 	"github.com/4nonX/interlinea/filter/ttml"
 	"github.com/4nonX/interlinea/filter/xliff"
@@ -46,7 +47,9 @@ const (
 	// read as such too.
 	TimedText = ttml.Format
 	// EBUSTL is EBU STL, the binary subtitles of broadcasters.
-	EBUSTL     = ebustl.Format
+	EBUSTL = ebustl.Format
+	// SCC is Scenarist closed captions (CEA-608).
+	SCC        = scc.Format
 	XML        = xmlfmt.XML
 	OpenText   = xmlfmt.Text
 	OpenSheet  = xmlfmt.Spreadsheet
@@ -87,6 +90,7 @@ var byExtension = map[string]string{
 	".sub":  MicroDVD,
 	".ttml": TimedText, ".dfxp": TimedText, ".itt": TimedText,
 	".stl": EBUSTL,
+	".scc": SCC,
 	".xml": XML,
 	".odt": OpenText,
 	".ods": OpenSheet,
@@ -135,7 +139,7 @@ func TextName(name string) bool {
 // and subtitles.
 func Document(format string) bool {
 	switch format {
-	case Word, PowerPoint, Excel, HTML, InDesign, Markdown, Text, PDF, TimedText, EBUSTL:
+	case Word, PowerPoint, Excel, HTML, InDesign, Markdown, Text, PDF, TimedText, EBUSTL, SCC:
 		return true
 	}
 	return textfmt.Is(format) || xmlfmt.Is(format)
@@ -169,7 +173,7 @@ func Name(format string) string {
 		return "PO file"
 	case RESX:
 		return "RESX file"
-	case SubRip, WebVTT, YouTube, SubStation, MicroDVD, TimedText, EBUSTL:
+	case SubRip, WebVTT, YouTube, SubStation, MicroDVD, TimedText, EBUSTL, SCC:
 		return "subtitle file"
 	case XML:
 		return "XML file"
@@ -233,6 +237,8 @@ func Extract(format string, data []byte, lang string) (*filter.Extraction, error
 		return ttml.Extract(data, lang)
 	case EBUSTL:
 		return ebustl.Extract(data, lang)
+	case SCC:
+		return scc.Extract(data, lang)
 	case XML:
 		if ttml.IsTTML(data) {
 			return ttml.Extract(data, lang)
@@ -279,6 +285,8 @@ func Merge(format string, data []byte, lang, targetLang string, tr filter.Transl
 		return ttml.Merge(data, lang, targetLang, tr)
 	case EBUSTL:
 		return ebustl.Merge(data, lang, targetLang, tr)
+	case SCC:
+		return scc.Merge(data, lang, targetLang, tr)
 	case XML:
 		if ttml.IsTTML(data) {
 			return ttml.Merge(data, lang, targetLang, tr)

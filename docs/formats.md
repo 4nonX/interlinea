@@ -8,7 +8,7 @@ server and on the command line: the same Go code does it everywhere.
 |---|---|
 | Documents | Word (.docx), PowerPoint (.pptx), Excel (.xlsx), OpenDocument (.odt, .ods, .odp), web pages (.html), InDesign (.idml), XML, Markdown, PDF (the text), plain text |
 | Software strings | Java properties, JSON, YAML, gettext PO, .NET RESX |
-| Subtitles | SubRip (.srt), WebVTT (.vtt), YouTube (.sbv), Advanced SubStation Alpha and SubStation Alpha (.ass, .ssa), MicroDVD and SubViewer (.sub), Timed Text: TTML, DFXP, iTT, EBU-TT, IMSC (.ttml, .dfxp, .itt, .xml), EBU STL (.stl) |
+| Subtitles | SubRip (.srt), WebVTT (.vtt), YouTube (.sbv), Advanced SubStation Alpha and SubStation Alpha (.ass, .ssa), MicroDVD and SubViewer (.sub), Timed Text: TTML, DFXP, iTT, EBU-TT, IMSC (.ttml, .dfxp, .itt, .xml), EBU STL (.stl), Scenarist closed captions (.scc) |
 | Bilingual files | XLIFF 1.2 and 2.0 to 2.2, SDLXLIFF, MQXLIFF (also as .mqxlz), Phrase .mxliff, Wordfast Pro .txml and .txlf, TagEditor .ttx |
 | Bilingual tables for review | Trados Studio review documents (.docx), memoQ two-column tables (.rtf, .docx), Déjà Vu external views (.rtf) |
 | Packages | Trados project packages (.sdlppx, returned as .sdlrpx), memoQ handoff packages (.mqout, returned as .mqback) |
@@ -162,12 +162,33 @@ for byte.
   number of blocks, the longest row, the code table and the language of
   the translation. A translation in a script the format has no code table
   for (Chinese, Korean, Japanese) is refused with that reason. Comments
-  and user data are kept as they are.
+  and user data are kept as they are. The original programme and episode
+  titles of the header are segments too (32 characters at most); their
+  translations go into the header's translated titles, in its code page.
+  A title in letters that code page lacks is left out.
+- **Scenarist closed captions (.scc):** CEA-608 captions as US broadcast and
+  streaming exchange them. Each pop-on caption is a segment, shown from its
+  End of Caption until the screen is erased or the next caption shown;
+  rows are parted by tags, colour and italics codes in a row are tags, and
+  special and extended characters (é, ü, ß, ♪...) are read as letters. A
+  translated caption is loaded again: its rows from the caption's bottom
+  row up, aligned as the source's rows were (centred, left or right), a
+  row over the 32 columns wrapped at a space, and the line it is loaded in
+  moved earlier so it still appears when it did; an erase sent while a
+  longer load is under way is taken into the load at its frame. Letters
+  CEA-608 has no code for are refused, naming the letter. Roll-up and
+  paint-on captions, written live, are not translated: such a file is
+  refused with that reason. Captions on channel 2 are read and written on
+  channel 2.
 
 Subtitles in Windows-1252, as many made on Windows are, are read as such
 and written back in it; where a translation has letters that encoding
 lacks, the file is written in UTF-8 with a byte order mark, which subtitle
 players read.
+
+Every subtitle keeps the time it is shown, so the checks find lines too
+long, too many lines and subtitles too fast to read
+([the subtitle checks](matching.md#subtitles)).
 
 ## Bilingual files
 

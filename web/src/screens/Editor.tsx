@@ -34,7 +34,7 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import { fileTargets, lang, type LangCode } from "../data";
+import { fileTargets, lang, type LangCode, type SubtitleLimits } from "../data";
 import { useStore, useWords } from "../store";
 import { computeChanges, incomingFromMaster } from "../merge";
 import {
@@ -1509,6 +1509,12 @@ export function Editor({
                             max={s.maxLength}
                           />
                         ) : null}
+                        {s.timing && !s.split && project ? (
+                          <SubtitleCounter
+                            segment={s}
+                            limits={project.qa.subtitles}
+                          />
+                        ) : null}
                       </>
                     ) : (
                       <button
@@ -2443,6 +2449,65 @@ function CaptureForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** The lines of a subtitle's translation, cut at its line breaks. */
+export function subtitleLines(s: Segment): string[] {
+  const breaks = new Set(
+    s.source.flatMap((r) =>
+      typeof r !== "string" && r.type === "break" ? [r.id] : [],
+    ),
+  );
+  const lines = [""];
+  for (const r of s.target) {
+    if (typeof r !== "string") {
+      if (r.type === "break" || (r.kind === "standalone" && breaks.has(r.id)))
+        lines.push("");
+      continue;
+    }
+    const parts = r.split("\n");
+    lines[lines.length - 1] = (lines[lines.length - 1] ?? "") + (parts[0] ?? "");
+    lines.push(...parts.slice(1));
+  }
+  return lines.map((l) => l.trim());
+}
+
+/** A subtitle's lines, its longest line and its reading speed against the project's limits. */
+function SubtitleCounter({
+  segment,
+  limits,
+}: {
+  segment: Segment;
+  limits: SubtitleLimits;
+}) {
+  const t = segment.timing!;
+  const all = subtitleLines(segment);
+  const lines = all.filter((l) => l !== "");
+  if (!lines.length) lines.push("");
+  const maxLine = Math.min(limits.lineLength, t.lineLimit || Infinity);
+  const longest = Math.max(0, ...lines.map((l) => [...l].length));
+  const seconds = (t.end - t.start) / 1000;
+  const chars = lines.reduce((n, l) => n + [...l].length, 0);
+  const cps = seconds > 0 ? chars / seconds : 0;
+  const parts: [string, boolean][] = [
+    [`Longest line ${longest} of ${maxLine}`, longest > maxLine],
+    [`${plural(lines.length, "line", "lines")} of ${limits.lines}`, lines.length > limits.lines],
+  ];
+  if (seconds > 0)
+    parts.push([
+      `${cps.toFixed(1)} of ${limits.cps} characters per second in ${seconds.toFixed(2)} s`,
+      cps > limits.cps,
+    ]);
+  return (
+    <span className="length-counter subtitle-counter" aria-live="polite">
+      {parts.map(([text, over], i) => (
+        <span key={i} className={over ? "is-over" : undefined}>
+          {i > 0 ? " · " : ""}
+          {text}
+        </span>
+      ))}
+    </span>
   );
 }
 

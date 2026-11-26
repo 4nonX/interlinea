@@ -127,6 +127,14 @@ export function runsToCoreWhole(runs: Run[]): CoreRun[] {
 
 export type Run = string | TagRun;
 
+/** When a subtitle is shown, in milliseconds; end no later than start where the file does not say. */
+export interface Timing {
+  start: number;
+  end: number;
+  /** The most characters a line of the file's format holds (32 in closed captions). */
+  lineLimit?: number;
+}
+
 /** A remark on a segment by someone working on the project. */
 /** The kinds of issue a reviewer marks, and what they are called. */
 export const ISSUE_CATEGORIES = [
@@ -192,6 +200,8 @@ export interface Segment {
   rev?: number;
   /** Longest the translation may be, in characters, as the file says. */
   maxLength?: number;
+  /** Subtitles: when the subtitle is shown, in milliseconds, and the most a line of the format holds. */
+  timing?: Timing;
   /**
    * Bilingual files: the segment's state in the file and the translation it
    * had, so saving keeps a reviewer's approval when nothing changed.

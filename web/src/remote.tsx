@@ -47,6 +47,7 @@ import {
 import {
   DEFAULT_PREPARE,
   DEFAULT_QA,
+  DEFAULT_SUBTITLES,
   type Entry,
   type LangCode,
   type MemorySetting,
@@ -185,6 +186,7 @@ export function qaOf(q: CoreSettings["qa"]) {
     rules: (q.rules ?? []) as QaRule[],
     dictionaries: q.dictionaries ?? {},
     words: q.words ?? [],
+    subtitles: { ...DEFAULT_SUBTITLES, ...(q.subtitles ?? {}) },
     ...(q.grammar ? { grammar: q.grammar } : {}),
   };
 }
@@ -202,6 +204,8 @@ function segmentOf(s: StoredSegment, local?: Segment): Segment {
     comments: s.comments?.length ? s.comments : undefined,
     issues: s.issues?.length ? s.issues : undefined,
     block: s.block ?? local?.block,
+    maxLength: s.maxLength || local?.maxLength,
+    timing: s.timing ?? local?.timing,
     split: s.split ?? undefined,
     joined: s.joined?.length ? s.joined.map((j) => ({ id: j.id, source: coreToRuns(j.source) })) : undefined,
   };

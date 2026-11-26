@@ -34,6 +34,7 @@ func main() {
 		"Hofmann.mqout":     formatstest.Handoff(doc),
 		"Mietvertrag.mqxlz": formatstest.Archive(doc),
 		"Untertitel.stl":    formatstest.Subtitles(),
+		"Untertitel.scc":    []byte(formatstest.Captions),
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)

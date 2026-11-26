@@ -34,6 +34,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
+#include <QSet>
+#include <QTimer>
 #include <QMouseEvent>
 #include <QProgressBar>
 #include <QPushButton>
@@ -229,7 +231,7 @@ static QJsonArray trimmedContent(QJsonArray c, bool end)
 static bool isDocument(const QString &name)
 {
     return hasSuffix(name, {".docx", ".docm", ".pptx", ".pptm", ".ppsx", ".xlsx", ".xlsm", ".html", ".htm", ".xhtml", ".idml", ".odt", ".ods", ".odp", ".xml",
-                            ".md", ".markdown", ".properties", ".json", ".yaml", ".yml", ".po", ".pot", ".resx", ".srt", ".vtt", ".sbv", ".ass", ".ssa", ".sub", ".ttml", ".dfxp", ".itt", ".stl", ".txt", ".csv", ".tsv", ".pdf"});
+                            ".md", ".markdown", ".properties", ".json", ".yaml", ".yml", ".po", ".pot", ".resx", ".srt", ".vtt", ".sbv", ".ass", ".ssa", ".sub", ".ttml", ".dfxp", ".itt", ".stl", ".scc", ".txt", ".csv", ".tsv", ".pdf"});
 }
 
 static bool isBilingual(const QString &name)
@@ -1360,6 +1362,17 @@ QWidget *EditorPage::makeCellWidget(QWidget *parent, const QModelIndex &index)
         l->addWidget(counter);
         m_counter = counter;
     }
+    // A part of a split subtitle has the time of the whole, not its own.
+    if (s.value(QLatin1String("timing")).isObject() && !s.value(QLatin1String("split")).isObject()) {
+        auto *counter = new QLabel(box);
+        counter->setObjectName(QStringLiteral("subtitleCounter"));
+        Theme::role(counter, "progress");
+        counter->setTextFormat(Qt::RichText);
+        counter->setWordWrap(true);
+        counter->setContentsMargins(S3, 0, S3, S1);
+        l->addWidget(counter);
+        m_subtitleCounter = counter;
+    }
     m_target = editor;
     connect(editor, &TargetEditor::edited, this, [this] {
         if (m_activeId.isEmpty() || !m_target)
@@ -1372,13 +1385,89 @@ QWidget *EditorPage::makeCellWidget(QWidget *parent, const QModelIndex &index)
                                          : tr("%1 of %2 characters").arg(len).arg(max));
             m_counter->setStyleSheet(len > max ? QStringLiteral("color: %1").arg(Theme::color("danger").name()) : QString());
         }
+        updateSubtitleCounter();
         resizeActiveRow();
         m_checkTimer.start();
         if (dirty())
             m_saveTimer.start();
     });
     connect(editor, &TargetEditor::addWord, this, &EditorPage::addWord);
+    if (m_subtitleCounter)
+        QTimer::singleShot(0, this, &EditorPage::updateSubtitleCounter);
     return box;
+}
+
+// The lines of a subtitle's translation: its text cut at the tags the
+// source has as breaks, and at line breaks typed in.
+static QStringList subtitleLines(const QJsonArray &source, const QJsonArray &target)
+{
+    QSet<QString> breaks;
+    for (const QJsonValue &v : source) {
+        const QJsonObject r = v.toObject();
+        if (r.contains(QLatin1String("tag")) && r.value(QLatin1String("tag")).toObject().value(QLatin1String("type")).toString() == QLatin1String("break"))
+            breaks.insert(r.value(QLatin1String("tag")).toObject().value(QLatin1String("id")).toString());
+    }
+    QStringList lines{QString()};
+    for (const QJsonValue &v : target) {
+        const QJsonObject r = v.toObject();
+        if (r.contains(QLatin1String("tag"))) {
+            const QJsonObject t = r.value(QLatin1String("tag")).toObject();
+            if (t.value(QLatin1String("type")).toString() == QLatin1String("break")
+                || (t.value(QLatin1String("kind")).toString() == QLatin1String("standalone") && breaks.contains(t.value(QLatin1String("id")).toString())))
+                lines << QString();
+            continue;
+        }
+        const QStringList parts = r.value(QLatin1String("text")).toString().split(QLatin1Char('\n'));
+        lines.last() += parts.first();
+        for (int i = 1; i < parts.size(); ++i)
+            lines << parts.at(i);
+    }
+    QStringList out;
+    for (const QString &l : std::as_const(lines)) {
+        if (!l.trimmed().isEmpty())
+            out << l.trimmed();
+    }
+    return out;
+}
+
+void EditorPage::updateSubtitleCounter()
+{
+    if (!m_subtitleCounter || !m_target || activeRow() < 0)
+        return;
+    const QJsonObject seg = m_model->segment(activeRow());
+    const QJsonObject timing = seg.value(QLatin1String("timing")).toObject();
+    const QJsonObject lim = settings().value(QLatin1String("qa")).toObject().value(QLatin1String("subtitles")).toObject();
+    int maxLine = lim.value(QLatin1String("lineLength")).toInt(42);
+    if (maxLine <= 0)
+        maxLine = 42;
+    if (const int own = timing.value(QLatin1String("lineLimit")).toInt(); own > 0 && own < maxLine)
+        maxLine = own;
+    int maxLines = lim.value(QLatin1String("lines")).toInt(2);
+    if (maxLines <= 0)
+        maxLines = 2;
+    double maxCps = lim.value(QLatin1String("cps")).toDouble(17);
+    if (maxCps <= 0)
+        maxCps = 17;
+    const QStringList lines = subtitleLines(seg.value(QLatin1String("source")).toArray(), m_target->content());
+    int longest = 0, chars = 0;
+    for (const QString &l : lines) {
+        const int n = int(l.toUcs4().size());
+        longest = qMax(longest, n);
+        chars += n;
+    }
+    const int count = qMax(1, int(lines.size()));
+    const double seconds = (timing.value(QLatin1String("end")).toDouble() - timing.value(QLatin1String("start")).toDouble()) / 1000;
+    const QString danger = Theme::color("danger").name();
+    const auto part = [&danger](const QString &text, bool over) {
+        return over ? QStringLiteral("<span style=\"color:%1; font-weight:600\">%2</span>").arg(danger, text.toHtmlEscaped()) : text.toHtmlEscaped();
+    };
+    QStringList parts{part(tr("Longest line %1 of %2").arg(longest).arg(maxLine), longest > maxLine),
+                      part((count == 1 ? tr("1 line of %1") : tr("%1 lines of %2").arg(count)).arg(maxLines), count > maxLines)};
+    if (seconds > 0) {
+        const double cps = chars / seconds;
+        parts << part(tr("%1 of %2 characters per second in %3 s").arg(QLocale().toString(cps, 'f', 1), QLocale().toString(maxCps), QLocale().toString(seconds, 'f', 2)), cps > maxCps);
+    }
+    m_subtitleCounter->setText(parts.join(QStringLiteral(" · ")));
 }
 
 int EditorPage::activeHeight(int column, int width) const
@@ -1390,7 +1479,7 @@ int EditorPage::activeHeight(int column, int width) const
         SegmentContent::enableTags(doc.get());
         doc->setDefaultFont(m_target->font());
         doc->setTextWidth(qMax(10, width - 2 * S3));
-        return int(doc->size().height()) + 2 * S3 + (m_counter ? 20 : 0);
+        return int(doc->size().height()) + 2 * S3 + (m_counter ? 20 : 0) + (m_subtitleCounter ? qMax(20, m_subtitleCounter->heightForWidth(width)) : 0);
     }
     return 0;
 }
@@ -1429,6 +1518,7 @@ void EditorPage::activate(int row)
         m_target = nullptr;
         m_source = nullptr;
         m_counter = nullptr;
+        m_subtitleCounter = nullptr;
         m_grid->closePersistentEditor(m_model->index(old, SegmentModel::Source));
         m_grid->closePersistentEditor(m_model->index(old, SegmentModel::Target));
         m_grid->resizeRowToContents(old);
@@ -3172,6 +3262,7 @@ void EditorPage::takeSegments(const QJsonArray &segments, int row)
         m_target = nullptr;
         m_source = nullptr;
         m_counter = nullptr;
+        m_subtitleCounter = nullptr;
         m_grid->closePersistentEditor(m_model->index(old, SegmentModel::Source));
         m_grid->closePersistentEditor(m_model->index(old, SegmentModel::Target));
     }

@@ -4227,6 +4227,11 @@ input.mono {
   font-weight: 600;
 }
 
+.subtitle-counter .is-over {
+  color: var(--danger, #b42318);
+  font-weight: 600;
+}
+
 /* Team server */
 
 .server-connect {
@@ -4725,4 +4730,14 @@ input.mono {
 .check-stack {
   display: grid;
   gap: var(--s2);
+}
+
+/* Subtitle limits: a label and a short number, in a column. */
+.subtitle-limit label {
+  min-width: 12em;
+}
+
+.subtitle-limit input.penalty {
+  flex: none;
+  width: 5.5em;
 }

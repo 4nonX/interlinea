@@ -127,6 +127,7 @@ type subtitle struct {
 }
 
 type doc struct {
+	rate rate
 	src  string
 	enc  func(string) []byte
 	root *node // the tt element
@@ -155,8 +156,9 @@ func parse(data []byte, lang string) (*doc, error) {
 	if d.root == nil || local(d.root.name) != "tt" {
 		return nil, fmt.Errorf("the file is not Timed Text (TTML): its root element is not tt")
 	}
-	var walk func(n *node, inBody, preserve bool)
-	walk = func(n *node, inBody, preserve bool) {
+	d.rate = rates(d.root)
+	var walk func(n *node, inBody, preserve bool, within span)
+	walk = func(n *node, inBody, preserve bool, within span) {
 		for _, k := range n.kids {
 			if k.isText || k.name == "" {
 				continue
@@ -168,26 +170,29 @@ func parse(data []byte, lang string) (*doc, error) {
 			case "default":
 				p = false
 			}
+			// Times are counted from the begin of the element that holds
+			// one (TTML's parallel time containers).
+			t := d.rate.span(k, within)
 			switch local(k.name) {
 			case "body":
-				walk(k, true, p)
+				walk(k, true, p, t)
 			case "p":
 				if inBody {
-					d.read(k, p)
+					d.read(k, p, t)
 				}
 			case "metadata", "head", "styling", "layout":
 				// Not shown as subtitles.
 			default:
-				walk(k, inBody, p)
+				walk(k, inBody, p, t)
 			}
 		}
 	}
-	walk(d.root, false, false)
+	walk(d.root, false, false, span{begin: 0, end: -1})
 	return d, nil
 }
 
 // read reads a subtitle: its text, with its line breaks and spans as tags.
-func (d *doc) read(p *node, preserve bool) {
+func (d *doc) read(p *node, preserve bool, when span) {
 	var c content.Content
 	id := 0
 	var add func(k *node)
@@ -250,6 +255,7 @@ func (d *doc) read(p *node, preserve bool) {
 		}
 		u.Notes = append(u.Notes, u.Key)
 	}
+	u.Timing = &filter.Timing{Start: when.begin, End: max(when.end, when.begin)}
 	if who := p.attr("agent"); who != "" {
 		u.Notes = append(u.Notes, "Speaker: "+who)
 	}
@@ -379,4 +385,105 @@ func decode(data []byte) (string, func(string) []byte, error) {
 		return "", nil, fmt.Errorf("the file is not UTF-8 or UTF-16")
 	}
 	return string(data), func(s string) []byte { return []byte(s) }, nil
+}
+
+// rate is what TTML's times are counted in: the frames, sub-frames and
+// ticks per second the root says.
+type rate struct {
+	frames, subFrames, ticks float64
+}
+
+func rates(root *node) rate {
+	r := rate{frames: 30, subFrames: 1, ticks: 1}
+	if v, err := strconv.ParseFloat(root.attr("frameRate"), 64); err == nil && v > 0 {
+		r.frames = v
+		r.ticks = v
+	}
+	if f := strings.Fields(root.attr("frameRateMultiplier")); len(f) == 2 {
+		num, err1 := strconv.ParseFloat(f[0], 64)
+		den, err2 := strconv.ParseFloat(f[1], 64)
+		if err1 == nil && err2 == nil && num > 0 && den > 0 {
+			r.frames *= num / den
+		}
+	}
+	if v, err := strconv.ParseFloat(root.attr("subFrameRate"), 64); err == nil && v > 0 {
+		r.subFrames = v
+	}
+	if v, err := strconv.ParseFloat(root.attr("tickRate"), 64); err == nil && v > 0 {
+		r.ticks = v
+	}
+	return r
+}
+
+// span is when an element is shown, in milliseconds; end -1 where it is
+// not known.
+type span struct{ begin, end int64 }
+
+// span is when an element is shown within its parent's span.
+func (r rate) span(n *node, parent span) span {
+	out := span{begin: parent.begin, end: parent.end}
+	if b, ok := r.time(n.attr("begin")); ok {
+		out.begin = parent.begin + b
+	}
+	switch e, ok := r.time(n.attr("end")); {
+	case ok:
+		out.end = parent.begin + e
+	default:
+		if d, ok := r.time(n.attr("dur")); ok {
+			out.end = out.begin + d
+		}
+	}
+	if parent.end >= 0 && (out.end < 0 || out.end > parent.end) {
+		out.end = parent.end
+	}
+	return out
+}
+
+// time reads a TTML time expression in milliseconds: a clock time
+// (00:00:01.500, 00:00:01:12 with frames, 00:00:01:12.1 with sub-frames)
+// or an offset (1.5s, 1500ms, 2m, 1h, 25f, 1000t).
+func (r rate) time(s string) (int64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	if parts := strings.Split(s, ":"); len(parts) >= 3 && len(parts) <= 4 {
+		var sec float64
+		for i, p := range parts[:3] {
+			v, err := strconv.ParseFloat(p, 64)
+			if err != nil || v < 0 || (i < 2 && strings.Contains(p, ".")) {
+				return 0, false
+			}
+			sec = sec*60 + v
+		}
+		if len(parts) == 4 {
+			frames, sub, _ := strings.Cut(parts[3], ".")
+			f, err := strconv.ParseFloat(frames, 64)
+			if err != nil || f < 0 {
+				return 0, false
+			}
+			sec += f / r.frames
+			if sub != "" {
+				sf, err := strconv.ParseFloat(sub, 64)
+				if err != nil || sf < 0 {
+					return 0, false
+				}
+				sec += sf / r.subFrames / r.frames
+			}
+		}
+		return int64(sec*1000 + 0.5), true
+	}
+	for _, u := range []struct {
+		suffix string
+		ms     float64
+	}{{"ms", 1}, {"h", 3600000}, {"m", 60000}, {"s", 1000}, {"f", 1000 / r.frames}, {"t", 1000 / r.ticks}} {
+		if v, ok := strings.CutSuffix(s, u.suffix); ok {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil || f < 0 || f != f {
+				return 0, false
+			}
+			return int64(f*u.ms + 0.5), true
+		}
+	}
+	return 0, false
 }

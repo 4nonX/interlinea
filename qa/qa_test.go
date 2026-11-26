@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/spell"
 	"github.com/4nonX/interlinea/term"
 )
@@ -456,5 +457,62 @@ func TestRuleCheck(t *testing.T) {
 		if _, err := Check(nil, Options{Rules: []UserRule{r}}); err == nil {
 			t.Errorf("%s accepted by Check", r.Name)
 		}
+	}
+}
+
+func TestSubtitleChecks(t *testing.T) {
+	br := content.Tag{Kind: content.TagStandalone, ID: "br1", Type: "break"}
+	src := content.Text("Guten Abend.").AppendTag(br).Append("Willkommen.")
+	kinds := func(issues []Issue) map[Kind]string {
+		out := map[Kind]string{}
+		for _, i := range issues {
+			if i.Kind == LineLength || i.Kind == LineCount || i.Kind == ReadingSpeed {
+				out[i.Kind] = i.Message
+			}
+		}
+		return out
+	}
+	o := Options{SourceLang: "de", TargetLang: "en"}
+	// Two lines of fitting length, shown long enough: nothing to say.
+	tgt := content.Text("Good evening.").AppendTag(content.Tag{Kind: content.TagStandalone, ID: "br1"}).Append("Welcome.")
+	seg := Segment{ID: "1", Source: src, Target: tgt, Timing: &filter.Timing{Start: 1000, End: 3000}}
+	is, _ := CheckSegment(seg, o)
+	if k := kinds(is); k[LineLength] != "" || k[LineCount] != "" || k[ReadingSpeed] != "" {
+		t.Errorf("issues %+v", is)
+	}
+	// One line too long, three lines typed in, and too fast.
+	seg.Target = content.Text("Good evening and a very warm welcome to everybody\nwatching\ntonight.")
+	seg.Timing = &filter.Timing{Start: 1000, End: 3000}
+	is, _ = CheckSegment(seg, o)
+	k := kinds(is)
+	if k[LineLength] != "Line 1 has 49 characters; at most 42 are allowed." || k[LineCount] != "The subtitle has 3 lines; at most 2 are allowed." ||
+		k[ReadingSpeed] != "The subtitle needs 32.5 characters per second in its 2.00 seconds; at most 17 are allowed." {
+		t.Errorf("issues %+v", is)
+	}
+	// The project's limits, and the format's own lower one.
+	o.Subtitles = SubtitleLimits{LineLength: 60, Lines: 3, CPS: 40}
+	is, _ = CheckSegment(seg, o)
+	if len(kinds(is)) != 0 {
+		t.Errorf("with the project's limits %+v", is)
+	}
+	seg.Timing.LineLimit = 32
+	is, _ = CheckSegment(seg, o)
+	if kinds(is)[LineLength] != "Line 1 has 49 characters; at most 32 are allowed." {
+		t.Errorf("with the format's limit %+v", is)
+	}
+	// Without times (not a subtitle) nothing is checked; without a known
+	// duration, no speed.
+	seg.Timing = nil
+	if is, _ = CheckSegment(seg, Options{}); len(kinds(is)) != 0 {
+		t.Errorf("not a subtitle %+v", is)
+	}
+	seg.Timing = &filter.Timing{Start: 5000, End: 5000}
+	if is, _ = CheckSegment(seg, o); kinds(is)[ReadingSpeed] != "" {
+		t.Errorf("unknown duration %+v", is)
+	}
+	// Switched off.
+	seg.Timing = &filter.Timing{Start: 0, End: 100}
+	if is, _ = CheckSegment(seg, Options{Disabled: []Kind{LineLength, LineCount, ReadingSpeed}}); len(kinds(is)) != 0 {
+		t.Errorf("disabled %+v", is)
 	}
 }

@@ -12,11 +12,13 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/term"
 )
@@ -48,6 +50,9 @@ const (
 	TermForbidden    Kind = "term-forbidden"
 	Spelling         Kind = "spelling"
 	Rule             Kind = "rule"
+	LineLength       Kind = "line-length"
+	LineCount        Kind = "line-count"
+	ReadingSpeed     Kind = "reading-speed"
 )
 
 // Kinds lists the checks with a short description, in the order reports
@@ -85,6 +90,9 @@ var Kinds = []struct {
 	{TermForbidden, "Forbidden terms", true, "The translation uses a term the termbase forbids."},
 	{Spelling, "Spelling", true, "A word is not in the dictionary."},
 	{Rule, "Own rules", true, "A rule of your own (a regular expression) is broken."},
+	{LineLength, "Subtitle line length", true, "A line of a subtitle has more characters than the project allows."},
+	{LineCount, "Subtitle lines", true, "A subtitle has more lines than the project allows."},
+	{ReadingSpeed, "Reading speed", true, "A subtitle has more characters per second than the project allows for the time it is shown."},
 }
 
 // Severity says how serious an issue is.
@@ -127,6 +135,9 @@ type Segment struct {
 	Target content.Content `json:"target"`
 	// MaxLength is the longest the translation may be, in characters.
 	MaxLength int `json:"maxLength,omitempty"`
+	// Timing is when a subtitle is shown; the subtitle checks run on
+	// segments that have one.
+	Timing *filter.Timing `json:"timing,omitempty"`
 	// Skip leaves the segment out (locked, or not to be translated).
 	Skip bool `json:"skip,omitempty"`
 }
@@ -171,6 +182,39 @@ type Options struct {
 	// SpellIgnore lists words that are always correct (the user's own
 	// dictionary); words in all capitals and with digits are skipped.
 	SpellIgnore []string `json:"spellIgnore,omitempty"`
+	// Subtitles are the limits of the subtitle checks.
+	Subtitles SubtitleLimits `json:"subtitles,omitzero"`
+}
+
+// SubtitleLimits are the most a subtitle may have: characters in a line,
+// lines, and characters per second of the time it is shown. Zero takes
+// the default: 42 characters, 2 lines, 17 characters per second, as
+// streaming services and most broadcasters ask for adult audiences.
+type SubtitleLimits struct {
+	LineLength int     `json:"lineLength,omitempty"`
+	Lines      int     `json:"lines,omitempty"`
+	CPS        float64 `json:"cps,omitempty"`
+}
+
+// The default subtitle limits.
+const (
+	DefaultLineLength = 42
+	DefaultLines      = 2
+	DefaultCPS        = 17
+)
+
+// WithDefaults fills in the limits left at zero.
+func (l SubtitleLimits) WithDefaults() SubtitleLimits {
+	if l.LineLength <= 0 {
+		l.LineLength = DefaultLineLength
+	}
+	if l.Lines <= 0 {
+		l.Lines = DefaultLines
+	}
+	if l.CPS <= 0 {
+		l.CPS = DefaultCPS
+	}
+	return l
 }
 
 type checker struct {
@@ -253,6 +297,7 @@ func newChecker(o Options) (*checker, error) {
 	if c.opts.RatioMin == 0 {
 		c.opts.RatioMin = 0.4
 	}
+	c.opts.Subtitles = c.opts.Subtitles.WithDefaults()
 	for _, r := range o.Rules {
 		cr, err := compileRule(r)
 		if err != nil {
@@ -321,6 +366,7 @@ func (c *checker) segment(s Segment) []Issue {
 	c.numbers(&out, s, src, tgt)
 	c.punctuation(&out, s, src, tgt)
 	c.length(&out, s, src, tgt)
+	c.subtitle(&out, s)
 	c.terms(&out, s, src, tgt)
 	c.spelling(&out, s, tgt)
 	c.userRules(&out, s, src, tgt)
@@ -431,6 +477,75 @@ func (c *checker) length(out *[]Issue, s Segment, src, tgt string) {
 		case r < c.opts.RatioMin:
 			c.add(out, s, LengthRatio, fmt.Sprintf("The translation is only %d%% of the source's length.", int(r*100+0.5)), "")
 		}
+	}
+}
+
+// SubtitleLines are the lines of a subtitle's translation: its text cut at
+// the line breaks, which are the tags the source has as breaks or line
+// breaks typed in.
+func SubtitleLines(source, target content.Content) []string {
+	breaks := map[string]bool{}
+	for _, t := range source.Tags() {
+		if t.Type == "break" {
+			breaks[t.ID] = true
+		}
+	}
+	lines := []string{""}
+	for _, r := range target {
+		if r.Tag != nil {
+			if r.Tag.Type == "break" || (r.Tag.Kind == content.TagStandalone && breaks[r.Tag.ID]) {
+				lines = append(lines, "")
+			}
+			continue
+		}
+		parts := strings.Split(r.Text, "\n")
+		lines[len(lines)-1] += parts[0]
+		lines = append(lines, parts[1:]...)
+	}
+	return lines
+}
+
+// CharsPerSecond is a subtitle's reading speed: the characters of
+// its lines, spaces among them, over the time it is shown. 0 where the
+// time is not known.
+func CharsPerSecond(lines []string, t *filter.Timing) float64 {
+	d := t.Duration()
+	if d <= 0 {
+		return 0
+	}
+	n := 0
+	for _, l := range lines {
+		n += utf8.RuneCountInString(strings.TrimSpace(l))
+	}
+	return float64(n) * 1000 / float64(d)
+}
+
+func (c *checker) subtitle(out *[]Issue, s Segment) {
+	if s.Timing == nil {
+		return
+	}
+	lim := c.opts.Subtitles
+	// The format's own limit, where it is lower (closed captions: 32).
+	if s.Timing.LineLimit > 0 && s.Timing.LineLimit < lim.LineLength {
+		lim.LineLength = s.Timing.LineLimit
+	}
+	lines := SubtitleLines(s.Source, s.Target)
+	for i, l := range lines {
+		if n := utf8.RuneCountInString(strings.TrimSpace(l)); n > lim.LineLength {
+			c.add(out, s, LineLength, fmt.Sprintf("Line %d has %d characters; at most %d are allowed.", i+1, n, lim.LineLength), strings.TrimSpace(l))
+		}
+	}
+	shown := 0
+	for _, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			shown++
+		}
+	}
+	if shown > lim.Lines {
+		c.add(out, s, LineCount, fmt.Sprintf("The subtitle has %d lines; at most %d are allowed.", shown, lim.Lines), "")
+	}
+	if cps := CharsPerSecond(lines, s.Timing); cps > lim.CPS {
+		c.add(out, s, ReadingSpeed, fmt.Sprintf("The subtitle needs %.1f characters per second in its %.2f seconds; at most %s are allowed.", cps, float64(s.Timing.Duration())/1000, strconv.FormatFloat(lim.CPS, 'f', -1, 64)), "")
 	}
 }
 

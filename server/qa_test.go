@@ -10,6 +10,7 @@ import (
 
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/qa"
 	"github.com/4nonX/interlinea/spell"
@@ -240,5 +241,44 @@ func TestIncludedDictionaries(t *testing.T) {
 	}
 	if r := te.do("GET", "/api/dictionaries/fr_FR/suggest?word=x", te.ben, nil); r.status != 404 {
 		t.Fatalf("a dictionary that is nowhere: %d", r.status)
+	}
+}
+
+// Subtitles keep their times on the server, and are checked against the
+// project's limits with them.
+func TestSubtitleChecks(t *testing.T) {
+	te := newTeam(t)
+	req := leaseRequest()
+	req.Settings.QA.Subtitles = qa.SubtitleLimits{LineLength: 30, Lines: 2, CPS: 15}
+	req.Files = append(req.Files, fileUpload{Name: "film.srt", Role: project.Translatable, Format: "srt",
+		Data: []byte("1\n00:00:01,000 --> 00:00:03,000\nGuten Abend.\nWillkommen.\n\n2\n00:00:04,000 --> 00:00:05,000\nAuf Wiedersehen.\n")})
+	var p projectView
+	te.call("POST", "/api/projects", te.pm, req, 201, &p)
+	var segs []project.Segment
+	te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=film.srt&lang=en-GB", p.ID), te.pm, nil, 200, &segs)
+	if len(segs) != 2 || segs[0].Timing == nil || segs[0].Timing.Start != 1000 || segs[0].Timing.End != 3000 {
+		t.Fatalf("segments %+v", segs)
+	}
+	var issues []qa.Issue
+	te.call("POST", fmt.Sprintf("/api/projects/%d/qa", p.ID), te.pm, qaRequest{File: "film.srt", Lang: "en-GB", Segments: []string{segs[1].ID},
+		Targets: map[string]content.Content{segs[1].ID: content.Text("Goodbye, and thank you all for watching tonight.")}}, 200, &issues)
+	found := map[qa.Kind]string{}
+	for _, i := range issues {
+		found[i.Kind] = i.Message
+	}
+	if found[qa.LineLength] != "Line 1 has 48 characters; at most 30 are allowed." || !strings.Contains(found[qa.ReadingSpeed], "48.0 characters per second") {
+		t.Errorf("issues %+v", issues)
+	}
+	// The project's limits are part of its settings.
+	if p.Settings.QA.Subtitles.LineLength != 30 {
+		t.Errorf("settings %+v", p.Settings.QA)
+	}
+	bad := leaseRequest()
+	bad.Settings.Name = "Zu viel"
+	bad.Settings.QA.Subtitles.Lines = 11
+	bad.Memories, bad.Settings.Memories = nil, map[string][]project.MemorySetting{}
+	bad.Termbase.Name = "Zu viel"
+	if r := te.do("POST", "/api/projects", te.pm, bad); r.status != 422 || r.err().Problems[0].Field != "qa.subtitles.lines" {
+		t.Errorf("a limit out of range: %d %s", r.status, r.body)
 	}
 }

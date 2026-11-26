@@ -320,7 +320,18 @@ export interface QaSettings {
   words: string[];
   /** The grammar service that reads this project's translations, by name; none without. */
   grammar?: string;
+  /** The limits of the subtitle checks. */
+  subtitles: SubtitleLimits;
 }
+
+/** The most a subtitle may have: characters in a line, lines, characters per second. */
+export interface SubtitleLimits {
+  lineLength: number;
+  lines: number;
+  cps: number;
+}
+
+export const DEFAULT_SUBTITLES: SubtitleLimits = { lineLength: 42, lines: 2, cps: 17 };
 
 /** A Hunspell spelling dictionary. Its files are saved in the browser. */
 export interface SpellDictionary {
@@ -437,6 +448,7 @@ export const DEFAULT_QA: QaSettings = {
   rules: [],
   dictionaries: {},
   words: [],
+  subtitles: DEFAULT_SUBTITLES,
 };
 
 export const DEFAULT_PREPARE: PrepareSettings = {
@@ -481,6 +493,7 @@ export function freshCopy(segments: Segment[]): Segment[] {
     status: "new" as const,
     locked: s.locked,
     maxLength: s.maxLength,
+    timing: s.timing,
   }));
 }
 

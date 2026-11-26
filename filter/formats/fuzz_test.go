@@ -13,7 +13,7 @@ import (
 var fuzzFormats = []string{formats.Word, formats.PowerPoint, formats.Excel, formats.HTML, formats.InDesign,
 	formats.Properties, formats.JSON, formats.YAML, formats.PO, formats.RESX, formats.SubRip, formats.WebVTT,
 	formats.XML, formats.OpenText, formats.OpenSheet, formats.OpenSlides, formats.Markdown, formats.Text,
-	formats.YouTube, formats.SubStation, formats.MicroDVD, formats.TimedText, formats.EBUSTL}
+	formats.YouTube, formats.SubStation, formats.MicroDVD, formats.TimedText, formats.EBUSTL, formats.SCC}
 
 // FuzzExtract reads documents in every format, and writes a document it
 // reads back without translations.
@@ -46,6 +46,7 @@ func FuzzExtract(f *testing.F) {
 	f.Add(index(formats.MicroDVD), []byte("{1}{1}25\n{25}{50}{y:i}Der Mieter|zahlt.\n"))
 	f.Add(index(formats.TimedText), []byte(`<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="de"><body><div><p begin="1s" end="2s">Der <span>Mieter</span><br/>zahlt.</p></div></body></tt>`))
 	f.Add(index(formats.EBUSTL), formatstest.Subtitles())
+	f.Add(index(formats.SCC), []byte(formatstest.Captions))
 	f.Fuzz(func(t *testing.T, which uint8, data []byte) {
 		format := fuzzFormats[int(which)%len(fuzzFormats)]
 		if _, err := formats.Extract(format, data, "de-DE"); err == nil {

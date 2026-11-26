@@ -13,6 +13,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTimeEdit>
+#include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -1443,6 +1444,51 @@ void ProjectForm::fillChecks()
             lv->addWidget(Web::text(tr("Loading the checks…"), "muted", list));
         lv->addLayout(grid);
         v->addWidget(list);
+
+        // Subtitles.
+        auto *subs = new QWidget(w);
+        auto *subv = new QVBoxLayout(subs);
+        subv->setContentsMargins(0, 0, 0, 0);
+        subv->setSpacing(8);
+        subv->addWidget(legend(tr("Subtitles"), subs));
+        subv->addWidget(Web::text(tr("Limits for subtitle and caption files, checked with their times: the longest line, the most lines, and how fast the subtitle "
+                                     "must be read. Closed captions (SCC) also hold at most 32 characters a line."),
+                                  "help", subs));
+        const QJsonObject lim = qa.value(QLatin1String("subtitles")).toObject();
+        struct Limit {
+            const char *key, *objectName;
+            QString label;
+            double min, max, step, fallback;
+        };
+        const Limit limits[] = {{"lineLength", "subtitleLineLength", tr("Characters in a line"), 1, 200, 1, 42},
+                                {"lines", "subtitleLines", tr("Lines in a subtitle"), 1, 10, 1, 2},
+                                {"cps", "subtitleCps", tr("Characters per second"), 1, 100, 0.5, 17}};
+        for (const Limit &li : limits) {
+            const QString key = QLatin1String(li.key);
+            auto *box = new QDoubleSpinBox(subs);
+            box->setObjectName(QLatin1String(li.objectName));
+            box->setAccessibleName(li.label);
+            box->setDecimals(key == QLatin1String("cps") ? 1 : 0);
+            box->setRange(li.min, li.max);
+            box->setSingleStep(li.step);
+            const double v = lim.value(key).toDouble();
+            box->setValue(v > 0 ? v : li.fallback);
+            auto *label = new QLabel(li.label, subs);
+            label->setBuddy(box);
+            subv->addWidget(Web::row({label, box}, subs));
+            subv->addWidget(problemLabel(QStringLiteral("qa.subtitles.%1").arg(key), subs));
+            connect(box, &QDoubleSpinBox::valueChanged, this, [key, setQa](double value) {
+                setQa([key, value](QJsonObject &x) {
+                    QJsonObject l = x.value(QLatin1String("subtitles")).toObject();
+                    if (key == QLatin1String("cps"))
+                        l.insert(key, value);
+                    else
+                        l.insert(key, qRound(value));
+                    x.insert(QStringLiteral("subtitles"), l);
+                });
+            });
+        }
+        v->addWidget(subs);
 
         // Spelling.
         auto *spell = new QWidget(w);

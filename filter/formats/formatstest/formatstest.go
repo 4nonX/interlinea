@@ -138,3 +138,12 @@ func Subtitles() []byte {
 	}
 	return out
 }
+
+// Captions is a small Scenarist closed caption file (CEA-608): two pop-on
+// captions, the first with two rows, the second with an extended
+// character (ä after its fallback a), each erased later.
+const Captions = "Scenarist_SCC V1.0\n\n" +
+	"00:00:01:00\t9420 9420 94ae 94ae 9452 9452 97a2 97a2 c465 f220 cd69 e574 e5f2 207a 61e8 ec74 94f2 94f2 97a2 97a2 6469 e520 cd69 e574 e5ae 942f 942f\n\n" +
+	"00:00:04:00\t942c 942c\n\n" +
+	"00:00:05:00\t9420 9420 94ae 94ae 94f2 94f2 97a2 97a2 c4e9 e520 cb61 75f4 e9ef 6e20 62e5 f4f2 6180 1331 1331 67f4 ae80 942f 942f\n\n" +
+	"00:00:08:00\t942c 942c\n"

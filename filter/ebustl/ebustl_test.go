@@ -55,6 +55,17 @@ func makeSTL(dsc byte, cues ...cue) []byte {
 	return out
 }
 
+// cues are the units of the subtitles, without those of the titles.
+func cues(ex *filter.Extraction) []filter.Unit {
+	var out []filter.Unit
+	for _, u := range ex.Units {
+		if u.Timing != nil {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
 func upper(ex *filter.Extraction) filter.Translations {
 	tr := filter.Translations{}
 	for _, u := range ex.Units {
@@ -83,10 +94,10 @@ func TestOpenSubtitles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ex.Units) != 2 {
-		t.Fatalf("units %+v", ex.Units)
+	if len(cues(ex)) != 2 {
+		t.Fatalf("units %+v", cues(ex))
 	}
-	u := ex.Units[0]
+	u := cues(ex)[0]
 	if u.Source.Plain() != "Grüße, mein Freundbis bald" || u.Key != "00:00:01:00 --> 00:00:03:12" {
 		t.Errorf("unit %+v", u)
 	}
@@ -94,8 +105,8 @@ func TestOpenSubtitles(t *testing.T) {
 	if len(tags) != 3 || tags[0].Type != "italics" || tags[0].Kind != content.TagOpen || tags[1].Kind != content.TagClose || tags[2].Type != "break" {
 		t.Errorf("tags %+v", tags)
 	}
-	if ex.Units[1].Source.Plain() != "Preis: 5 $" {
-		t.Errorf("dollar %+v", ex.Units[1])
+	if cues(ex)[1].Source.Plain() != "Preis: 5 $" {
+		t.Errorf("dollar %+v", cues(ex)[1])
 	}
 
 	same, err := Merge(data, "de-DE", "", filter.Translations{})
@@ -118,7 +129,7 @@ func TestOpenSubtitles(t *testing.T) {
 		t.Error("comment or user data changed")
 	}
 	back, err := Extract(out, "de-AT")
-	if err != nil || len(back.Units) != 2 || back.Units[0].Source.Plain() != "GRÜSSE, MEIN FREUNDBIS BALD" && back.Units[0].Source.Plain() != "GRÜßE, MEIN FREUNDBIS BALD" {
+	if err != nil || len(cues(back)) != 2 || cues(back)[0].Source.Plain() != "GRÜSSE, MEIN FREUNDBIS BALD" && cues(back)[0].Source.Plain() != "GRÜßE, MEIN FREUNDBIS BALD" {
 		t.Fatalf("read back %v %+v", err, back)
 	}
 }
@@ -131,7 +142,7 @@ func TestExtensionBlocksAndRows(t *testing.T) {
 	}
 	long := strings.Repeat("Ein sehr langer Untertitel mit Umlauten: äöü. ", 4)
 	// Three rows: the break of the source, and a line break typed in.
-	tr := filter.Translations{ex.Units[0].ID: content.Text("Eins").AppendTag(content.Tag{Kind: content.TagStandalone, ID: "1"}).Append("Zwei\n" + long)}
+	tr := filter.Translations{cues(ex)[0].ID: content.Text("Eins").AppendTag(content.Tag{Kind: content.TagStandalone, ID: "1"}).Append("Zwei\n" + long)}
 	out, err := Merge(data, "de-DE", "de-DE", tr)
 	if err != nil {
 		t.Fatal(err)
@@ -151,10 +162,10 @@ func TestExtensionBlocksAndRows(t *testing.T) {
 		}
 	}
 	back, err := Extract(out, "de-DE")
-	if err != nil || len(back.Units) != 1 {
+	if err != nil || len(cues(back)) != 1 {
 		t.Fatalf("read back %v %+v", err, back)
 	}
-	if got := strings.TrimSpace(back.Units[0].Source.Plain()); got != "EinsZwei"+strings.TrimSpace(long) {
+	if got := strings.TrimSpace(cues(back)[0].Source.Plain()); got != "EinsZwei"+strings.TrimSpace(long) {
 		t.Errorf("read back %q", got)
 	}
 	if mnc := string(out[251:253]); mnc == "40" {
@@ -171,7 +182,7 @@ func TestTeletext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := ex.Units[0]
+	u := cues(ex)[0]
 	if u.Source.Plain() != "HalloWelt" {
 		t.Fatalf("unit %+v", u)
 	}
@@ -195,7 +206,7 @@ func TestTeletext(t *testing.T) {
 func TestCodeTables(t *testing.T) {
 	data := makeSTL('0', cue{sn: 1, in: [4]byte{0, 0, 1, 0}, out: [4]byte{0, 0, 2, 0}, vp: 20, text: []byte("Guten Tag")})
 	ex, _ := Extract(data, "de-DE")
-	id := ex.Units[0].ID
+	id := cues(ex)[0].ID
 	out, err := Merge(data, "de-DE", "ru-RU", filter.Translations{id: content.Text("Добрый день")})
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +215,7 @@ func TestCodeTables(t *testing.T) {
 		t.Errorf("table %s, language %s", out[12:14], out[14:16])
 	}
 	back, err := Extract(out, "ru-RU")
-	if err != nil || back.Units[0].Source.Plain() != "Добрый день" {
+	if err != nil || cues(back)[0].Source.Plain() != "Добрый день" {
 		t.Fatalf("read back %v %+v", err, back)
 	}
 	if _, err := Merge(data, "de-DE", "zh-CN", filter.Translations{id: content.Text("你好")}); err == nil || !strings.Contains(err.Error(), "can't hold") {
@@ -242,5 +253,38 @@ func TestNotSTL(t *testing.T) {
 	// A lone accent is no text.
 	if _, err := Extract(makeSTL('0', cue{sn: 1, vp: 20, text: []byte("a\xC8")}), "de"); err == nil {
 		t.Error("an accent without its letter is read")
+	}
+}
+
+func TestTitlesAndTimes(t *testing.T) {
+	data := makeSTL('0', cue{sn: 1, in: [4]byte{0, 0, 1, 12}, out: [4]byte{0, 0, 3, 0}, vp: 20, text: []byte("Hallo")})
+	copy(data[48:], "Folge 3: F\x81r immer") // "für" in code page 850
+	ex, err := Extract(data, "de-DE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ex.Units) != 3 || ex.Units[0].ID != "programme-title" || ex.Units[0].Source.Plain() != "Testfilm" || ex.Units[0].MaxLength != 32 || ex.Units[1].Source.Plain() != "Folge 3: Für immer" {
+		t.Fatalf("units %+v", ex.Units)
+	}
+	if tm := cues(ex)[0].Timing; tm.Start != 1480 || tm.End != 3000 {
+		t.Errorf("times %+v", tm)
+	}
+	out, err := Merge(data, "de-DE", "fr-FR", filter.Translations{"programme-title": content.Text("Le film"), "episode-title": content.Text("Épisode 3 : pour toujours")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(out[80:112]); got != "Le film"+strings.Repeat(" ", 25) {
+		t.Errorf("translated programme title %q", got)
+	}
+	if got := out[112:144]; !bytes.HasPrefix(got, []byte("\x90pisode 3 : pour toujours")) {
+		t.Errorf("translated episode title % X", got)
+	}
+	if string(out[16:24]) != "Testfilm" {
+		t.Error("the original title changed")
+	}
+	// A title the code page can't hold is left out.
+	out, err = Merge(data, "de-DE", "ru-RU", filter.Translations{"programme-title": content.Text("Фильм")})
+	if err != nil || strings.TrimSpace(string(out[80:112])) != "" {
+		t.Errorf("Russian title: %v %q", err, out[80:112])
 	}
 }

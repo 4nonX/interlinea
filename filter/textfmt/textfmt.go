@@ -57,6 +57,8 @@ type slot struct {
 	markup bool
 	// tags, if set, finds the subtitle markup in place of subtitleTag.
 	tags *regexp.Regexp
+	// timing is when a subtitle is shown.
+	timing *filter.Timing
 	// also are further places that get the same translation (a plural's
 	// other forms).
 	also []*slot
@@ -383,7 +385,7 @@ func Extract(format string, data []byte, lang string) (*filter.Extraction, error
 		if s.key != "" {
 			notes = append([]string{s.key}, notes...)
 		}
-		ex.Units = append(ex.Units, filter.Unit{ID: s.id, Block: s.id, Source: s.content(), Key: s.key, Notes: notes})
+		ex.Units = append(ex.Units, filter.Unit{ID: s.id, Block: s.id, Source: s.content(), Key: s.key, Notes: notes, Timing: s.timing})
 	}
 	return ex, nil
 }

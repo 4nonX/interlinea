@@ -274,6 +274,9 @@ private:
     QPointer<QTextBrowser> m_source;
     QPointer<TargetEditor> m_target;
     QPointer<QLabel> m_counter;
+    // A subtitle's lines and reading speed against the project's limits.
+    QPointer<QLabel> m_subtitleCounter;
+    void updateSubtitleCounter();
     QTextBrowser *m_previewPane;
     QWidget *m_previewBox;
 

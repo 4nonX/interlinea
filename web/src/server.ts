@@ -3,7 +3,7 @@
 // memories and terminology, and the live feed of changes.
 
 import type { CoreEntry } from "./termio";
-import type { SegmentIssue, CoreRun } from "./editor/model";
+import type { SegmentIssue, CoreRun, Timing } from "./editor/model";
 import type { CoreReport } from "./project";
 import type { MemoryImport } from "./core";
 import type { MtService } from "./editor/provider";
@@ -264,6 +264,7 @@ export interface CoreSegment {
   issues?: SegmentIssue[];
   block?: string;
   maxLength?: number;
+  timing?: Timing;
   notes?: string[];
   /** A part of a segment of the file that was split. */
   split?: { unit: string; space?: string };
@@ -327,6 +328,7 @@ export interface CoreSettings {
     dictionaries?: Record<string, string>;
     words?: string[];
     uneditedFuzzy: boolean;
+    subtitles?: { lineLength?: number; lines?: number; cps?: number };
     grammar?: string;
   };
   prepare: { pretranslate: boolean; minScore: number; confirmExact: boolean; confirmContext: boolean };

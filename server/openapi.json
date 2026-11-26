@@ -2026,6 +2026,24 @@
         ],
         "type": "string"
       },
+      "filter.Timing": {
+        "description": "Timing is when a subtitle is shown, in milliseconds from the start. A subtitle whose times the file does not say (frames without a frame rate) has End no later than Start.",
+        "properties": {
+          "end": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lineLimit": {
+            "description": "LineLimit is the most characters a line of the format holds (32 in closed captions); 0 where the format sets none.",
+            "type": "integer"
+          },
+          "start": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "langdetect.Detection": {
         "description": "Detection is a guess at a text's language.",
         "properties": {
@@ -2453,6 +2471,14 @@
             },
             "type": "array"
           },
+          "subtitles": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/qa.SubtitleLimits"
+              }
+            ],
+            "description": "Subtitles are the limits of the subtitle checks; zero for the defaults."
+          },
           "uneditedFuzzy": {
             "description": "UneditedFuzzy warns when a fuzzy match is confirmed unchanged.",
             "type": "boolean"
@@ -2622,6 +2648,14 @@
           },
           "target": {
             "$ref": "#/components/schemas/content.Content"
+          },
+          "timing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/filter.Timing"
+              }
+            ],
+            "description": "Timing is when a subtitle is shown; nil for anything else. The parts of a split subtitle keep the time of the whole, which is not theirs alone: CheckTiming is nil for them."
           },
           "warnings": {
             "description": "Warnings are the checks' results saved when it was confirmed.",
@@ -3106,6 +3140,14 @@
           "target": {
             "$ref": "#/components/schemas/content.Content"
           },
+          "timing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/filter.Timing"
+              }
+            ],
+            "description": "Timing is when a subtitle is shown; nil for anything else. The parts of a split subtitle keep the time of the whole, which is not theirs alone: CheckTiming is nil for them."
+          },
           "version": {
             "type": "integer"
           },
@@ -3237,8 +3279,11 @@
           "inconsistent-source",
           "length",
           "length-ratio",
+          "line-count",
+          "line-length",
           "numbers-extra",
           "numbers-missing",
+          "reading-speed",
           "repeated-word",
           "rule",
           "space-before-punctuation",
@@ -3259,6 +3304,21 @@
           "warning"
         ],
         "type": "string"
+      },
+      "qa.SubtitleLimits": {
+        "description": "SubtitleLimits are the most a subtitle may have: characters in a line, lines, and characters per second of the time it is shown. Zero takes the default: 42 characters, 2 lines, 17 characters per second, as streaming services and most broadcasters ask for adult audiences.",
+        "properties": {
+          "cps": {
+            "type": "number"
+          },
+          "lineLength": {
+            "type": "integer"
+          },
+          "lines": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
       },
       "qa.UserRule": {
         "description": "UserRule is a check of the user's own: a regular expression the translation must or must not match, optionally only where the source matches another one. With Mode \"count\", the translation must match Target as often as the source matches Source.",

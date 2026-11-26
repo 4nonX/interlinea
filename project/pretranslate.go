@@ -7,6 +7,7 @@ import (
 
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/tm"
 )
 
@@ -33,6 +34,10 @@ type Segment struct {
 	Block string `json:"block,omitempty"`
 	// MaxLength is the longest the translation may be, in characters.
 	MaxLength int `json:"maxLength,omitempty"`
+	// Timing is when a subtitle is shown; nil for anything else. The parts
+	// of a split subtitle keep the time of the whole, which is not theirs
+	// alone: CheckTiming is nil for them.
+	Timing *filter.Timing `json:"timing,omitempty"`
 	// Notes are a bilingual file's comments on the segment.
 	Notes []string `json:"notes,omitempty"`
 	// File is the segment's state and translation in a bilingual file,
@@ -188,3 +193,12 @@ func Pretranslate(ctx context.Context, files []FileSegments, memories []tm.Memor
 }
 
 func empty(c content.Content) bool { return strings.TrimSpace(c.Plain()) == "" && !c.HasTags() }
+
+// CheckTiming is the time a subtitle's checks count with: its own, or nil
+// for a part of a split subtitle, whose time is that of the whole.
+func (s Segment) CheckTiming() *filter.Timing {
+	if s.Split != nil {
+		return nil
+	}
+	return s.Timing
+}

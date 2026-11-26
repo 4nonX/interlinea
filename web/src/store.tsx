@@ -1211,7 +1211,7 @@ function looksValid(s: unknown): s is SavedState {
 function withDefaults(s: SavedState): SavedState {
   const qa = <T extends { qa: Partial<typeof DEFAULT_QA> }>(x: T) => ({
     ...x,
-    qa: { ...DEFAULT_QA, ...x.qa },
+    qa: { ...DEFAULT_QA, ...x.qa, subtitles: { ...DEFAULT_QA.subtitles, ...(x.qa.subtitles ?? {}) } },
   });
   return {
     ...s,

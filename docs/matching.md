@@ -69,6 +69,22 @@ otherwise take seconds or more.
 The number check reads numbers with the separators of each language
 (1.250,00 in German is 1,250.00 in English; de-CH writes 1'250.50), so a
 number copied unchanged into the wrong format is reported. Numbers written
+as words are not compared.
+
+### Subtitles
+
+Subtitles and captions are checked against the project's limits, which its
+settings set under Checks: the characters in a line (42 by default), the
+lines of a subtitle (2) and the reading speed in characters per second
+(17), as streaming services and most broadcasters ask for adult audiences.
+A line ends at a line break of the file (a tag) or one typed in. The
+reading speed counts the characters of the lines, spaces among them, over
+the time the subtitle is shown. Closed captions (SCC) hold at most 32
+characters a line whatever the project says. A subtitle the translator
+split has no time of its own and is not checked for speed; two joined are
+checked over the time of both. The editor shows the longest line, the lines
+and the reading speed under the translation as it is typed, what is over
+the limit in red.
 
 ## Performance
 

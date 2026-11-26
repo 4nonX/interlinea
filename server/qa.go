@@ -496,7 +496,7 @@ func (s *Server) qaSegments(ctx context.Context, p projectdb.Project, file, lang
 		if x, ok := targets[sg.ID]; ok {
 			t = x
 		}
-		out = append(out, qa.Segment{ID: sg.ID, Source: sg.Source, Target: t, MaxLength: sg.MaxLength, Skip: sg.Locked})
+		out = append(out, qa.Segment{ID: sg.ID, Source: sg.Source, Target: t, MaxLength: sg.MaxLength, Timing: sg.CheckTiming(), Skip: sg.Locked})
 	}
 	return out, nil
 }

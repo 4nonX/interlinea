@@ -96,6 +96,28 @@ type Unit struct {
 	// MaxLength is the longest the translation may be, in characters
 	// (0 for no limit).
 	MaxLength int `json:"maxLength,omitempty"`
+	// Timing is when a subtitle is shown; nil for anything else.
+	Timing *Timing `json:"timing,omitempty"`
+}
+
+// Timing is when a subtitle is shown, in milliseconds from the start. A
+// subtitle whose times the file does not say (frames without a frame
+// rate) has End no later than Start.
+type Timing struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
+	// LineLimit is the most characters a line of the format holds (32 in
+	// closed captions); 0 where the format sets none.
+	LineLimit int `json:"lineLimit,omitempty"`
+}
+
+// Duration is how long the subtitle is shown, in milliseconds; 0 where
+// the file does not say.
+func (t *Timing) Duration() int64 {
+	if t == nil || t.End <= t.Start {
+		return 0
+	}
+	return t.End - t.Start
 }
 
 // State is how far the translation of a unit is, in the terms Interlinea

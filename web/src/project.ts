@@ -494,6 +494,8 @@ export function checkSegment(
               source: runsToCore(s.source),
               target: runsToCore(s.target),
               maxLength: s.maxLength ?? 0,
+              // A part of a split subtitle has the time of the whole, not its own.
+              timing: s.split ? undefined : s.timing,
             })),
         ),
         JSON.stringify({
@@ -503,6 +505,7 @@ export function checkSegment(
           enabled: q.enabled,
           rules: q.rules,
           spellIgnore: q.words,
+          subtitles: q.subtitles,
           termIndex: termIndex ?? "",
           dictionary: dictionary ?? "",
         }),

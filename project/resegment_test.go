@@ -632,3 +632,27 @@ func TestSegmentationRulesOnOneSentence(t *testing.T) {
 		t.Errorf("text: %q %v", out, err)
 	}
 }
+
+// A split subtitle's parts keep the time of the whole without being
+// checked by it, and have it again joined back. (Two subtitles are not
+// joined: each is a paragraph of its own.)
+func TestSubtitleTimes(t *testing.T) {
+	segs := []project.Segment{
+		{ID: "c1", Block: "c1", Source: c("Guten Abend. Willkommen."), Target: content.Content{}, Status: project.StatusNew, Timing: &filter.Timing{Start: 1000, End: 3000}},
+		{ID: "c2", Block: "c2", Source: c("Auf Wiedersehen."), Target: content.Content{}, Status: project.StatusNew, Timing: &filter.Timing{Start: 4000, End: 5000}},
+	}
+	split, err := project.Split(segs, 0, c("Guten Abend. "))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if split[0].Timing == nil || split[0].CheckTiming() != nil || split[1].CheckTiming() != nil || split[2].CheckTiming() == nil {
+		t.Errorf("split: %+v %+v", split[0], split[1])
+	}
+	back, err := project.Join(split, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tm := back[0].CheckTiming(); tm == nil || tm.Start != 1000 || tm.End != 3000 {
+		t.Errorf("joined back: %+v", back[0])
+	}
+}

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/internal/sqlitedb"
 	"github.com/4nonX/interlinea/internal/sqlstore"
 	"github.com/4nonX/interlinea/langtag"
@@ -284,6 +285,7 @@ var (
 type segmentExtra struct {
 	Block     string               `json:"block,omitempty"`
 	MaxLength int                  `json:"maxLength,omitempty"`
+	Timing    *filter.Timing       `json:"timing,omitempty"`
 	Notes     []string             `json:"notes,omitempty"`
 	File      *project.FileState   `json:"file,omitempty"`
 	Origin    *project.Origin      `json:"origin,omitempty"`
@@ -296,12 +298,13 @@ type segmentExtra struct {
 }
 
 func extraJSON(s project.Segment) (string, error) {
-	b, err := json.Marshal(segmentExtra{Block: s.Block, MaxLength: s.MaxLength, Notes: s.Notes, File: s.File, Origin: s.Origin, Warnings: s.Warnings, Ignored: s.Ignored, Comments: s.Comments, Issues: s.Issues, Split: s.Split, Joined: s.Joined})
+	b, err := json.Marshal(segmentExtra{Block: s.Block, MaxLength: s.MaxLength, Timing: s.Timing, Notes: s.Notes, File: s.File, Origin: s.Origin, Warnings: s.Warnings, Ignored: s.Ignored, Comments: s.Comments, Issues: s.Issues, Split: s.Split, Joined: s.Joined})
 	return noNUL(string(b)), err
 }
 
 func (x segmentExtra) apply(s *project.Segment) {
 	s.Block, s.MaxLength, s.Notes, s.File = x.Block, x.MaxLength, x.Notes, x.File
+	s.Timing = x.Timing
 	s.Origin, s.Warnings, s.Ignored = x.Origin, x.Warnings, x.Ignored
 	s.Comments = x.Comments
 	s.Issues = x.Issues

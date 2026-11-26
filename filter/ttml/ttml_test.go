@@ -109,3 +109,22 @@ func TestTTMLPrefixesAndLanguage(t *testing.T) {
 		}
 	}
 }
+
+func TestTTMLTimes(t *testing.T) {
+	src := `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:frameRate="25" ttp:tickRate="10000000" xml:lang="de"><body><div begin="10s">
+<p begin="00:00:01.500" end="00:00:03.000">a</p>
+<p begin="00:00:04:12" dur="2s">b</p>
+<p begin="50000000t" end="70000000t">c</p>
+<p begin="1.5m">d</p>
+</div></body></tt>`
+	ex, err := Extract([]byte(src), "de")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][2]int64{{11500, 13000}, {14480, 16480}, {15000, 17000}, {100000, 100000}}
+	for i, w := range want {
+		if tm := ex.Units[i].Timing; tm == nil || tm.Start != w[0] || tm.End != w[1] {
+			t.Errorf("subtitle %d: %+v, want %v", i+1, tm, w)
+		}
+	}
+}

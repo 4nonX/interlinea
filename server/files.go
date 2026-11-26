@@ -262,6 +262,7 @@ func fill(f *fileUpload, ex *filter.Extraction, langs []string) error {
 				sg.Source = u.Source
 				sg.Locked = sg.Locked || u.Locked
 				sg.Block, sg.MaxLength, sg.Notes, sg.File = fromFile.Block, fromFile.MaxLength, fromFile.Notes, fromFile.File
+				sg.Timing = fromFile.Timing
 				continue
 			}
 			if fixed || u.Locked || u.Block != ex.Units[first].Block {
@@ -304,7 +305,7 @@ func unitSegments(units []filter.Unit, fixed bool) []project.Segment {
 // state become the segment's. fixed says the file's program keeps its
 // own record of each segment, so they cannot be split or joined.
 func unitSegment(u filter.Unit, fixed bool) project.Segment {
-	s := project.Segment{ID: u.ID, Source: u.Source, Target: u.Target, Locked: u.Locked, Block: u.Block, MaxLength: u.MaxLength, Notes: u.Notes, Status: project.StatusNew}
+	s := project.Segment{ID: u.ID, Source: u.Source, Target: u.Target, Locked: u.Locked, Block: u.Block, MaxLength: u.MaxLength, Timing: u.Timing, Notes: u.Notes, Status: project.StatusNew}
 	if s.Target == nil {
 		s.Target = content.Content{}
 	}

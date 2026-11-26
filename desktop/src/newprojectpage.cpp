@@ -119,6 +119,7 @@ QString documentFormatText(const QString &format)
         {QStringLiteral("sub"), {QT_TRANSLATE_NOOP("NewProjectPage", "SUB subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "frames kept")}},
         {QStringLiteral("ttml"), {QT_TRANSLATE_NOOP("NewProjectPage", "TTML subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times and styles kept")}},
         {QStringLiteral("stl"), {QT_TRANSLATE_NOOP("NewProjectPage", "EBU STL subtitles"), QT_TRANSLATE_NOOP("NewProjectPage", "times and positions kept")}},
+        {QStringLiteral("scc"), {QT_TRANSLATE_NOOP("NewProjectPage", "SCC captions"), QT_TRANSLATE_NOOP("NewProjectPage", "times and positions kept")}},
         {QStringLiteral("txt"), {QT_TRANSLATE_NOOP("NewProjectPage", "Text file"), QT_TRANSLATE_NOOP("NewProjectPage", "line breaks kept")}},
         {QStringLiteral("pdf"), {QT_TRANSLATE_NOOP("NewProjectPage", "PDF document"), QT_TRANSLATE_NOOP("NewProjectPage", "text only, saved as a DOCX document")}},
     };

@@ -599,6 +599,13 @@ func Join(segs []Segment, i int) ([]Segment, error) {
 	} else {
 		z.MaxLength = 0
 	}
+	// Two subtitles joined are shown from the first's start to the
+	// second's end.
+	if x.Timing != nil && y.Timing != nil {
+		z.Timing = &filter.Timing{Start: min(x.Timing.Start, y.Timing.Start), End: max(x.Timing.End, y.Timing.End)}
+	} else {
+		z.Timing = nil
+	}
 	out[i] = z
 	out = append(out[:i+1], out[i+2:]...)
 	lo, hi := rx.lo, ry.hi-1

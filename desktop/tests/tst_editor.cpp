@@ -196,7 +196,7 @@ private slots:
         terminology.insert("termbase", "Formate terms");
         settings.insert("terminology", terminology);
         QJsonArray files;
-        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml", "Vertrag.pdf", "film.ttml", "Untertitel.stl", "film.ass"};
+        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml", "Vertrag.pdf", "film.ttml", "Untertitel.stl", "film.ass", "Untertitel.scc"};
         for (const QString &n : names) {
             const QByteArray data = fixture(n);
             QVERIFY2(!data.isEmpty(), qPrintable(n));
@@ -213,7 +213,7 @@ private slots:
         QVERIFY2(made.ok(), qPrintable(made.error.message));
         const qint64 id = made.object().value("id").toInteger();
         Theme::apply(*qApp);
-        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}, {"Vertrag.pdf", 21}, {"film.ttml", 2}, {"Untertitel.stl", 2}, {"film.ass", 2}};
+        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}, {"Vertrag.pdf", 21}, {"film.ttml", 2}, {"Untertitel.stl", 3}, {"film.ass", 2}, {"Untertitel.scc", 2}};
         for (const QString &n : names) {
             EditorPage ed(m.local(), id, n, QStringLiteral("en-GB"));
             ed.resize(1280, 820);
@@ -225,6 +225,25 @@ private slots:
             if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty() && n == "Seite.html") {
                 QTest::qWait(600);
                 ed.grab().save(dir + QStringLiteral("/editor-html.png"));
+            }
+            // A subtitle is counted against the project's limits as it is
+            // typed: its longest line, its lines and its reading speed.
+            if (n == "film.ass") {
+                const QString first = ed.model()->segments().first().value("id").toString();
+                ed.goToSegment(first);
+                QTRY_COMPARE_WITH_TIMEOUT(ed.activeId(), first, 5000);
+                ed.target()->setContent(QJsonArray{QJsonObject{{"text", "Good evening and a very warm welcome to everybody watching tonight."}}});
+                emit ed.target()->edited();
+                auto *counter = ed.findChild<QLabel *>(QStringLiteral("subtitleCounter"));
+                QVERIFY(counter);
+                QVERIFY2(counter->text().contains(QStringLiteral("Longest line 67 of 42")) && counter->text().contains(QStringLiteral("characters per second in 2.00 s")), qPrintable(counter->text()));
+                QVERIFY(counter->text().contains(QStringLiteral("font-weight:600")));
+                if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+                    QTest::qWait(400);
+                    ed.grab().save(dir + QStringLiteral("/editor-subtitles.png"));
+                }
+                ed.target()->setContent(QJsonArray{});
+                emit ed.target()->edited();
             }
             // The preview is the document: its paragraphs as the file has
             // them, formatting where the segments have tags, and what is

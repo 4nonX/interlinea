@@ -19,6 +19,12 @@
 // last row stays where it was, and the GSI block gets the number of blocks,
 // the longest row, the code table and the language of the translation.
 // Comments (CF 1) and user data blocks (EBN FEh) stay as they are.
+//
+// The original programme and episode titles of the GSI block are units
+// too, at most 32 characters each; their translations are written to the
+// translated programme and episode titles, in the GSI block's code page
+// (437, 850, 860, 863 or 865). A title in letters the code page lacks is
+// left out, as the format can't hold it.
 package ebustl
 
 import (
@@ -29,6 +35,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"golang.org/x/text/encoding/charmap"
 )
 
 // Format is the name stored with a project's files.
@@ -328,6 +335,51 @@ func contains(a []string, s string) bool {
 	return false
 }
 
+// The titles of the GSI block: where the original is, where the
+// translation goes.
+var titles = []struct {
+	id, name   string
+	from, into int
+}{
+	{"programme-title", "Programme title", 16, 80},
+	{"episode-title", "Episode title", 48, 112},
+}
+
+const titleSize = 32
+
+// codePage is the code page of the GSI block's text.
+func (f *file) codePage() *charmap.Charmap {
+	switch string(f.gsi[0:3]) {
+	case "437":
+		return charmap.CodePage437
+	case "860":
+		return charmap.CodePage860
+	case "863":
+		return charmap.CodePage863
+	case "865":
+		return charmap.CodePage865
+	}
+	return charmap.CodePage850
+}
+
+func (f *file) title(at int) string {
+	s, _ := f.codePage().NewDecoder().Bytes(bytes.TrimRight(f.gsi[at:at+titleSize], " \x00"))
+	return strings.TrimSpace(string(s))
+}
+
+// fps is the file's frames per second.
+func (f *file) fps() int64 {
+	if string(f.gsi[3:11]) == "STL30.01" {
+		return 30
+	}
+	return 25
+}
+
+// ms is a time code in milliseconds.
+func (f *file) ms(t []byte) int64 {
+	return ((int64(t[0])*60+int64(t[1]))*60+int64(t[2]))*1000 + int64(t[3])*1000/f.fps()
+}
+
 // Extract returns the subtitles of an EBU STL file as units.
 func Extract(data []byte, lang string) (*filter.Extraction, error) {
 	f, err := parse(data)
@@ -335,6 +387,13 @@ func Extract(data []byte, lang string) (*filter.Extraction, error) {
 		return nil, err
 	}
 	ex := &filter.Extraction{Units: []filter.Unit{}, Blocks: []filter.Block{}, Format: Format, SourceLang: lang}
+	for _, t := range titles {
+		if text := f.title(t.from); text != "" {
+			ex.Blocks = append(ex.Blocks, filter.Block{ID: t.id, Part: filter.PartMeta})
+			ex.Units = append(ex.Units, filter.Unit{ID: t.id, Block: t.id, Source: content.Text(text), Key: t.name, MaxLength: titleSize,
+				Notes: []string{t.name + " of the file's header. Its translation goes into the translated " + strings.ToLower(t.name) + "."}})
+		}
+	}
 	for _, s := range f.subs {
 		if !s.translatable {
 			continue
@@ -346,7 +405,8 @@ func Extract(data []byte, lang string) (*filter.Extraction, error) {
 		b := f.blocks[s.first]
 		key := b.timeIn() + " --> " + b.timeOut()
 		ex.Blocks = append(ex.Blocks, filter.Block{ID: s.id, Part: filter.PartBody})
-		ex.Units = append(ex.Units, filter.Unit{ID: s.id, Block: s.id, Source: c, Key: key, Notes: []string{key}})
+		tm := &filter.Timing{Start: f.ms(b[5:9]), End: f.ms(b[9:13])}
+		ex.Units = append(ex.Units, filter.Unit{ID: s.id, Block: s.id, Source: c, Key: key, Notes: []string{key}, Timing: tm})
 	}
 	return ex, nil
 }
@@ -377,7 +437,9 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 		out = append(out, w)
 		all = append(all, w.parts)
 	}
-	if len(out) == 0 && targetLang == "" {
+	_, titled := tr["programme-title"]
+	_, titled2 := tr["episode-title"]
+	if len(out) == 0 && targetLang == "" && !titled && !titled2 {
 		return append([]byte(nil), data...), nil
 	}
 	table, err := f.chooseTable(all)
@@ -465,6 +527,21 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 		copy(gsi[251:253], fmt.Sprintf("%02d", longest))
 	}
 	copy(gsi[12:14], fmt.Sprintf("%02d", table))
+	for _, t := range titles {
+		tt, ok := tr[t.id]
+		if !ok || len(tt) == 0 || f.title(t.from) == "" {
+			continue
+		}
+		b, err := f.codePage().NewEncoder().Bytes([]byte(strings.TrimSpace(tt.Plain())))
+		if err != nil || len(b) > titleSize {
+			// Letters the code page lacks, or too long: the field can't
+			// hold it.
+			continue
+		}
+		field := bytes.Repeat([]byte(" "), titleSize)
+		copy(field, b)
+		copy(gsi[t.into:t.into+titleSize], field)
+	}
 	if lc, ok := languageCode(targetLang); ok {
 		copy(gsi[14:16], lc)
 	}

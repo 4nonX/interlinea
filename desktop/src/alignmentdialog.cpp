@@ -1219,7 +1219,7 @@ void AlignmentDialog::render()
             const QString title = labels[s];
             connect(choose, &QPushButton::clicked, this, [this, side, title] {
                 const QString path = QFileDialog::getOpenFileName(this, title, QString(),
-                                                                  tr("Documents (*.docx *.docm *.pptx *.pptm *.ppsx *.xlsx *.xlsm *.html *.htm *.xhtml *.idml *.odt *.ods *.odp *.xml *.md *.markdown *.properties *.json *.yaml *.yml *.po *.resx *.srt *.vtt *.sbv *.ass *.ssa *.sub *.ttml *.dfxp *.itt *.stl *.pdf *.txt);;All files (*)"));
+                                                                  tr("Documents (*.docx *.docm *.pptx *.pptm *.ppsx *.xlsx *.xlsm *.html *.htm *.xhtml *.idml *.odt *.ods *.odp *.xml *.md *.markdown *.properties *.json *.yaml *.yml *.po *.resx *.srt *.vtt *.sbv *.ass *.ssa *.sub *.ttml *.dfxp *.itt *.stl *.scc *.pdf *.txt);;All files (*)"));
                 if (!path.isEmpty())
                     setFile(side, path);
             });

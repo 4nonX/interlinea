@@ -1072,6 +1072,50 @@ export function ChecksSection({
       </fieldset>
 
       <fieldset className="field">
+        <legend>Subtitles</legend>
+        <p className="help">
+          Limits for subtitle and caption files, checked with their times:
+          the longest line, the most lines, and how fast the subtitle must be
+          read. Closed captions (SCC) also hold at most 32 characters a line.
+        </p>
+        {(
+          [
+            ["sub-line-length", "lineLength", "Characters in a line", 1, 200, 1],
+            ["sub-lines", "lines", "Lines in a subtitle", 1, 10, 1],
+            ["sub-cps", "cps", "Characters per second", 1, 100, 0.5],
+          ] as const
+        ).map(([id, key, label, min, max, step]) => (
+          <div key={id} className="inline-number subtitle-limit">
+            <label htmlFor={id}>{label}</label>
+            <input
+              id={id}
+              type="number"
+              className="penalty"
+              min={min}
+              max={max}
+              step={step}
+              value={qa.subtitles[key]}
+              onChange={(e) =>
+                setQa({
+                  ...qa,
+                  subtitles: {
+                    ...qa.subtitles,
+                    [key]:
+                      e.target.value === ""
+                        ? 0
+                        : key === "cps"
+                          ? Number(e.target.value)
+                          : Math.round(Number(e.target.value)),
+                  },
+                })
+              }
+            />
+            <Problems messages={problemsAt(problems, `qa.subtitles.${key}`)} />
+          </div>
+        ))}
+      </fieldset>
+
+      <fieldset className="field">
         <legend>Spelling</legend>
         {!spellingOn && <p className="muted">The spelling check is off.</p>}
         <ul className="dict-list">

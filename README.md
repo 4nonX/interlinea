@@ -71,7 +71,7 @@ API and an MCP endpoint.
 |---|---|
 | Documents | Word, PowerPoint, Excel, OpenDocument, HTML, InDesign (IDML), XML, Markdown, PDF (the text), plain text |
 | Software | Java properties, JSON, YAML, PO, RESX |
-| Subtitles | SRT, WebVTT, SBV, ASS and SSA, SUB (MicroDVD, SubViewer), TTML (DFXP, iTT, EBU-TT, IMSC), EBU STL |
+| Subtitles | SRT, WebVTT, SBV, ASS and SSA, SUB (MicroDVD, SubViewer), TTML (DFXP, iTT, EBU-TT, IMSC), EBU STL, SCC (closed captions) |
 | Bilingual files | XLIFF 1.2 and 2.x, SDLXLIFF, MQXLIFF, Phrase MXLIFF, Wordfast TXML, TagEditor TTX, and the review tables of Trados (DOCX), memoQ (RTF, DOCX) and Déjà Vu (RTF) |
 | Packages | Trados project packages (.sdlppx in, .sdlrpx back), memoQ handoff packages (.mqout in, .mqback back) |
 | Memories | TMX, Trados Studio (.sdltm), Wordfast (.txt) |

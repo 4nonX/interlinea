@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/4nonX/interlinea/filter"
 )
 
 // parseSubtitles reads SubRip (.srt) and WebVTT (.vtt) subtitles: each
@@ -35,7 +37,13 @@ func parseSubtitles(src string, vtt bool) ([]*slot, error) {
 			lines = append(lines, ls[j].text)
 		}
 		key := strings.TrimSpace(ls[i].text)
+		from, to, _ := strings.Cut(key, "-->")
+		// WebVTT puts the cue's settings after its end time.
+		if f := strings.Fields(to); len(f) > 0 {
+			to = f[0]
+		}
 		out = append(out, &slot{start: ls[first].start, end: ls[last].end, id: "c" + strconv.Itoa(len(out)+1), text: strings.Join(lines, "\n"), key: key, markup: true,
+			timing: timing(clock(from), clock(to)),
 			// An empty line would end the cue: lines are closed up.
 			write: func(t string) string { return closedLines(t, nl) }})
 		i = last
@@ -109,7 +117,7 @@ func parseTimedLines(src string, times *regexp.Regexp, br string) ([]*slot, erro
 			write = func(t string) string { return closedLines(strings.ReplaceAll(t, "\r", ""), br) }
 		}
 		out = append(out, &slot{start: ls[i+1].start, end: ls[last].end, id: "c" + strconv.Itoa(len(out)+1), text: text,
-			key: strings.TrimSpace(from) + " --> " + strings.TrimSpace(to), markup: true, write: write})
+			key: strings.TrimSpace(from) + " --> " + strings.TrimSpace(to), markup: true, write: write, timing: timing(clock(from), clock(to))})
 		i = last
 	}
 	if len(out) == 0 {
@@ -180,14 +188,14 @@ func parseASS(src string) ([]*slot, error) {
 		if strings.TrimSpace(text) == "" || assDrawing.MatchString(text) {
 			continue
 		}
-		var key string
+		var key, from, to string
 		var notes []string
 		for k, f := range fields[:len(fields)-1] {
 			switch strings.ToLower(f) {
 			case "start":
-				key = vals[k] + key
+				key, from = vals[k]+key, vals[k]
 			case "end":
-				key += " --> " + vals[k]
+				key, to = key+" --> "+vals[k], vals[k]
 			case "style":
 				if vals[k] != "" {
 					notes = append(notes, "Style: "+vals[k])
@@ -200,6 +208,7 @@ func parseASS(src string) ([]*slot, error) {
 		}
 		lines := strings.NewReplacer(`\N`, "\n", `\n`, "\n").Replace(text)
 		out = append(out, &slot{start: at, end: l.end, id: "c" + strconv.Itoa(len(out)+1), text: lines, key: key, notes: notes, markup: true, tags: assTags,
+			timing: timing(clock(from), clock(to)),
 			write: func(t string) string {
 				// The text is one line of the file.
 				t = strings.ReplaceAll(strings.ReplaceAll(t, "\r", ""), "\n", `\N`)
@@ -258,10 +267,13 @@ func parseMicroDVD(src string) ([]*slot, error) {
 			continue
 		}
 		key := "frames " + from + " to " + to
+		// Without a frame rate the times are not known.
+		t := &filter.Timing{}
 		if fps > 0 {
 			key = frameTime(from, fps) + " --> " + frameTime(to, fps)
+			t = timing(frameMS(from, fps), frameMS(to, fps))
 		}
-		out = append(out, &slot{start: l.start + m[1], end: l.end, id: "c" + strconv.Itoa(len(out)+1), text: strings.ReplaceAll(text, "|", "\n"), key: key, markup: true, tags: microDVDTags,
+		out = append(out, &slot{start: l.start + m[1], end: l.end, id: "c" + strconv.Itoa(len(out)+1), text: strings.ReplaceAll(text, "|", "\n"), key: key, markup: true, tags: microDVDTags, timing: t,
 			write: func(t string) string {
 				// The subtitle is one line of the file.
 				return closedLines(strings.ReplaceAll(t, "\r", ""), "|")
@@ -273,12 +285,64 @@ func parseMicroDVD(src string) ([]*slot, error) {
 	return out, nil
 }
 
+// frameMS is the time of a frame in milliseconds; -1 for no frame.
+func frameMS(frame string, fps float64) int64 {
+	n, err := strconv.Atoi(frame)
+	if err != nil {
+		return -1
+	}
+	return int64(float64(n) / fps * 1000)
+}
+
 // frameTime is the time of a frame, as SubRip writes times.
 func frameTime(frame string, fps float64) string {
-	n, err := strconv.Atoi(frame)
-	if err != nil || frame == "" {
+	ms := frameMS(frame, fps)
+	if ms < 0 {
 		return frame
 	}
-	ms := int64(float64(n) / fps * 1000)
 	return fmt.Sprintf("%02d:%02d:%02d,%03d", ms/3600000, ms/60000%60, ms/1000%60, ms%1000)
+}
+
+// timing is a subtitle's times; one not known (-1) leaves the duration
+// unknown.
+func timing(from, to int64) *filter.Timing {
+	if from < 0 || to < 0 {
+		return &filter.Timing{Start: max(from, 0), End: max(from, 0)}
+	}
+	return &filter.Timing{Start: from, End: to}
+}
+
+// clock reads a time as subtitle files write it, in milliseconds:
+// 01:02:03,500 (SubRip), 02:03.500 (WebVTT), 1:02:03.50 (SubStation Alpha,
+// in hundredths), 0:02:03.500 (YouTube). -1 if it is none.
+func clock(s string) int64 {
+	s = strings.TrimSpace(s)
+	frac := ""
+	if i := strings.LastIndexAny(s, ".,"); i >= 0 {
+		s, frac = s[:i], s[i+1:]
+	}
+	parts := strings.Split(s, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return -1
+	}
+	var total int64
+	for _, p := range parts {
+		n, err := strconv.ParseInt(p, 10, 64)
+		if err != nil || n < 0 || len(p) == 0 {
+			return -1
+		}
+		total = total*60 + n
+	}
+	ms := total * 1000
+	if frac != "" {
+		n, err := strconv.ParseInt(frac, 10, 64)
+		if err != nil || n < 0 || len(frac) > 3 {
+			return -1
+		}
+		for i := len(frac); i < 3; i++ {
+			n *= 10
+		}
+		ms += n
+	}
+	return ms
 }

@@ -126,6 +126,9 @@ type QA struct {
 	Dictionaries map[string]string `json:"dictionaries,omitempty"`
 	// Words are always spelled right in this project (names, terms).
 	Words []string `json:"words,omitempty"`
+	// Subtitles are the limits of the subtitle checks; zero for the
+	// defaults.
+	Subtitles qa.SubtitleLimits `json:"subtitles,omitzero"`
 	// UneditedFuzzy warns when a fuzzy match is confirmed unchanged.
 	UneditedFuzzy bool `json:"uneditedFuzzy"`
 	// Grammar names the grammar service that reads the translations of
@@ -471,6 +474,15 @@ func Validate(s Settings, cat Catalog) []Problem {
 			add(field, "%s spells %s, not %s.", name, dl, n)
 		}
 	}
+	if l := s.QA.Subtitles; l.LineLength < 0 || l.LineLength > 200 {
+		add("qa.subtitles.lineLength", "A subtitle line holds 1 to 200 characters.")
+	}
+	if l := s.QA.Subtitles; l.Lines < 0 || l.Lines > 10 {
+		add("qa.subtitles.lines", "A subtitle has 1 to 10 lines.")
+	}
+	if l := s.QA.Subtitles; l.CPS < 0 || l.CPS > 100 || l.CPS != l.CPS {
+		add("qa.subtitles.cps", "The reading speed is 1 to 100 characters per second.")
+	}
 	for _, w := range s.QA.Words {
 		if strings.TrimSpace(w) == "" || hasControl(w) {
 			add("qa.words", "The project's words can't be empty or contain line breaks or tabs.")
@@ -663,6 +675,7 @@ func (s Settings) QAOptions(target string) qa.Options {
 		Enabled:     q.Enabled,
 		Rules:       q.Rules,
 		SpellIgnore: q.Words,
+		Subtitles:   q.Subtitles,
 	}
 }
 

@@ -450,3 +450,35 @@ func TestSubViewer(t *testing.T) {
 		t.Errorf("VobSub: %v", err)
 	}
 }
+
+func TestSubtitleTimes(t *testing.T) {
+	for _, c := range []struct {
+		format, src string
+		start, end  int64
+	}{
+		{SRT, "1\n01:02:03,500 --> 01:02:05,250\nHi\n", 3723500, 3725250},
+		{VTT, "WEBVTT\n\n02:03.500 --> 02:05.000 align:start\nHi\n", 123500, 125000},
+		{SBV, "0:00:01.000,0:00:03.500\nHi\n", 1000, 3500},
+		{ASS, "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.50,0:00:04.25,Default,,0,0,0,,Hi\n", 1500, 4250},
+		{MicroDVD, "{1}{1}25\n{25}{100}Hi\n", 1000, 4000},
+		{MicroDVD, "00:00:01.00,00:00:02.50\nHi\n", 1000, 2500},
+	} {
+		ex, err := Extract(c.format, []byte(c.src), "en")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tm := ex.Units[0].Timing; tm == nil || tm.Start != c.start || tm.End != c.end {
+			t.Errorf("%s: %+v", c.format, tm)
+		}
+	}
+	// Frames without a frame rate: a subtitle, but its time is not known.
+	ex, _ := Extract(MicroDVD, []byte("{25}{100}Hi\n"), "en")
+	if tm := ex.Units[0].Timing; tm == nil || tm.Duration() != 0 {
+		t.Errorf("without a frame rate: %+v", tm)
+	}
+	// Strings of software are no subtitles.
+	ex, _ = Extract(Properties, []byte("a=Hi\n"), "en")
+	if ex.Units[0].Timing != nil {
+		t.Error("a property has a time")
+	}
+}

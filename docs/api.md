@@ -2676,6 +2676,16 @@ Part names the area of a document a block belongs to.
 
 One of `attribute`, `body`, `chart`, `comment`, `diagram`, `endnote`, `footer`, `footnote`, `header`, `meta`, `notes`.
 
+### filter.Timing
+
+Timing is when a subtitle is shown, in milliseconds from the start. A subtitle whose times the file does not say (frames without a frame rate) has End no later than Start.
+
+| Field | Type | Description |
+|---|---|---|
+| `end` | integer |  |
+| `lineLimit` | integer | LineLimit is the most characters a line of the format holds (32 in closed captions); 0 where the format sets none. |
+| `start` | integer |  |
+
 ### langdetect.Detection
 
 Detection is a guess at a text's language.
@@ -2884,6 +2894,7 @@ QA is which quality checks run while translating, as qa.Options switches them: a
 | `enabled` | list of [qa.Kind](#qakind) |  |
 | `grammar` | string | Grammar names the grammar service that reads the translations of this project; empty for none. A translation goes to the service while it is worked on. |
 | `rules` | list of [qa.UserRule](#qauserrule) | Rules are checks of the project's own. |
+| `subtitles` | [qa.SubtitleLimits](#qasubtitlelimits) | Subtitles are the limits of the subtitle checks; zero for the defaults. |
 | `uneditedFuzzy` | boolean | UneditedFuzzy warns when a fuzzy match is confirmed unchanged. |
 | `words` | list of string | Words are always spelled right in this project (names, terms). |
 
@@ -2941,6 +2952,7 @@ Segment is a segment of a file in one target language.
 | `split` | [project.SplitPart](#projectsplitpart) | Split says the segment is a part of a unit of the file that was split, and Joined lists the units of the file a joined segment was made of; the segment's ID is then the first unit's. |
 | `status` | [project.Status](#projectstatus) |  |
 | `target` | [content.Content](#contentcontent) |  |
+| `timing` | [filter.Timing](#filtertiming) | Timing is when a subtitle is shown; nil for anything else. The parts of a split subtitle keep the time of the whole, which is not theirs alone: CheckTiming is nil for them. |
 | `warnings` | list of [project.Warning](#projectwarning) | Warnings are the checks' results saved when it was confirmed. |
 
 ### project.SegmentationRule
@@ -3125,6 +3137,7 @@ StoredSegment is a segment with its version.
 | `split` | [project.SplitPart](#projectsplitpart) | Split says the segment is a part of a unit of the file that was split, and Joined lists the units of the file a joined segment was made of; the segment's ID is then the first unit's. |
 | `status` | [project.Status](#projectstatus) |  |
 | `target` | [content.Content](#contentcontent) |  |
+| `timing` | [filter.Timing](#filtertiming) | Timing is when a subtitle is shown; nil for anything else. The parts of a split subtitle keep the time of the whole, which is not theirs alone: CheckTiming is nil for them. |
 | `version` | integer |  |
 | `warnings` | list of [project.Warning](#projectwarning) | Warnings are the checks' results saved when it was confirmed. |
 
@@ -3174,13 +3187,23 @@ Issue is a problem found in a segment.
 
 Kind names a check.
 
-One of `brackets`, `capitalization`, `double-space`, `edge-space`, `empty`, `end-punctuation`, `grammar`, `inconsistent`, `inconsistent-source`, `length`, `length-ratio`, `numbers-extra`, `numbers-missing`, `repeated-word`, `rule`, `space-before-punctuation`, `spelling`, `tag-order`, `tags-extra`, `tags-missing`, `term-forbidden`, `term-missing`, `untranslated`.
+One of `brackets`, `capitalization`, `double-space`, `edge-space`, `empty`, `end-punctuation`, `grammar`, `inconsistent`, `inconsistent-source`, `length`, `length-ratio`, `line-count`, `line-length`, `numbers-extra`, `numbers-missing`, `reading-speed`, `repeated-word`, `rule`, `space-before-punctuation`, `spelling`, `tag-order`, `tags-extra`, `tags-missing`, `term-forbidden`, `term-missing`, `untranslated`.
 
 ### qa.Severity
 
 Severity says how serious an issue is.
 
 One of `error`, `warning`.
+
+### qa.SubtitleLimits
+
+SubtitleLimits are the most a subtitle may have: characters in a line, lines, and characters per second of the time it is shown. Zero takes the default: 42 characters, 2 lines, 17 characters per second, as streaming services and most broadcasters ask for adult audiences.
+
+| Field | Type | Description |
+|---|---|---|
+| `cps` | number |  |
+| `lineLength` | integer |  |
+| `lines` | integer |  |
 
 ### qa.UserRule
 
