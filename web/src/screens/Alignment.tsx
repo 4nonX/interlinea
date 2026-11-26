@@ -7,7 +7,7 @@ import { fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { Modal } from "./TermbaseDialogs";
 
-const ACCEPT = ".docx,.docm,.pptx,.pptm,.ppsx,.xlsx,.xlsm,.html,.htm,.xhtml,.idml,.odt,.ods,.odp,.xml,.md,.markdown,.properties,.json,.yaml,.yml,.po,.resx,.srt,.vtt,.pdf,.txt,text/plain";
+const ACCEPT = ".docx,.docm,.pptx,.pptm,.ppsx,.xlsx,.xlsm,.html,.htm,.xhtml,.idml,.odt,.ods,.odp,.xml,.md,.markdown,.properties,.json,.yaml,.yml,.po,.resx,.srt,.vtt,.sbv,.ass,.ssa,.sub,.ttml,.dfxp,.itt,.stl,.pdf,.txt,text/plain";
 
 const text = (e: unknown) => (e instanceof Error ? e.message : String(e));
 

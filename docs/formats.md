@@ -7,7 +7,8 @@ server and on the command line: the same Go code does it everywhere.
 | Kind | Formats |
 |---|---|
 | Documents | Word (.docx), PowerPoint (.pptx), Excel (.xlsx), OpenDocument (.odt, .ods, .odp), web pages (.html), InDesign (.idml), XML, Markdown, PDF (the text), plain text |
-| Software strings and subtitles | Java properties, JSON, YAML, gettext PO, .NET RESX, SubRip (.srt), WebVTT |
+| Software strings | Java properties, JSON, YAML, gettext PO, .NET RESX |
+| Subtitles | SubRip (.srt), WebVTT (.vtt), YouTube (.sbv), Advanced SubStation Alpha and SubStation Alpha (.ass, .ssa), MicroDVD and SubViewer (.sub), Timed Text: TTML, DFXP, iTT, EBU-TT, IMSC (.ttml, .dfxp, .itt, .xml), EBU STL (.stl) |
 | Bilingual files | XLIFF 1.2 and 2.0 to 2.2, SDLXLIFF, MQXLIFF (also as .mqxlz), Phrase .mxliff, Wordfast Pro .txml and .txlf, TagEditor .ttx |
 | Bilingual tables for review | Trados Studio review documents (.docx), memoQ two-column tables (.rtf, .docx), Déjà Vu external views (.rtf) |
 | Packages | Trados project packages (.sdlppx, returned as .sdlrpx), memoQ handoff packages (.mqout, returned as .mqback) |
@@ -112,13 +113,61 @@ Markdown: headings, paragraphs, list items, quotes and table cells are
 read, with emphasis, links, images, code in a line and HTML as tags; code
 blocks, front matter and link definitions are left alone.
 
-### Software strings and subtitles
+### Software strings
 
-Java properties, JSON, YAML, gettext PO, .NET RESX, SubRip and WebVTT:
-one string is one unit. Placeholders (`%s`, `{0}`, `{{name}}`, `${name}`)
-and markup are tags; keys, comments, times and everything outside the
-strings stay byte for byte, and escapes and the encoding are written as
-the file had them.
+Java properties, JSON, YAML, gettext PO and .NET RESX: one string is one
+unit. Placeholders (`%s`, `{0}`, `{{name}}`, `${name}`) and markup are
+tags; keys, comments and everything outside the strings stay byte for
+byte, and escapes and the encoding are written as the file had them.
+
+### Subtitles
+
+One subtitle is one unit, not cut into sentences, and its times are the
+first thing the editor says about it. Its line breaks are tags, so the
+translation keeps, moves or drops them; the markup inside a subtitle is
+tags too. Numbers, times, styles and everything outside the text stay byte
+for byte.
+
+- **SubRip, WebVTT, YouTube (.sbv):** HTML-like markup (`<i>`, `<b>`,
+  `<c.yellow>`, `<v Anna>`) as tags; WebVTT's header, notes, styles and
+  regions are left alone.
+- **Advanced SubStation Alpha, SubStation Alpha (.ass, .ssa):** the text
+  of each Dialogue line of the events, by the section's Format line; line
+  breaks (`\N`, `\n`) as tags, italics, bold, underline and strikeout
+  overrides (`{\i1}`...`{\i0}`) as pairs, other override blocks and hard
+  spaces (`\h`) as tags. The style and the speaker are shown as notes.
+  Comments and lines that draw shapes (`{\p1}`) are left alone.
+- **MicroDVD (.sub):** `{frame}{frame}text`, lines parted by `|`, control
+  codes (`{y:i}`, `{c:$0000FF}`) as tags; with a frame rate in the first
+  line the frames are shown as times. A .sub file of SubViewer 2
+  (`00:00:01.00,00:00:03.00`, `[br]` between lines) is read as such. A
+  VobSub .sub file holds pictures, not text, and is refused with that
+  reason.
+- **Timed Text (TTML, DFXP, Apple iTT, EBU-TT, IMSC):** each paragraph of
+  the body is a subtitle, `br` a line break, spans and other elements tags
+  (a span around a whole subtitle is kept out of sight); layout spaces are
+  ignored unless `xml:space="preserve"`. The head (styles, layout,
+  metadata) is not read. The translation's `xml:lang` is written on the
+  root. An .xml file whose root is `tt` is read as Timed Text.
+- **EBU STL (.stl):** the binary format of broadcasters (EBU Tech 3264),
+  open subtitles and teletext. Accented letters are read and written as
+  the format has them (the accent before its letter); Latin, Cyrillic,
+  Arabic, Greek and Hebrew code tables. Rows are parted by tags that carry
+  the control codes around the row break (teletext's double height and
+  boxing among them); italics, underline and boxing are pairs, teletext
+  colours tags of their own; the codes at the start and end of a subtitle
+  are kept out of sight. A translation longer than a block holds is
+  written into extension blocks, a subtitle with more or fewer rows is
+  moved so its last row stays where it was, and the header gets the
+  number of blocks, the longest row, the code table and the language of
+  the translation. A translation in a script the format has no code table
+  for (Chinese, Korean, Japanese) is refused with that reason. Comments
+  and user data are kept as they are.
+
+Subtitles in Windows-1252, as many made on Windows are, are read as such
+and written back in it; where a translation has letters that encoding
+lacks, the file is written in UTF-8 with a byte order mark, which subtitle
+players read.
 
 ## Bilingual files
 

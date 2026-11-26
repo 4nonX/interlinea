@@ -9,6 +9,7 @@ import (
 
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
+	"github.com/4nonX/interlinea/filter/ebustl"
 	"github.com/4nonX/interlinea/filter/html"
 	"github.com/4nonX/interlinea/filter/idml"
 	"github.com/4nonX/interlinea/filter/markdown"
@@ -16,6 +17,7 @@ import (
 	"github.com/4nonX/interlinea/filter/plaintext"
 	"github.com/4nonX/interlinea/filter/pptx"
 	"github.com/4nonX/interlinea/filter/textfmt"
+	"github.com/4nonX/interlinea/filter/ttml"
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/filter/xlsx"
 	"github.com/4nonX/interlinea/filter/xmlfmt"
@@ -37,6 +39,14 @@ const (
 	RESX       = textfmt.RESX
 	SubRip     = textfmt.SRT
 	WebVTT     = textfmt.VTT
+	YouTube    = textfmt.SBV
+	SubStation = textfmt.ASS
+	MicroDVD   = textfmt.MicroDVD
+	// TimedText is TTML, DFXP and iTT; an XML file that is Timed Text is
+	// read as such too.
+	TimedText = ttml.Format
+	// EBUSTL is EBU STL, the binary subtitles of broadcasters.
+	EBUSTL     = ebustl.Format
 	XML        = xmlfmt.XML
 	OpenText   = xmlfmt.Text
 	OpenSheet  = xmlfmt.Spreadsheet
@@ -72,11 +82,16 @@ var byExtension = map[string]string{
 	".resx": RESX,
 	".srt":  SubRip,
 	".vtt":  WebVTT,
-	".xml":  XML,
-	".odt":  OpenText,
-	".ods":  OpenSheet,
-	".odp":  OpenSlides,
-	".md":   Markdown, ".markdown": Markdown,
+	".sbv":  YouTube,
+	".ass":  SubStation, ".ssa": SubStation,
+	".sub":  MicroDVD,
+	".ttml": TimedText, ".dfxp": TimedText, ".itt": TimedText,
+	".stl": EBUSTL,
+	".xml": XML,
+	".odt": OpenText,
+	".ods": OpenSheet,
+	".odp": OpenSlides,
+	".md":  Markdown, ".markdown": Markdown,
 	".xlf": XLIFF, ".xliff": XLIFF, ".sdlxliff": XLIFF, ".mqxliff": XLIFF, ".mxliff": XLIFF, ".txlf": XLIFF,
 	".txml": XLIFF, ".ttx": XLIFF, ".rtf": XLIFF,
 	".mqxlz":  MemoQArchive,
@@ -120,7 +135,7 @@ func TextName(name string) bool {
 // and subtitles.
 func Document(format string) bool {
 	switch format {
-	case Word, PowerPoint, Excel, HTML, InDesign, Markdown, Text, PDF:
+	case Word, PowerPoint, Excel, HTML, InDesign, Markdown, Text, PDF, TimedText, EBUSTL:
 		return true
 	}
 	return textfmt.Is(format) || xmlfmt.Is(format)
@@ -154,7 +169,7 @@ func Name(format string) string {
 		return "PO file"
 	case RESX:
 		return "RESX file"
-	case SubRip, WebVTT:
+	case SubRip, WebVTT, YouTube, SubStation, MicroDVD, TimedText, EBUSTL:
 		return "subtitle file"
 	case XML:
 		return "XML file"
@@ -214,6 +229,14 @@ func Extract(format string, data []byte, lang string) (*filter.Extraction, error
 		return markdown.Extract(data, lang)
 	case Text:
 		return plaintext.Extract(data, lang)
+	case TimedText:
+		return ttml.Extract(data, lang)
+	case EBUSTL:
+		return ebustl.Extract(data, lang)
+	case XML:
+		if ttml.IsTTML(data) {
+			return ttml.Extract(data, lang)
+		}
 	case PDF:
 		word, err := pdf.ToWord(data)
 		if err != nil {
@@ -252,6 +275,14 @@ func Merge(format string, data []byte, lang, targetLang string, tr filter.Transl
 		return markdown.Merge(data, lang, targetLang, tr)
 	case Text:
 		return plaintext.Merge(data, lang, tr)
+	case TimedText:
+		return ttml.Merge(data, lang, targetLang, tr)
+	case EBUSTL:
+		return ebustl.Merge(data, lang, targetLang, tr)
+	case XML:
+		if ttml.IsTTML(data) {
+			return ttml.Merge(data, lang, targetLang, tr)
+		}
 	case PDF:
 		// The translation of a PDF is the Word document its text was
 		// read into.

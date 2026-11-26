@@ -33,6 +33,7 @@ func main() {
 		"Layout.idml":       formatstest.Layout(),
 		"Hofmann.mqout":     formatstest.Handoff(doc),
 		"Mietvertrag.mqxlz": formatstest.Archive(doc),
+		"Untertitel.stl":    formatstest.Subtitles(),
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)

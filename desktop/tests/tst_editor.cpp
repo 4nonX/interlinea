@@ -196,7 +196,7 @@ private slots:
         terminology.insert("termbase", "Formate terms");
         settings.insert("terminology", terminology);
         QJsonArray files;
-        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml", "Vertrag.pdf"};
+        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml", "Vertrag.pdf", "film.ttml", "Untertitel.stl", "film.ass"};
         for (const QString &n : names) {
             const QByteArray data = fixture(n);
             QVERIFY2(!data.isEmpty(), qPrintable(n));
@@ -213,7 +213,7 @@ private slots:
         QVERIFY2(made.ok(), qPrintable(made.error.message));
         const qint64 id = made.object().value("id").toInteger();
         Theme::apply(*qApp);
-        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}, {"Vertrag.pdf", 21}};
+        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}, {"Vertrag.pdf", 21}, {"film.ttml", 2}, {"Untertitel.stl", 2}, {"film.ass", 2}};
         for (const QString &n : names) {
             EditorPage ed(m.local(), id, n, QStringLiteral("en-GB"));
             ed.resize(1280, 820);
@@ -266,6 +266,13 @@ private slots:
         QVERIFY(word.ok());
         QCOMPARE(word.fileName(), QStringLiteral("Vertrag (en-GB).docx"));
         QVERIFY(word.body.startsWith("PK"));
+        // Subtitles as broadcasters exchange them: the binary EBU STL file
+        // comes back as one, its blocks as they were without translations.
+        const ApiResult stl = wait(api->get(base + "/files/translated", {{"name", "Untertitel.stl"}, {"lang", "en-GB"}}));
+        QVERIFY(stl.ok());
+        QCOMPARE(stl.fileName(), QStringLiteral("Untertitel (en-GB).stl"));
+        QCOMPARE(stl.body.size(), 1024 + 2 * 128);
+        QCOMPARE(stl.body.mid(14, 2), QByteArray("09"));
 
         // A memoQ handoff package: its document is a bilingual file of
         // the project, saved back as the package's return.

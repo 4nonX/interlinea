@@ -46,7 +46,7 @@ export default () =>
         await waitFor("!!document.querySelector('.analysis')");
       };
       /** Opens a file of the project, types a translation into its named segment and confirms it. */
-      const translate = async (file, source, translation) => {
+      const translate = async (file, source, translation, tagFirst = false) => {
         await setValue("#ed-file", await evaluate(`[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes(${JSON.stringify(file)})).value`));
         await waitFor(`document.querySelector('#ed-file option:checked')?.textContent.includes(${JSON.stringify(file)}) && document.querySelectorAll('.seg').length > 0`);
         await sleep(400);
@@ -56,6 +56,12 @@ export default () =>
         await evaluate("document.querySelector('.seg.is-active .target-editor')?.focus()");
         await sleep(200);
         await key("a", "KeyA", 65, 2);
+        if (tagFirst) {
+          // The segment's first tag goes in first (F9).
+          await key("Backspace", "Backspace", 8);
+          await key("F9", "F9", 120);
+          await sleep(200);
+        }
         await send("Input.insertText", { text: translation });
         await sleep(200);
         await key("Enter", "Enter", 13, 2);
@@ -365,6 +371,43 @@ export default () =>
       await evaluate("location.hash = '#/project/' + JSON.parse(JSON.stringify([...document.querySelectorAll('a')].find(a => a.textContent.includes('Eigene Regeln')).getAttribute('href'))).split('/').pop()");
       check(await waitFor("!!document.querySelector('#seg-rule-0-before') && document.querySelector('#seg-rule-0-before').value === 'Miete\\\\.'", 10000), "the project's settings show its rule: " + (await evaluate("location.hash + ' ' + (document.querySelector('#seg-rule-0-before')?.value ?? 'no field')")));
       check((await text()).includes("They cut the documents added from now on"), "and say it is for files added from now on");
+      // The other subtitle formats: YouTube, SubStation Alpha, MicroDVD,
+      // Timed Text and EBU STL, each written back with its times.
+      await open("/new", { keep: true, wait: 0 });
+      await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
+      await click("button", "Continue to files and languages");
+      await sleep(300);
+      await setFiles(["film.sbv", "film.ass", "film.sub", "film.ttml", "Untertitel.stl"].map((f) => `${docs}/${f}`));
+      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 5", 15000), "five subtitle files are listed");
+      t = await text();
+      check(["SBV subtitles, times kept", "ASS subtitles, times and styles kept", "SUB subtitles, frames kept", "TTML subtitles, times and styles kept", "EBU STL subtitles, times and positions kept"].every((x) => t.includes(x)), "each is named with what it keeps");
+      check(await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable')"), "all five are files to translate");
+      await setValue("#pname", "Untertitel");
+      await sleep(200);
+      await through();
+      await click("button", "Create project");
+      check(await waitFor("!!document.querySelector('#ed-file')"), "the editor offers them");
+      for (const [file, saved, want] of [
+        ["film.sbv", "film_en-GB.sbv", "0:00:04.000,0:00:05.000\nGoodbye.\n"],
+        ["film.ass", "film_en-GB.ass", "Dialogue: 0,0:00:04.00,0:00:05.00,Default,Anna,0,0,0,,Goodbye.\r\n"],
+        ["film.sub", "film_en-GB.sub", "{100}{125}{y:i}Goodbye.\n"],
+        ["film.ttml", "film_en-GB.ttml", '<p begin="00:00:04.000" end="00:00:05.000">Goodbye.</p>'],
+      ]) {
+        // The italics code before the text of the MicroDVD subtitle is a tag of the segment.
+        const ok = await translate(file, "Auf Wiedersehen.", "Goodbye.", file === "film.sub");
+        check(ok, `a subtitle of ${file} is a segment`);
+        check(await save("Save translated document", saved), `${saved} is saved`);
+        const got = readFileSync(`${downloads}/${saved}`, "utf8");
+        check(got.includes(want) && got.includes("Guten Abend."), `${saved} has the translation, and its times: ${JSON.stringify(got.slice(-120))}`);
+      }
+      check((readFileSync(`${downloads}/film_en-GB.ttml`, "utf8")).includes('xml:lang="en-GB"'), "the Timed Text file says its new language");
+      check(await translate("Untertitel.stl", "Die Kaution beträgt drei Monatsmieten.", "The deposit is three months' rent."), "a subtitle of the EBU STL file is a segment");
+      check(await save("Save translated document", "Untertitel_en-GB.stl"), "the EBU STL file is saved");
+      {
+        const stl = readFileSync(`${downloads}/Untertitel_en-GB.stl`);
+        check(stl.length === 1024 + 2 * 128 && stl.toString("latin1", 14, 16) === "09" && stl.toString("latin1", 1024 + 128 + 16).startsWith("The deposit is three months' rent.\x8f"), "with the translation in its block, and English as its language");
+        check(stl.toString("latin1", 1024 + 16).startsWith("Der \x80Mieter\x81 zahlt\x8adie Miete."), "and the subtitle not translated as it was");
+      }
       check(errors.length === 0, "no console errors: " + errors.join(" | "));
     },
   );

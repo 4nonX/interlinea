@@ -103,3 +103,38 @@ func Handoff(document []byte) []byte {
 func Archive(document []byte) []byte {
 	return pack([][2]string{{"document.mqxliff", string(document)}, {"skeleton.xml", `<?xml version="1.0" encoding="utf-8"?><skeleton/>`}}, false)
 }
+
+// Subtitles is a small EBU STL file of open subtitles: two subtitles, the
+// first with two rows and a word in italics, the second with an umlaut
+// written as EBU STL writes accents.
+func Subtitles() []byte {
+	gsi := bytes.Repeat([]byte(" "), 1024)
+	copy(gsi, "850STL25.01")
+	copy(gsi[11:], "00008") // open subtitles, Latin, German
+	copy(gsi[16:], "Mietvertrag")
+	copy(gsi[224:], "261126261126")
+	copy(gsi[238:], "0000200002001")
+	copy(gsi[251:], "3823")
+	copy(gsi[255:], "10000000000000000")
+	copy(gsi[272:], "11DEU")
+	out := gsi
+	for i, c := range []struct {
+		in, out [4]byte
+		text    string
+	}{
+		{[4]byte{0, 0, 1, 0}, [4]byte{0, 0, 4, 0}, "Der \x80Mieter\x81 zahlt\x8Adie Miete."},
+		{[4]byte{0, 0, 5, 0}, [4]byte{0, 0, 7, 0}, "Die Kaution betr\xC8agt drei Monatsmieten."},
+	} {
+		b := make([]byte, 128)
+		b[1] = byte(i + 1)
+		b[3] = 0xFF
+		copy(b[5:], c.in[:])
+		copy(b[9:], c.out[:])
+		b[13], b[14] = 20, 2
+		field := bytes.Repeat([]byte{0x8F}, 112)
+		copy(field, c.text)
+		copy(b[16:], field)
+		out = append(out, b...)
+	}
+	return out
+}

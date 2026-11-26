@@ -1,6 +1,7 @@
 // Package textfmt reads the text formats of software and subtitles:
-// Java properties, JSON, YAML, gettext PO, .NET RESX, and SRT and WebVTT
-// subtitles. Each string of a file is one unit; it is not cut into
+// Java properties, JSON, YAML, gettext PO, .NET RESX, and SubRip, WebVTT,
+// YouTube (.sbv), Advanced SubStation Alpha (.ass, .ssa) and MicroDVD
+// (.sub) subtitles. Each string of a file is one unit; it is not cut into
 // sentences, as a string is what the program shows in one place. The
 // placeholders a program fills in (%s, {0}, {{name}}, ${name}) and the
 // markup inside a string are tags, so they can't be mistyped or lost.
@@ -21,6 +22,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"golang.org/x/text/encoding/charmap"
 )
 
 // The formats, by the names stored with a project's files.
@@ -32,6 +34,9 @@ const (
 	RESX       = "resx"
 	SRT        = "srt"
 	VTT        = "vtt"
+	SBV        = "sbv"
+	ASS        = "ass"
+	MicroDVD   = "sub"
 )
 
 // slot is a place a translation goes.
@@ -47,8 +52,11 @@ type slot struct {
 	// write renders a text in the file's syntax for this place.
 	write func(string) string
 	// markup is set where a string holds no program placeholders but
-	// subtitle markup: its tags are pairs.
+	// subtitle markup: its tags are pairs, and its lines are kept apart
+	// by tags.
 	markup bool
+	// tags, if set, finds the subtitle markup in place of subtitleTag.
+	tags *regexp.Regexp
 	// also are further places that get the same translation (a plural's
 	// other forms).
 	also []*slot
@@ -68,11 +76,18 @@ const (
 	utf16LE
 	utf16BE
 	latin1
+	// windows1252 is the legacy encoding of subtitles made on Windows.
+	windows1252
 )
 
 // decode reads the file as UTF-8, as UTF-16 with a byte order mark, or,
-// for the formats that allow it, as ISO 8859-1.
+// for the formats that allow it, as ISO 8859-1 or, for subtitles, as
+// Windows-1252.
 func decode(data []byte, allowLatin1 bool) (string, encoding, error) {
+	return decodeAs(data, allowLatin1, false)
+}
+
+func decodeAs(data []byte, allowLatin1, allow1252 bool) (string, encoding, error) {
 	switch {
 	case bytes.HasPrefix(data, []byte{0xEF, 0xBB, 0xBF}):
 		if !utf8.Valid(data[3:]) {
@@ -100,6 +115,13 @@ func decode(data []byte, allowLatin1 bool) (string, encoding, error) {
 	}
 	if utf8.Valid(data) {
 		return string(data), utf8Plain, nil
+	}
+	if allow1252 {
+		s, err := charmap.Windows1252.NewDecoder().String(string(data))
+		if err != nil {
+			return "", 0, fmt.Errorf("the file is not UTF-8, UTF-16 or Windows-1252")
+		}
+		return s, windows1252, nil
 	}
 	if !allowLatin1 {
 		return "", 0, fmt.Errorf("the file is not UTF-8 or UTF-16")
@@ -131,6 +153,13 @@ func encode(s string, enc encoding) []byte {
 			}
 		}
 		return out
+	case windows1252:
+		// Where the translation has letters the file's encoding lacks,
+		// the file is written in UTF-8, which subtitle players read.
+		if b, err := charmap.Windows1252.NewEncoder().String(s); err == nil {
+			return []byte(b)
+		}
+		return append([]byte{0xEF, 0xBB, 0xBF}, s...)
 	case latin1:
 		out := make([]byte, 0, len(s))
 		for _, r := range s {
@@ -147,14 +176,26 @@ func encode(s string, enc encoding) []byte {
 // Is reports whether the format is one of this package's.
 func Is(format string) bool {
 	switch format {
-	case Properties, JSON, YAML, PO, RESX, SRT, VTT:
+	case Properties, JSON, YAML, PO, RESX, SRT, VTT, SBV, ASS, MicroDVD:
+		return true
+	}
+	return false
+}
+
+// isSubtitles reports whether the format is one of subtitles.
+func isSubtitles(format string) bool {
+	switch format {
+	case SRT, VTT, SBV, ASS, MicroDVD:
 		return true
 	}
 	return false
 }
 
 func parse(format string, data []byte) (*doc, error) {
-	src, enc, err := decode(data, format == Properties || format == PO)
+	if format == MicroDVD && bytes.HasPrefix(data, []byte{0, 0, 1, 0xBA}) {
+		return nil, fmt.Errorf("the file is VobSub: its subtitles are pictures, with no text to translate")
+	}
+	src, enc, err := decodeAs(data, format == Properties || format == PO, isSubtitles(format))
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +213,12 @@ func parse(format string, data []byte) (*doc, error) {
 		d.slots, err = parseRESX(src)
 	case SRT, VTT:
 		d.slots, err = parseSubtitles(src, format == VTT)
+	case SBV:
+		d.slots, err = parseSBV(src)
+	case ASS:
+		d.slots, err = parseASS(src)
+	case MicroDVD:
+		d.slots, err = parseMicroDVD(src)
 	default:
 		return nil, fmt.Errorf("textfmt: %q is not a text format", format)
 	}
@@ -194,12 +241,19 @@ var placeholder = regexp.MustCompile(`%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?(?:hh|h|ll
 // subtitleTag finds the markup of a subtitle: <i>, </b>, <c.yellow>, <00:01.000>.
 var subtitleTag = regexp.MustCompile(`</?[A-Za-z0-9][^<>\n]*>|\{\\[^{}\n]*\}`)
 
+// assToggle is an override block that only turns italics, bold,
+// underline or strikeout on or off: {\i1}, {\b0}, {\u}.
+var assToggle = regexp.MustCompile(`^\{\\([ibus])([01]?)\}$`)
+
 // tagged turns a string into content: its placeholders are tags that
 // carry what they stand for.
-func tagged(text string, markup bool) content.Content {
+func tagged(text string, markup bool, tags *regexp.Regexp) content.Content {
 	re := placeholder
 	if markup {
 		re = subtitleTag
+	}
+	if tags != nil {
+		re = tags
 	}
 	var c content.Content
 	at, n := 0, 0
@@ -211,7 +265,18 @@ func tagged(text string, markup bool) content.Content {
 		at = m[1]
 		lit := text[m[0]:m[1]]
 		t := content.Tag{Kind: content.TagStandalone, Type: "placeholder", Desc: lit, Native: lit}
-		if markup && strings.HasPrefix(lit, "<") {
+		if m := assToggle.FindStringSubmatch(lit); m != nil && re == assTags {
+			// {\i1} ... {\i0}: italics (bold, underline, strikeout) on and off.
+			name := "ass-" + m[1]
+			if m[2] == "1" {
+				n++
+				t.Kind, t.ID, t.Type = content.TagOpen, strconv.Itoa(n), name
+				open[name] = append(open[name], t.ID)
+			} else if ids := open[name]; len(ids) > 0 {
+				t.Kind, t.ID, t.Type = content.TagClose, ids[len(ids)-1], name
+				open[name] = ids[:len(ids)-1]
+			}
+		} else if markup && strings.HasPrefix(lit, "<") {
 			name := strings.ToLower(strings.FieldsFunc(strings.Trim(lit, "</>"), func(r rune) bool { return r == ' ' || r == '.' })[0])
 			if strings.HasPrefix(lit, "</") {
 				if ids := open[name]; len(ids) > 0 {
@@ -293,7 +358,7 @@ func plain(target, source content.Content) string {
 }
 
 func (s *slot) content() content.Content {
-	c := tagged(s.text, s.markup)
+	c := tagged(s.text, s.markup, s.tags)
 	if s.markup {
 		c = lineBreaks(c)
 	}

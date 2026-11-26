@@ -39,7 +39,13 @@ func TestInspect(t *testing.T) {
 		"film.srt":       "1\n00:00:01,000 --> 00:00:02,000\nGuten Tag\n\n2\n00:00:03,000 --> 00:00:04,000\nAuf Wiedersehen\n",
 		"film.vtt":       "WEBVTT\n\n00:01.000 --> 00:02.000\nGuten Tag\n\n00:03.000 --> 00:04.000\nAuf Wiedersehen\n",
 		"data.xml":       `<doc><p>Guten Tag</p><p>Auf Wiedersehen</p></doc>`,
-		"README.md":      "# Guten Tag\n\nAuf Wiedersehen\n",
+		"film.sbv":       "0:00:01.000,0:00:02.000\nGuten Tag\n\n0:00:03.000,0:00:04.000\nAuf Wiedersehen\n",
+		"film.ass":       "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Guten Tag\nDialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,Auf Wiedersehen\n",
+		"film.sub":       "{1}{1}25\n{25}{50}Guten Tag\n{75}{100}Auf Wiedersehen\n",
+		"film.dfxp":      `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="de"><body><div><p begin="1s" end="2s">Guten Tag</p><p begin="3s" end="4s">Auf Wiedersehen</p></div></body></tt>`,
+		// Timed Text in a file named .xml is read as subtitles, not as any XML.
+		"film.xml":  `<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="de"><head><metadata><title>Titel des Films</title></metadata></head><body><div><p begin="1s" end="2s">Guten Tag</p><p begin="3s" end="4s">Auf Wiedersehen</p></div></body></tt>`,
+		"README.md": "# Guten Tag\n\nAuf Wiedersehen\n",
 	} {
 		te.call("POST", "/api/files/inspect?name="+name, te.ben, []byte(body), 200, &got, "Content-Type", "application/octet-stream")
 		if !got.Translatable || got.Segments != 2 || got.Words != 4 || got.Problem != "" {

@@ -395,6 +395,11 @@ export type DocumentFormat =
   | "resx"
   | "srt"
   | "vtt"
+  | "sbv"
+  | "ass"
+  | "sub"
+  | "ttml"
+  | "stl"
   | "txt"
   | "pdf";
 
@@ -416,6 +421,11 @@ const DOCUMENT_FORMATS: [RegExp, DocumentFormat][] = [
   [/\.resx$/i, "resx"],
   [/\.srt$/i, "srt"],
   [/\.vtt$/i, "vtt"],
+  [/\.sbv$/i, "sbv"],
+  [/\.(ass|ssa)$/i, "ass"],
+  [/\.sub$/i, "sub"],
+  [/\.(ttml|dfxp|itt)$/i, "ttml"],
+  [/\.stl$/i, "stl"],
   [/\.(txt|csv|tsv)$/i, "txt"],
   [/\.pdf$/i, "pdf"],
 ];
@@ -444,6 +454,11 @@ export const DOCUMENT_FORMAT_NAME: Record<DocumentFormat, string> = {
   resx: "RESX file",
   srt: "SRT subtitles",
   vtt: "WebVTT subtitles",
+  sbv: "SBV subtitles",
+  ass: "ASS subtitles",
+  sub: "SUB subtitles",
+  ttml: "TTML subtitles",
+  stl: "EBU STL subtitles",
   txt: "Text file",
   pdf: "PDF document",
 };
@@ -479,6 +494,11 @@ export const DOCUMENT_FORMAT_KEEPS: Record<DocumentFormat, string> = {
   resx: "keys and placeholders kept",
   srt: "times kept",
   vtt: "times kept",
+  sbv: "times kept",
+  ass: "times and styles kept",
+  sub: "frames kept",
+  ttml: "times and styles kept",
+  stl: "times and positions kept",
   txt: "line breaks kept",
   pdf: "text only, saved as a DOCX document",
 };
@@ -502,6 +522,11 @@ export const DOCUMENT_TYPE: Record<DocumentFormat, string> = {
   resx: "application/xml",
   srt: "application/x-subrip",
   vtt: "text/vtt",
+  sbv: "text/plain",
+  ass: "text/x-ssa",
+  sub: "text/plain",
+  ttml: "application/ttml+xml",
+  stl: "application/octet-stream",
   txt: "text/plain",
   pdf: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };

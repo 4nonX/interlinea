@@ -319,7 +319,7 @@ export function detectLanguage(text: string): Detection {
 /** Reads the text of a dropped file when the browser can (plain text formats). */
 export async function readText(file: File): Promise<string | null> {
   const textual =
-    /\.(txt|md|csv|tsv|html?|xml|xliff|xlf|sdlxliff|json|srt|po)$/i.test(
+    /\.(txt|md|csv|tsv|html?|xml|xliff|xlf|sdlxliff|json|srt|vtt|sbv|ass|ssa|sub|ttml|dfxp|itt|po)$/i.test(
       file.name,
     ) || file.type.startsWith("text/");
   if (!textual) return null;

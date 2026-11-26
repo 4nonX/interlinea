@@ -334,3 +334,119 @@ func TestEncodings(t *testing.T) {
 		t.Error("bytes that are no UTF-8 are read")
 	}
 }
+
+func TestSBV(t *testing.T) {
+	src := "0:00:00.599,0:00:04.160\n>> ALICE: Hi, my name is Alice\nand this is my show.\n\n0:00:04.160,0:00:06.770\nWelcome.\n"
+	ex, out := roundTrip(t, SBV, src)
+	if len(ex.Units) != 2 || ex.Units[0].Key != "0:00:00.599 --> 0:00:04.160" || len(ex.Units[0].Source.Tags()) != 1 {
+		t.Fatalf("units %+v", ex.Units)
+	}
+	if want := "0:00:00.599,0:00:04.160\n>> ALICE: HI, MY NAME IS ALICE\nAND THIS IS MY SHOW.\n\n0:00:04.160,0:00:06.770\nWELCOME.\n"; out != want {
+		t.Errorf("translated:\n%q", out)
+	}
+	if _, err := Extract(SBV, []byte("hello\n"), "en"); err == nil {
+		t.Error("text without times is read as subtitles")
+	}
+}
+
+func TestASS(t *testing.T) {
+	src := "[Script Info]\r\nTitle: Test\r\nScriptType: v4.00+\r\n\r\n[V4+ Styles]\r\nFormat: Name, Fontname\r\nStyle: Default,Arial\r\n\r\n[Events]\r\n" +
+		"Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\r\n" +
+		"Dialogue: 0,0:00:01.00,0:00:03.50,Default,Anna,0,0,0,,{\\i1}Good evening,{\\i0} and\\Nwelcome, friends.\r\n" +
+		"Comment: 0,0:00:02.00,0:00:03.00,Default,,0,0,0,,a note\r\n" +
+		"Dialogue: 0,0:00:04.00,0:00:05.00,Sign,,0,0,0,,{\\p1}m 0 0 l 100 0 100 100\r\n" +
+		"Dialogue: 0,0:00:06.00,0:00:07.00,Default,,0,0,0,,Bye\\hnow\r\n"
+	ex, out := roundTrip(t, ASS, src)
+	if len(ex.Units) != 2 {
+		t.Fatalf("units %+v", ex.Units)
+	}
+	u := ex.Units[0]
+	if u.Key != "0:00:01.00 --> 0:00:03.50" || u.Source.Plain() != "Good evening, andwelcome, friends." || len(u.Notes) != 3 || u.Notes[2] != "Speaker: Anna" {
+		t.Errorf("unit %+v", u)
+	}
+	if tags := u.Source.Tags(); len(tags) != 3 || tags[0].Kind != content.TagOpen || tags[1].Kind != content.TagClose || tags[1].ID != tags[0].ID || tags[2].Type != "break" {
+		t.Errorf("tags %+v", tags)
+	}
+	for _, want := range []string{
+		",,{\\i1}GOOD EVENING,{\\i0} AND\\NWELCOME, FRIENDS.\r\n",
+		"Comment: 0,0:00:02.00,0:00:03.00,Default,,0,0,0,,a note\r\n",
+		"{\\p1}m 0 0 l 100 0 100 100\r\n",
+		",,BYE\\hNOW\r\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("translated has no %q:\n%s", want, out)
+		}
+	}
+	// SubStation Alpha's own Format, with Marked in front.
+	ssa := "[Events]\nFormat: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: Marked=0,0:00:01.00,0:00:02.00,*Default,NTP,0000,0000,0000,!Effect,Hello, you\n"
+	ex, _ = roundTrip(t, ASS, ssa)
+	if len(ex.Units) != 1 || ex.Units[0].Source.Plain() != "Hello, you" {
+		t.Fatalf("SSA units %+v", ex.Units)
+	}
+	if _, err := Extract(ASS, []byte("[Script Info]\nTitle: x\n"), "en"); err == nil {
+		t.Error("a script without events is read")
+	}
+	if _, err := Extract(ASS, []byte("[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.00\n"), "en"); err == nil {
+		t.Error("a Dialogue line with too few fields is read")
+	}
+}
+
+func TestMicroDVD(t *testing.T) {
+	src := "{1}{1}25\r\n{25}{75}{y:i}Good evening.|Welcome.\r\n{100}{150}Bye\r\n"
+	ex, out := roundTrip(t, MicroDVD, src)
+	if len(ex.Units) != 2 || ex.Units[0].Key != "00:00:01,000 --> 00:00:03,000" {
+		t.Fatalf("units %+v", ex.Units)
+	}
+	if tags := ex.Units[0].Source.Tags(); len(tags) != 2 || tags[0].Desc != "{y:i}" || tags[1].Type != "break" {
+		t.Errorf("tags %+v", tags)
+	}
+	if want := "{1}{1}25\r\n{25}{75}{y:i}GOOD EVENING.|WELCOME.\r\n{100}{150}BYE\r\n"; out != want {
+		t.Errorf("translated:\n%q", out)
+	}
+	ex, _ = roundTrip(t, MicroDVD, "{10}{20}Hi\n")
+	if ex.Units[0].Key != "frames 10 to 20" {
+		t.Errorf("without a frame rate: %+v", ex.Units[0])
+	}
+	if _, err := Extract(MicroDVD, []byte("1\n00:00:01,000 --> 00:00:02,000\nHi\n"), "en"); err == nil {
+		t.Error("SubRip is read as MicroDVD")
+	}
+}
+
+func TestSubtitlesInWindows1252(t *testing.T) {
+	// "Grüße – bis bald" in Windows-1252, as subtitles made on Windows are.
+	src := "1\r\n00:00:01,000 --> 00:00:02,000\r\nGr\xfc\xdfe \x96 bis bald\r\n"
+	ex, err := Extract(SRT, []byte(src), "de-DE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ex.Units[0].Source.Plain(); got != "Grüße – bis bald" {
+		t.Fatalf("read %q", got)
+	}
+	same, _ := Merge(SRT, []byte(src), "de-DE", "", filter.Translations{})
+	if string(same) != src {
+		t.Errorf("changed without translations: %q", same)
+	}
+	out, _ := Merge(SRT, []byte(src), "de-DE", "fr-FR", filter.Translations{ex.Units[0].ID: content.Text("À bientôt")})
+	if string(out) != "1\r\n00:00:01,000 --> 00:00:02,000\r\n\xc0 bient\xf4t\r\n" {
+		t.Errorf("kept in Windows-1252: %q", out)
+	}
+	// Letters the encoding lacks: the file is written in UTF-8.
+	out, _ = Merge(SRT, []byte(src), "de-DE", "pl-PL", filter.Translations{ex.Units[0].ID: content.Text("Do zobaczenia, Łódź")})
+	if string(out) != "\xef\xbb\xbf1\r\n00:00:01,000 --> 00:00:02,000\r\nDo zobaczenia, Łódź\r\n" {
+		t.Errorf("written in UTF-8: %q", out)
+	}
+}
+
+func TestSubViewer(t *testing.T) {
+	src := "[INFORMATION]\r\n[TITLE]Film\r\n[END INFORMATION]\r\n\r\n00:00:01.00,00:00:03.50\r\nGood evening.[br]Welcome.\r\n\r\n00:00:04.00,00:00:05.00\r\nBye\r\n"
+	ex, out := roundTrip(t, MicroDVD, src)
+	if len(ex.Units) != 2 || ex.Units[0].Key != "00:00:01.00 --> 00:00:03.50" || ex.Units[0].Source.Tags()[0].Type != "break" {
+		t.Fatalf("units %+v", ex.Units)
+	}
+	if !strings.Contains(out, "\r\nGOOD EVENING.[br]WELCOME.\r\n") {
+		t.Errorf("translated:\n%s", out)
+	}
+	if _, err := Extract(MicroDVD, []byte{0, 0, 1, 0xBA, 1, 2}, "en"); err == nil || !strings.Contains(err.Error(), "pictures") {
+		t.Errorf("VobSub: %v", err)
+	}
+}

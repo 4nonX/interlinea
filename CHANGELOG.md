@@ -7,6 +7,20 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Subtitles
+
+- More subtitle formats: YouTube (.sbv), Advanced SubStation Alpha and
+  SubStation Alpha (.ass, .ssa), MicroDVD and SubViewer (.sub), Timed Text
+  (TTML, DFXP, Apple iTT, EBU-TT and IMSC, as .ttml, .dfxp, .itt or .xml)
+  and EBU STL (.stl), the binary format broadcasters exchange subtitles in,
+  for teletext and open subtitles.
+- One subtitle is one segment with its times shown; its line breaks and
+  markup are tags. EBU STL subtitles are written back in their character
+  set, in extension blocks where a translation is longer, moved up or down
+  to keep their last row in place, with the header updated.
+- SubRip and the other text subtitles made on Windows (Windows-1252) are
+  read; a translation with letters that encoding lacks is saved in UTF-8.
+
 ### Spelling dictionaries included
 
 - Spelling dictionaries for 22 languages and regions come with the desktop
