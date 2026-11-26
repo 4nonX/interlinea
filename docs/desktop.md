@@ -1,10 +1,11 @@
-# Desktop app: plan
+# Desktop app
 
 The desktop app is Interlinea's main client: a native Qt 6 Widgets
 application for Windows, macOS and Linux. It works entirely on its own,
 without a team server, and connects to one or more team servers when a
-team works together. This document is the plan it is built to; each stage
-ends with everything in it working, tested and in CI.
+team works together. This page describes how it is built; using it is in
+[Using Interlinea](guide.md), the same for the desktop app and the browser
+client.
 
 ## Architecture
 
@@ -29,92 +30,76 @@ ends with everything in it working, tested and in CI.
   folder, one account (the person at the computer) and a token only the app
   knows. Everything the app does locally, it does the same way on a team
   server. Nothing needs a network.
-- **File work is part of the API.** What the web app does in WebAssembly
-  (reading and writing documents, XLIFF and packages, segmentation,
-  language detection, QA, spelling, analysis, termbase files) becomes API
-  routes, on the core and on the team server alike. Spelling dictionaries
-  are installed per core or server.
+- **File work is part of the API.** What the browser client does in
+  WebAssembly (reading and writing documents, bilingual files and packages,
+  segmentation, language detection, checks, spelling, analysis, termbase
+  files, alignment) the app asks the core for, through the same routes a
+  team server has. The spelling dictionaries that come with Interlinea are
+  installed next to the core.
 - **The app holds no second copy of the data.** Lists, segments, entries
   and units come from the API; the live feed keeps open views current.
   Edits are saved as they are made, with versions, so a conflict is caught
   and shown, never overwritten.
 - **Sign-ins are kept in the system's keychain** (Windows Credential
-  Manager, macOS Keychain, the Secret Service on Linux), never in a plain
-  settings file. Provider sign-ins open the system browser and come back to
+  Manager, macOS Keychain, the Secret Service on Linux); where none can be
+  used, Settings says where they are kept instead and why. Provider sign-ins open the system browser and come back to
   the app on a loopback address, which the server already allows.
 - **Accessibility** is a requirement, not a polish step: every control has
   an accessible name and role, the segment grid and its tags are exposed to
   screen readers (UI Automation, NSAccessibility, AT-SPI), everything works
   from the keyboard, and the app follows the system's contrast, font size and
   reduced-motion settings.
-- **Languages:** English and German, with Qt's translation files.
+- **Languages:** the interface is in English, German or Korean, from the
+  catalogs in `i18n/` that the browser client uses too
+  (`go run ./i18n/gen -check` finds a string without a translation).
 
 The core is a separate process: a crash in it can't take the app down, the
 app restarts it, and the Go code is built the normal way on all three
 platforms.
 
-## Stages
+## Pages
 
-Done: 1 to 7, and the installers of 8. Every page is laid out as the same
-screen of the browser client, which is the model: the editor, the project
-list, New project in its five steps, the project page, Memories,
-Terminology, the review of merge requests, Accounts and Settings. The
-browser client's editor:
+Every page is laid out as the same screen of the browser client, which is
+the model: the project list, New project in its steps, the project page,
+the editor, Memories with alignment, Terminology with the review of merge
+requests, Accounts on a team server, and Settings.
 
-![The editor in the browser client](screenshots/editor.png)
+- **Projects:** the projects on this computer and on each team server,
+  with their work and due dates; new projects from documents, folders,
+  bilingual files and packages, with the source language detected and the
+  client's memories and termbases suggested; the project page with its
+  files, languages, settings, memories and termbases, people, work given
+  out, pre-translation, analysis, and the translated files or return
+  packages.
+- **Editor:** the segments with tags as objects, matches with their
+  differences, terms in the source, concordance, checks as you type,
+  spelling, filters, search and replace, locked segments, who else works
+  on the file, live changes and conflicts, terms added while translating,
+  the preview, and keyboard shortcuts close to those of the common tools.
+- **Memories:** the main and project memories on this computer and on
+  each team server; memories made from TMX, Trados Studio and Wordfast
+  files, exported as TMX, searched, and their units changed; documents
+  aligned with their translations into a memory, with sections moved into
+  the document's order where the translation has them elsewhere.
+- **Terminology:** master and project termbases, entries with their fields
+  and history, earlier versions brought back, duplicates merged, import and
+  export (TBX, MultiTerm, CSV, TSV, Excel), merge requests and their
+  review, printed glossaries, in plain words or the words of git.
+- **Accounts** on a team server, for administrators and managers.
 
-1. **Core.** `cmd/interlinea-core`: the server code in local mode (one
-   account, loopback only, Host check against DNS rebinding, a handshake on
-   standard output, shutdown with the app). File routes: extract and merge
-   Word and XLIFF, open and return Trados packages, segment, detect the
-   language, read and write termbase files, QA checks and reports, spelling
-   with installed dictionaries, analysis and pre-translation of files that
-   are not yet in a project. Bilingual files of Trados (SDLXLIFF, TagEditor
-   TTX, review documents), memoQ (also two-column RTF and DOCX), Phrase,
-   Wordfast and Déjà Vu (RTF external views). Documented in the API reference; tests.
-2. **App foundation.** CMake project, CI on Windows, macOS and Linux with
-   Qt 6.8, tests with Qt Test on the offscreen platform. Starting and
-   supervising the core, the API client, the live feed, the keychain,
-   connections (this computer and team servers: password and provider
-   sign-in, setup of a new server), the main window with its navigation,
-   Settings, error and offline handling, single instance.
-3. **Projects.** Project list across connections, with work and due dates;
-   new project from documents (language detection, memories and termbases
-   suggested and made, templates); the project page: files, target
-   languages, settings, memories and termbases, people and roles, work
-   given out, pre-translation, analysis, delivering translated files and
-   return packages.
-4. **Editor.** The segment grid with tags as objects, confirm and status,
-   memory matches with differences, terms in the source, concordance, QA as
-   you type and for the file, spelling, filters and search and replace,
-   locked segments, presence of others, live updates and conflicts, adding
-   terms while translating, preview of the document's structure, keyboard
-   shortcuts close to memoQ's and Trados's.
-5. **Memories.** The main and project memories on this computer and the
-   memories on each team server: new ones (for a client, filled from a TMX
-   file, a Trados Studio memory or a Wordfast memory, whose name and
-   languages they take), those files in and TMX out, what uses each, the
-   units of any memory
-   searched, added, changed with their tags kept and deleted, who may use
-   a server memory, delete.
-6. **Terminology.** Termbases (master and project, layered), entries with
-   their fields and history, an earlier version restored, deleted entries
-   brought back, merge duplicates, import and export (TBX, MultiTerm, CSV,
-   TSV, Excel), a project termbase's view of its masters' entries (changed
-   for the project, left out, brought back), project termbases made by
-   hand, settings (name, languages, fields, masters, review rules, who may
-   use it, delete), merge requests and their review (single entries and
-   many at once, notes, postponing, undoing a merge, reviewers with their
-   parts), what is offered following the role, git or plain wording.
-7. **Accounts and roles** on a team server, for administrators and
-   managers.
-8. **Release.** Installers built by the release workflow from a version
-   tag and started once before they are published: a Windows installer
-   (Inno Setup, for one person, no administrator rights) and a portable
-   folder, a universal macOS disk image (signed for the computer only,
-   without a developer certificate), and a Linux AppImage. Still to do:
-   accessibility review with NVDA, VoiceOver and Orca; the German
-   translation complete; a Flatpak manifest.
+## Releases
+
+The release workflow builds the app from a version tag and starts each
+build once before it is published: a Windows installer (Inno Setup, for
+one person, without administrator rights) and a portable zip, a universal
+macOS disk image, and a Linux AppImage. The Windows files are not signed
+with a code signing certificate and the macOS app is signed for the
+computer only and not notarized, so both systems warn on the first start;
+[signing.md](signing.md) says what the workflow does once the
+certificates are there.
+
+Not done yet: a review with NVDA, VoiceOver and Orca by people who use
+them every day, and a Flatpak.
 
 ## Look
 
@@ -157,5 +142,5 @@ reach, which is where the desktop screenshots here come from;
   older Linux), Qt Widgets with the platform's style. No other C++
   dependencies besides the platform keychain APIs.
 - Sources in `desktop/`: `src/` (lowercase file names, one class per pair
-  of files), `tests/`, `translations/`. Classes in PascalCase.
+  of files), `tests/`, `packaging/`. Classes in PascalCase.
 - No placeholders: a control that is shown works.

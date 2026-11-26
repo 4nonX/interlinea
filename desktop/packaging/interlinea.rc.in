@@ -1,0 +1,35 @@
+// The Windows resources of Interlinea.exe: its icon and the version
+// information Windows shows in the file's properties, which code signing
+// checks against the release. CMake fills in the version.
+#include <winver.h>
+
+IDI_ICON1 ICON "@INTERLINEA_ICON@"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION @INTERLINEA_VERSION_COMMAS@
+PRODUCTVERSION @INTERLINEA_VERSION_COMMAS@
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0x0L
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Interlinea"
+            VALUE "FileDescription", "Interlinea, an open-source translation workspace"
+            VALUE "FileVersion", "@INTERLINEA_VERSION@"
+            VALUE "InternalName", "Interlinea"
+            VALUE "LegalCopyright", L"Copyright (C) 2026 Dan Dre\x00dfen. GNU Affero General Public License, version 3."
+            VALUE "OriginalFilename", "Interlinea.exe"
+            VALUE "ProductName", "Interlinea"
+            VALUE "ProductVersion", "@INTERLINEA_VERSION@"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

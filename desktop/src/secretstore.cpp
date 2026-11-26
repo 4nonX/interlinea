@@ -30,7 +30,11 @@
 
 namespace {
 
-const char *const service = "org.interlinea.desktop";
+// The name the sign-ins are kept under in the keychain: the app's ID.
+const char *const service = "dev.interlinea.Interlinea";
+// The name they were kept under before 0.5. A sign-in found only there is
+// moved to the new name when it is first read.
+const char *const oldService = "org.interlinea.desktop";
 
 bool g_secure = true;
 QString g_reason;
@@ -84,13 +88,17 @@ bool fileForced()
 }
 
 #ifdef INTERLINEA_LIBSECRET
-const SecretSchema *schema()
+const SecretSchema *schema(bool old = false)
 {
-    static const SecretSchema s = {
+    static const SecretSchema current = {
         service, SECRET_SCHEMA_NONE,
         {{"key", SECRET_SCHEMA_ATTRIBUTE_STRING}, {nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING}},
         0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-    return &s;
+    static const SecretSchema before = {
+        oldService, SECRET_SCHEMA_NONE,
+        {{"key", SECRET_SCHEMA_ATTRIBUTE_STRING}, {nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING}},
+        0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+    return old ? &before : &current;
 }
 #endif
 
@@ -102,10 +110,10 @@ std::wstring target(const QString &key)
 #endif
 
 #ifdef Q_OS_MACOS
-CFMutableDictionaryRef query(const QString &key)
+CFMutableDictionaryRef query(const QString &key, const char *under = service)
 {
     CFMutableDictionaryRef q = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    CFStringRef svc = CFStringCreateWithCString(nullptr, service, kCFStringEncodingUTF8);
+    CFStringRef svc = CFStringCreateWithCString(nullptr, under, kCFStringEncodingUTF8);
     CFStringRef acct = key.toCFString();
     CFDictionarySetValue(q, kSecClass, kSecClassGenericPassword);
     CFDictionarySetValue(q, kSecAttrService, svc);
@@ -195,12 +203,34 @@ bool keychainRead(const QString &key, std::optional<QString> *out, QString *erro
     CredFree(c);
     return true;
 #elif defined(Q_OS_MACOS)
-    CFMutableDictionaryRef q = query(key);
-    CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
-    CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
+    const auto find = [&key](const char *under, CFTypeRef *data) {
+        CFMutableDictionaryRef q = query(key, under);
+        CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
+        CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
+        const OSStatus st = SecItemCopyMatching(q, data);
+        CFRelease(q);
+        return st;
+    };
     CFTypeRef data = nullptr;
-    const OSStatus st = SecItemCopyMatching(q, &data);
-    CFRelease(q);
+    OSStatus st = find(service, &data);
+    if (st == errSecItemNotFound) {
+        // Kept under the app's old name: moved to the new one.
+        st = find(oldService, &data);
+        if (st == errSecSuccess) {
+            CFDataRef d = static_cast<CFDataRef>(data);
+            const QString value = QString::fromUtf8(reinterpret_cast<const char *>(CFDataGetBytePtr(d)), int(CFDataGetLength(d)));
+            CFRelease(data);
+            QString moved;
+            keychainWrite(key, value, &moved);
+            if (moved.isEmpty()) {
+                CFMutableDictionaryRef old = query(key, oldService);
+                SecItemDelete(old);
+                CFRelease(old);
+            }
+            *out = value;
+            return true;
+        }
+    }
     if (st == errSecItemNotFound) {
         *out = std::nullopt;
         return true;
@@ -218,6 +248,12 @@ bool keychainRead(const QString &key, std::optional<QString> *out, QString *erro
 #elif defined(INTERLINEA_LIBSECRET)
     GError *err = nullptr;
     gchar *pw = secret_password_lookup_sync(schema(), nullptr, &err, "key", key.toUtf8().constData(), nullptr);
+    bool old = false;
+    if (!err && !pw) {
+        // Kept under the app's old name: moved to the new one below.
+        pw = secret_password_lookup_sync(schema(true), nullptr, &err, "key", key.toUtf8().constData(), nullptr);
+        old = pw != nullptr;
+    }
     if (err) {
         g_reason = QString::fromUtf8(err->message);
         g_error_free(err);
@@ -226,6 +262,12 @@ bool keychainRead(const QString &key, std::optional<QString> *out, QString *erro
     *out = pw ? std::optional<QString>(QString::fromUtf8(pw)) : std::nullopt;
     if (pw)
         secret_password_free(pw);
+    if (old && keychainWrite(key, **out, nullptr)) {
+        GError *gone = nullptr;
+        secret_password_clear_sync(schema(true), nullptr, &gone, "key", key.toUtf8().constData(), nullptr);
+        if (gone)
+            g_error_free(gone);
+    }
     Q_UNUSED(error)
     return true;
 #else

@@ -40,15 +40,30 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     Theme::apply(app);
     QApplication::setOrganizationName(QStringLiteral("Interlinea"));
-    QApplication::setOrganizationDomain(QStringLiteral("interlinea.org"));
+    QApplication::setOrganizationDomain(QStringLiteral("interlinea.dev"));
     QApplication::setApplicationName(QStringLiteral("Interlinea"));
+#ifdef Q_OS_MACOS
+    // On macOS the settings are named after the domain, which was
+    // interlinea.org before 0.5: what was saved there comes along once.
+    {
+        QSettings now;
+        now.setFallbacksEnabled(false);
+        if (now.allKeys().isEmpty()) {
+            QSettings before(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("interlinea.org"), QStringLiteral("Interlinea"));
+            before.setFallbacksEnabled(false);
+            for (const QString &k : before.allKeys())
+                now.setValue(k, before.value(k));
+            now.sync();
+        }
+    }
+#endif
     QApplication::setApplicationVersion(QStringLiteral(INTERLINEA_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/interlinea.png")));
     // On request, broken layout is written to the log as it is seen.
     if (qEnvironmentVariableIsSet("INTERLINEA_LAYOUT_CHECK"))
         LayoutCheck::watch([](const QString &line) { qWarning("layout: %s", qPrintable(line)); });
     // The name of the desktop entry, so the windows are grouped under it.
-    QGuiApplication::setDesktopFileName(QStringLiteral("org.interlinea.desktop"));
+    QGuiApplication::setDesktopFileName(QStringLiteral("dev.interlinea.Interlinea"));
 
     InterfaceLanguage::install(app);
 

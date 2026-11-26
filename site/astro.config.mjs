@@ -54,6 +54,7 @@ export default defineConfig({
           items: [
             { label: 'Development', slug: 'docs/manual/development' },
             { label: 'Desktop app internals', slug: 'docs/manual/desktop' },
+            { label: 'Signing the releases', slug: 'docs/manual/signing' },
           ],
         },
       ],

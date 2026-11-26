@@ -211,7 +211,7 @@ jobs:
         run: |
           mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/512x512/apps
           cp build/desktop/Interlinea build/desktop/interlinea-core AppDir/usr/bin/
-          cp desktop/packaging/org.interlinea.desktop.desktop AppDir/usr/share/applications/
+          cp desktop/packaging/dev.interlinea.Interlinea.desktop AppDir/usr/share/applications/
           cp desktop/packaging/interlinea.png AppDir/usr/share/icons/hicolor/512x512/apps/
           mkdir -p AppDir/usr/share/doc/interlinea AppDir/usr/share/interlinea
           cp LICENSE NOTICE AppDir/usr/share/doc/interlinea/
@@ -224,7 +224,7 @@ jobs:
           export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
           export OUTPUT="Interlinea-$VERSION-linux-x86_64.AppImage"
           ./linuxdeploy --appdir AppDir --plugin qt --output appimage \
-            --desktop-file AppDir/usr/share/applications/org.interlinea.desktop.desktop \
+            --desktop-file AppDir/usr/share/applications/dev.interlinea.Interlinea.desktop \
             --icon-file AppDir/usr/share/icons/hicolor/512x512/apps/interlinea.png
           ls -l "$OUTPUT"
       - name: the packed app starts, with its core
@@ -249,8 +249,17 @@ jobs:
   desktop-windows:
     needs: [version, dictionaries]
     runs-on: windows-latest
+    # Signing goes through SignPath (docs/signing.md), which reads the files
+    # to sign from this run's artifacts.
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      signed: ${{ steps.signed.outputs.signed }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      # Set once the SignPath project is there; without it nothing is signed.
+      SIGN: ${{ secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -275,6 +284,37 @@ jobs:
           Copy-Item -Recurse build/desktop/Release/dictionaries stage/Interlinea/
           windeployqt --release --compiler-runtime --no-system-d3d-compiler --no-opengl-sw stage/Interlinea/Interlinea.exe
           Copy-Item README.md, CHANGELOG.md, LICENSE, NOTICE stage/Interlinea/
+      # The app and its core are signed before they go into the installer
+      # and the portable zip, and the installer after it is made.
+      - name: the programs to sign
+        if: env.SIGN == 'true'
+        id: unsigned-programs
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-programs
+          path: |
+            stage/Interlinea/Interlinea.exe
+            stage/Interlinea/interlinea-core.exe
+          if-no-files-found: error
+      - name: sign the programs
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned-programs.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-programs
+      - name: the signed programs in place
+        if: env.SIGN == 'true'
+        run: |
+          Copy-Item -Force signed-programs/Interlinea.exe, signed-programs/interlinea-core.exe stage/Interlinea/
+          foreach ($f in "stage/Interlinea/Interlinea.exe", "stage/Interlinea/interlinea-core.exe") {
+            $s = Get-AuthenticodeSignature $f
+            if ($s.Status -ne "Valid") { throw "$f is not signed: $($s.StatusMessage)" }
+          }
       - name: the staged app starts, with its core
         shell: bash
         run: |
@@ -294,6 +334,38 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path stage/Interlinea -DestinationPath "out/Interlinea-$env:VERSION-windows-x64-portable.zip"
           Get-ChildItem out
+      - name: the installer to sign
+        if: env.SIGN == 'true'
+        id: unsigned-setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-setup
+          path: out/Interlinea-${{ env.VERSION }}-windows-x64-setup.exe
+          if-no-files-found: error
+      - name: sign the installer
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-setup
+      - name: the signed installer in place
+        id: signed
+        shell: pwsh
+        run: |
+          $setup = "out/Interlinea-$env:VERSION-windows-x64-setup.exe"
+          if ($env:SIGN -eq "true") {
+            Copy-Item -Force "signed-setup/Interlinea-$env:VERSION-windows-x64-setup.exe" $setup
+            $s = Get-AuthenticodeSignature $setup
+            if ($s.Status -ne "Valid") { throw "$setup is not signed: $($s.StatusMessage)" }
+            "signed=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "signed=false" >> $env:GITHUB_OUTPUT
+          }
       - name: the installer installs, and what it installed starts
         shell: bash
         run: |
@@ -315,8 +387,14 @@ jobs:
   desktop-macos:
     needs: [version, dictionaries]
     runs-on: macos-latest
+    outputs:
+      notarized: ${{ steps.dmg.outputs.notarized }}
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      # Set once the Developer ID certificate and the notary sign-in are
+      # secrets (docs/signing.md); without them the app is signed for the
+      # computer only.
+      SIGN: ${{ secrets.MACOS_CERTIFICATE != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -344,20 +422,66 @@ jobs:
           lipo -archs "$app/Contents/MacOS/Interlinea" | grep -q x86_64
           lipo -archs "$app/Contents/MacOS/Interlinea" | grep -q arm64
           test -f "$app/Contents/Resources/dictionaries/index.json"
+      - name: the Developer ID certificate, in a keychain of its own
+        if: env.SIGN == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          pass="$(openssl rand -hex 16)"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pass" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+          identity="$(security find-identity -v -p codesigning "$keychain" | grep -m1 "Developer ID Application" | sed -E 's/.*"(.*)"/\1/')"
+          test -n "$identity" || { echo "the certificate is no Developer ID Application certificate"; exit 1; }
+          echo "IDENTITY=$identity" >> "$GITHUB_ENV"
       - name: disk image
+        id: dmg
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           app=build/desktop/Interlinea.app
           macdeployqt "$app"
           cp LICENSE NOTICE "$app/Contents/Resources/"
-          # Signed for this computer only: there is no developer certificate.
-          codesign --force --deep --sign - "$app"
-          codesign --verify --deep "$app"
+          dmg="out/Interlinea-$VERSION-macos-universal.dmg"
+          if [ "$SIGN" = true ]; then
+            # From the inside out, with the hardened runtime and a timestamp,
+            # as notarization asks.
+            sign() { codesign --force --options runtime --timestamp --sign "$IDENTITY" "$@"; }
+            find "$app/Contents" \( -name "*.dylib" -o -name "*.so" \) -type f -print0 | while IFS= read -r -d '' f; do sign "$f"; done
+            for fw in "$app"/Contents/Frameworks/*.framework; do [ -e "$fw" ] && sign "$fw"; done
+            sign "$app/Contents/MacOS/interlinea-core"
+            sign "$app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+          else
+            # Signed for this computer only: there is no developer certificate.
+            codesign --force --deep --sign - "$app"
+            codesign --verify --deep "$app"
+          fi
           mkdir -p dmg out
           cp -R "$app" dmg/
           cp LICENSE dmg/LICENSE.txt
           cp NOTICE dmg/NOTICE.txt
           ln -s /Applications dmg/Applications
-          hdiutil create -volname "Interlinea $VERSION" -srcfolder dmg -ov -format UDZO "out/Interlinea-$VERSION-macos-universal.dmg"
+          hdiutil create -volname "Interlinea $VERSION" -srcfolder dmg -ov -format UDZO "$dmg"
+          if [ "$SIGN" = true ]; then
+            codesign --force --timestamp --sign "$IDENTITY" "$dmg"
+            xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --timeout 30m
+            xcrun stapler staple "$dmg"
+            xcrun stapler validate "$dmg"
+            spctl --assess --type open --context context:primary-signature --verbose "$dmg"
+            echo "notarized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "notarized=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: the app from the disk image starts, with its core
         run: |
           hdiutil attach "out/Interlinea-$VERSION-macos-universal.dmg" -mountpoint /Volumes/InterlineaTry -nobrowse
@@ -368,6 +492,9 @@ jobs:
           kill -0 "$pid"
           pgrep -f interlinea-core
           kill "$pid" || true
+      - name: the signing keychain removed
+        if: always() && env.SIGN == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-macos
@@ -382,6 +509,8 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      WINDOWS_SIGNED: ${{ needs.desktop-windows.outputs.signed }}
+      MACOS_NOTARIZED: ${{ needs.desktop-macos.outputs.notarized }}
     steps:
       - uses: actions/checkout@v4
       # Only what the jobs above built: the image job also leaves a
@@ -406,13 +535,18 @@ jobs:
             on && /^\[[^]]+\]: / {next}
             on {print}' CHANGELOG.md > notes.md
           owner="${GITHUB_REPOSITORY_OWNER,,}"
+          # What the first start asks, as far as the files are not signed.
+          windows_first=""
+          [ "$WINDOWS_SIGNED" = true ] || windows_first=" It is not signed yet, so SmartScreen may stop it the first time: More info, then Run anyway."
+          mac_first=""
+          [ "$MACOS_NOTARIZED" = true ] || mac_first=" The app is not notarized by Apple yet, so the first start is refused: open System Settings, Privacy & Security, and click Open Anyway."
           cat >> notes.md <<EOF
 
           ## Installing
 
           **Team server, with Docker:** \`docker pull ghcr.io/$owner/interlinea-server:$VERSION\`, or \`compose.yaml\` from the repository for the server on PostgreSQL. Without Docker, unpack \`interlinea-server-$VERSION-<system>\` and start \`interlinea-server -web web\`.
 
-          **Desktop app:** Windows: \`Interlinea-$VERSION-windows-x64-setup.exe\` (or the portable folder). macOS: \`Interlinea-$VERSION-macos-universal.dmg\`; the app is not signed with a developer certificate, so open it the first time with a right click and Open. Linux: make \`Interlinea-$VERSION-linux-x86_64.AppImage\` executable and start it.
+          **Desktop app:** Windows: \`Interlinea-$VERSION-windows-x64-setup.exe\` (or the portable folder).$windows_first macOS: \`Interlinea-$VERSION-macos-universal.dmg\`.$mac_first Linux: make \`Interlinea-$VERSION-linux-x86_64.AppImage\` executable and start it. Help with installing: https://interlinea.dev/docs/help/install/
 
           **Web client alone:** \`interlinea-web-$VERSION.zip\` is the client as static files, for any web server.
 

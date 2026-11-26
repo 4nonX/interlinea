@@ -103,7 +103,7 @@ target_link_libraries(interlinea PRIVATE interlinea_app)
 set_target_properties(interlinea PROPERTIES
     OUTPUT_NAME Interlinea
     MACOSX_BUNDLE_BUNDLE_NAME Interlinea
-    MACOSX_BUNDLE_GUI_IDENTIFIER org.interlinea.desktop
+    MACOSX_BUNDLE_GUI_IDENTIFIER dev.interlinea.Interlinea
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_COPYRIGHT "Copyright (C) 2026 Dan Dreßen. GNU Affero General Public License, version 3.")
@@ -113,7 +113,16 @@ set_target_properties(interlinea PROPERTIES
 qt_add_resources(interlinea "appicon" PREFIX "/" BASE packaging FILES packaging/interlinea.png)
 if(WIN32)
     enable_language(RC)
-    target_sources(interlinea PRIVATE packaging/interlinea.rc)
+    # The resources carry the version, in numbers (1,2,3,0) and as written.
+    string(REGEX MATCH "^([0-9]+)\\.([0-9]+)\\.([0-9]+)" _version "${INTERLINEA_VERSION}")
+    if(_version)
+        set(INTERLINEA_VERSION_COMMAS "${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},0")
+    else()
+        set(INTERLINEA_VERSION_COMMAS "0,0,0,0")
+    endif()
+    set(INTERLINEA_ICON "${CMAKE_CURRENT_SOURCE_DIR}/packaging/interlinea.ico")
+    configure_file(packaging/interlinea.rc.in "${CMAKE_CURRENT_BINARY_DIR}/interlinea.rc" @ONLY)
+    target_sources(interlinea PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/interlinea.rc")
 elseif(APPLE)
     target_sources(interlinea PRIVATE packaging/interlinea.icns)
     set_source_files_properties(packaging/interlinea.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
