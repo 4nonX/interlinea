@@ -834,21 +834,12 @@ TermbaseSettingsDialog::TermbaseSettingsDialog(Connection *conn, const QJsonObje
     body()->addWidget(Web::field(tr("Name"), m_nameEdit, this));
     connect(m_nameEdit, &QLineEdit::editingFinished, this, &TermbaseSettingsDialog::rename);
 
-    auto *scroll = new QScrollArea(this);
-    Theme::role(scroll, "paneScroll");
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    auto *inner = new QWidget(scroll);
-    Theme::role(inner, "paneBody");
-    m_content = new QVBoxLayout(inner);
+    // The sections go in the dialog's body, which scrolls when they are
+    // taller than the screen: a scrolling area inside it would squeeze them.
+    m_content = new QVBoxLayout;
     m_content->setContentsMargins(0, 0, 0, 0);
     m_content->setSpacing(S3);
-    scroll->setWidget(inner);
-    Web::fitScroll(scroll);
-    scroll->setObjectName(QStringLiteral("settingsScroll"));
-    scroll->setMinimumHeight(520);
-    body()->addWidget(scroll, 1);
+    body()->addLayout(m_content, 1);
 
     auto *done = Web::button(tr("Done"), Web::Primary | Web::Small, this);
     done->setObjectName(QStringLiteral("done"));

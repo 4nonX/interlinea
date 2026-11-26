@@ -990,6 +990,7 @@ Dialog::Dialog(const QString &title, QWidget *parent, bool wide)
     // The parts scroll when they are taller than the screen allows; until
     // then the dialog is as tall as they are.
     auto *scroll = new DialogScroll(this);
+    m_scroll = scroll;
     scroll->setObjectName(QStringLiteral("dialogScroll"));
     Theme::role(scroll, "paneScroll");
     scroll->setWidgetResizable(true);

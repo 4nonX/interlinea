@@ -16,8 +16,6 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
-#include <QScreen>
-#include <QScrollArea>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -85,23 +83,12 @@ NewTermbaseDialog::NewTermbaseDialog(ConnectionManager *manager, const QHash<QSt
             render();
         }
     });
-    // The steps scroll within the dialog: a long list of fields does not
-    // make it taller than the window.
-    auto *scroll = new QScrollArea(this);
-    scroll->setObjectName(QStringLiteral("newTermbaseScroll"));
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setWidgetResizable(true);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    Theme::role(scroll, "paneScroll");
-    auto *holder = new QWidget(scroll);
-    Theme::role(holder, "paneBody");
-    m_content = new QVBoxLayout(holder);
-    m_content->setContentsMargins(0, 0, 4, 0);
+    // The steps go in the dialog's body, which scrolls when a long list of
+    // fields makes it taller than the screen.
+    m_content = new QVBoxLayout;
+    m_content->setContentsMargins(0, 0, 0, 0);
     m_content->setSpacing(S3);
-    scroll->setWidget(holder);
-    Web::fitScroll(scroll);
-    body()->addWidget(scroll, 1);
-    m_scroll = scroll;
+    body()->addLayout(m_content, 1);
     m_hint = help(QString(), this);
     m_hint->setObjectName(QStringLiteral("newTermbaseHint"));
     body()->addWidget(m_hint);
@@ -410,25 +397,6 @@ void NewTermbaseDialog::render()
         break;
     }
     updateButtons();
-    fitHeight();
-}
-
-void NewTermbaseDialog::fitHeight()
-{
-    // As tall as the step needs, at most most of the screen.
-    QTimer::singleShot(0, this, [this] {
-        QWidget *inner = m_scroll->widget();
-        if (!inner)
-            return;
-        const QScreen *screen = this->screen();
-        const int room = screen ? screen->availableGeometry().height() * 85 / 100 : 800;
-        const int others = height() - m_scroll->height();
-        const int want = inner->heightForWidth(m_scroll->viewport()->width()) > 0 ? inner->heightForWidth(m_scroll->viewport()->width()) : inner->sizeHint().height();
-        const int h = qMin(want, qMax(200, room - others));
-        m_scroll->setMinimumHeight(h);
-        // Keep the width (920, .dialog-wide); only the height follows the step.
-        resize(width(), qMax(height(), others + h));
-    });
 }
 
 void NewTermbaseDialog::showStart()

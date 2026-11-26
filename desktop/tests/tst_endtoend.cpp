@@ -701,7 +701,7 @@ private slots:
             }
             return false;
         }(), 10000);
-        byName<QScrollArea>(set, QStringLiteral("settingsScroll"))->ensureWidgetVisible(access, 0, 40);
+        set->scrollArea()->ensureWidgetVisible(access, 0, 40);
         QTest::qWait(200);
         if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty())
             set->grab().save(dir + QStringLiteral("/termbase-settings-access.png"));

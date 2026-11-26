@@ -73,7 +73,6 @@ private:
     void showFields();
     void showReview();
     void updateButtons();
-    void fitHeight();
     void loadInherited();
     void create();
     void request(class ApiReply *reply, std::function<void(const ApiResult &)> then);
@@ -99,5 +98,4 @@ private:
     QPushButton *m_back;
     QPushButton *m_next;
     QPointer<TermFields::FieldTable> m_table;
-    class QScrollArea *m_scroll;
 };

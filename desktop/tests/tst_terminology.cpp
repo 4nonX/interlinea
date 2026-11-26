@@ -1392,7 +1392,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("Now also based on Steuer"), 10000);
         QTRY_VERIFY_WITH_TIMEOUT(!set->busy() && byName<QCheckBox>(set, QStringLiteral("basedOn:Recht")) && byName<QCheckBox>(set, QStringLiteral("basedOn:Recht"))->isEnabled(), 10000);
         QCOMPARE(wait(api->get(QStringLiteral("/api/termbases/Fall%20Weber"))).object().value("upstreams").toArray(), QJsonArray({"Recht", "Steuer"}));
-        byName<QScrollArea>(set, QStringLiteral("settingsScroll"))->ensureWidgetVisible(byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer")), 0, 200);
+        set->scrollArea()->ensureWidgetVisible(byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer")), 0, 200);
         shot(set, QStringLiteral("termbase-settings-project"));
         byName<QCheckBox>(set, QStringLiteral("basedOn:Steuer"))->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("No longer based on Steuer"), 10000);
@@ -1438,7 +1438,7 @@ private slots:
         QCOMPARE(rules.value("minorFields").toArray(), QJsonArray({"Note"}));
         QCOMPARE(rules.value("trusted").toArray().size(), 1);
         QCOMPARE(rules.value("trusted").toArray()[0].toObject().value("scope").toObject().value("langs").toArray(), QJsonArray({"en-GB"}));
-        byName<QScrollArea>(set, QStringLiteral("settingsScroll"))->ensureWidgetVisible(byName<QPushButton>(set, QStringLiteral("trust")), 0, 80);
+        set->scrollArea()->ensureWidgetVisible(byName<QPushButton>(set, QStringLiteral("trust")), 0, 80);
         shot(set, QStringLiteral("termbase-settings-review"));
         byName<QPushButton>(set, QStringLiteral("untrust:Eva"))->click();
         QTRY_COMPARE_WITH_TIMEOUT(page.message(), QStringLiteral("The entries of Eva wait for review again"), 10000);

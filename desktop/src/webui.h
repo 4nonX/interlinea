@@ -264,6 +264,9 @@ class Dialog : public QDialog {
 public:
     Dialog(const QString &title, QWidget *parent, bool wide = false);
     QVBoxLayout *body() const { return m_body; }
+    // What scrolls the body when it is taller than the screen allows: a
+    // dialog needs no scrolling area of its own.
+    QScrollArea *scrollArea() const { return m_scroll; }
     void setTitle(const QString &title);
     QString title() const;
     // The row of buttons at the bottom; add them left to right.
@@ -281,6 +284,7 @@ private:
     bool m_fitting = false;
     QLabel *m_title;
     QVBoxLayout *m_body;
+    QScrollArea *m_scroll = nullptr;
     QVBoxLayout *m_outer;
     QLabel *m_error;
     QBoxLayout *m_buttons = nullptr;

@@ -720,15 +720,20 @@ export function bilingualType(name: string): string {
 
 /** The bilingual file in the bytes: a memoQ archive's XLIFF, or the bytes themselves. */
 function bilingualBytes(core: CoreApi, bytes: Uint8Array): Uint8Array {
-  if (!archived(bytes) || core.xliffDetect(bytes).ok) return bytes;
+  if (!archived(bytes) || isBilingual(core, bytes)) return bytes;
   return unwrap(core.archiveRead(bytes));
 }
 
 /** Whether a Word document is a bilingual table for review: a Trados review document or a memoQ two-column DOCX. */
 export async function bilingualDocx(bytes: Uint8Array): Promise<boolean> {
   if (!archived(bytes)) return false;
-  const core = await loadCore();
-  return core.xliffDetect(bytes).ok;
+  return isBilingual(await loadCore(), bytes);
+}
+
+/** Whether the core takes the bytes for a bilingual file: it names a format, and names none ("") for others. */
+function isBilingual(core: CoreApi, bytes: Uint8Array): boolean {
+  const r = core.xliffDetect(bytes);
+  return r.ok && r.value !== "";
 }
 
 /** What a bilingual file holds besides its segments. */
