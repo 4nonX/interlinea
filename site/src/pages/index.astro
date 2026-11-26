@@ -1,0 +1,514 @@
+---
+// The landing page. Built on the kit in public/assets (tasteskill, MIT): its
+// system.css, motion, moments and diagrams load as plain files from /assets.
+// The release it links to is read from GitHub when the site is built.
+import '@fontsource-variable/instrument-sans/wdth.css';
+import '@fontsource/dm-mono/400.css';
+import '@fontsource/instrument-serif/400-italic.css';
+import { latestRelease, asset, size, longDate, github } from '../lib/release.mjs';
+
+const release = await latestRelease();
+const v = release.version;
+const win = asset(release, /windows-x64-setup\.exe$/);
+const winZip = asset(release, /windows-x64-portable\.zip$/);
+const mac = asset(release, /macos-universal\.dmg$/);
+const linux = asset(release, /linux-x86_64\.AppImage$/);
+const releasePage = `${github}/releases/tag/v${v}`;
+const withSize = (a, text) => (a && a.size ? `${text}, ${size(a.size)}` : text);
+const title = 'Interlinea: open-source CAT tool for translators';
+const description = 'Translate documents, subtitles and Trados or memoQ packages with memories, termbases and checks. Free for Windows, macOS, Linux and the browser.';
+---
+<!doctype html>
+<html lang="en" data-type="software" data-radius="soft" data-ground="sky" data-buttons="pill" data-motion>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{title}</title>
+<meta name="description" content={description}>
+<meta property="og:type" content="website">
+<meta property="og:title" content={title}>
+<meta property="og:description" content="Memories, termbases, checks and project workflow. Opens Trados and memoQ packages and sends them back. Free and open source.">
+<meta property="og:image" content="https://interlinea.dev/share.jpg">
+<meta property="og:url" content="https://interlinea.dev/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://interlinea.dev/">
+<meta name="theme-color" content="#f3f5f8">
+<meta name="site-kind" content="software">
+<meta name="page-type" content="software">
+<link rel="stylesheet" href="/assets/system.css">
+<link rel="stylesheet" href="/assets/ui/cards.css">
+<link rel="stylesheet" href="/assets/motion/motion.css">
+<link rel="stylesheet" href="/assets/backgrounds/backgrounds.css">
+<link rel="stylesheet" href="/assets/layout/layout.css">
+<link rel="stylesheet" href="/assets/icons/icon.css">
+<style is:inline>
+:root {
+  --p-bg: #f3f5f8; --p-surface: #ffffff; --p-ink: #1a1f26; --p-muted: #4c5562;
+  --p-accent: #1f5bd6; --p-accent-ink: #f3f5f8; --p-action: #1f5bd6; --p-action-ink: #f3f5f8;
+  --p-inv-bg: #1a1f26; --p-inv-surface: #262b32; --p-inv-ink: #f3f5f8; --p-inv-muted: #989ca1;
+  --p-inv-accent: #f3f5f8; --p-inv-accent-ink: #1a1f26; --p-inv-action: #f3f5f8; --p-inv-action-ink: #1a1f26;
+  --font-display: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
+  --font-text: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --display-weight: 500;
+  --display-tracking: -0.028em;
+  --display-tracking-xl: -0.036em;
+  --display-stretch: 96%;
+  --ly-scale: 1.04;
+}
+</style>
+<link rel="stylesheet" href="/assets/diagrams/diagram.css">
+<script is:inline>document.documentElement.classList.add('m-enter');setTimeout(()=>document.documentElement.classList.add('m-enter-done'),700)</script>
+<script is:inline src="/assets/backgrounds/backgrounds.js"></script>
+<script is:inline>document.documentElement.classList.add('mo-js');setTimeout(()=>document.documentElement.classList.add('mo-safe'),2500)</script>
+<link rel="modulepreload" href="/assets/moments/moments.js">
+<link rel="modulepreload" href="/assets/moments/lib.js">
+<link rel="modulepreload" href="/assets/moments/pinned-chapters/moment.js">
+<link rel="modulepreload" href="/assets/moments/liquid-type/moment.js">
+<style is:inline>
+/* The mark: the app's own icon, three lines with the middle one lighter. */
+.il-mark { width: 1.15em; height: 1.15em; flex: none; display: inline-block; vertical-align: -0.2em; }
+.nav__logo, .footer__mark { display: inline-flex; align-items: center; gap: 10px; }
+
+/* The headline is set with an interlinear gloss: under each line, the same words in another
+   language, small, in a serif italic: German, or Korean or French for a browser set to those. */
+.hero--centred h1 { max-width: none; }
+.gl-line { display: block; }
+.gl-gloss { display: block; font: italic 400 clamp(17px, 0.3em, 24px)/1.15 "Instrument Serif", Georgia, serif;
+  letter-spacing: 0; font-stretch: 100%; color: var(--accent); margin: 0.02em 0 0.1em; }
+.gl-line:last-child .gl-gloss { margin-bottom: 0; }
+.gl-gloss[lang="ko"] { font-style: normal; font-family: "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif; font-size: clamp(15px, 0.26em, 20px); }
+.hero--centred .hero__lead { color: var(--ink); }
+
+/* The hero's window: the editor with one segment being translated. */
+.hero--centred .hero__window { background:
+  radial-gradient(70% 90% at 50% 0%, rgb(255 255 255 / .75), transparent 70%),
+  radial-gradient(60% 80% at 12% 100%, #9dbcf3 0, transparent 70%),
+  radial-gradient(55% 75% at 92% 90%, #b9cdf5 0, transparent 70%),
+  linear-gradient(180deg, #dfe8f8, #c4d6f6); }
+.ed { background: #fff; color: #1a1f26; border-radius: 12px; overflow: hidden; font: 400 14px/1.45 var(--font-text); text-align: left;
+  box-shadow: 0 0 0 1px rgb(26 31 38 / .08), 0 30px 60px -28px rgb(20 50 120 / .45); }
+.ed__bar { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-bottom: 1px solid #e6eaf0; font-size: 13px; color: #4c5562; }
+.ed__bar b { color: #1a1f26; font-weight: 500; }
+.ed__dots { display: flex; gap: 6px; } .ed__dots i { width: 10px; height: 10px; border-radius: 50%; background: #dfe3e9; }
+.ed__tag { font: 500 11px/1 var(--font-mono); padding: 3px 5px; border-radius: 4px; background: #eef1f5; color: #4c5562; }
+.ed__sp { flex: 1; }
+.ed__prog { display: grid; gap: 4px; font-size: 12px; color: #4c5562; }
+.ed__prog i { display: block; height: 4px; width: 132px; border-radius: 99px; background: #e6eaf0; overflow: hidden; }
+.ed__prog i::before { content: ""; display: block; height: 100%; width: 25%; background: #17703f; border-radius: inherit; }
+.ed__body { display: grid; grid-template-columns: minmax(0, 1fr) 248px; }
+.ed__segs { border-right: 1px solid #e6eaf0; }
+.ed__row { display: grid; grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr) 28px; gap: 0 14px; padding: 10px 14px 10px 10px; border-bottom: 1px solid #eef1f5; align-items: start; }
+.ed__row .n { color: #7b8491; font-size: 12px; text-align: right; padding-top: 2px; }
+.ed__row .tgt { min-height: 1.45em; }
+.ed__row .ok { color: #17703f; } .ed__row .todo { color: #9aa2ad; font-style: italic; }
+.ed__row.is-on { background: #f5f8fe; box-shadow: inset 3px 0 0 #1f5bd6; }
+.ed__row.is-on .tgt { outline: 1.5px solid #1f5bd6; outline-offset: 3px; border-radius: 2px; }
+.ed__term { text-decoration: underline; text-decoration-color: #1f5bd6; text-underline-offset: 3px; }
+.ed__st { display: grid; place-items: center; height: 20px; }
+.ed__st svg { width: 15px; height: 15px; }
+.ed__st .done { color: #17703f; } .ed__st .edit { color: #b07a00; }
+.ed__st { position: relative; } .ed__st > * { grid-area: 1 / 1; }
+.ed__pane { padding: 12px 14px; display: grid; gap: 8px; align-content: start; font-size: 13px; }
+.ed__pane h4 { margin: 0; font: 500 12px/1.3 var(--font-text); color: #4c5562; }
+.ed__hit { border: 1px solid #d8e2f5; border-radius: 8px; padding: 8px 10px; display: grid; gap: 2px; }
+.ed__hit.is-best { border-color: #1f5bd6; box-shadow: 0 0 0 1px #1f5bd6; }
+.ed__hit small { color: #7b8491; font-size: 12px; }
+.ed__score { justify-self: start; font: 500 11px/1 var(--font-mono); padding: 3px 6px; border-radius: 4px; background: #e3f1e8; color: #17703f; }
+.ed__del { text-decoration: line-through; color: #aa2219; } .ed__ins { color: #17703f; background: #e3f1e8; border-radius: 2px; }
+@media (max-width: 1023px) { .ed__body { grid-template-columns: 1fr; } .ed__pane { display: none; } .ed__segs { border-right: 0; } }
+@media (max-width: 639px) {
+  .hero--centred .hero__window { min-height: 200px; }
+  .ed__bar .ed__prog, .ed__bar .ed__file { display: none; }
+  .ed__row { grid-template-columns: minmax(0, 1fr) 22px; padding: 9px 12px; font-size: 13px; }
+  .ed__row .n { display: none; } .ed__row .src { grid-column: 1; color: #4c5562; } .ed__row .tgt { grid-column: 1; } .ed__row .ed__st { grid-column: 2; grid-row: 1 / span 2; }
+  .ed__row--far, .ed__row--near { display: none; }
+}
+
+/* Screens of the app inside the cards and the chapters: the top left of the screen, cut by the frame. */
+#terminology .panel { --p-h: 300px; background: linear-gradient(160deg, #e4ecfb, #cfdcf6); }
+#terminology .panel img { position: absolute; left: 28px; top: 28px; width: max(560px, 112%); max-width: none; height: auto;
+  border-radius: 8px 0 0 0; box-shadow: 0 0 0 1px rgb(26 31 38 / .08), 0 18px 40px -22px rgb(20 50 120 / .4); transition: transform .5s cubic-bezier(.22,1,.36,1); }
+#terminology .card:hover .panel img { transform: scale(1.02); transform-origin: 0 0; }
+#terminology .panel img.is-paper { width: max(520px, 104%); }
+@media (max-width: 639px) { #files .frame { --ratio: 62%; aspect-ratio: auto; } [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual > img { max-height: 32svh; } #terminology .panel { --p-h: 126px; } #terminology .panel img { left: 18px; top: 18px; width: 460px; } }
+[data-moment="pinned-chapters"] .mo-pc__visual > img { object-position: left top; background: #f3f5f8; }
+main > #workflow[data-moment]:not(.is-live) { min-height: 200vh; min-height: 200lvh; }
+main > #workflow[data-moment]:not(.is-live) > .mo-pc__grid { align-self: center; }
+[data-moment="pinned-chapters"] .mo-pc__visual { box-shadow: 0 0 0 1px rgb(26 31 38 / .08), 0 24px 50px -30px rgb(20 50 120 / .4); background: #f3f5f8; }
+
+/* The statement: one line set as large as the page allows. */
+#delivery .mo-lt__type { font-size: clamp(44px, 6.4vw, 96px); line-height: 1; max-width: 11ch; }
+#delivery .wrap { align-content: center; min-height: 100%; }
+#delivery p { font-size: var(--t-lead); max-width: 44ch; color: var(--ink); }
+/* beside it, the file it is about: a segment of an SDLXLIFF with only two lines changed */
+.xd { align-self: center; background: #1a1f26; color: #c9d0da; border-radius: var(--r-lg); overflow: hidden; box-shadow: 0 30px 60px -30px rgb(20 50 120 / .45); }
+.xd__bar { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px; color: #989ca1; font: 500 12px/1 var(--font-text); background: #222831; }
+.xd__bar .ed__dots i { background: #3a414b; }
+.xd__count { color: #8fd6a8; }
+.xd__body { padding: 12px 0; font: 400 12.5px/1.75 var(--font-mono); }
+.xd__ln { display: grid; grid-template-columns: 44px minmax(0, 1fr); padding-right: 16px; }
+.xd__ln i { font-style: normal; color: #5d6672; text-align: right; padding-right: 14px; }
+.xd__ln code { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.xd__ln--add { background: rgb(23 112 63 / .32); color: #e6f6ec; box-shadow: inset 3px 0 0 #3fb672; }
+.xd__ln--add i { color: #8fd6a8; }
+@media (max-width: 1023px) { .xd { margin-top: var(--s-7); } }
+@media (max-width: 639px) { .xd { margin-top: var(--s-6); } .xd__body { font-size: 11px; } .xd__ln { grid-template-columns: 32px minmax(0, 1fr); } .xd__ln--far, .xd__bar > span:nth-child(2) { display: none; } }
+
+.btn--secondary { box-shadow: inset 0 0 0 1px rgb(26 31 38 / .45); }
+
+/* The downloads: one card for each system, then the browser client and the team server. */
+.dl { align-items: stretch; align-content: start; }
+.dl__card { display: grid; gap: var(--s-3); align-content: start; }
+.dl__card img { height: 40px; width: auto; }
+.dl__card h3 { margin-top: var(--s-2); }
+.dl__card .btn { justify-self: start; margin-top: var(--s-2); }
+.dl__card .link { justify-self: start; }
+.dl__card { transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s; }
+.dl__card:hover { transform: translateY(-2px); box-shadow: 0 14px 32px -18px rgb(20 50 120 / .35); }
+@media (max-width: 639px) {
+  main #download .dl__card { row-gap: 4px; padding: 0; background: none; border: 0; box-shadow: none; }
+  .dl__card img { height: 24px; } .dl__card h3 { margin-top: 0; } .dl__card .btn { margin-top: var(--s-2); justify-self: stretch; justify-content: center; }
+  main #download .card--open .panel { --p-h: 170px; }
+  #download .section-head p { font-size: 16px; }
+  .dl__card .link { display: none; }
+  main #download .card--open > :is(.btn, .link) { justify-self: stretch; justify-content: center; }
+  main #download .card--open > .link { justify-content: space-between; }
+  .term__dim { display: none; } .term__body { font-size: 11px; line-height: 1.5; }
+}
+#download .card--open > .btn, #download .card--open > .link { justify-self: start; margin-top: var(--s-4); }
+#download .card--open { display: grid; align-content: start; }
+#download .card--open .panel { --p-h: 400px; background: linear-gradient(160deg, #e4ecfb, #cfdcf6); }
+.shot-panel img { position: absolute; left: 28px; top: 28px; width: max(560px, 112%); max-width: none; height: auto; border-radius: 8px 0 0 0;
+  box-shadow: 0 0 0 1px rgb(26 31 38 / .08), 0 18px 40px -22px rgb(20 50 120 / .4); transition: transform .5s cubic-bezier(.22,1,.36,1); }
+.card:hover .shot-panel img { transform: scale(1.02); transform-origin: 0 0; }
+.term { position: absolute; left: 28px; top: 28px; right: 28px; bottom: -40px; background: #1a1f26; color: #e6eaf0; border-radius: 10px; overflow: hidden;
+  font: 400 13px/1.7 var(--font-mono); box-shadow: 0 18px 40px -22px rgb(20 50 120 / .5); }
+.term__bar { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; color: #989ca1; font: 500 12px/1 var(--font-text); border-bottom: 1px solid rgb(255 255 255 / .07); }
+.term__bar .ed__dots i { background: #3a414b; }
+.term__body { padding: 12px 16px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.term__p { color: #8fb3f5; } .term__dim { color: #a4acb7; }
+@media (max-width: 639px) { .shot-panel img { left: 18px; top: 18px; width: 460px; } .term { left: 18px; top: 18px; right: 18px; } }
+@media (max-width: 639px) {
+  #questions .stack-4 > p { display: none; }
+  .footer__lede { display: none; }
+  .closing__links .footer__col { grid-column: auto / span 4; }
+}
+@media (min-width: 640px) { [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual > img { max-height: 40svh; } }
+@media (min-width: 640px) and (max-height: 820px) {
+  .ed__body { grid-template-columns: 1fr; } .ed__pane { display: none; } .ed__segs { border-right: 0; }
+  .hero--centred .hero__window { min-height: 180px; }
+  .hero--centred .hero__c { gap: var(--s-3); }
+  .gl-gloss { margin: 0 0 0.04em; }
+}
+@media (max-width: 359px) { header.nav .nav__bar .nav__actions { display: none !important; } }
+</style>
+</head>
+<body>
+<!-- type: software (an open-source CAT tool; page type software, site-kind software)
+     deal: hero centred, nav nav-centre, close close-type, footer footer-dark, rhythm surface-pairs,
+     buttons pill, mark ring (replaced by the app's own icon), ground sky (lit frame, CSS only)
+     palette: the client's own (start.mjs brand: #f3f5f8, #1a1f26, #1f5bd6 from DESIGN.md), type instrument
+     moments: liquid-type in #delivery (the statement), pinned-chapters in #workflow (three steps) -->
+<header class="nav nav--centre">
+  <div class="wrap nav__bar">
+    <a class="skip-link" href="#top">Skip to content</a>
+    <a class="nav__logo" href="#top"><svg class="il-mark" viewBox="0 0 512 512" aria-hidden="true"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1f5bd6"/><rect x="128" y="160" width="256" height="32" rx="16" fill="#fff"/><rect x="128" y="240" width="176" height="32" rx="16" fill="#fff" fill-opacity=".55"/><rect x="128" y="320" width="256" height="32" rx="16" fill="#fff"/></svg>Interlinea</a>
+    <nav class="nav__links" aria-label="Main">
+      <div class="nav__item"><a class="nav__link" href="#files">Files</a></div>
+      <div class="nav__item"><a class="nav__link" href="#terminology">Termbases</a></div>
+      <div class="nav__item">
+        <a class="nav__link" href="/docs/">Docs <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <div class="nav__menu">
+          <div class="wrap grid">
+            <div class="menu-col span-3">
+              <p class="t-label">Help</p>
+              <a href="/docs/help/install/">Install<span>Windows, macOS and Linux</span></a>
+              <a href="/docs/help/first-project/">First project<span>From a file to delivery</span></a>
+              <a href="/docs/help/check-before-delivery/">Before delivery<span>Check Trados and memoQ files</span></a>
+            </div>
+            <div class="menu-col span-3">
+              <p class="t-label">Manual</p>
+              <a href="/docs/manual/guide/">Using Interlinea<span>Projects, editor, terminology</span></a>
+              <a href="/docs/manual/formats/">File formats<span>What is read and written</span></a>
+              <a href="/docs/manual/running/">Team server<span>Running one for a team</span></a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="nav__item"><a class="nav__link" href={github}>GitHub</a></div>
+    </nav>
+    <div class="nav__actions">
+      <a class="btn btn--primary" href="#download">Download Interlinea</a>
+    </div>
+    <button class="nav__toggle" type="button" aria-expanded="false" aria-label="Menu">
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 5h14M2 13h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero hero--centred" data-enter aria-labelledby="hero-h">
+    <div class="wrap"><div class="hero-text">
+      <div class="hero__c">
+        <a class="pill" href={releasePage}><span>Version {v}, {longDate(release.date)}</span><span class="muted">See what changed</span></a>
+        <h1 id="hero-h" aria-label="Open-source CAT tool for translators">
+          <span class="gl-line">Open-source CAT tool<span class="gl-gloss" lang="de" aria-hidden="true" data-de="Quelloffenes CAT-Tool" data-ko="오픈 소스 CAT 도구" data-fr="Outil de TAO libre">Quelloffenes CAT-Tool</span></span>
+          <span class="gl-line">for translators<span class="gl-gloss" lang="de" aria-hidden="true" data-de="für Übersetzer" data-ko="번역가를 위한" data-fr="pour les traducteurs">für Übersetzer</span></span>
+        </h1>
+        <p class="hero__lead">Translate documents, subtitles and Trados or memoQ packages with memories, termbases and checks, on your own computer and without an account.</p>
+        <div class="btn-row">
+          <a class="btn btn--primary" href="#download">Download Interlinea<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a>
+          <a class="btn btn--secondary" href="/app/?sample">Try it in the browser</a>
+        </div>
+      </div>
+      <div class="hero__window" role="img" aria-label="The Interlinea editor: a German tenancy agreement being translated into English, with a 91% memory match">
+        <div class="ly-piece ed ui" aria-hidden="true">
+          <div class="ed__bar">
+            <span class="ed__dots"><i></i><i></i><i></i></span>
+            <b>Mietvertrag Hofmann</b><span class="ed__file">Mietvertrag_Hofmann_2026.docx</span>
+            <span class="ed__tag">de-DE</span><span>&rarr;</span><span class="ed__tag">en-GB</span>
+            <span class="ed__sp"></span>
+            <span class="ed__prog"><i></i>64 of 257 words confirmed</span>
+          </div>
+          <div class="ed__body" data-ly-steps="900">
+            <div class="ed__segs">
+              <div class="ed__row ed__row--far"><span class="n">6</span><span class="src">§ 2 Mietzeit</span><span class="tgt">§ 2 Term of the lease</span><span class="ed__st"><svg class="done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg></span></div>
+              <div class="ed__row ed__row--near"><span class="n">7</span><span class="src">Das Mietverhältnis beginnt am 1. Januar 2027.</span><span class="tgt">The tenancy commences on 1 January 2027.</span><span class="ed__st"><svg class="done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg></span></div>
+              <div class="ed__row is-on"><span class="n">8</span><span class="src">Die <span class="ed__term">ordentliche Kündigung</span> richtet sich nach den gesetzlichen Vorschriften.</span><span class="tgt"><span data-step>Termination with notice is governed by the statutory provisions.</span></span><span class="ed__st"><svg class="done" data-step viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg></span></div>
+              <div class="ed__row"><span class="n">9</span><span class="src">§ 3 Miete und Betriebskosten</span><span class="tgt todo">Not translated</span><span class="ed__st"></span></div>
+            </div>
+            <div class="ed__pane">
+              <h4>Translation results</h4>
+              <div class="ed__hit is-best" data-step data-step-at="-1"><span class="ed__score">91%</span><span>Die ordentliche Kündigung richtet sich nach <span class="ed__del">dem Gesetz</span> <span class="ed__ins">den gesetzlichen Vorschriften</span>.</span><small>Kanzlei Weber DE-EN</small></div>
+              <h4>Checks</h4>
+              <span>No problems found.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="section" id="files" aria-labelledby="files-h">
+    <div class="wrap grid grid--top">
+      <div class="span-5 stack-5">
+        <h2 id="files-h">Opens Trados, memoQ and Word files</h2>
+        <p class="t-lead">Trados and memoQ packages, bilingual XLIFF, Word, InDesign and subtitles open as projects and go back as the sending tool expects them.</p>
+        <p>Packages: .sdlppx back as .sdlrpx, .mqout back as .mqback.<br>Memories: TMX, Trados Studio and Wordfast.<br>Termbases: TBX, MultiTerm and Excel.</p>
+        <a class="link" href="/docs/manual/formats/">See every format</a>
+      </div>
+      <div class="frame frame--split span-6 start-7">
+        <div class="dg" data-diagram data-dg-still><script type="application/json">{"layout": "bowtie", "alt": "Trados packages, bilingual files, Word documents and subtitles go into Interlinea and come back out as a return package, the bilingual file, the Word document and the subtitles.", "sources": [{"label": "Trados package", "icon": "zip", "sub": ".sdlppx"}, {"label": "Bilingual file", "icon": "xml", "sub": ".sdlxliff, .mqxliff"}, {"label": "Word", "icon": "docx", "sub": ".docx"}, {"label": "Subtitles", "icon": "ui:captions", "sub": ".srt, .stl, .scc"}], "core": {"label": "Interlinea", "icon": "ui:languages"}, "targets": [{"label": "Return package", "icon": "zip", "sub": ".sdlrpx"}, {"label": "Bilingual file", "icon": "xml", "sub": "changed targets only"}, {"label": "Word", "icon": "docx", "sub": "layout kept"}, {"label": "Subtitles", "icon": "ui:captions", "sub": "times kept"}]}</script></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="delivery" aria-labelledby="delivery-h">
+    <div class="wrap grid grid--top">
+      <div class="span-6 stack-6">
+        <div data-moment="liquid-type">
+          <h2 id="delivery-h" class="mo-lt__type">Files go back as they came</h2>
+        </div>
+        <p>Everything that was not translated stays byte for byte. A bilingual file gets only its changed targets and states written.</p>
+      </div>
+      <div class="span-6 start-7 xd ui" role="img" aria-label="A segment of an SDLXLIFF file after translation: only its target and its status lines changed">
+        <div class="xd__bar" aria-hidden="true"><span class="ed__dots"><i></i><i></i><i></i></span><span>Mietvertrag_Hofmann_2026.docx.sdlxliff</span><span class="ed__sp"></span><span class="xd__count">2 lines changed</span></div>
+        <div class="xd__body" aria-hidden="true">
+          <div class="xd__ln xd__ln--far"><i>295</i><code>&lt;trans-unit id="5"&gt;</code></div>
+          <div class="xd__ln xd__ln--far"><i>296</i><code>  &lt;source&gt;§ 1 Mietsache&lt;/source&gt;</code></div>
+          <div class="xd__ln xd__ln--far"><i>297</i><code>  &lt;seg-source&gt;&lt;mrk mtype="seg" mid="5"&gt;§ 1 Mietsache&lt;/mrk&gt;&lt;/seg-source&gt;</code></div>
+          <div class="xd__ln xd__ln--far"><i>298</i><code>  &lt;target&gt;&lt;mrk mtype="seg" mid="5"&gt;§ 1 Leased property&lt;/mrk&gt;&lt;/target&gt;</code></div>
+          <div class="xd__ln xd__ln--far"><i>299</i><code>  &lt;sdl:seg-defs&gt;</code></div>
+          <div class="xd__ln xd__ln--far"><i>300</i><code>    &lt;sdl:seg id="5" conf="Translated" origin="tm" percent="100"/&gt;</code></div>
+          <div class="xd__ln xd__ln--far"><i>301</i><code>  &lt;/sdl:seg-defs&gt;&lt;/trans-unit&gt;</code></div>
+          <div class="xd__ln"><i>302</i><code>&lt;trans-unit id="6"&gt;</code></div>
+          <div class="xd__ln"><i>303</i><code>  &lt;source&gt;§ 2 Mietzeit&lt;/source&gt;</code></div>
+          <div class="xd__ln"><i>304</i><code>  &lt;seg-source&gt;&lt;mrk mtype="seg" mid="6"&gt;§ 2 Mietzeit&lt;/mrk&gt;&lt;/seg-source&gt;</code></div>
+          <div class="xd__ln xd__ln--add"><i>305</i><code>  &lt;target&gt;&lt;mrk mtype="seg" mid="6"&gt;§ 2 Term of the lease&lt;/mrk&gt;&lt;/target&gt;</code></div>
+          <div class="xd__ln"><i>306</i><code>  &lt;sdl:seg-defs&gt;</code></div>
+          <div class="xd__ln xd__ln--add"><i>307</i><code>    &lt;sdl:seg id="6" conf="Translated" origin="tm" percent="100"/&gt;</code></div>
+          <div class="xd__ln"><i>308</i><code>  &lt;/sdl:seg-defs&gt;</code></div>
+          <div class="xd__ln"><i>309</i><code>&lt;/trans-unit&gt;</code></div>
+          <div class="xd__ln xd__ln--far"><i>310</i><code>&lt;trans-unit id="7"&gt;</code></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="workflow" style="--h: 2" data-moment="pinned-chapters" aria-labelledby="workflow-h">
+    <div class="wrap mo-pc__grid">
+      <div class="mo-pc__text">
+        <h2 id="workflow-h">One project from file to delivery</h2>
+        <ol class="mo-pc__steps">
+          <li class="mo-pc__step">
+            <h3>Start a translation project</h3>
+            <p>Documents, folders or a package. The source language is detected and the client's memories and termbases are suggested.</p>
+            <figure class="mo-pc__visual"><img src="/shots/projects.webp" alt="The project list with a tenancy agreement, its languages, its termbase and its progress" width="1150" height="332" loading="lazy"></figure>
+          </li>
+          <li class="mo-pc__step">
+            <h3>Set up translation memories and termbases</h3>
+            <p>Lookup order and penalties per memory, a project memory per language, and a weighted analysis for the quote.</p>
+            <figure class="mo-pc__visual"><img src="/shots/new-project.webp" alt="The memories step of a new project, with two memories and their penalties" width="800" height="662" loading="lazy"></figure>
+          </li>
+          <li class="mo-pc__step">
+            <h3>Translation and delivery</h3>
+            <p>The usual keys, matches with their differences, checks as you type. Then save the document, the XLIFF or the return package.</p>
+            <figure class="mo-pc__visual"><img src="/shots/editor.webp" alt="The editor with source and target side by side and the confirmed segments marked" width="1224" height="700" loading="lazy"></figure>
+          </li>
+        </ol>
+        <a class="link" href="/docs/help/first-project/">Read the first-project guide</a>
+      </div>
+      <div class="mo-pc__visuals frame"></div>
+    </div>
+  </section>
+
+  <section class="section g2 ground-surface" id="terminology" aria-labelledby="terminology-h">
+    <div class="wrap">
+      <div class="group">
+        <div class="section-head">
+          <h2 id="terminology-h">Termbases that grow with each translation. <span class="muted">Reviewed before they reach the master.</span></h2>
+        </div>
+        <div class="grid">
+          <article class="card card--row card--open span-6">
+            <h3>Keeps one termbase entry per concept</h3>
+            <p>Any number of languages, with fields of your own at entry, language and term level.</p>
+            <div class="panel"><img src="/shots/terminology.webp" alt="A termbase entry for Mietsache with its definition, German and English terms and their status" width="1152" height="784" loading="lazy"></div>
+          </article>
+          <article class="card card--row card--open span-6">
+            <h3>Reviews new termbase entries</h3>
+            <p>A project termbase collects what the project adds; a review decides, conflict by conflict, what reaches the master.</p>
+            <div class="panel"><img src="/shots/merge-review.webp" alt="The merge review of a project termbase, with one conflict, one changed and four new terms" width="1121" height="540" loading="lazy"></div>
+          </article>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="card card--row card--open span-6">
+          <h3>Prints termbases as glossaries</h3>
+          <p>A PDF in two columns with running heads, a Word file, a web page with search, or a table.</p>
+          <div class="panel"><img class="is-paper" src="/shots/glossary.webp" alt="The first page of a printed glossary in two columns, German with English and French" width="820" height="627" loading="lazy"></div>
+        </article>
+        <article class="card card--row card--open span-6">
+          <h3>Builds memories from old translations</h3>
+          <p>Align earlier documents with their translations, or import TMX, Trados Studio and Wordfast memories.</p>
+          <div class="panel"><img src="/shots/align.webp" alt="Five German sentences aligned with four French ones, joined by lines" width="872" height="280" loading="lazy"></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section ground-surface" id="questions" aria-labelledby="questions-h">
+    <div class="wrap grid grid--top">
+      <div class="span-5 stack-4">
+        <h2 id="questions-h">Questions</h2>
+        <p>Install steps, the manual and the API reference are in the docs.</p>
+        <a class="link" href="/docs/">Read the docs</a>
+      </div>
+      <div class="span-6 start-7 faq">
+        <div class="faq__item"><h3>What is the price?</h3><p>None. It is free software under the GNU AGPL 3.0, for paid work too.</p></div>
+        <div class="faq__item"><h3>Does Interlinea need an account?</h3><p>No. It works on your computer without an account or a network.</p></div>
+        <div class="faq__item"><h3>Where are my memories and termbases kept?</h3><p>In a folder on your computer, or in your browser for the browser client.</p></div>
+        <div class="faq__item"><h3>Will memoQ take the delivery package?</h3><p>It has not been tried in memoQ yet. Until it has, send the MQXLIFF files.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section g2" id="download" aria-labelledby="download-h">
+    <div class="wrap">
+      <div class="group">
+        <div class="section-head">
+          <h2 id="download-h">Downloads for Windows, macOS and Linux</h2>
+          <p>Version {v}, free under the AGPL. The installers are not signed yet: the <a class="link" href="/docs/help/install/">install guide</a> shows the one extra click.</p>
+        </div>
+        <div class="grid dl">
+          <article class="card span-4 dl__card">
+            <img src="/assets/icons/windows.svg" alt="Windows" width="40" height="40">
+            <h3>Windows 10 or later</h3>
+            <p>{withSize(win, 'Installer')}, no administrator rights.</p>
+            <a class="btn btn--secondary" href={win.url}>Download for Windows</a>
+            {winZip && <a class="link" href={winZip.url}>{withSize(winZip, 'Portable zip')}</a>}
+          </article>
+          <article class="card span-4 dl__card">
+            <img class="ic-ink" src="/assets/icons/apple.svg" alt="Apple" width="33" height="40">
+            <h3>macOS 12 or later</h3>
+            <p>{withSize(mac, 'Disk image')}, Apple silicon and Intel.</p>
+            <a class="btn btn--secondary" href={mac.url}>Download for macOS</a>
+          </article>
+          <article class="card span-4 dl__card">
+            <img src="/assets/icons/linux-tux.svg" alt="Linux" width="34" height="40">
+            <h3>Linux on x86-64</h3>
+            <p>{withSize(linux, 'AppImage')}, made executable to start.</p>
+            <a class="btn btn--secondary" href={linux.url}>Download for Linux</a>
+          </article>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="card card--row card--open span-6">
+          <h3>Interlinea in the browser</h3>
+          <p>The same editor, with your work kept in your browser.</p>
+          <div class="panel shot-panel"><img src="/shots/memories.webp" alt="The memories page of the browser client" width="1224" height="520" loading="lazy"></div>
+          <a class="btn btn--secondary" href="/app/?sample">Try it in the browser</a>
+        </article>
+        <article class="card card--row card--open span-6">
+          <h3>Shared termbases on a team server</h3>
+          <p>Termbases, memories and projects for a team, with sign-in and roles.</p>
+          <div class="panel term-panel ui" role="img" aria-label="A terminal starting the Interlinea team server with Docker">
+            <div class="term" aria-hidden="true">
+              <div class="term__bar"><span class="ed__dots"><i></i><i></i><i></i></span><span>Terminal</span></div>
+              <div class="term__body">
+                <div><span class="term__p">$</span> docker run -p 8080:8080 ghcr.io/4nonx/interlinea-server</div>
+                <div class="term__dim">level=INFO msg="spelling dictionaries included" count=22</div>
+                <div class="term__dim">level=INFO msg="stores opened" folder=/data</div>
+                <div class="term__dim">level=INFO msg="first administrator made" username=admin</div>
+                <div>level=INFO msg=listening addr=:8080 version={v}</div>
+              </div>
+            </div>
+          </div>
+          <a class="link" href={releasePage}>See every file of {v}</a>
+        </article>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer closing footer--dark ground-inverse" id="contact" aria-labelledby="close-h">
+  <div class="wrap">
+    <div class="closing__cta close--type">
+      <div class="section-head">
+        <h2 id="close-h">Download Interlinea</h2>
+        <p>Version {v} for Windows, macOS and Linux, free and open source.</p>
+      </div>
+      <a class="btn btn--primary btn--xl btn--wide" href="#download">Download Interlinea<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a>
+    </div>
+    <div class="closing__links">
+      <div class="grid">
+        <div class="span-4 stack-4">
+          <a class="footer__mark" href="#top"><svg class="il-mark" viewBox="0 0 512 512" aria-hidden="true"><rect x="32" y="32" width="448" height="448" rx="112" fill="#1f5bd6"/><rect x="128" y="160" width="256" height="32" rx="16" fill="#fff"/><rect x="128" y="240" width="176" height="32" rx="16" fill="#fff" fill-opacity=".55"/><rect x="128" y="320" width="256" height="32" rx="16" fill="#fff"/></svg>Interlinea</a>
+          <p class="footer__lede">An open-source CAT tool: editor, memories, termbases and project workflow.</p>
+        </div>
+        <div class="span-2 start-7 footer__col"><h3>Product</h3><ul><li><a href="#files">Files</a></li><li><a href="#terminology">Termbases</a></li><li><a href="#download">Downloads</a></li></ul></div>
+        <div class="span-2 footer__col"><h3>Docs</h3><ul><li><a href="/docs/help/install/">Install</a></li><li><a href="/docs/manual/guide/">Manual</a></li><li><a href="/docs/help/report-a-problem/">Report a problem</a></li></ul></div>
+        <div class="span-2 footer__col"><h3>Project</h3><ul><li><a href={github}>Source code</a></li><li><a href={`${github}/blob/main/CHANGELOG.md`}>Changelog</a></li><li><a href={`${github}/blob/main/LICENSE`}>Licence</a></li></ul></div>
+      </div>
+      <div class="footer__legal">
+        <span>&copy; 2026 Dan Dreßen</span><a href="/privacy/">Privacy</a>
+        <span class="t-small">Product names and logos are trademarks of their owners.</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script is:inline>
+(() => {
+  const lang = (navigator.languages || [navigator.language]).map((l) => String(l).slice(0, 2)).find((l) => l === 'de' || l === 'ko' || l === 'fr');
+  if (!lang || lang === 'de') return;
+  document.querySelectorAll('.gl-gloss').forEach((g) => { g.textContent = g.dataset[lang]; g.lang = lang; });
+})();
+</script>
+<script type="module" is:inline src="/assets/system.js"></script>
+<script type="module" is:inline src="/assets/motion/motion.js"></script>
+<script type="module" is:inline src="/assets/layout/layout.js"></script>
+<script type="module" is:inline src="/assets/diagrams/mount.js"></script>
+</body>
+</html>

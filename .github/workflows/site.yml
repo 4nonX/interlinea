@@ -1,0 +1,81 @@
+# Builds interlinea.dev and publishes it on GitHub Pages: the landing page
+# and the docs from site/ and docs/, and the browser client of the latest
+# release under /app. It runs when the site or the docs change on main,
+# after the release workflow has made a release, and by hand.
+
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - 'CHANGELOG.md'
+      - '.github/workflows/site.yml'
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/releases/latest" > "$RUNNER_TEMP/release.json"
+      - name: build
+        working-directory: site
+        env:
+          RELEASE_JSON: ${{ runner.temp }}/release.json
+        run: |
+          npm ci
+          npm run build
+      - name: browser client of the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(jq -r .tag_name "$RUNNER_TEMP/release.json")
+          name="interlinea-web-${tag#v}.zip"
+          gh release download "$tag" --repo "${{ github.repository }}" --pattern "$name" --dir "$RUNNER_TEMP"
+          mkdir -p site/dist/app
+          unzip -q "$RUNNER_TEMP/$name" -d "$RUNNER_TEMP/web"
+          # the zip holds the client either at its top or in one folder
+          src="$RUNNER_TEMP/web"
+          if [ ! -f "$src/index.html" ]; then src=$(dirname "$(find "$src" -maxdepth 2 -name index.html | head -1)"); fi
+          test -f "$src/index.html"
+          cp -R "$src/." site/dist/app/
+      - name: links on the built site
+        working-directory: site
+        run: node scripts/check-links.mjs dist
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

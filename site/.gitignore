@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.astro/
+.taste-skill/
+src/content/docs/docs/manual/
+public/docs-img/
+public/app/
