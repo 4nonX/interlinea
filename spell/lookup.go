@@ -88,7 +88,11 @@ func (d *Dictionary) check(word string, capitalization, allowNosuggest bool) boo
 	if isNumber(word) {
 		return true
 	}
-	for _, parts := range d.breakWord(word, 0) {
+	splits := [][]string{{word}}
+	if d.breakPoints(word) < maxBreakPoints {
+		splits = d.breakWord(word, 0)
+	}
+	for _, parts := range splits {
 		ok, any := true, false
 		for _, p := range parts {
 			if p != "" {
@@ -125,6 +129,24 @@ func isNumber(w string) bool {
 		}
 	}
 	return digits && !sep
+}
+
+// maxBreakPoints is how many places a word may be broken at (dashes, by
+// default) before only the whole word is checked: the ways to split a word
+// double with each, and a word of many dashes would take minutes and
+// gigabytes. A word with this many is wrong unless it is in the dictionary
+// as it is, which is how Hunspell checks it too.
+const maxBreakPoints = 10
+
+// breakPoints counts the places the word has a BREAK pattern at.
+func (d *Dictionary) breakPoints(word string) int {
+	n := 0
+	for _, p := range d.a.breaks {
+		if p.text != "" {
+			n += strings.Count(word, p.text)
+		}
+	}
+	return n
 }
 
 // breakWord lists ways to split the word at BREAK patterns (dashes by

@@ -4,14 +4,23 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const maxCharDistance = 4
 
-// Suggest returns up to max corrections for a word, best first.
+// MaxSuggestLength is the longest word Suggest corrects, in characters.
+// Trying the edits of a word takes time that grows with the square of its
+// length: a word of thousands of characters would keep a server busy for
+// seconds. The longest words of real texts, compounds included, are far
+// shorter.
+const MaxSuggestLength = 100
+
+// Suggest returns up to max corrections for a word, best first; none for
+// a word longer than MaxSuggestLength.
 func (d *Dictionary) Suggest(word string, max int) []string {
 	word = strings.TrimSpace(word)
-	if word == "" || max <= 0 {
+	if word == "" || max <= 0 || utf8.RuneCountInString(word) > MaxSuggestLength {
 		return nil
 	}
 	s := &suggester{d: d, word: word, seen: map[string]bool{}, max: max}

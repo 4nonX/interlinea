@@ -99,6 +99,12 @@ takes its notes from its section here.
   server's memory.
 - Requests to a translation or grammar service follow redirects only on
   its own host, so its secret header goes nowhere else.
+- Spelling suggestions are made for words of up to 100 characters: the
+  time they take grows with the square of a word's length, and one word
+  of thousands of characters kept a server busy for seconds.
+- A word with ten or more dashes (or other break points) is checked as it
+  is, as Hunspell does, instead of split every way: thirty dashes took
+  minutes and gigabytes.
 
 ### Tests
 

@@ -3,7 +3,9 @@ package spell
 import (
 	"archive/zip"
 	"bytes"
+	"strings"
 	"testing"
+	"time"
 )
 
 // FuzzLoad reads dictionaries (.aff and .dic) people add to a server, and
@@ -40,4 +42,38 @@ func FuzzReadArchive(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		ReadArchive(data)
 	})
+}
+
+// A word too long to correct gets no suggestions, at once.
+func TestSuggestLongWord(t *testing.T) {
+	d := load(t, englishAff, englishDic)
+	long := strings.Repeat("ab", MaxSuggestLength)
+	start := time.Now()
+	if got := d.Suggest(long, 5); got != nil {
+		t.Fatalf("suggestions for %d characters: %v", len(long), got)
+	}
+	if took := time.Since(start); took > 100*time.Millisecond {
+		t.Fatalf("took %v", took)
+	}
+	if got := d.Suggest("bots", 5); len(got) == 0 {
+		t.Fatal("no suggestions for a short word")
+	}
+}
+
+// A word of many dashes is checked as it is, not split every way: the
+// splits double with each dash.
+func TestManyDashes(t *testing.T) {
+	d := load(t, englishAff, englishDic)
+	word := "boot" + strings.Repeat("-boot", 30)
+	start := time.Now()
+	if d.Spell(word) {
+		t.Fatal("thirty dashes accepted")
+	}
+	d.Suggest(word, 5)
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("took %v", took)
+	}
+	if !d.Spell("boot-box") {
+		t.Fatal("a word of two parts is wrong")
+	}
 }
