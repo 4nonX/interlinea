@@ -6,6 +6,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/internal/fuzzseed"
 )
 
 // FuzzSCC reads caption files, translates what it reads into text closed
@@ -14,6 +15,8 @@ func FuzzSCC(f *testing.F) {
 	f.Add([]byte(sample))
 	f.Add([]byte("Scenarist_SCC V1.0\n\n00:00:00;29\t9420 9420 94ae 94ae 1370 1370 " + hexOf("Hi there") + " 942c 942c 942f 942f\n"))
 	f.Add([]byte("Scenarist_SCC V1.0\n\n00:00:01:00\t1c20 1c20 1cae 1cae 1c70 1c70 " + hexOf("Two") + " 1c2f 1c2f\n"))
+	f.Add([]byte(rollSample))
+	fuzzseed.Add(f, "filter/scc/testdata/*/*.scc")
 	f.Fuzz(func(t *testing.T, data []byte) {
 		ex, err := Extract(data, "en")
 		if err != nil {
@@ -47,7 +50,12 @@ func FuzzSCC(f *testing.F) {
 		if err != nil {
 			t.Fatalf("the translation does not read: %v\n%s", err, out)
 		}
-		if len(back.Units) != len(ex.Units) {
+		roll := false
+		for _, u := range ex.Units {
+			roll = roll || strings.Contains(u.Notes[len(u.Notes)-1], "roll-up")
+		}
+		// A roll-up line longer than a row rolls on to a next one.
+		if len(back.Units) < len(ex.Units) || len(back.Units) > len(ex.Units) && !roll {
 			t.Fatalf("%d captions written, %d read back:\n%s\n%s", len(ex.Units), len(back.Units), data, out)
 		}
 	})

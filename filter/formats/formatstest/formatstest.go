@@ -147,3 +147,10 @@ const Captions = "Scenarist_SCC V1.0\n\n" +
 	"00:00:04:00\t942c 942c\n\n" +
 	"00:00:05:00\t9420 9420 94ae 94ae 94f2 94f2 97a2 97a2 c4e9 e520 cb61 75f4 e9ef 6e20 62e5 f4f2 6180 1331 1331 67f4 ae80 942f 942f\n\n" +
 	"00:00:08:00\t942c 942c\n"
+
+// RollUpCaptions is a Scenarist closed caption file with two roll-up lines
+// in a window of two rows, as live captions are written, erased later.
+const RollUpCaptions = "Scenarist_SCC V1.0\n\n" +
+	"00:00:01:00\t9425 9425 94ad 94ad 9470 9470 c775 f4e5 6e20 c162 e56e 642c\n\n" +
+	"00:00:03:00\t94ad 94ad 9470 9470 68e9 e5f2 2073 e96e 6420 64e9 e520 ce61 e368 f2e9 e368 f4e5 6eae\n\n" +
+	"00:00:06:00\t942c 942c\n"

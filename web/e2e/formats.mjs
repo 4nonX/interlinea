@@ -378,11 +378,11 @@ export default () =>
       await waitFor("[...document.querySelectorAll('button')].some(b => b.textContent.includes('Continue to files and languages'))", 15000);
       await click("button", "Continue to files and languages");
       await sleep(300);
-      await setFiles(["film.sbv", "film.ass", "film.sub", "film.ttml", "Untertitel.stl", "Untertitel.scc"].map((f) => `${docs}/${f}`));
-      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 6", 15000), "six subtitle files are listed");
+      await setFiles(["film.sbv", "film.ass", "film.sub", "film.ttml", "Untertitel.stl", "Untertitel.scc", "Live.scc"].map((f) => `${docs}/${f}`));
+      check(await waitFor("document.querySelectorAll('.file-table tbody tr').length === 7", 15000), "seven subtitle files are listed");
       t = await text();
       check(["SBV subtitles, times kept", "ASS subtitles, times and styles kept", "SUB subtitles, frames kept", "TTML subtitles, times and styles kept", "EBU STL subtitles, times and positions kept", "SCC captions, times and positions kept"].every((x) => t.includes(x)), "each is named with what it keeps");
-      check(await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable')"), "all six are files to translate");
+      check(await evaluate("[...document.querySelectorAll('.file-table tbody tr')].every(r => r.querySelector('select').value === 'translatable')"), "all seven are files to translate");
       await setValue("#pname", "Untertitel");
       await sleep(200);
       await through();
@@ -431,6 +431,15 @@ export default () =>
       {
         const scc = readFileSync(`${downloads}/Untertitel_en-GB.scc`, "utf8");
         check(scc.startsWith("Scenarist_SCC V1.0") && scc.includes("\n00:00:01:00\t9420 9420 94ae 94ae 9452") && /\t9420 9420 94ae 94ae 94f2 94f2 [0-9a-f ]*5468 e520 64e5/.test(scc) && scc.includes("942f 942f"), "with the translation as caption codes, and the caption not translated as it was: " + JSON.stringify(scc));
+      }
+      // Roll-up captions, as live captions are written: each line is a
+      // segment, written back in place of the line's letters.
+      check(await translate("Live.scc", "hier sind die Nachrichten.", "here is the news."), "a roll-up line is a segment");
+      check(await evaluate("[...document.querySelectorAll('.seg-status')].some(e => e.title.includes('A line of roll-up captions'))"), "said to be a roll-up line");
+      check(await save("Save translated document", "Live_en-GB.scc"), "the roll-up file is saved");
+      {
+        const scc = readFileSync(`${downloads}/Live_en-GB.scc`, "utf8");
+        check(scc.includes("\n00:00:01:00\t9425 9425 94ad 94ad 9470 9470 c775 f4e5 6e20 c162 e56e 642c\n") && scc.includes("68e5 f2e5 20e9 7320 f468 e520 6ee5 f773 ae80") && !scc.includes("ce61 e368") && scc.includes("942c 942c"), "with the translated line in place of the source's: " + JSON.stringify(scc));
       }
       check(errors.length === 0, "no console errors: " + errors.join(" | "));
     },

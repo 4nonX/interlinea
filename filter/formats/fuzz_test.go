@@ -47,6 +47,7 @@ func FuzzExtract(f *testing.F) {
 	f.Add(index(formats.TimedText), []byte(`<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="de"><body><div><p begin="1s" end="2s">Der <span>Mieter</span><br/>zahlt.</p></div></body></tt>`))
 	f.Add(index(formats.EBUSTL), formatstest.Subtitles())
 	f.Add(index(formats.SCC), []byte(formatstest.Captions))
+	f.Add(index(formats.SCC), []byte(formatstest.RollUpCaptions))
 	f.Fuzz(func(t *testing.T, which uint8, data []byte) {
 		format := fuzzFormats[int(which)%len(fuzzFormats)]
 		if _, err := formats.Extract(format, data, "de-DE"); err == nil {

@@ -27,3 +27,11 @@ works by their own authors under their own licences (GPL, LGPL, MPL, BSD
 or Creative Commons, some of them under a choice of these). Each one's ZIP
 file holds its authors' readme and licence; README.txt in the folder lists
 them.
+
+Test files made by other tools are kept in the testdata folders of the
+readers they test, under their own licences: the EBU STL files of ttconv
+(filter/ebustl/testdata: Apache License 2.0 for the IRT files, BSD
+2-Clause for Sandflow's) and the Scenarist caption samples of pycaption
+(filter/scc/testdata/pycaption: Apache License 2.0). Each folder holds the
+licence and a README naming the source. They are not part of the program
+that is built.

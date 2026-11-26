@@ -3,6 +3,8 @@ package ebustl
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -282,9 +284,63 @@ func TestTitlesAndTimes(t *testing.T) {
 	if string(out[16:24]) != "Testfilm" {
 		t.Error("the original title changed")
 	}
-	// A title the code page can't hold is left out.
-	out, err = Merge(data, "de-DE", "ru-RU", filter.Translations{"programme-title": content.Text("Фильм")})
-	if err != nil || strings.TrimSpace(string(out[80:112])) != "" {
-		t.Errorf("Russian title: %v %q", err, out[80:112])
+	// A title the code page can't hold, or too long, is refused with the reason.
+	if _, err = Merge(data, "de-DE", "ru-RU", filter.Translations{"programme-title": content.Text("Фильм")}); err == nil || !strings.Contains(err.Error(), "code page 850): Ф и л ь м") {
+		t.Errorf("Russian title: %v", err)
+	}
+	if _, err = Merge(data, "de-DE", "en", filter.Translations{"episode-title": content.Text(strings.Repeat("x", 33))}); err == nil || !strings.Contains(err.Error(), "33 characters") {
+		t.Errorf("long title: %v", err)
+	}
+	if !strings.Contains(ex.Units[0].Notes[0], "at most 32 characters, in the letters of code page 850") {
+		t.Errorf("note %q", ex.Units[0].Notes[0])
+	}
+}
+
+// The files of other tools (testdata/README.md) are read, written back
+// unchanged without translations, and translated and read back.
+func TestOtherToolsFiles(t *testing.T) {
+	files, _ := filepath.Glob("testdata/*/*.stl")
+	if len(files) < 50 {
+		t.Fatalf("%d files", len(files))
+	}
+	for _, name := range files {
+		data, _ := os.ReadFile(name)
+		ex, err := Extract(data, "de-DE")
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		same, err := Merge(data, "de-DE", "", filter.Translations{})
+		if err != nil || !bytes.Equal(same, data) {
+			t.Errorf("%s: changed without translations (%v)", name, err)
+		}
+		out, err := Merge(data, "de-DE", "en-GB", upper(ex))
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		back, err := Extract(out, "en-GB")
+		if err != nil || len(back.Units) != len(ex.Units) {
+			t.Errorf("%s: read back %v, %d of %d units", name, err, len(back.Units), len(ex.Units))
+			continue
+		}
+		// The titles' translations go into the translated titles; the
+		// subtitles read back translated.
+		for i, u := range cues(back) {
+			if want := strings.ToUpper(cues(ex)[i].Source.Plain()); u.Source.Plain() != want && strings.ReplaceAll(u.Source.Plain(), "SS", "ß") != want {
+				t.Errorf("%s: unit %d reads back %q, want %q", name, i, u.Source.Plain(), want)
+			}
+		}
+	}
+	for name, want := range map[string]string{
+		"sandflow/multi_tti_subtitle.stl": "Foo Bar Baz",
+		"irt/requirement-0061-001.stl":    "Test Subtitle",
+		"sandflow/vp20_2_newlines.stl":    "This is row 20This is row 22",
+	} {
+		data, _ := os.ReadFile("testdata/" + name)
+		ex, _ := Extract(data, "en")
+		if got := cues(ex)[0].Source.Plain(); got != want {
+			t.Errorf("%s reads %q, want %q", name, got, want)
+		}
 	}
 }

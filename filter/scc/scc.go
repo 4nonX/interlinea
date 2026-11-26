@@ -2,22 +2,33 @@
 // line 21 captions as hexadecimal byte pairs with their time codes, the
 // form in which US broadcast and streaming captions are exchanged.
 //
-// A pop-on caption is one unit: the text loaded into the hidden caption
-// memory and shown at End of Caption, until the screen is erased or the
-// next caption is shown. Its rows are kept apart by tags; colour and
-// italics codes inside a row (mid-row codes) are tags too. Special and
-// extended characters are read as the letters they stand for.
+// Captions come in three modes, and each is read and written:
 //
-// On merge, a translated caption is loaded again: its rows are placed from
-// the caption's bottom row up, aligned as the source's rows were (centred,
-// left or right), a row longer than the 32 columns a caption has is
-// wrapped at a space, and the time code of the line it is loaded in moves
-// earlier so it still appears when it did (later lines move only where a
-// longer load reaches into them). Letters CEA-608 has no code for are
-// refused. Everything else in the file stays as it was.
+//   - Pop-on: a caption is loaded into the memory not shown and shown at
+//     End of Caption, until the screen is erased or the next is shown.
+//   - Paint-on: a caption is painted straight onto the screen, from its
+//     first address to the next erase.
+//   - Roll-up: lines are written on the bottom row of a window of two,
+//     three or four rows and roll up at each carriage return; a line is
+//     shown from its first character until it leaves the window.
 //
-// Roll-up and paint-on captions, written while a programme is broadcast,
-// are not translated: such a file is refused with that reason.
+// Each caption (each line of roll-up captions) is one unit. Rows are kept
+// apart by tags; colour and italics codes in a row (mid-row codes) are
+// tags too. Special and extended characters are read as the letters they
+// stand for.
+//
+// On merge, a pop-on or paint-on caption is written again with its rows
+// placed from the caption's bottom row up, aligned as the source's rows
+// were (centred, left or right), and a row longer than the 32 columns a
+// caption has wrapped at a space. A roll-up line keeps its codes
+// (addresses, tab offsets, carriage returns) and gets the translated text
+// in place of its own; a line longer than the row has columns from where it
+// starts goes on after a carriage return of its own. The time codes move so
+// each caption still appears when it did: a pop-on load starts earlier
+// (taking in an erase sent while the caption before is still shown), and
+// later lines move only where a longer text reaches into them. Letters
+// CEA-608 has no code for are refused, naming them. Everything else in the
+// file stays as it was.
 package scc
 
 import (
@@ -68,23 +79,271 @@ type at struct{ line, word int }
 type cell struct {
 	r    rune
 	code word // mid-row code, where r is 0
+	// ext marks a special or extended character, which an extended
+	// character does not take the place of.
+	ext bool
 }
 
+// row is a row of the screen as a decoder keeps it: 32 columns, written
+// at a cursor that addresses and tab offsets move. A character overwrites
+// what the column had; past the last column the last is overwritten.
 type row struct {
-	n     int  // 1 to 15
-	col   int  // where it starts
-	attr  byte // the PAC's attribute: 0-15, colour or italics with underline in bit 0; 16+ for an indent
-	cells []cell
+	n    int  // 1 to 15
+	attr byte // the attribute of its last address: 0-15, colour or italics with underline in bit 0; 16+ for an indent
+	grid [Columns]cell
+	used [Columns]bool
+	cur  int
+	// over is text sent past the last column. A decoder writes it over the
+	// last column; it is kept, so the translator sees what the row says
+	// (and the translation is laid out to fit).
+	over  []cell
+	atEnd bool
+	// pend is an address back on the row that has text: whether it
+	// overwrites or the text goes on is known once the row is written.
+	pend *restate
 }
+
+// restate is an address of the row it is on, behind the cursor. Encoders
+// send one as they please, to restate the row; taken as an overwrite, it
+// would cover the text it restates. So the text goes on after the cursor
+// as long as the row has room for it, and is written over the row from
+// the address only where it would not fit (as pycaption reads them).
+type restate struct {
+	col        int
+	grid       [Columns]cell
+	used       [Columns]bool
+	cur        int
+	over       []cell
+	ops        []op
+	appended   int
+	overflowed bool
+}
+
+// op is a write to a row: a cell, a backspace (back), a tab (tab > 0),
+// or an address to a column (to > 0, the column plus one).
+type op struct {
+	c    cell
+	back bool
+	tab  int
+	to   int
+}
+
+func (r *row) put(c cell) {
+	if r.pend != nil {
+		r.pend.ops = append(r.pend.ops, op{c: c})
+		r.pend.appended++
+		if r.pend.cur+r.pend.appended > Columns {
+			r.pend.overflowed = true
+		}
+	}
+	if r.atEnd {
+		r.over = append(r.over, c)
+		return
+	}
+	r.grid[r.cur], r.used[r.cur] = c, true
+	if r.cur < Columns-1 {
+		r.cur++
+	} else {
+		r.atEnd = true
+	}
+}
+
+// back is a backspace: the column before the cursor is cleared.
+func (r *row) back() {
+	if r.pend != nil {
+		r.pend.ops = append(r.pend.ops, op{back: true})
+		r.pend.appended--
+	}
+	if len(r.over) > 0 {
+		r.over = r.over[:len(r.over)-1]
+		return
+	}
+	if r.atEnd {
+		r.atEnd = false
+	} else if r.cur > 0 {
+		r.cur--
+	}
+	r.grid[r.cur], r.used[r.cur] = cell{}, false
+}
+
+// tab moves the cursor on (a tab offset).
+func (r *row) tab(n int) {
+	if r.pend != nil {
+		r.pend.ops = append(r.pend.ops, op{tab: n})
+		r.pend.appended += n
+	}
+	r.moveTo(r.cur + n)
+}
+
+// address places the cursor at a column of the row: an address back on
+// a row with text is held until it is known whether it overwrites.
+func (r *row) address(col int) {
+	if p := r.pend; p != nil && !p.overflowed && col >= p.col {
+		// An address on from the held one: the text goes on as far from
+		// where it went on as the address is from the held one.
+		if at := col + p.cur - p.col; at >= r.cur && at < Columns {
+			p.ops = append(p.ops, op{to: col + 1})
+			p.appended += at - r.cur
+			r.moveTo(at)
+			return
+		}
+	}
+	r.settle()
+	if col < r.cur && !r.empty() {
+		r.pend = &restate{col: col, grid: r.grid, used: r.used, cur: r.cur, over: append([]cell(nil), r.over...)}
+		return
+	}
+	r.moveTo(col)
+}
+
+// settle decides a held address: where the text written since it did not
+// fit after the cursor, it is written over the row from the address.
+func (r *row) settle() {
+	p := r.pend
+	if p == nil {
+		return
+	}
+	r.pend = nil
+	if !p.overflowed {
+		return
+	}
+	r.grid, r.used, r.over = p.grid, p.used, p.over
+	r.moveTo(p.col)
+	for _, o := range p.ops {
+		switch {
+		case o.back:
+			r.back()
+		case o.tab > 0:
+			r.moveTo(r.cur + o.tab)
+		case o.to > 0:
+			r.moveTo(o.to - 1)
+		default:
+			r.put(o.c)
+		}
+	}
+}
+
+// putExtended writes an extended character, which takes the place of the
+// basic character before it (sent for decoders without extended ones).
+func (r *row) putExtended(c cell) {
+	if n := len(r.over); n > 0 {
+		if pc := r.over[n-1]; pc.r != 0 && !pc.ext {
+			r.over = r.over[:n-1]
+		}
+		c.ext = true
+		r.over = append(r.over, c)
+		return
+	}
+	if r.cur > 0 {
+		prev := r.cur - 1
+		if r.cur == Columns-1 && r.used[r.cur] {
+			prev = r.cur
+		}
+		if pc := r.grid[prev]; r.used[prev] && pc.r != 0 && !pc.ext {
+			r.back()
+		}
+	}
+	c.ext = true
+	r.put(c)
+}
+
+// clearFrom clears the row from the cursor on (Delete to End of Row).
+func (r *row) clearFrom() {
+	for i := r.cur; i < Columns; i++ {
+		r.grid[i], r.used[i] = cell{}, false
+	}
+}
+
+func (r *row) moveTo(col int) {
+	// Text past the last column stays part of the row when the cursor moves.
+	r.cur, r.atEnd = min(max(col, 0), Columns-1), false
+}
+
+// span is the row's text: its first column with a character, and the
+// cells from there to the last, columns between them as spaces.
+func (r *row) span() (start int, cells []cell) {
+	r.settle()
+	first, last := -1, -1
+	for i := 0; i < Columns; i++ {
+		if r.used[i] && !(r.grid[i].r == ' ' || r.grid[i].r == 0 && r.grid[i].code == (word{})) {
+			if first < 0 {
+				first = i
+			}
+			last = i
+		}
+	}
+	if first < 0 && len(r.over) == 0 {
+		return 0, nil
+	}
+	if len(r.over) > 0 {
+		// The text goes on past the last column: its spaces before count.
+		if first < 0 {
+			first = Columns - 1
+		}
+		last = Columns - 1
+	}
+	for i := first; i <= last; i++ {
+		if r.used[i] {
+			cells = append(cells, r.grid[i])
+		} else {
+			cells = append(cells, cell{r: ' '})
+		}
+	}
+	cells = append(cells, r.over...)
+	for len(cells) > 0 && cells[len(cells)-1].r == ' ' {
+		cells = cells[:len(cells)-1]
+	}
+	return first, cells
+}
+
+func (r *row) empty() bool {
+	_, cs := r.span()
+	for _, c := range cs {
+		if c.r != 0 && c.r != ' ' {
+			return false
+		}
+	}
+	return true
+}
+
+// The caption modes.
+const (
+	popOn = iota + 1
+	paintOn
+	rollUp
+	textMode
+)
 
 type caption struct {
-	id string
-	// load is the first pair of the load (Resume Caption Loading or Erase
-	// Non-displayed Memory), text where the first text pair is, end the
-	// last text pair, eoc the End of Caption pair.
-	load, text, end, eoc at
-	rows                 []*row
-	show, hide           int64 // frames; hide -1 where not known
+	id   string
+	mode int
+	rows []*row
+	// show and hide are frames; hide -1 where it is not known.
+	show, hide int64
+	// Pop-on: load is the first pair of the load (Resume Caption Loading
+	// or Erase Non-displayed Memory), eoc its End of Caption.
+	load, eoc at
+	// Pop-on and paint-on: the first and last pair of the text, with the
+	// addresses of its rows.
+	first, last at
+	// Roll-up: the pairs of the line's text. They are replaced; the codes
+	// between them (addresses, tab offsets) stay where they are.
+	chars []at
+	// Roll-up: how many carriage returns the line has seen; it leaves the
+	// window when they reach the window's rows.
+	rolled int
+	// once: the source sends the codes in its text once, not twice; the
+	// translation does too, so it takes no longer to send than it must.
+	once bool
+}
+
+func (c *caption) hasText() bool {
+	for _, r := range c.rows {
+		if !r.empty() {
+			return true
+		}
+	}
+	return false
 }
 
 // The miscellaneous control codes (first byte 14h on channel 1).
@@ -143,8 +402,16 @@ func parse(data []byte) (*file, error) {
 		if err != nil {
 			return nil, fmt.Errorf("line %d: %v", no+2, err)
 		}
+		if n := len(f.lines); n > 0 && frame < f.lines[n-1].frame {
+			return nil, fmt.Errorf("line %d: the time code %s is before the one of the line above it", no+2, tc)
+		}
 		ln := &line{text: l, frame: frame, drop: drop}
 		for _, h := range strings.Fields(rest) {
+			if len(h) == 2 {
+				// A pair cut short (the last character of a line): its
+				// first byte.
+				h += "80"
+			}
 			if len(h) != 4 {
 				return nil, fmt.Errorf("line %d: %q is not a byte pair", no+2, h)
 			}
@@ -216,188 +483,438 @@ func timecode(frame int64, drop bool) string {
 // ms is the time of a frame in milliseconds, at 29.97 frames per second.
 func ms(frame int64) int64 { return frame * 1001 / 30 }
 
-// read follows the codes through the file and finds the pop-on captions.
+// read follows the codes through the file and finds its captions: those
+// loaded and shown at once (pop-on), those painted straight onto the
+// screen (paint-on), and the lines of roll-up captions.
 func (f *file) read() error {
-	var cur *caption // being loaded
-	var shown *caption
-	rows := map[int]*row{}
-	var r *row
-	mode := 0 // 0 none, 1 pop-on, 2 text
+	mode, depth := 0, 0
+	// Pop-on: the caption being loaded, in the memory not shown.
+	var load *caption
+	hidden := map[int]*row{}
+	// Paint-on: the caption painted since the screen was last erased.
+	var paint *caption
+	shown := map[int]*row{}
+	// Roll-up: the line being written and those in the window above it.
+	var roll *caption
+	var window []*caption
+	base := 15 // the roll-up window's bottom row
+	var r *row // the row written to
+	// Captions on the screen, to be hidden when it is erased.
+	var screen []*caption
+
+	hideAll := func(frame int64) {
+		for _, c := range screen {
+			if c.hide < 0 {
+				c.hide = frame
+			}
+		}
+		screen = nil
+		for _, c := range window {
+			if c.hide < 0 {
+				c.hide = frame
+			}
+		}
+		window = nil
+	}
+	add := func(c *caption) {
+		c.id = "c" + strconv.Itoa(len(f.caps)+1)
+		f.caps = append(f.caps, c)
+	}
+	// endRoll ends the roll-up line being written.
+	endRoll := func() {
+		if roll != nil && roll.hasText() {
+			window = append(window, roll)
+		}
+		roll, r = nil, nil
+	}
+	startRoll := func(frame int64) {
+		roll = &caption{mode: rollUp, show: frame, hide: -1}
+		r = &row{n: base}
+		roll.rows = []*row{r}
+	}
+	// endPaint ends the paint-on caption: what follows is another.
+	endPaint := func() {
+		paint, shown, r = nil, map[int]*row{}, nil
+	}
+	rowsOf := func(m map[int]*row) []*row {
+		var out []*row
+		for n := 1; n <= 15; n++ {
+			if rw := m[n]; rw != nil && !rw.empty() {
+				out = append(out, rw)
+			}
+		}
+		return out
+	}
+
 	var prev word
 	var prevPos at
-	prevControl := false
-	// Which channel the captions are on: that of the first control code.
+	prevControl, prevText := false, false
 	chanSet := false
 	for li, ln := range f.lines {
 		for wi, w := range ln.words {
 			pos := at{li, wi}
 			frame := ln.frame + int64(wi)
+			// text marks a pair as part of the caption's text.
+			text := func() {
+				switch mode {
+				case popOn:
+					if load != nil {
+						if load.first.line < 0 {
+							load.first = pos
+						}
+						load.last = pos
+					}
+				case paintOn:
+					if paint == nil {
+						paint = &caption{mode: paintOn, first: pos, show: frame, hide: -1, load: at{-1, -1}, eoc: at{-1, -1}}
+						add(paint)
+						screen = append(screen, paint)
+					}
+					paint.last = pos
+				case rollUp:
+					if roll == nil {
+						startRoll(frame)
+					}
+					if len(roll.chars) == 0 {
+						roll.show = frame
+						add(roll)
+					}
+					roll.chars = append(roll.chars, pos)
+				}
+			}
 			if w.control() {
 				ch2 := w.hi >= 0x18
 				if !chanSet {
 					f.channel2, chanSet = ch2, true
 				}
 				if ch2 != f.channel2 {
-					prev, prevControl = w, false
+					prevControl = false
 					continue
 				}
-				// A control code is sent twice; the second is not acted on.
+				// A control code is sent twice; the second is not acted on,
+				// but it belongs where the first does.
 				if prevControl && w == prev {
 					prevControl = false
-					// The second of a code within the text belongs to it.
-					if cur != nil && cur.text.line >= 0 && cur.end == prevPos {
-						cur.end = pos
+					if prevText {
+						switch {
+						case mode == rollUp && roll != nil && len(roll.chars) > 0 && roll.chars[len(roll.chars)-1] == prevPos:
+							roll.chars = append(roll.chars, pos)
+						case mode == popOn && load != nil && load.last == prevPos:
+							load.last = pos
+						case mode == paintOn && paint != nil && paint.last == prevPos:
+							paint.last = pos
+						}
 					}
-					prevPos = pos
 					continue
 				}
-				prev, prevControl, prevPos = w, true, pos
+				prev, prevControl, prevPos, prevText = w, true, pos, false
 				w.hi &^= 0x08
 				switch {
-				case w.hi == 0x14 && w.lo >= 0x20 && w.lo <= 0x2F, w.hi == 0x15 && w.lo >= 0x20 && w.lo <= 0x2F:
-					if w.hi == 0x15 {
-						// Field 2 (CC3, CC4): not these captions.
-						continue
-					}
+				case w.hi == 0x15 && w.lo >= 0x20 && w.lo <= 0x2F:
+					// Field 2 (CC3, CC4): not these captions.
+				case w.hi == 0x14 && w.lo >= 0x20 && w.lo <= 0x2F:
 					switch w.lo {
 					case rcl:
-						mode = 1
-						if cur == nil {
-							cur = &caption{load: pos, text: at{-1, -1}, eoc: at{-1, -1}}
-							rows, r = map[int]*row{}, nil
+						if mode == rollUp {
+							endRoll()
 						}
+						mode = popOn
+						if load == nil {
+							load = &caption{mode: popOn, load: pos, first: at{-1, -1}, eoc: at{-1, -1}, hide: -1}
+						}
+						r = nil
 					case enm:
-						if cur == nil {
-							cur = &caption{load: pos, text: at{-1, -1}, eoc: at{-1, -1}}
+						if mode == popOn && load == nil {
+							load = &caption{mode: popOn, load: pos, first: at{-1, -1}, eoc: at{-1, -1}, hide: -1}
 						}
-						rows, r = map[int]*row{}, nil
+						hidden = map[int]*row{}
+						if mode == popOn {
+							r = nil
+						}
 					case ru2, ru3, ru4:
-						return fmt.Errorf("the file has roll-up captions, written while a programme is broadcast; Interlinea translates pop-on captions")
+						if mode != rollUp {
+							// Roll-up from another mode starts on a clear screen.
+							hideAll(frame)
+							endPaint()
+							load, hidden = nil, map[int]*row{}
+						}
+						mode, depth = rollUp, int(w.lo-ru2)+2
+						// A smaller window drops the rows above it.
+						for len(window) >= depth {
+							if window[0].hide < 0 {
+								window[0].hide = frame
+							}
+							window = window[1:]
+						}
 					case rdc:
-						return fmt.Errorf("the file has paint-on captions, written while a programme is broadcast; Interlinea translates pop-on captions")
+						if mode == rollUp {
+							endRoll()
+						}
+						if mode != paintOn {
+							// The screen's memory has a cursor of its own.
+							r = nil
+						}
+						mode = paintOn
 					case tr, rtd:
-						mode = 2
+						if mode == rollUp {
+							endRoll()
+						}
+						mode = textMode
 					case edm:
-						if shown != nil && shown.hide < 0 {
-							shown.hide = frame
+						if mode == rollUp {
+							if roll != nil && roll.hasText() {
+								roll.hide = frame
+							}
+							roll, r = nil, nil
+						}
+						hideAll(frame)
+						if mode == paintOn {
+							endPaint()
 						}
 					case eoc:
-						if shown != nil && shown.hide < 0 {
-							shown.hide = frame
+						if mode != popOn && load == nil {
+							// End of Caption also switches to pop-on, showing
+							// what the memory not shown has.
+							mode = popOn
 						}
-						if cur != nil {
-							cur.eoc = pos
-							cur.show, cur.hide = frame, -1
-							for n := 1; n <= 15; n++ {
-								if rw := rows[n]; rw != nil && len(rw.cells) > 0 {
-									cur.rows = append(cur.rows, rw)
+						hideAll(frame)
+						endPaint()
+						if load != nil {
+							load.eoc = pos
+							load.show = frame
+							load.rows = rowsOf(hidden)
+							if load.first.line >= 0 && len(load.rows) > 0 {
+								add(load)
+								screen = append(screen, load)
+							}
+						}
+						load, hidden, r = nil, map[int]*row{}, nil
+					case cr:
+						if mode == rollUp {
+							// The window rolls up a row: the line written goes
+							// up, the top one out of the window.
+							endRoll()
+							keep := window[:0]
+							for _, c := range window {
+								c.rolled++
+								if c.rolled >= depth {
+									if c.hide < 0 {
+										c.hide = frame
+									}
+									continue
 								}
+								keep = append(keep, c)
 							}
-							if len(cur.rows) > 0 {
-								cur.id = "c" + strconv.Itoa(len(f.caps)+1)
-								f.caps = append(f.caps, cur)
-								shown = cur
-							} else {
-								shown = nil
-							}
+							window = keep
 						}
-						cur, rows, r = nil, map[int]*row{}, nil
-					case bs:
-						if r != nil && len(r.cells) > 0 {
-							r.cells = r.cells[:len(r.cells)-1]
+					case bs, der:
+						if r != nil && w.lo == bs {
+							r.back()
 						}
-					case der, cr:
+						if r != nil && w.lo == der {
+							r.clearFrom()
+						}
+						// An edit of a caption's text is part of it: the
+						// translation is written as it is to be shown.
+						if mode == rollUp && roll != nil || mode == popOn && load != nil && load.first.line >= 0 || mode == paintOn && paint != nil {
+							text()
+							prevText = true
+						}
 					}
-				case mode != 1 || cur == nil:
-				case w.lo >= 0x40 && (w.hi >= 0x10 && w.hi <= 0x17):
+				case mode == textMode || mode == 0:
+				case w.lo >= 0x40 && w.hi >= 0x10 && w.hi <= 0x17:
 					// A preamble address code: a row, and where in it.
 					n := pacRow(w)
 					if n == 0 {
 						continue
 					}
-					r = rows[n]
-					if r == nil {
-						r = &row{n: n}
-						rows[n] = r
-					}
 					a := (w.lo - 0x40) & 0x1F
-					r.attr = a
+					col := 0
 					if a >= 0x10 {
-						r.col = int(a-0x10) / 2 * 4
-					} else {
-						r.col = 0
+						col = int(a-0x10) / 2 * 4
 					}
-					r.cells = nil
-					f.markText(cur, pos)
-				case w.hi == 0x17 && w.lo >= 0x21 && w.lo <= 0x23:
-					// Tab offset.
-					if r != nil {
-						if len(r.cells) == 0 {
-							r.col += int(w.lo - 0x20)
-						} else {
-							for i := 0; i < int(w.lo-0x20); i++ {
-								r.cells = append(r.cells, cell{r: ' '})
+					switch mode {
+					case popOn, paintOn:
+						m := hidden
+						if mode == paintOn {
+							m = shown
+						}
+						if mode == popOn && load == nil {
+							continue
+						}
+						r = m[n]
+						if r == nil {
+							r = &row{n: n}
+							m[n] = r
+						}
+						r.attr = a
+						r.address(col)
+						text()
+						prevText = true
+						if mode == paintOn {
+							paint.rows = rowsOf(shown)
+							if len(paint.rows) == 0 {
+								// The row has no text yet: it is kept to be
+								// listed once it has.
+								paint.rows = nil
 							}
 						}
+					case rollUp:
+						// The base row; the line goes on where it says.
+						if roll == nil {
+							startRoll(frame)
+						}
+						base = n
+						roll.rows[0].n = n
+						roll.rows[0].attr = a
+						roll.rows[0].address(col)
+						r = roll.rows[0]
 					}
-					f.markText(cur, pos)
+				case w.hi == 0x17 && w.lo >= 0x21 && w.lo <= 0x23:
+					// Tab offset: on in the row.
+					if r != nil {
+						r.tab(int(w.lo - 0x20))
+					}
+					if mode != rollUp {
+						text()
+						prevText = true
+					}
 				case w.hi == 0x11 && w.lo >= 0x20 && w.lo <= 0x2F:
 					// A mid-row code: colour or italics from here on.
+					f.cellAt(&r, mode, roll, &paint, shown, load, hidden, startRoll, frame)
 					if r != nil {
-						r.cells = append(r.cells, cell{code: word{0x11, w.lo}})
+						r.put(cell{code: word{0x11, w.lo}})
 					}
-					f.markText(cur, pos)
+					text()
+					prevText = true
 				case w.hi == 0x11 && w.lo >= 0x30 && w.lo <= 0x3F:
+					f.cellAt(&r, mode, roll, &paint, shown, load, hidden, startRoll, frame)
 					if r != nil {
-						r.cells = append(r.cells, cell{r: special[w.lo-0x30]})
+						r.put(cell{r: special[w.lo-0x30], ext: true})
 					}
-					f.markText(cur, pos)
+					text()
+					prevText = true
 				case (w.hi == 0x12 || w.hi == 0x13) && w.lo >= 0x20 && w.lo <= 0x3F:
 					// An extended character takes the place of the one before.
+					f.cellAt(&r, mode, roll, &paint, shown, load, hidden, startRoll, frame)
 					if r != nil {
-						if len(r.cells) > 0 && r.cells[len(r.cells)-1].code == (word{}) {
-							r.cells = r.cells[:len(r.cells)-1]
-						}
-						r.cells = append(r.cells, cell{r: extended[w.hi-0x12][w.lo-0x20]})
+						r.putExtended(cell{r: extended[w.hi-0x12][w.lo-0x20]})
 					}
-					f.markText(cur, pos)
-				default:
-					// Background colours and the like: kept with the text.
-					f.markText(cur, pos)
+					text()
+					prevText = true
+				case w.hi == 0x10 && w.lo >= 0x20 && w.lo <= 0x2F, w.hi == 0x17 && w.lo >= 0x2D && w.lo <= 0x2F:
+					// Background colours, and black text: with the text.
+					if mode != rollUp {
+						text()
+						prevText = true
+					}
+				}
+				if mode == paintOn && paint != nil {
+					paint.rows = rowsOf(shown)
 				}
 				continue
 			}
-			prevControl, prevPos = false, pos
-			if mode != 1 || cur == nil || w.hi < 0x20 && w.hi != 0 {
+			prevControl = false
+			if mode == 0 || mode == textMode || (w.hi < 0x20 && w.hi != 0) {
+				continue
+			}
+			if w.hi < 0x20 && w.lo < 0x20 {
+				// Padding.
+				continue
+			}
+			f.cellAt(&r, mode, roll, &paint, shown, load, hidden, startRoll, frame)
+			if r == nil {
 				continue
 			}
 			for _, b := range []byte{w.hi, w.lo} {
-				if b >= 0x20 && r != nil {
-					r.cells = append(r.cells, cell{r: basic(b)})
+				if b >= 0x20 {
+					r.put(cell{r: basic(b)})
 				}
 			}
-			if r != nil {
-				f.markText(cur, pos)
+			text()
+			if mode == paintOn && paint != nil {
+				paint.rows = rowsOf(shown)
 			}
 		}
 	}
+	endRoll()
+	for _, c := range f.caps {
+		c.once = f.sentOnce(c)
+	}
+	// Captions with no text (a roll-up line of spaces) are not captions.
+	kept := f.caps[:0]
+	for _, c := range f.caps {
+		if c.hasText() {
+			c.id = "c" + strconv.Itoa(len(kept)+1)
+			kept = append(kept, c)
+		}
+	}
+	f.caps = kept
 	return nil
 }
 
-func hasText(rows map[int]*row) bool {
-	for _, r := range rows {
-		if len(r.cells) > 0 {
-			return true
+// sentOnce reports whether the codes of a caption's text (addresses, tab
+// offsets, mid-row codes, special characters) are sent once each.
+func (f *file) sentOnce(c *caption) bool {
+	var ps []at
+	switch c.mode {
+	case rollUp:
+		ps = c.chars
+	default:
+		for p := c.first; p.line >= 0; p = f.next(p) {
+			ps = append(ps, p)
+			if p == c.last {
+				break
+			}
 		}
 	}
-	return false
+	codes, doubled := 0, 0
+	for i, p := range ps {
+		w := f.word(p)
+		if !w.control() {
+			continue
+		}
+		if i > 0 && f.word(ps[i-1]) == w {
+			doubled++
+			continue
+		}
+		codes++
+	}
+	return codes > 0 && doubled == 0
 }
 
-func (f *file) markText(c *caption, pos at) {
-	if c.text.line < 0 {
-		c.text = pos
+// cellAt makes sure there is a row to write a character in: text written
+// without an address goes to the bottom row (pop-on, paint-on) or the
+// roll-up line.
+func (f *file) cellAt(r **row, mode int, roll *caption, paint **caption, shown map[int]*row, load *caption, hidden map[int]*row, startRoll func(int64), frame int64) {
+	if *r != nil {
+		return
 	}
-	c.end = pos
+	switch mode {
+	case popOn:
+		if load == nil {
+			return
+		}
+		rw := hidden[15]
+		if rw == nil {
+			rw = &row{n: 15}
+			hidden[15] = rw
+		}
+		*r = rw
+	case paintOn:
+		rw := shown[15]
+		if rw == nil {
+			rw = &row{n: 15}
+			shown[15] = rw
+		}
+		*r = rw
+	case rollUp:
+		if roll == nil {
+			startRoll(frame)
+			return
+		}
+		*r = roll.rows[0]
+	}
 }
 
 // pacRow is the row a preamble address code places text in; 0 if it is
@@ -464,7 +981,7 @@ func (c *caption) unit() content.Content {
 			out = out.Append(text.String())
 			text.Reset()
 		}
-		cells := trimCells(r.cells)
+		_, cells := r.span()
 		for _, ce := range cells {
 			if ce.r != 0 {
 				text.WriteRune(ce.r)
@@ -482,17 +999,6 @@ func (c *caption) unit() content.Content {
 	return out
 }
 
-// trimCells drops the spaces at a row's edges.
-func trimCells(cs []cell) []cell {
-	for len(cs) > 0 && cs[0].r == ' ' {
-		cs = cs[1:]
-	}
-	for len(cs) > 0 && cs[len(cs)-1].r == ' ' {
-		cs = cs[:len(cs)-1]
-	}
-	return cs
-}
-
 // Extract returns the captions of a Scenarist file as units.
 func Extract(data []byte, lang string) (*filter.Extraction, error) {
 	f, err := parse(data)
@@ -505,20 +1011,43 @@ func Extract(data []byte, lang string) (*filter.Extraction, error) {
 		if strings.TrimSpace(src.Plain()) == "" {
 			continue
 		}
-		drop := f.lines[c.eoc.line].drop
-		hide := c.hide
-		if hide < 0 {
-			hide = c.show
+		drop := len(f.lines) > 0 && f.lines[0].drop
+		key := timecode(c.show, drop) + " -->"
+		hide := c.show
+		if c.hide >= 0 {
+			hide = c.hide
+			key += " " + timecode(c.hide, drop)
 		}
-		key := timecode(c.show, drop) + " --> " + timecode(hide, drop)
-		if c.hide < 0 {
-			key = timecode(c.show, drop) + " -->"
+		notes := []string{key}
+		switch c.mode {
+		case rollUp:
+			notes = append(notes, "A line of roll-up captions: it is shown as it is written and rolls up with the lines after it.")
+		case paintOn:
+			notes = append(notes, "Paint-on captions: shown as they are written.")
 		}
 		ex.Blocks = append(ex.Blocks, filter.Block{ID: c.id, Part: filter.PartBody})
-		ex.Units = append(ex.Units, filter.Unit{ID: c.id, Block: c.id, Source: src, Key: key, Notes: []string{key},
+		ex.Units = append(ex.Units, filter.Unit{ID: c.id, Block: c.id, Source: src, Key: key, Notes: notes,
 			Timing: &filter.Timing{Start: ms(c.show), End: ms(hide), LineLimit: Columns}})
 	}
 	return ex, nil
+}
+
+// change is what a translated caption does to the file: the pairs it
+// takes out, and the pairs it puts in before the first of them.
+type change struct {
+	at     at
+	remove []at
+	words  []word
+	// from is where each of words was in the file, for the pairs kept as
+	// they were (a pop-on load's codes); none for the pairs written.
+	from []at
+	// anchor is the pair of words that must be sent in frame, so the
+	// caption shows when it did.
+	anchor int
+	frame  int64
+	// erase: an erase sent while the caption before is still shown may be
+	// taken into these pairs, at its frame (a pop-on load).
+	erase bool
 }
 
 // Merge returns the file with its captions translated.
@@ -527,105 +1056,96 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	// The new words of each translated caption, and where its show
-	// frame must be.
-	type load struct {
-		c     *caption
-		words []word
-		eocAt int // the End of Caption pair's index in words
-	}
-	var loads []load
+	var changes []change
 	for _, c := range f.caps {
 		t, ok := tr[c.id]
-		if !ok || len(t) == 0 {
+		if !ok || len(t) == 0 || t.Equal(c.unit()) {
+			// A caption translated as it was (a name, a number, symbols)
+			// is left as the source sends it.
 			continue
 		}
-		ws, err := f.compose(c, t)
+		ch, err := f.changeFor(c, t)
 		if err != nil {
-			return nil, fmt.Errorf("caption at %s: %v", timecode(c.show, f.lines[c.eoc.line].drop), err)
+			drop := len(f.lines) > 0 && f.lines[0].drop
+			return nil, fmt.Errorf("caption at %s: %v", timecode(c.show, drop), err)
 		}
-		// The codes before the text (load, erase) and after it (erase,
-		// end of caption) are kept as they were.
-		before := f.span(c.load, c.text, false)
-		after := f.span(c.end, c.eoc, true)
-		var all []word
-		all = append(all, before...)
-		all = append(all, ws...)
-		n := len(all)
-		all = append(all, after...)
-		eocIdx := n + len(after) - 1
-		for i := n; i < len(all); i++ {
-			if all[i].hi&^0x08 == 0x14 && all[i].lo == eoc {
-				eocIdx = i
-				break
-			}
-		}
-		loads = append(loads, load{c, all, eocIdx})
+		changes = append(changes, ch)
 	}
-	if len(loads) == 0 {
+	if len(changes) == 0 {
 		return data, nil
 	}
-	// The lines with their new words: a caption's load goes in the line it
-	// starts in, and the pairs it had in later lines are taken out.
+	changes = nest(changes)
+	removed := map[at]bool{}
+	starts := map[at][]change{}
+	for _, ch := range changes {
+		for _, p := range ch.remove {
+			removed[p] = true
+		}
+		if len(ch.words) > 0 {
+			starts[ch.at] = append(starts[ch.at], ch)
+		}
+	}
 	type out struct {
 		words   []word
 		want    int64 // the frame it should start in
 		changed bool
 		keep    *line
-		// eoc is the index of the End of Caption of a load the line
-		// starts with; -1 for none.
-		eoc int
+		// anchor is the index of the pair that must come in its frame;
+		// -1 for none. erase: an erase line before may be taken in.
+		anchor int
+		erase  bool
+		// slack is how far the source's line already reached back into the
+		// one before it (sent while that was still being sent): the
+		// written line may too, so it keeps the source's timing.
+		slack int64
 	}
-	outs := make([]*out, len(f.lines))
+	// The lines with their new pairs. A line is cut where a translated
+	// caption starts and where what it had after one goes on, so each part
+	// keeps its own time: a caption's at its anchor, the rest where it was.
+	var outs []*out
+	prevEnd := int64(-1)
 	for i, ln := range f.lines {
-		outs[i] = &out{words: ln.words, want: ln.frame, keep: ln, eoc: -1}
-	}
-	// Each line's pairs as indexes still kept.
-	removed := map[at]bool{}
-	starts := map[int][]load{}
-	for _, l := range loads {
-		for p := l.c.load; ; p = f.next(p) {
-			removed[p] = true
-			if p == l.c.eoc {
-				break
+		o := &out{want: ln.frame, keep: ln, anchor: -1, slack: max(0, prevEnd-ln.frame)}
+		prevEnd = ln.frame + int64(len(ln.words))
+		cut := func(want int64) {
+			if len(o.words) > 0 {
+				// A part of the line: written with its own time code.
+				o.changed = true
+				outs = append(outs, o)
 			}
+			o = &out{want: want, keep: ln, anchor: -1, changed: true}
 		}
-		// The second of the doubled End of Caption.
-		if q := f.next(l.c.eoc); q.line >= 0 && f.word(q) == f.word(l.c.eoc) {
-			removed[q] = true
-			l.words = append(l.words[:l.eocAt+1], append([]word{f.word(q)}, l.words[l.eocAt+1:]...)...)
-		}
-		starts[l.c.load.line] = append(starts[l.c.load.line], l)
-	}
-	for i, ln := range f.lines {
-		var ws []word
-		changed := false
+		afterChange := false
 		for j, w := range ln.words {
-			for _, l := range starts[i] {
-				if l.c.load.word == j {
-					// The load starts here: its words go in now, timed so
-					// End of Caption comes in the frame it did.
-					if len(ws) == 0 {
-						outs[i].want = f.frameOf(l.c.eoc) - int64(l.eocAt)
-						outs[i].eoc = l.eocAt
-					}
-					ws = append(ws, l.words...)
-					changed = true
+			if chs := starts[at{i, j}]; len(chs) > 0 {
+				cut(0)
+				o.anchor = chs[0].anchor
+				o.want = chs[0].frame - int64(o.anchor)
+				o.erase = chs[0].erase
+				for _, ch := range chs {
+					o.words = append(o.words, ch.words...)
 				}
+				afterChange = true
 			}
 			if removed[at{i, j}] {
-				changed = true
+				o.changed = true
 				continue
 			}
-			ws = append(ws, w)
+			if afterChange {
+				cut(ln.frame + int64(j))
+				afterChange = false
+			}
+			o.words = append(o.words, w)
 		}
-		outs[i].words, outs[i].changed = ws, changed
+		if len(o.words) > 0 || len(outs) == 0 || outs[len(outs)-1].keep != ln {
+			outs = append(outs, o)
+		}
 	}
 	// A load that must start before an erase sent while the caption before
 	// is still shown takes the erase in, at its frame: the caption before
 	// is erased when it was, and this one shown when it was.
 	for i, o := range outs {
-		if o.eoc < 0 {
+		if o.anchor < 0 || !o.erase {
 			continue
 		}
 		for k := i - 1; k >= 0; k-- {
@@ -633,25 +1153,29 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 			if len(prev.words) == 0 {
 				continue
 			}
-			if prev.want+int64(len(prev.words)) <= o.want || !eraseOnly(prev.words) {
+			if prev.want+int64(len(prev.words)) <= o.want || !eraseOnly(prev.words, true) {
 				break
 			}
-			show := o.want + int64(o.eoc)
-			start := show - int64(o.eoc+len(prev.words))
+			show := o.want + int64(o.anchor)
+			start := show - int64(o.anchor+len(prev.words))
 			p := int(prev.want - start)
-			if p < 0 || p > o.eoc {
+			if p < 0 || p > o.anchor {
 				break
 			}
 			// Not between the two of a doubled code.
 			for p > 0 && p < len(o.words) && o.words[p] == o.words[p-1] && o.words[p].control() {
 				p++
 			}
-			if p > o.eoc {
+			if p > o.anchor {
+				break
+			}
+			// Erasing the memory a caption loads into only before its text.
+			if !eraseOnly(prev.words, false) && p > firstText(o.words) {
 				break
 			}
 			o.words = append(o.words[:p], append(append([]word(nil), prev.words...), o.words[p:]...)...)
-			o.eoc += len(prev.words)
-			o.want = show - int64(o.eoc)
+			o.anchor += len(prev.words)
+			o.want = show - int64(o.anchor)
 			prev.words = nil
 		}
 	}
@@ -663,16 +1187,18 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 		nl = "\r\n"
 	}
 	b.WriteString(strings.TrimSuffix(strings.SplitN(f.src, "\n", 2)[0], "\r") + nl)
-	end := int64(-1)
+	end, last := int64(-1), int64(0)
 	for _, o := range outs {
 		if len(o.words) == 0 {
 			continue
 		}
-		start := o.want
-		if start < end {
-			start = end
-			o.changed = true
+		start := max(o.want, 0)
+		if start < end-o.slack {
+			start = end - o.slack
 		}
+		// Time codes go on, never back.
+		start = max(start, last)
+		last = start
 		end = start + int64(len(o.words))
 		b.WriteString(nl)
 		if !o.changed && start == o.keep.frame {
@@ -697,10 +1223,145 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 	return []byte(b.String()), nil
 }
 
-// eraseOnly reports whether a line only erases the caption shown.
-func eraseOnly(ws []word) bool {
+// changeFor is what a translated caption does to the file.
+func (f *file) changeFor(c *caption, t content.Content) (change, error) {
+	switch c.mode {
+	case popOn:
+		ws, err := f.compose(c, t)
+		if err != nil {
+			return change{}, err
+		}
+		// The codes before the text (load, erase) and after it (erase,
+		// end of caption) are kept as they were.
+		before, bFrom := f.spanAt(c.load, c.first, false)
+		after, aFrom := f.spanAt(c.last, c.eoc, true)
+		var all []word
+		var from []at
+		all = append(all, before...)
+		from = append(from, bFrom...)
+		all = append(all, ws...)
+		for range ws {
+			from = append(from, at{-1, -1})
+		}
+		// What was sent between the text in other modes (a paint-on caption)
+		// is kept, after the translation.
+		mid, mFrom := f.otherModes(c)
+		all = append(all, mid...)
+		from = append(from, mFrom...)
+		n := len(all)
+		all = append(all, after...)
+		from = append(from, aFrom...)
+		eocIdx := len(all) - 1
+		for i := n; i < len(all); i++ {
+			if all[i].hi&^0x08 == 0x14 && all[i].lo == eoc {
+				eocIdx = i
+				break
+			}
+		}
+		var remove []at
+		for p := c.load; ; p = f.next(p) {
+			remove = append(remove, p)
+			if p == c.eoc {
+				break
+			}
+		}
+		// The second of the doubled End of Caption.
+		if q := f.next(c.eoc); q.line >= 0 && f.word(q) == f.word(c.eoc) {
+			remove = append(remove, q)
+			all = append(all[:eocIdx+1], append([]word{f.word(q)}, all[eocIdx+1:]...)...)
+			from = append(from[:eocIdx+1], append([]at{q}, from[eocIdx+1:]...)...)
+		}
+		return change{at: c.load, remove: remove, words: all, from: from, anchor: eocIdx, frame: f.frameOf(c.eoc), erase: true}, nil
+	case paintOn:
+		ws, err := f.compose(c, t)
+		if err != nil {
+			return change{}, err
+		}
+		var remove []at
+		for p := c.first; p.line >= 0; p = f.next(p) {
+			remove = append(remove, p)
+			if p == c.last {
+				break
+			}
+		}
+		return change{at: c.first, remove: remove, words: ws, anchor: firstText(ws), frame: f.frameOf(c.first)}, nil
+	default:
+		ws, moved, err := f.composeRoll(c, t)
+		if err != nil {
+			return change{}, err
+		}
+		from, remove := c.chars[0], c.chars
+		if moved {
+			// The translation brings its own address: the source's, right
+			// before the text, goes, so the text is not sent later.
+			for p := f.prev(from); p.line >= 0 && isAddress(f.word(p)); p = f.prev(p) {
+				from = p
+				remove = append([]at{p}, remove...)
+			}
+		}
+		return change{at: from, remove: remove, words: ws, anchor: firstText(ws), frame: f.frameOf(c.chars[0])}, nil
+	}
+}
+
+// firstText is the index of the first pair with text: codes the
+// translation needs before it (an address) are sent ahead of the frame
+// the text was, so it shows when the source's did.
+func firstText(ws []word) int {
+	for i, w := range ws {
+		if !w.control() {
+			return i
+		}
+	}
+	return 0
+}
+
+// otherModes is what a pop-on caption's text has between its first and
+// last pair that was not sent to load it: pairs sent after a switch to
+// another mode, up to and with the switch back, and erases of the screen.
+func (f *file) otherModes(c *caption) ([]word, []at) {
+	var ws []word
+	var where []at
+	loading, kept := true, false
+	var prev word
+	for p := c.first; p.line >= 0 && p != c.last; p = f.next(p) {
+		w := f.word(p)
+		if w.control() && (w.hi >= 0x18) != f.channel2 {
+			continue
+		}
+		if w.control() && w == prev {
+			// The second of a doubled code goes where the first did.
+			if kept {
+				ws, where = append(ws, w), append(where, p)
+			}
+			prev = word{}
+			continue
+		}
+		prev = word{}
+		if w.control() {
+			prev = w
+		}
+		// An erase of the screen while loading is not part of the load.
+		kept = !loading || w.hi&^0x08 == 0x14 && w.lo == edm
+		if w.hi&^0x08 == 0x14 {
+			switch w.lo {
+			case rdc, ru2, ru3, ru4, tr, rtd:
+				loading, kept = false, true
+			case rcl:
+				loading = true
+			}
+		}
+		if kept {
+			ws, where = append(ws, w), append(where, p)
+		}
+	}
+	return ws, where
+}
+
+// eraseOnly reports whether a line only erases the caption shown or, with
+// loading, the memory captions load into.
+func eraseOnly(ws []word, loading bool) bool {
 	for _, w := range ws {
-		if w.hi&^0x08 != 0x14 || w.lo != edm {
+		if w.hi&^0x08 != 0x14 || w.lo != edm && !(loading && w.lo == enm) {
 			return false
 		}
 	}
@@ -710,6 +1371,28 @@ func eraseOnly(ws []word) bool {
 func (f *file) word(p at) word { return f.lines[p.line].words[p.word] }
 
 func (f *file) frameOf(p at) int64 { return f.lines[p.line].frame + int64(p.word) }
+
+func (f *file) prev(p at) at {
+	if p.word > 0 {
+		return at{p.line, p.word - 1}
+	}
+	for l := p.line - 1; l >= 0; l-- {
+		if n := len(f.lines[l].words); n > 0 {
+			return at{l, n - 1}
+		}
+	}
+	return at{-1, -1}
+}
+
+// isAddress reports whether a pair is a preamble address code or a tab
+// offset, on either channel.
+func isAddress(w word) bool {
+	hi := w.hi &^ 0x08
+	if hi == 0x17 && w.lo >= 0x21 && w.lo <= 0x23 {
+		return true
+	}
+	return w.lo >= 0x40 && w.lo <= 0x7f && pacRow(word{hi, w.lo}) > 0
+}
 
 func (f *file) next(p at) at {
 	if p.word+1 < len(f.lines[p.line].words) {
@@ -723,20 +1406,81 @@ func (f *file) next(p at) at {
 	return at{-1, -1}
 }
 
-// span is the words from one place to another, without the first or,
-// with last, without the first and with the last.
-func (f *file) span(from, to at, last bool) []word {
+// spanAt is the words from one place to another, with the first and
+// without the last or, with last, without the first and with the last;
+// and where each is.
+func (f *file) spanAt(from, to at, last bool) ([]word, []at) {
 	var out []word
+	var where []at
 	p := from
 	if last {
 		p = f.next(p)
 	}
 	for p.line >= 0 && p != to {
-		out = append(out, f.word(p))
+		out, where = append(out, f.word(p)), append(where, p)
 		p = f.next(p)
 	}
 	if last && p == to {
-		out = append(out, f.word(p))
+		out, where = append(out, f.word(p)), append(where, p)
+	}
+	return out, where
+}
+
+// nest puts a change made within the pairs another keeps as they were (a
+// paint-on caption sent while a pop-on one loads) into that one's, where
+// its pairs were; a pair kept that another change takes out goes.
+func nest(changes []change) []change {
+	startAt := map[at]int{}
+	removedBy := map[at]int{}
+	for i, ch := range changes {
+		startAt[ch.at] = i
+		for _, p := range ch.remove {
+			if _, ok := removedBy[p]; !ok || p == ch.at {
+				removedBy[p] = i
+			}
+		}
+	}
+	taken := map[int]bool{}
+	for i := range changes {
+		ch := &changes[i]
+		if ch.from == nil || taken[i] {
+			continue
+		}
+		var words []word
+		var from []at
+		anchor := ch.anchor
+		for k, w := range ch.words {
+			p := ch.from[k]
+			if p.line >= 0 {
+				if j, ok := startAt[p]; ok && j != i && !taken[j] {
+					taken[j] = true
+					if k < ch.anchor {
+						anchor += len(changes[j].words)
+					}
+					words = append(words, changes[j].words...)
+					for range changes[j].words {
+						from = append(from, at{-1, -1})
+					}
+				}
+				if j, ok := removedBy[p]; ok && j != i {
+					if k < ch.anchor {
+						anchor--
+					}
+					continue
+				}
+			}
+			words, from = append(words, w), append(from, p)
+		}
+		ch.words, ch.from, ch.anchor = words, from, anchor
+	}
+	var out []change
+	for i, ch := range changes {
+		if !taken[i] {
+			out = append(out, ch)
+		} else {
+			// Its pairs still go from where they were.
+			out = append(out, change{at: ch.at, remove: ch.remove})
+		}
 	}
 	return out
 }
@@ -747,9 +1491,9 @@ type piece struct {
 	code *word
 }
 
-// compose writes a caption's translation as pairs: a row's address, its
-// text and codes, row by row.
-func (f *file) compose(c *caption, t content.Content) ([]word, error) {
+// rowsOf reads a translation into rows of text and mid-row codes: a new
+// row at each break of the source and each line break typed in.
+func (c *caption) translatedRows(t content.Content) [][]piece {
 	src := c.unit()
 	codes := map[string]word{}
 	breaks := map[string]bool{}
@@ -778,14 +1522,87 @@ func (f *file) compose(c *caption, t content.Content) ([]word, error) {
 			rows[len(rows)-1] = append(rows[len(rows)-1], piece{text: part})
 		}
 	}
-	// Rows too long for the screen are wrapped at a space.
-	var lines [][]piece
+	var out [][]piece
 	for _, r := range rows {
-		r = trimPieces(r)
-		if len(r) == 0 {
+		if r = trimPieces(r); len(r) > 0 {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// encodeRow writes a row's text and codes as pairs: two basic characters
+// a pair, each special or extended character and mid-row code a pair of
+// its own, sent twice. width is the columns the row takes.
+func encodeRow(ln []piece, once bool) (out []word, width int, err error) {
+	pend := byte(0)
+	char := func(b byte) {
+		if pend == 0 {
+			pend = b
+			return
+		}
+		out = append(out, word{pend, b})
+		pend = 0
+	}
+	code := func(w word) {
+		if pend != 0 {
+			out = append(out, word{pend, 0})
+			pend = 0
+		}
+		out = append(out, w)
+		if !once {
+			out = append(out, w)
+		}
+	}
+	for _, p := range ln {
+		if p.code != nil {
+			code(*p.code)
+			width++
 			continue
 		}
-		lines = append(lines, wrap(r)...)
+		for _, r := range p.text {
+			enc, err := encode(r)
+			if err != nil {
+				return nil, 0, err
+			}
+			width++
+			switch {
+			case len(enc) == 1:
+				char(enc[0])
+			case enc[0] == 0x11:
+				code(word{enc[0], enc[1]})
+			default:
+				// The basic letter first, for decoders without the
+				// extended ones; the extended code takes its place.
+				char(enc[2])
+				code(word{enc[0], enc[1]})
+			}
+		}
+	}
+	if pend != 0 {
+		out = append(out, word{pend, 0})
+	}
+	return out, width, nil
+}
+
+func (f *file) onChannel(out []word) []word {
+	if f.channel2 {
+		for i := range out {
+			if out[i].control() {
+				out[i].hi |= 0x08
+			}
+		}
+	}
+	return out
+}
+
+// compose writes a pop-on or paint-on caption's translation as pairs: a
+// row's address, its text and codes, row by row.
+func (f *file) compose(c *caption, t content.Content) ([]word, error) {
+	var lines [][]piece
+	for _, r := range c.translatedRows(t) {
+		// Rows too long for the screen are wrapped at a space.
+		lines = append(lines, wrap(r, Columns)...)
 	}
 	if len(lines) == 0 {
 		return nil, fmt.Errorf("the translation is empty")
@@ -800,7 +1617,10 @@ func (f *file) compose(c *caption, t content.Content) ([]word, error) {
 	}
 	var out []word
 	twice := func(w word) {
-		out = append(out, w, w)
+		out = append(out, w)
+		if !c.once {
+			out = append(out, w)
+		}
 	}
 	for i, ln := range lines {
 		// The source's row that stands where this one does, counted from
@@ -810,51 +1630,9 @@ func (f *file) compose(c *caption, t content.Content) ([]word, error) {
 			k = 0
 		}
 		tmpl := c.rows[k]
-		width := 0
-		var cellsOut []word
-		pend := byte(0)
-		flushChar := func(b byte) {
-			if pend == 0 {
-				pend = b
-				return
-			}
-			cellsOut = append(cellsOut, word{pend, b})
-			pend = 0
-		}
-		padCode := func(w word) {
-			if pend != 0 {
-				cellsOut = append(cellsOut, word{pend, 0})
-				pend = 0
-			}
-			cellsOut = append(cellsOut, w, w)
-		}
-		for _, p := range ln {
-			if p.code != nil {
-				padCode(*p.code)
-				width++
-				continue
-			}
-			for _, r := range p.text {
-				enc, err := encode(r)
-				if err != nil {
-					return nil, err
-				}
-				width++
-				switch {
-				case len(enc) == 1:
-					flushChar(enc[0])
-				case enc[0] == 0x11:
-					padCode(word{enc[0], enc[1]})
-				default:
-					// The basic letter first, for decoders without the
-					// extended ones; the extended code takes its place.
-					flushChar(enc[2])
-					padCode(word{enc[0], enc[1]})
-				}
-			}
-		}
-		if pend != 0 {
-			cellsOut = append(cellsOut, word{pend, 0})
+		cells, width, err := encodeRow(ln, c.once)
+		if err != nil {
+			return nil, err
 		}
 		col := align(tmpl, width)
 		n := first + i
@@ -877,16 +1655,55 @@ func (f *file) compose(c *caption, t content.Content) ([]word, error) {
 		if styled {
 			twice(word{0x11, 0x20 + tmpl.attr})
 		}
-		out = append(out, cellsOut...)
+		out = append(out, cells...)
 	}
-	if f.channel2 {
-		for i := range out {
-			if out[i].control() {
-				out[i].hi |= 0x08
+	return f.onChannel(out), nil
+}
+
+// composeRoll writes a roll-up line's translation as pairs: its text, and
+// where it is longer than the row has columns from where the line starts,
+// a carriage return and the rest on the next line.
+func (f *file) composeRoll(c *caption, t content.Content) (ws []word, moved bool, err error) {
+	rows := c.translatedRows(t)
+	if len(rows) == 0 {
+		return nil, false, fmt.Errorf("the translation is empty")
+	}
+	start, _ := c.rows[0].span()
+	var out []word
+	firstLine := true
+	for _, r := range rows {
+		width := Columns
+		if firstLine {
+			// A line that would run past the last column from where the
+			// source's starts is addressed further left, as far as it needs
+			// to the indent before.
+			if w := piecesWidth(r); start+w > Columns {
+				// An indent alone, with no tab offset after it: no longer to
+				// send than the source's address.
+				start, moved = max(0, Columns-w)/4*4, true
+				out = append(out, pac(c.rows[0].n, 0x10+byte(start/4)*2))
+				if !c.once {
+					out = append(out, out[len(out)-1])
+				}
 			}
+			width = Columns - start
+		}
+		for _, ln := range wrap(r, width) {
+			if !firstLine {
+				out = append(out, word{0x14, cr})
+				if !c.once {
+					out = append(out, word{0x14, cr})
+				}
+			}
+			cells, _, err := encodeRow(ln, c.once)
+			if err != nil {
+				return nil, false, err
+			}
+			out = append(out, cells...)
+			firstLine = false
 		}
 	}
-	return out, nil
+	return f.onChannel(out), moved, nil
 }
 
 func trimPieces(r []piece) []piece {
@@ -905,9 +1722,22 @@ func trimPieces(r []piece) []piece {
 	return r
 }
 
+// piecesWidth is the columns a row of pieces takes.
+func piecesWidth(ps []piece) int {
+	n := 0
+	for _, p := range ps {
+		if p.code != nil {
+			n++
+		} else {
+			n += utf8.RuneCountInString(p.text)
+		}
+	}
+	return n
+}
+
 // wrap cuts a row longer than a caption's columns at its last space that
 // fits, or where it must.
-func wrap(r []piece) [][]piece {
+func wrap(r []piece, cols int) [][]piece {
 	width := func(ps []piece) int {
 		n := 0
 		for _, p := range ps {
@@ -920,7 +1750,7 @@ func wrap(r []piece) [][]piece {
 		return n
 	}
 	var out [][]piece
-	for width(r) > Columns {
+	for width(r) > cols {
 		// The cells of the row, to find where to cut.
 		n := 0
 		cut, cutPiece, cutAt := -1, 0, 0
@@ -930,7 +1760,7 @@ func wrap(r []piece) [][]piece {
 				continue
 			}
 			for j, ch := range p.text {
-				if n >= Columns {
+				if n >= cols {
 					break
 				}
 				if ch == ' ' {
@@ -947,9 +1777,9 @@ func wrap(r []piece) [][]piece {
 					n++
 					continue
 				}
-				if n+utf8.RuneCountInString(p.text) >= Columns {
+				if n+utf8.RuneCountInString(p.text) >= cols {
 					runes := []rune(p.text)
-					cutPiece, cutAt = i, len(string(runes[:Columns-n]))
+					cutPiece, cutAt = i, len(string(runes[:cols-n]))
 					break
 				}
 				n += utf8.RuneCountInString(p.text)
@@ -972,12 +1802,8 @@ func wrap(r []piece) [][]piece {
 // was centred, at the right edge where it stood there, else where it
 // started.
 func align(src *row, width int) int {
-	sw := len(trimCells(src.cells))
-	lead := len(src.cells) - len(trimLeft(src.cells))
-	start := src.col + lead
-	if src.attr < 0x10 && src.attr&^1 != 0 {
-		start++
-	}
+	start, cells := src.span()
+	sw := len(cells)
 	center := float64(start) + float64(sw)/2
 	switch {
 	case center >= 13 && center <= 19 && start > 0:
@@ -989,11 +1815,4 @@ func align(src *row, width int) int {
 		return max(0, Columns-width)
 	}
 	return start
-}
-
-func trimLeft(cs []cell) []cell {
-	for len(cs) > 0 && cs[0].r == ' ' {
-		cs = cs[1:]
-	}
-	return cs
 }

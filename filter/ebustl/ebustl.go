@@ -23,8 +23,10 @@
 // The original programme and episode titles of the GSI block are units
 // too, at most 32 characters each; their translations are written to the
 // translated programme and episode titles, in the GSI block's code page
-// (437, 850, 860, 863 or 865). A title in letters the code page lacks is
-// left out, as the format can't hold it.
+// (437, 850, 860, 863 or 865). A title in letters the code page lacks, or
+// longer than the field, is refused with that reason: the translator
+// writes it in letters the header holds (a Russian title in Latin
+// letters), as the note of the title says.
 package ebustl
 
 import (
@@ -120,7 +122,13 @@ func parse(data []byte) (*file, error) {
 			cur = &subtitle{first: i}
 		}
 		cur.count++
-		cur.raw = append(cur.raw, b.text()...)
+		// Each block's text ends with unused space when it doesn't fill
+		// the block; the text goes on in the next.
+		t := b.text()
+		for len(t) > 0 && t[len(t)-1] == unused {
+			t = t[:len(t)-1]
+		}
+		cur.raw = append(cur.raw, t...)
 		if b.lastOfSet() || b.ebn() > 0xEF || i == len(f.blocks)-1 {
 			f.close(cur)
 			cur = nil
@@ -133,9 +141,6 @@ func parse(data []byte) (*file, error) {
 }
 
 func (f *file) close(s *subtitle) {
-	if i := bytes.IndexByte(s.raw, unused); i >= 0 {
-		s.raw = s.raw[:i]
-	}
 	s.id = "t" + strconv.Itoa(len(f.subs)+1)
 	first := f.blocks[s.first]
 	s.translatable = !first.comment() && hasText(f.table, s.raw)
@@ -199,6 +204,12 @@ func tokens(table byte, raw []byte) (lead []byte, body []token, trail []byte, er
 		}
 		all = all[1:]
 	}
+	// Spaces before the first word and after the last are layout.
+	if len(all) > 0 && all[0].codes == nil {
+		t := strings.TrimLeft(all[0].text, " ")
+		lead = append(lead, strings.Repeat(" ", len(all[0].text)-len(t))...)
+		all[0].text = t
+	}
 	var tail []byte
 	for len(all) > 0 && (all[len(all)-1].codes != nil || strings.TrimSpace(all[len(all)-1].text) == "") {
 		t := all[len(all)-1]
@@ -210,6 +221,11 @@ func tokens(table byte, raw []byte) (lead []byte, body []token, trail []byte, er
 		}
 		tail = append(append([]byte(nil), b...), tail...)
 		all = all[:len(all)-1]
+	}
+	if n := len(all); n > 0 && all[n-1].codes == nil {
+		t := strings.TrimRight(all[n-1].text, " ")
+		tail = append([]byte(strings.Repeat(" ", len(all[n-1].text)-len(t))), tail...)
+		all[n-1].text = t
 	}
 	// The spaces at a row's edges belong with the break between rows.
 	for i := range all {
@@ -391,7 +407,7 @@ func Extract(data []byte, lang string) (*filter.Extraction, error) {
 		if text := f.title(t.from); text != "" {
 			ex.Blocks = append(ex.Blocks, filter.Block{ID: t.id, Part: filter.PartMeta})
 			ex.Units = append(ex.Units, filter.Unit{ID: t.id, Block: t.id, Source: content.Text(text), Key: t.name, MaxLength: titleSize,
-				Notes: []string{t.name + " of the file's header. Its translation goes into the translated " + strings.ToLower(t.name) + "."}})
+				Notes: []string{fmt.Sprintf("%s of the file's header. Its translation goes into the translated %s: at most %d characters, in the letters of code page %s (Latin letters only).", t.name, strings.ToLower(t.name), titleSize, f.gsi[0:3])}})
 		}
 	}
 	for _, s := range f.subs {
@@ -532,11 +548,22 @@ func Merge(data []byte, lang, targetLang string, tr filter.Translations) ([]byte
 		if !ok || len(tt) == 0 || f.title(t.from) == "" {
 			continue
 		}
-		b, err := f.codePage().NewEncoder().Bytes([]byte(strings.TrimSpace(tt.Plain())))
-		if err != nil || len(b) > titleSize {
-			// Letters the code page lacks, or too long: the field can't
-			// hold it.
-			continue
+		text := strings.TrimSpace(tt.Plain())
+		var b []byte
+		var lacks []string
+		for _, r := range text {
+			c, ok := f.codePage().EncodeRune(r)
+			if !ok {
+				lacks = append(lacks, string(r))
+				continue
+			}
+			b = append(b, c)
+		}
+		if len(lacks) > 0 {
+			return nil, fmt.Errorf("the translated %s has letters the file's header can't hold (code page %s): %s; write it in letters it has, such as Latin ones", strings.ToLower(t.name), f.gsi[0:3], strings.Join(lacks, " "))
+		}
+		if len(b) > titleSize {
+			return nil, fmt.Errorf("the translated %s has %d characters; the file's header holds %d", strings.ToLower(t.name), len(b), titleSize)
 		}
 		field := bytes.Repeat([]byte(" "), titleSize)
 		copy(field, b)

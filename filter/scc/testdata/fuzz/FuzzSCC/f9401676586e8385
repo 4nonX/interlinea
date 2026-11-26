@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Scenarist_SCC V1.0\n0.0.0.0 1420 7020 1C21 1C21 1429 20 00 70 20 1421")

@@ -196,7 +196,7 @@ private slots:
         terminology.insert("termbase", "Formate terms");
         settings.insert("terminology", terminology);
         QJsonArray files;
-        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml", "Vertrag.pdf", "film.ttml", "Untertitel.stl", "film.ass", "Untertitel.scc"};
+        const QStringList names{"Folien.pptx", "Tabelle.xlsx", "Seite.html", "Layout.idml", "Vertrag.pdf", "film.ttml", "Untertitel.stl", "film.ass", "Untertitel.scc", "Live.scc"};
         for (const QString &n : names) {
             const QByteArray data = fixture(n);
             QVERIFY2(!data.isEmpty(), qPrintable(n));
@@ -213,7 +213,7 @@ private slots:
         QVERIFY2(made.ok(), qPrintable(made.error.message));
         const qint64 id = made.object().value("id").toInteger();
         Theme::apply(*qApp);
-        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}, {"Vertrag.pdf", 21}, {"film.ttml", 2}, {"Untertitel.stl", 3}, {"film.ass", 2}, {"Untertitel.scc", 2}};
+        const QHash<QString, int> segments{{"Folien.pptx", 18}, {"Tabelle.xlsx", 4}, {"Seite.html", 5}, {"Layout.idml", 3}, {"Vertrag.pdf", 21}, {"film.ttml", 2}, {"Untertitel.stl", 3}, {"film.ass", 2}, {"Untertitel.scc", 2}, {"Live.scc", 2}};
         for (const QString &n : names) {
             EditorPage ed(m.local(), id, n, QStringLiteral("en-GB"));
             ed.resize(1280, 820);

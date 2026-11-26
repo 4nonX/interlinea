@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/4nonX/interlinea/filter/formats/formatstest"
+	"github.com/4nonX/interlinea/internal/fuzzseed"
 )
 
 // FuzzSTL reads EBU STL files, translates what it reads, and reads the
@@ -11,6 +12,7 @@ import (
 // written can be read.
 func FuzzSTL(f *testing.F) {
 	f.Add(formatstest.Subtitles())
+	fuzzseed.Add(f, "filter/ebustl/testdata/*/*.stl")
 	f.Add(makeSTL('1', cue{sn: 1, vp: 20, text: []byte("\x0D\x0B\x0BHallo\x0A\x0A\x8A\x8A\x0D\x0B\x0B\x03Welt\x0A\x0A")}))
 	f.Add(makeSTL('0', cue{sn: 1, vp: 20, ebn: 0, text: []byte("Gr\xC8u\xFBe\x80x")}, cue{sn: 1, ebn: 0xFE}, cue{sn: 2, vp: 1, text: []byte("\x81\x85y")}))
 	f.Fuzz(func(t *testing.T, data []byte) {

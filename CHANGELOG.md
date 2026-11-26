@@ -20,17 +20,23 @@ takes its notes from its section here.
   to keep their last row in place, with the header updated.
 - SubRip and the other text subtitles made on Windows (Windows-1252) are
   read; a translation with letters that encoding lacks is saved in UTF-8.
-- Scenarist closed captions (.scc, CEA-608): pop-on captions are segments
-  with their times; a translation is loaded again with its rows placed and
-  aligned, long rows wrapped at 32 columns, and its time code moved so the
-  caption still shows when it did. Roll-up and paint-on captions are
-  refused with that reason.
+- Scenarist closed captions (.scc, CEA-608) in all three modes. Pop-on
+  captions are segments with their times; a translation is loaded again
+  with its rows placed and aligned, long rows wrapped at 32 columns, and
+  its time code moved so the caption still shows when it did. Each roll-up
+  line is a segment, written back in place of the line's letters, moved
+  left or rolled on to a next line where it is longer; paint-on captions
+  are painted back in place. The reader is tested against the 142 caption
+  files of pycaption's tests, written to trip decoders up.
 - Subtitle checks: characters in a line, lines in a subtitle and reading
   speed (characters per second), with limits in each project's settings
   (42, 2 and 17 by default). The editor counts them under a subtitle as it
   is typed. Closed captions keep to their 32 columns.
 - EBU STL: the programme and episode titles of the header are translated
-  into its translated titles.
+  into its translated titles. A translated title in letters the header's
+  code page lacks is reported with the letters, not left out. The reader is
+  tested against the 53 files of ttconv's tests (IRT and Sandflow); a
+  subtitle written in extension blocks is read whole.
 - The browser client keeps the notes of document strings (keys, subtitle
   times) as the desktop app and the server do.
 

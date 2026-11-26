@@ -165,21 +165,36 @@ for byte.
   and user data are kept as they are. The original programme and episode
   titles of the header are segments too (32 characters at most); their
   translations go into the header's translated titles, in its code page.
-  A title in letters that code page lacks is left out.
+  The note of a title names that code page; a translated title in letters
+  it lacks, or longer than 32 characters, stops the target file from being
+  written, with the letters named, so it is corrected rather than lost.
 - **Scenarist closed captions (.scc):** CEA-608 captions as US broadcast and
-  streaming exchange them. Each pop-on caption is a segment, shown from its
-  End of Caption until the screen is erased or the next caption shown;
-  rows are parted by tags, colour and italics codes in a row are tags, and
-  special and extended characters (é, ü, ß, ♪...) are read as letters. A
-  translated caption is loaded again: its rows from the caption's bottom
-  row up, aligned as the source's rows were (centred, left or right), a
-  row over the 32 columns wrapped at a space, and the line it is loaded in
-  moved earlier so it still appears when it did; an erase sent while a
-  longer load is under way is taken into the load at its frame. Letters
-  CEA-608 has no code for are refused, naming the letter. Roll-up and
-  paint-on captions, written live, are not translated: such a file is
-  refused with that reason. Captions on channel 2 are read and written on
-  channel 2.
+  streaming exchange them, in all three modes. Rows are parted by tags,
+  colour and italics codes in a row are tags, and special and extended
+  characters (é, ü, ß, ♪...) are read as letters. The screen is read as a
+  decoder keeps it: an address back on a row with text restates the row
+  where the text after it still fits, and text sent past the last column
+  is kept, so every word of a row is there to translate.
+  - Pop-on: each caption is a segment, shown from its End of Caption until
+    the screen is erased or the next caption shown. A translated caption is
+    loaded again: its rows from the caption's bottom row up, aligned as the
+    source's rows were (centred, left or right), a row over the 32 columns
+    wrapped at a space, and the line it is loaded in moved earlier so it
+    still appears when it did; an erase sent while a longer load is under
+    way is taken into the load at its frame.
+  - Roll-up: each line is a segment, shown from its first letter until it
+    rolls out of the window or the screen is erased. The translation takes
+    the place of the line's letters where they were sent; a line too long
+    for the row from where the source's starts is addressed further left,
+    in place of the source's address, and one longer than a row rolls on to
+    the next with a carriage return.
+  - Paint-on: each caption painted between two erases is a segment, shown
+    from its first letter; the translation is painted in its place.
+
+  Letters CEA-608 has no code for are refused, naming the letter. A caption
+  translated as it was (a name, music notes) is left as the source sends
+  it. Captions on channel 2 are read and written on channel 2. Time codes
+  that go back are refused.
 
 Subtitles in Windows-1252, as many made on Windows are, are read as such
 and written back in it; where a translation has letters that encoding
