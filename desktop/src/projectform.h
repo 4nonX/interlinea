@@ -128,6 +128,8 @@ private:
     void fillSegmentation();
     QLabel *problemLabel(const QString &field, QWidget *parent);
     void dropStaleMemories();
+    void pickDictionaries();
+    QList<QJsonObject> dictionariesFor(const QString &lang) const;
     QJsonObject memoryInfo(const QString &name) const;
     QString host() const;
 
@@ -139,6 +141,8 @@ private:
     QStringList m_grammar;
     QJsonArray m_kinds;
     bool m_new = true;
+    // The checks were changed by hand: dictionaries are no longer picked.
+    bool m_checksTouched = false;
     bool m_readOnly = false;
     QStringList m_suggested;
     QStringList m_fixed;

@@ -3,6 +3,7 @@
 #include "apiclient.h"
 #include "connectionmanager.h"
 #include "eventfeed.h"
+#include "icons.h"
 #include "languages.h"
 #include "options.h"
 #include "secretstore.h"
@@ -189,7 +190,7 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
     m_templates = host(body);
 
     page.body->addWidget(Web::panel(tr("Spelling dictionaries"), p, &body));
-    body->addWidget(Web::text(tr("Hunspell dictionaries, as LibreOffice and Firefox use them, checked by the core. Each project chooses one per target language in its checks."), "help", p));
+    body->addWidget(Web::text(tr("Hunspell dictionaries, as LibreOffice and Firefox use them, checked by the core. Each project chooses one per target language in its checks; a new project takes the one that fits each language."), "help", p));
     m_dictionaries = host(body);
 
     page.body->addWidget(Web::panel(tr("Translation services"), p, &body));
@@ -458,10 +459,53 @@ void SettingsPage::fillDictionaries()
         const QString id = c->id();
         if (places.size() > 1)
             m_dictionaries->addWidget(Web::text(c->isLocal() ? tr("On this computer") : tr("On %1").arg(c->displayName()), "fieldLabel", p));
-        const QJsonArray list = m_dictionaryList.value(id);
+        QJsonArray list, included;
+        for (const QJsonValue &v : m_dictionaryList.value(id)) {
+            if (v.toObject().value(QLatin1String("included")).toBool())
+                included.append(v);
+            else
+                list.append(v);
+        }
+        // Those that come with Interlinea, folded away until asked for.
+        if (!included.isEmpty()) {
+            const bool open = m_includedOpen.contains(id);
+            auto *toggle = new QPushButton(p);
+            toggle->setObjectName(QStringLiteral("includedDictionaries"));
+            toggle->setProperty("stepLink", true);
+            toggle->setFlat(true);
+            toggle->setCursor(Qt::PointingHandCursor);
+            toggle->setCheckable(true);
+            toggle->setChecked(open);
+            toggle->setIcon(Icons::get(open ? QStringLiteral("chevron-down") : QStringLiteral("chevron-right"), Theme::color("accentText")));
+            toggle->setText(included.size() == 1 ? tr("1 dictionary comes with Interlinea") : tr("%1 dictionaries come with Interlinea").arg(included.size()));
+            toggle->setAccessibleName(open ? tr("Hide the dictionaries that come with Interlinea") : tr("Show the dictionaries that come with Interlinea"));
+            m_dictionaries->addWidget(toggle, 0, Qt::AlignLeft);
+            connect(toggle, &QPushButton::toggled, this, [this, id](bool on) {
+                if (on)
+                    m_includedOpen.insert(id);
+                else
+                    m_includedOpen.remove(id);
+                fillDictionaries();
+            });
+            if (open) {
+                for (const QJsonValue &v : std::as_const(included)) {
+                    const QJsonObject d = v.toObject();
+                    auto *what = new QWidget(p);
+                    auto *h = new QHBoxLayout(what);
+                    h->setContentsMargins(0, 0, 0, 0);
+                    h->setSpacing(8);
+                    h->addWidget(new QLabel(QStringLiteral("<b>%1</b>").arg(d.value(QLatin1String("name")).toString().toHtmlEscaped()), what));
+                    h->addWidget(Web::langChip(d.value(QLatin1String("lang")).toString(), what));
+                    h->addWidget(Web::text(tr("%1 words").arg(QLocale().toString(d.value(QLatin1String("words")).toInt())), "muted", what), 1);
+                    m_dictionaries->addWidget(listRow(what, nullptr, p));
+                }
+                m_dictionaries->addWidget(Web::text(tr("From the LibreOffice dictionaries, each with its authors' licence. Add one of the same name to use your own instead."), "help", p));
+            }
+            m_dictionaries->addWidget(Web::text(tr("Added"), "fieldLabel", p));
+        }
         if (list.isEmpty())
-            m_dictionaries->addWidget(Web::text(tr("No dictionary yet."), "muted", p));
-        for (const QJsonValue &v : list) {
+            m_dictionaries->addWidget(Web::text(included.isEmpty() ? tr("No dictionary yet.") : tr("None added."), "muted", p));
+        for (const QJsonValue &v : std::as_const(list)) {
             const QJsonObject d = v.toObject();
             const QString name = d.value(QLatin1String("name")).toString();
             auto *what = new QWidget(p);

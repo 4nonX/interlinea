@@ -24,6 +24,10 @@ import { useLocalStore, useWords } from "../store";
 import { MEMORY_FILES, MEMORY_FILES_NOTE, tm, type CoreApi } from "../core";
 import { openMemory, openNewMemory } from "../editor/memory";
 import {
+  allDictionaries,
+  useIncludedDictionaries,
+} from "../editor/spelling";
+import {
   checkOn,
   problemsAt,
   qaKinds,
@@ -966,6 +970,12 @@ export function ChecksSection({
   problems: Problem[];
 }) {
   const { state } = useLocalStore();
+  const included = useIncludedDictionaries();
+  const includedLangs = new Set(included.map((d) => primary(d.lang))).size;
+  const dictionaries = useMemo(
+    () => allDictionaries(state.dictionaries, included),
+    [state.dictionaries, included],
+  );
   const kinds = c ? qaKinds(c) : [];
   const [word, setWord] = useState("");
   const spellingOn = kinds.some((k) => k.kind === "spelling" && checkOn(qa, k));
@@ -1066,7 +1076,7 @@ export function ChecksSection({
         {!spellingOn && <p className="muted">The spelling check is off.</p>}
         <ul className="dict-list">
           {targetLangs.map((t) => {
-            const fit = dictionariesFor(state.dictionaries, t);
+            const fit = dictionariesFor(dictionaries, t);
             const id = `dict-${t}`;
             return (
               <li key={t} className="field-row-inline">
@@ -1102,8 +1112,13 @@ export function ChecksSection({
           })}
         </ul>
         <p className="help">
-          Dictionaries are added once under <a href="#/settings">Settings</a>,
-          from a LibreOffice extension (.oxt) or .aff and .dic files.
+          {includedLangs === 1 &&
+            "A dictionary for one language comes with Interlinea. "}
+          {includedLangs > 1 &&
+            `Dictionaries for ${includedLangs} languages come with Interlinea. `}
+          {includedLangs > 0 ? "Others are" : "Dictionaries are"} added
+          once under <a href="#/settings">Settings</a>, from a LibreOffice
+          extension (.oxt) or .aff and .dic files.
         </p>
         <div className="field">
           <span className="field-label" id="words-label">

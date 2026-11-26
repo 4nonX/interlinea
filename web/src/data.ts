@@ -329,6 +329,8 @@ export interface SpellDictionary {
   lang: LangCode;
   words: number;
   addedAt: string;
+  /** It comes with Interlinea: it is not saved in the browser and can't be deleted. */
+  included?: boolean;
 }
 
 export interface PrepareSettings {

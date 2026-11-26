@@ -19,3 +19,11 @@ The fonts in typeset/fonts (Noto Sans, Noto Sans Arabic, Noto Sans
 Hebrew) are Copyright 2022 The Noto Project Authors and licensed under
 the SIL Open Font License, version 1.1, in typeset/fonts/OFL.txt. They
 are embedded in the PDF files the program makes.
+
+The spelling dictionaries that come with the program (the dictionaries
+folder of the packages) are taken unchanged from the LibreOffice
+dictionaries, https://github.com/LibreOffice/dictionaries. They are separate
+works by their own authors under their own licences (GPL, LGPL, MPL, BSD
+or Creative Commons, some of them under a choice of these). Each one's ZIP
+file holds its authors' readme and licence; README.txt in the folder lists
+them.

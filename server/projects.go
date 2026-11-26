@@ -92,7 +92,7 @@ func (s *Server) catalog(ctx context.Context) (project.Catalog, error) {
 	for _, t := range tbs {
 		cat.Termbases[t.Name] = t.Languages
 	}
-	ds, err := s.cfg.Projects.Dictionaries(ctx)
+	ds, err := s.allDictionaries(ctx)
 	if err != nil {
 		return cat, err
 	}

@@ -19,6 +19,7 @@ import {
   type TranslationMemory,
 } from "../data";
 import { core, download, loadCore, tm, type CoreApi } from "../core";
+import { useDictionaries } from "../editor/spelling";
 import { useLocalStore } from "../store";
 import { confirmedShare } from "../editor/model";
 import {
@@ -84,6 +85,7 @@ export function ProjectSettings({ projectId }: { projectId: string }) {
 
 function SettingsForm({ project }: { project: Project }) {
   const { state, dispatch, notify } = useLocalStore();
+  const dictionaries = useDictionaries(state.dictionaries);
   const [c, setC] = useState(() => core());
   useEffect(() => {
     if (c) return;
@@ -167,7 +169,7 @@ function SettingsForm({ project }: { project: Project }) {
     const ps = validate(c, full, {
       memories: [...state.memories, ...created.map((n) => n.memory)],
       termbases: state.termbases,
-      dictionaries: state.dictionaries,
+      dictionaries,
     });
     if (
       state.projects.some(
@@ -201,7 +203,7 @@ function SettingsForm({ project }: { project: Project }) {
     JSON.stringify(full),
     state.memories,
     state.termbases,
-    state.dictionaries,
+    dictionaries,
     state.projects,
     created,
     added,

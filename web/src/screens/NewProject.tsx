@@ -51,6 +51,7 @@ import {
 import { openRefs, persistMemory } from "../editor/memory";
 import { AnalysisTable } from "../components/AnalysisTable";
 import { takePendingDocs, type PendingDoc } from "../draft";
+import { useDictionaries } from "../editor/spelling";
 import { useLocalStore } from "../store";
 import { fmtDate, fmtNum, plural } from "../format";
 import { LangChip, PageHeader } from "../components/ui";
@@ -142,6 +143,7 @@ function emptyDraft(contextRule: Draft["context"]): Draft {
 
 export function NewProject() {
   const { state, dispatch, notify } = useLocalStore();
+  const dictionaries = useDictionaries(state.dictionaries);
   const [docs, setDocs] = useState<DraftDoc[]>(() => {
     const pending = takePendingDocs();
     return draftDocs(pending);
@@ -339,10 +341,10 @@ export function NewProject() {
       );
       let qa = { ...d.qa, dictionaries: kept };
       if (!touched.checks)
-        qa = withDictionaries(qa, d.targetLangs, state.dictionaries);
+        qa = withDictionaries(qa, d.targetLangs, dictionaries);
       return JSON.stringify(qa) === JSON.stringify(d.qa) ? d : { ...d, qa };
     });
-  }, [draft.targetLangs, touched.checks, state.dictionaries]);
+  }, [draft.targetLangs, touched.checks, dictionaries]);
 
   // Masters for the client are suggested until the user chooses.
   useEffect(() => {
@@ -416,7 +418,7 @@ export function NewProject() {
     const ps = validate(c, full, {
       memories: [...state.memories, ...created.map((n) => n.memory)],
       termbases: state.termbases,
-      dictionaries: state.dictionaries,
+      dictionaries,
     });
     if (
       state.projects.some(
@@ -458,7 +460,7 @@ export function NewProject() {
     JSON.stringify(full),
     state.memories,
     state.termbases,
-    state.dictionaries,
+    dictionaries,
     state.projects,
     state.templates,
     created,

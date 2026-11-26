@@ -7,6 +7,24 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Spelling dictionaries included
+
+- Spelling dictionaries for 22 languages and regions come with the desktop
+  app, the team server and the web app: English (US, UK), German (Germany,
+  Austria, Switzerland), French, Spanish (Spain, Mexico), Italian,
+  Portuguese (Portugal, Brazil), Dutch, Polish, Russian, Swedish, Danish,
+  Norwegian Bokmål, Czech, Korean, Ukrainian, Hungarian and Romanian, from
+  the LibreOffice dictionaries with their authors' licences.
+- A new project spells each target language with the dictionary that fits
+  it, in the desktop app too. Your own dictionaries are added as before; one
+  under the name of an included dictionary takes its place.
+- The server takes the folder from `-dictionaries` (`INTERLINEA_DICTIONARIES`),
+  or finds it next to the program or in the web app's folder. `make
+  dictionaries` fetches and packs them from source.
+- Hunspell dictionaries with numeric flags are read as Hunspell reads them
+  (a flag 0, a flag with text after its number), so the Danish and Turkish
+  dictionaries load.
+
 ### Translation services
 
 - DeepL, Google Cloud Translation, Microsoft Translator, OpenAI (and any

@@ -1,4 +1,8 @@
-import { GrammarServices, ProgramAccess, TranslationServices } from "./Integrations";
+import {
+  GrammarServices,
+  ProgramAccess,
+  TranslationServices,
+} from "./Integrations";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Upload } from "lucide-react";
 import { DEFAULT_USER_NAME, LANGUAGES, lang, type LangCode } from "../data";
@@ -8,6 +12,7 @@ import {
   addDictionary,
   dropDictionary,
   findDictionaries,
+  useIncludedDictionaries,
   type FoundDictionary,
 } from "../editor/spelling";
 import { fmtNum, plural } from "../format";
@@ -110,9 +115,9 @@ export function Settings() {
                 Complete words while you type
               </span>
               <span className="choice-desc">
-                After two letters, the terms found for the segment and the
-                words of its memory matches are offered. Tab or Enter takes
-                one, Escape closes the list.
+                After two letters, the terms found for the segment and the words
+                of its memory matches are offered. Tab or Enter takes one,
+                Escape closes the list.
               </span>
             </span>
           </label>
@@ -205,6 +210,11 @@ export function Settings() {
 
 function Dictionaries() {
   const { state, dispatch, notify } = useStore();
+  const included = useIncludedDictionaries();
+  const isIncluded = (name: string) =>
+    included.some((d) => d.name.toLowerCase() === name.toLowerCase());
+  const isAdded = (name: string) =>
+    state.dictionaries.some((d) => d.name.toLowerCase() === name.toLowerCase());
   const [c, setC] = useState<CoreApi | null>(() => core());
   const input = useRef<HTMLInputElement>(null);
   const [found, setFound] = useState<(FoundDictionary & { pick: LangCode })[]>(
@@ -274,12 +284,52 @@ function Dictionaries() {
       </h2>
       <p className="help">
         Hunspell dictionaries, as LibreOffice and Firefox use them, checked by
-        the core. Each project chooses one per target language in its checks.
+        the core. Each project chooses one per target language in its checks; a
+        new project takes the one that fits each language.
       </p>
+      {included.length > 0 && (
+        <details className="settings-details field">
+          <summary>
+            {included.length === 1
+              ? "1 dictionary comes with Interlinea"
+              : `${included.length} dictionaries come with Interlinea`}
+          </summary>
+          <ul className="settings-list">
+            {included.map((d) => {
+              const users = usedBy(d.name);
+              return (
+                <li key={d.name} className="row">
+                  <span>
+                    <span className="cell-title">{d.name}</span>{" "}
+                    <LangChip code={d.lang} />{" "}
+                    <span className="muted">
+                      {fmtNum(d.words)} words
+                      {isAdded(d.name)
+                        ? ", replaced by the one you added"
+                        : users.length
+                          ? `, used by ${users.join(", ")}`
+                          : ""}
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="help">
+            From the LibreOffice dictionaries, each with its authors' licence.
+            They are fetched when a project first spells with them. Add one of
+            the same name to use your own instead.
+          </p>
+        </details>
+      )}
+      {included.length > 0 && (
+        <span className="field-label">Added in this browser</span>
+      )}
       {state.dictionaries.length > 0 ? (
-        <ul className="settings-list">
+        <ul className="settings-list" aria-label="Added dictionaries">
           {state.dictionaries.map((d) => {
-            const users = usedBy(d.name);
+            // With an included one of the name, projects keep a dictionary.
+            const users = isIncluded(d.name) ? [] : usedBy(d.name);
             return (
               <li key={d.name} className="row">
                 <span>
@@ -287,13 +337,21 @@ function Dictionaries() {
                   <LangChip code={d.lang} />{" "}
                   <span className="muted">
                     {fmtNum(d.words)} words
-                    {users.length ? `, used by ${users.join(", ")}` : ""}
+                    {isIncluded(d.name)
+                      ? ", used instead of the included one"
+                      : users.length
+                        ? `, used by ${users.join(", ")}`
+                        : ""}
                   </span>
                 </span>
                 <ConfirmButton
                   label="Delete"
                   disabled={users.length > 0 || !c}
-                  confirm={`Delete the dictionary ${d.name}?`}
+                  confirm={
+                    isIncluded(d.name)
+                      ? `Delete the dictionary ${d.name}? The included one is used again.`
+                      : `Delete the dictionary ${d.name}?`
+                  }
                   action="Delete"
                   onConfirm={async () => {
                     if (!c) return;
@@ -307,9 +365,13 @@ function Dictionaries() {
           })}
         </ul>
       ) : (
-        <p className="muted">No dictionary yet.</p>
+        <p className="muted">
+          {included.length > 0 ? "None added." : "No dictionary yet."}
+        </p>
       )}
-      {state.dictionaries.some((d) => usedBy(d.name).length) && (
+      {state.dictionaries.some(
+        (d) => !isIncluded(d.name) && usedBy(d.name).length,
+      ) && (
         <p className="help">
           A dictionary a project or template uses can't be deleted; choose
           another there first.
@@ -347,8 +409,14 @@ function Dictionaries() {
                     <option value={d.pick}>{lang(d.pick).name}</option>
                   )}
                 </select>
-                {state.dictionaries.some((x) => x.name === d.name) && (
+                {isAdded(d.name) ? (
                   <span className="muted">replaces the one of this name</span>
+                ) : (
+                  isIncluded(d.name) && (
+                    <span className="muted">
+                      used instead of the included one
+                    </span>
+                  )
                 )}
               </li>
             ))}
@@ -493,15 +561,26 @@ function About() {
         About Interlinea
       </h2>
       <p className="help">
-        Interlinea is free software under the GNU Affero General Public License, version 3: you may use it, pass it on and change it under the terms of that
-        licence. It comes without warranty.
+        Interlinea is free software under the GNU Affero General Public License,
+        version 3: you may use it, pass it on and change it under the terms of
+        that licence. It comes without warranty.
       </p>
       <p className="help">Copyright © 2026 Dan Dreßen.</p>
       <div className="row">
-        <a className="btn btn-small" href="LICENSE.txt" target="_blank" rel="noreferrer">
+        <a
+          className="btn btn-small"
+          href="LICENSE.txt"
+          target="_blank"
+          rel="noreferrer"
+        >
           Read the licence
         </a>
-        <a className="btn btn-small" href="https://github.com/4nonX/interlinea" target="_blank" rel="noreferrer">
+        <a
+          className="btn btn-small"
+          href="https://github.com/4nonX/interlinea"
+          target="_blank"
+          rel="noreferrer"
+        >
           Source code
         </a>
       </div>
@@ -527,9 +606,9 @@ function SavedWork() {
         <p className="detect detect-warn" role="status">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>
-            This browser does not let Interlinea save ({st.error}). Your work
-            is kept only until you close the page. Allow site data for this
-            page, or leave private browsing, to keep it.
+            This browser does not let Interlinea save ({st.error}). Your work is
+            kept only until you close the page. Allow site data for this page,
+            or leave private browsing, to keep it.
           </span>
         </p>
       )}

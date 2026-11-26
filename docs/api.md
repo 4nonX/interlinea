@@ -910,11 +910,13 @@ Access: those who make projects and administrators.
 
 ### `GET /api/dictionaries`
 
-Lists the spelling dictionaries installed on the server.
+Lists the spelling dictionaries on the server: those installed and those that come with Interlinea (included), by name.
+
+An installed dictionary takes the place of an included one of its name.
 
 Access: signed in.
 
-- Answer: 200 OK: list of [projectdb.Dictionary](#projectdbdictionary)
+- Answer: 200 OK: list of [DictionaryView](#dictionaryview)
 - Errors: 401, 403 (see [Error](#error))
 
 ### `POST /api/dictionaries`
@@ -934,7 +936,7 @@ Access: those who make projects (manage on all projects) and administrators.
 
 Removes a spelling dictionary.
 
-One a project or template spells with is not removed; the answer names them.
+One a project or template spells with is not removed; the answer names them. Included dictionaries can't be removed; an installed one of the same name can, and the included one is then used again.
 
 Access: those who make projects and administrators.
 
@@ -1916,6 +1918,20 @@ alignedFile is one of the two documents of an alignment: its name, which tells t
 | `memories` | list of [tm.Info](#tminfo) | Memories are new memories to make with the project (its own memories); the settings refer to them by name. |
 | `settings` | [project.Settings](#projectsettings) |  |
 | `termbase` | [term.Definition](#termdefinition) | Termbase makes the project termbase on the server (Layered or Own mode with location server): layered over the settings' masters, or on its own. Its name goes into the settings. |
+
+### DictionaryView
+
+dictionaryView is a spelling dictionary as the API lists it.
+
+| Field | Type | Description |
+|---|---|---|
+| `createdAt` | string (date-time) |  |
+| `createdBy` | string |  |
+| `included` | boolean | Included says it comes with Interlinea: it can't be deleted, and installing one of the same name puts that one in its place. |
+| `lang` | string | Lang is the language it spells (a BCP 47 tag). |
+| `locales` | list of string | Locales are the languages its archive declared for it. |
+| `name` | string | Name identifies it ("de_DE_frami"). |
+| `words` | integer | Words counts its words. |
 
 ### EntryWrite
 

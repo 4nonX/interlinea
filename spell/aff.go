@@ -27,6 +27,10 @@ import (
 // number (num) or a character (UTF-8).
 type flag uint32
 
+// flagZero is a numeric flag written 0, which a file may use as an affix
+// class; no flag written in the file is this large.
+const flagZero flag = 1 << 16
+
 type flagSet []flag
 
 func (s flagSet) has(f flag) bool {
@@ -387,16 +391,23 @@ func (a *aff) parseRawFlags(b []byte) (flagSet, error) {
 			return out, nil
 		}
 	case flagNum:
+		// Read as Hunspell reads them, with C's atoi: the digits a part
+		// starts with, 0 where it starts with none (Hunspell warns of flag
+		// 0 and keeps it), and a number too large cut to 16 bits. The
+		// dictionaries LibreOffice ships rely on it: Turkish names an affix
+		// class 0, and Danish has "A/S", whose S" is no number.
 		for _, p := range bytes.Split(b, []byte(",")) {
 			p = bytes.TrimSpace(p)
 			if len(p) == 0 {
 				continue
 			}
-			n, err := strconv.Atoi(string(p))
-			if err != nil || n <= 0 || n > 65535 {
-				return nil, fmt.Errorf("bad numeric flag %q", p)
+			f := flag(atoi(p) & 0xFFFF)
+			if f == 0 {
+				// 0 stands for "no flag" in the options here; a flag 0
+				// of the file is a flag like any other.
+				f = flagZero
 			}
-			out = append(out, flag(n))
+			out = append(out, f)
 		}
 	case flagUTF8:
 		s := string(b)
@@ -990,4 +1001,25 @@ func parsePhoneRule(search, replace string) (phoneRule, bool) {
 		r.lookahead = len(r.letters)
 	}
 	return r, true
+}
+
+// atoi is C's atoi: an optional sign and the digits a text starts with; 0
+// where there are none.
+func atoi(b []byte) int {
+	neg := false
+	if len(b) > 0 && (b[0] == '-' || b[0] == '+') {
+		neg = b[0] == '-'
+		b = b[1:]
+	}
+	n := 0
+	for _, c := range b {
+		if c < '0' || c > '9' || n > 1<<24 {
+			break
+		}
+		n = n*10 + int(c-'0')
+	}
+	if neg {
+		return -n
+	}
+	return n
 }

@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QRadioButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QLabel>
 #include <QDialog>
@@ -266,8 +267,32 @@ private slots:
         Options::setAutoPropagate(true);
         // Nothing is there yet to delete, and a server's address is asked for.
         QTRY_VERIFY(labelWith(page, QStringLiteral("No template yet.")));
-        QTRY_VERIFY(labelWith(page, QStringLiteral("No dictionary yet.")));
+        QTRY_VERIFY(labelWith(page, QStringLiteral("None added.")));
         QVERIFY(page->findChild<QLineEdit *>(QStringLiteral("serverAddress")));
+        // The dictionaries that come with the app are listed when asked
+        // for, and can't be deleted.
+        auto *included = page->findChild<QPushButton *>(QStringLiteral("includedDictionaries"));
+        QVERIFY(included);
+        QCOMPARE(included->text(), QStringLiteral("2 dictionaries come with Interlinea"));
+        QVERIFY(!labelWith(page, QStringLiteral("de_DE_mini")));
+        included->click();
+        QTRY_VERIFY(labelWith(page, QStringLiteral("de_DE_mini")));
+        QVERIFY(labelWith(page, QStringLiteral("12 words")));
+        for (Web::ConfirmButton *c : page->findChildren<Web::ConfirmButton *>())
+            QVERIFY(!c->button()->accessibleName().startsWith(QStringLiteral("Delete the dictionary")));
+        if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
+            w.resize(1200, 900);
+            QTest::qWait(200);
+            auto *t = page->findChild<QPushButton *>(QStringLiteral("includedDictionaries"));
+            for (QScrollArea *area : page->findChildren<QScrollArea *>()) {
+                if (area->widget() && area->widget()->isAncestorOf(t))
+                    area->verticalScrollBar()->setValue(t->mapTo(area->widget(), QPoint()).y() - 120);
+            }
+            QTest::qWait(200);
+            w.grab().save(dir + QStringLiteral("/settings-dictionaries.png"));
+        }
+        page->findChild<QPushButton *>(QStringLiteral("includedDictionaries"))->click();
+        QTRY_VERIFY(!labelWith(page, QStringLiteral("de_DE_mini")));
 
         // A dictionary sent as its two files is listed, and deleted again.
         ApiReply *reply = m.local()->api()->post(QStringLiteral("/api/dictionaries"),
@@ -288,7 +313,7 @@ private slots:
         del->button()->click();
         del->yes()->click();
         QTRY_VERIFY_WITH_TIMEOUT(page->lastNotice() == QStringLiteral("Deleted the dictionary Hausliste"), 10000);
-        QTRY_VERIFY(labelWith(page, QStringLiteral("No dictionary yet.")));
+        QTRY_VERIFY(labelWith(page, QStringLiteral("None added.")));
         if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty()) {
             w.resize(1200, 900);
             QTest::qWait(200);

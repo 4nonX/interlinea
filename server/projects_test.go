@@ -33,8 +33,8 @@ type team struct {
 	benID, carlID, doraID, eveID    int64
 }
 
-func newTeam(t *testing.T) *team {
-	e := newEnv(t)
+func newTeam(t *testing.T, configure ...func(*Config)) *team {
+	e := newEnv(t, configure...)
 	w := &team{env: e}
 	_, w.admin = e.user("anna", true)
 	_, w.pm = e.user("paula", false,

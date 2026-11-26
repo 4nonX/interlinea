@@ -22,8 +22,8 @@ terminology, memories and projects when people work together.
 
 **Translate.** Source and target side by side, tags as numbered markers,
 memory matches with their differences, terms from the termbases recognized
-in the source (inflected forms included), checks as you type, spelling and
-grammar, suggestions from DeepL, Google, Microsoft or a language model with
+in the source (inflected forms included), checks as you type, spelling (with
+dictionaries for 22 languages included) and grammar, suggestions from DeepL, Google, Microsoft or a language model with
 the key of your own account, and a preview of the translated document. Repetitions are filled, confirmed segments go
 into the memories, and the keyboard shortcuts are the familiar ones.
 
@@ -140,7 +140,7 @@ Go 1.24 or newer; no C compiler is needed.
 go build -o bin/ ./cmd/...        # the server, the command line, the desktop app's core
 go test ./...
 
-make wasm && cd web && npm install && npm run dev       # the browser client
+make wasm dictionaries && cd web && npm install && npm run dev   # the browser client
 cmake -S desktop -B build/desktop && cmake --build build/desktop   # the desktop app (Qt 6.4+)
 ```
 

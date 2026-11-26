@@ -621,6 +621,12 @@ export default () =>
       // Spelling with a dictionary added in Settings, a rule of the
       // project's own, and the length limit an XLIFF file sets.
       await open("/settings", { wait: 600 });
+      check(
+        await waitFor(
+          "[...document.querySelectorAll('summary')].some(s => /\\d+ dictionaries come with Interlinea/.test(s.textContent))",
+        ),
+        "the dictionaries that come with the app are listed",
+      );
       await setFiles("input[accept*='.oxt']", [
         `${fixtures}/en_GB.aff`,
         `${fixtures}/en_GB.dic`,
@@ -750,6 +756,43 @@ export default () =>
       check(
         csv.includes('"Language","File","Match","Segments","Words","Characters"') && /"en-GB","[^"]+","[^"]+",\d+,\d+,\d+/.test(csv),
         "the analysis is saved as CSV: " + (csvName ?? "no file"),
+      );
+      // A dictionary that comes with the app, fetched and loaded when the
+      // project first spells with it.
+      check(
+        await evaluate(
+          "[...document.querySelectorAll('#dict-en-GB option')].map(o => o.value).join() === ',en_GB,en_US'",
+        ),
+        "the included dictionaries are offered after the added one",
+      );
+      await setValue("#dict-en-GB", "en_US");
+      await click("button", "Save changes");
+      await sleep(600);
+      await open(
+        await evaluate("location.hash.replace('#/project/', '/editor/')"),
+        { reload: false, wait: 1200 },
+      );
+      await evaluate(
+        "[...document.querySelectorAll('.seg')][0].querySelector('.seg-target-view, .target-editor').click()",
+      );
+      await sleep(400);
+      await key("a", "KeyA", 65, 2);
+      await send("Input.insertText", { text: "The colour of the rent." });
+      check(
+        await waitFor(
+          "[...document.querySelectorAll('.issue')].some(i => i.textContent.includes('“colour” is not in the dictionary. Perhaps color'))",
+          15000,
+        ),
+        "the included American dictionary spells: " +
+          (await evaluate(
+            "[...document.querySelectorAll('.issue')].map(i => i.textContent).join(' | ')",
+          )),
+      );
+      check(
+        !(await evaluate(
+          "[...document.querySelectorAll('.issue')].some(i => /“(rent|The)”/.test(i.textContent))",
+        )),
+        "and passes the words it has",
       );
       check(
         errors.length === 0,

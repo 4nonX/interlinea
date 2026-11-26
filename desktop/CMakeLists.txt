@@ -134,6 +134,25 @@ if(INTERLINEA_BUILD_CORE)
     add_dependencies(interlinea_core interlinea)
 endif()
 
+# The spelling dictionaries that come with Interlinea ("make dictionaries"
+# puts them in the web client's folder) go where the core finds them: next
+# to it, or in the bundle's Resources on macOS. Without them the app has
+# only the dictionaries the person adds.
+set(INTERLINEA_DICTIONARIES "${CMAKE_CURRENT_SOURCE_DIR}/../web/public/dictionaries" CACHE PATH "Folder of the included spelling dictionaries")
+if(EXISTS "${INTERLINEA_DICTIONARIES}/index.json")
+    if(APPLE)
+        set(DICT_DIR "$<TARGET_BUNDLE_CONTENT_DIR:interlinea>/Resources/dictionaries")
+    else()
+        set(DICT_DIR "$<TARGET_FILE_DIR:interlinea>/dictionaries")
+    endif()
+    add_custom_command(TARGET interlinea POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${INTERLINEA_DICTIONARIES}" "${DICT_DIR}"
+        COMMENT "Copying the spelling dictionaries"
+        VERBATIM)
+else()
+    message(STATUS "No spelling dictionaries in ${INTERLINEA_DICTIONARIES}: run make dictionaries to include them")
+endif()
+
 enable_testing()
 foreach(name apiclient eventfeed secretstore providersignin connections ui projects editor memories terminology endtoend)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
@@ -142,7 +161,8 @@ foreach(name apiclient eventfeed secretstore providersignin connections ui proje
     # One small document of every format, shared with the browser tests.
     target_compile_definitions(tst_${name} PRIVATE INTERLINEA_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../web/e2e/fixtures")
     add_test(NAME ${name} COMMAND tst_${name})
-    set(test_env "QT_QPA_PLATFORM=offscreen")
+    # A small folder of included dictionaries, the same in every run.
+    set(test_env "QT_QPA_PLATFORM=offscreen" "INTERLINEA_DICTIONARIES=${CMAKE_CURRENT_SOURCE_DIR}/tests/dictionaries")
     if(INTERLINEA_BUILD_CORE)
         # The tests run against the core built next to the app.
         add_dependencies(tst_${name} interlinea_core)

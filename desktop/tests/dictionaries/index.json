@@ -1,0 +1,26 @@
+{
+  "source": "desktop/tests",
+  "commit": "test",
+  "dictionaries": [
+    {
+      "name": "de_DE_mini",
+      "lang": "de-DE",
+      "words": 3,
+      "file": "de_DE_mini.zip",
+      "size": 400,
+      "notes": [
+        "README.txt"
+      ]
+    },
+    {
+      "name": "en_GB",
+      "lang": "en-GB",
+      "words": 12,
+      "file": "en_GB.zip",
+      "size": 470,
+      "notes": [
+        "README.txt"
+      ]
+    }
+  ]
+}

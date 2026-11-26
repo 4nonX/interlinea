@@ -109,6 +109,14 @@ jobs:
       - name: core for the browser
         working-directory: .
         run: make wasm
+      # The copy of the LibreOffice dictionaries is kept between runs.
+      - uses: actions/cache@v4
+        with:
+          path: .cache/lodict
+          key: lodict-${{ hashFiles('Makefile', 'spell/shelfgen/main.go') }}
+      - name: the spelling dictionaries that come with the app
+        working-directory: .
+        run: make dictionaries
       - name: team server for the browser tests
         working-directory: .
         run: go build -o bin/interlinea-server ./cmd/interlinea-server

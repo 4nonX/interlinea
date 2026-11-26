@@ -47,8 +47,25 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  # The spelling dictionaries that come with Interlinea, fetched once for
+  # all packages. The image fetches its own (see Dockerfile).
+  dictionaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make dictionaries
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dictionaries
+          path: web/public/dictionaries
+          if-no-files-found: error
+          retention-days: 1
+
   server:
-    needs: version
+    needs: [version, dictionaries]
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -62,7 +79,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - name: the web client, with the core for the browser
+      - uses: actions/download-artifact@v4
+        with:
+          name: dictionaries
+          path: web/public/dictionaries
+      - name: the web client, with the core for the browser and the dictionaries
         run: |
           make wasm
           cd web
@@ -100,6 +121,7 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/healthz && break; sleep 1; done
           curl -fsS http://127.0.0.1:18080/ | grep -qi '<!doctype html'
           curl -fsS http://127.0.0.1:18080/api/server | grep -q "\"$VERSION\""
+          curl -fsS http://127.0.0.1:18080/dictionaries/index.json | grep -q '"de_DE_frami"'
           ./interlinea version | grep -q "$VERSION"
       - uses: actions/upload-artifact@v4
         with:
@@ -133,6 +155,8 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/healthz && break; sleep 1; done
           curl -fsS http://127.0.0.1:18080/api/server | grep -q "\"$VERSION\""
           curl -fsS http://127.0.0.1:18080/ | grep -qi '<!doctype html'
+          curl -fsS http://127.0.0.1:18080/dictionaries/index.json | grep -q '"de_DE_frami"'
+          docker logs try 2>&1 | grep -q "spelling dictionaries included"
           docker rm -f try
       - uses: docker/build-push-action@v6
         env:
@@ -155,7 +179,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
   desktop-linux:
-    needs: version
+    needs: [version, dictionaries]
     # The oldest supported Ubuntu: an AppImage runs on systems as new as
     # the one it was built on, or newer.
     runs-on: ubuntu-22.04
@@ -166,6 +190,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: dictionaries
+          path: web/public/dictionaries
       - name: system libraries
         run: |
           sudo apt-get update
@@ -185,8 +213,9 @@ jobs:
           cp build/desktop/Interlinea build/desktop/interlinea-core AppDir/usr/bin/
           cp desktop/packaging/org.interlinea.desktop.desktop AppDir/usr/share/applications/
           cp desktop/packaging/interlinea.png AppDir/usr/share/icons/hicolor/512x512/apps/
-          mkdir -p AppDir/usr/share/doc/interlinea
+          mkdir -p AppDir/usr/share/doc/interlinea AppDir/usr/share/interlinea
           cp LICENSE NOTICE AppDir/usr/share/doc/interlinea/
+          cp -r build/desktop/dictionaries AppDir/usr/share/interlinea/
           base=https://github.com/linuxdeploy
           curl -fsSL -o linuxdeploy "$base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
           curl -fsSL -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
@@ -203,6 +232,7 @@ jobs:
           app="$PWD/Interlinea-$VERSION-linux-x86_64.AppImage"
           "$app" --appimage-extract >/dev/null
           test -x squashfs-root/usr/bin/interlinea-core
+          test -f squashfs-root/usr/share/interlinea/dictionaries/index.json
           # Every library the app needs is found.
           ! (cd squashfs-root && LD_LIBRARY_PATH=usr/lib ldd usr/bin/Interlinea | grep "not found")
           QT_QPA_PLATFORM=offscreen INTERLINEA_DATA="$RUNNER_TEMP/data" timeout 15 "$app" & pid=$!
@@ -217,7 +247,7 @@ jobs:
           if-no-files-found: error
 
   desktop-windows:
-    needs: version
+    needs: [version, dictionaries]
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -226,6 +256,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: dictionaries
+          path: web/public/dictionaries
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.*'
@@ -238,6 +272,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force stage/Interlinea | Out-Null
           Copy-Item build/desktop/Release/Interlinea.exe, build/desktop/Release/interlinea-core.exe stage/Interlinea/
+          Copy-Item -Recurse build/desktop/Release/dictionaries stage/Interlinea/
           windeployqt --release --compiler-runtime --no-system-d3d-compiler --no-opengl-sw stage/Interlinea/Interlinea.exe
           Copy-Item README.md, CHANGELOG.md, LICENSE, NOTICE stage/Interlinea/
       - name: the staged app starts, with its core
@@ -265,6 +300,7 @@ jobs:
           "out/Interlinea-$VERSION-windows-x64-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //CURRENTUSER //NORESTART "//DIR=$(cygpath -w "$RUNNER_TEMP/installed")" //LOG="$(cygpath -w "$RUNNER_TEMP/setup.log")"
           test -f "$RUNNER_TEMP/installed/Interlinea.exe"
           test -f "$RUNNER_TEMP/installed/interlinea-core.exe"
+          test -f "$RUNNER_TEMP/installed/dictionaries/index.json"
           test -f "$RUNNER_TEMP/installed/unins000.exe"
           INTERLINEA_DATA="$RUNNER_TEMP/data2" "$RUNNER_TEMP/installed/Interlinea.exe" & sleep 12
           tasklist | grep -i "interlinea-core.exe"
@@ -277,7 +313,7 @@ jobs:
           if-no-files-found: error
 
   desktop-macos:
-    needs: version
+    needs: [version, dictionaries]
     runs-on: macos-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
@@ -286,6 +322,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: dictionaries
+          path: web/public/dictionaries
       - uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.*'
@@ -303,6 +343,7 @@ jobs:
           lipo -create -output "$app/Contents/MacOS/interlinea-core" core-arm64 core-amd64
           lipo -archs "$app/Contents/MacOS/Interlinea" | grep -q x86_64
           lipo -archs "$app/Contents/MacOS/Interlinea" | grep -q arm64
+          test -f "$app/Contents/Resources/dictionaries/index.json"
       - name: disk image
         run: |
           app=build/desktop/Interlinea.app

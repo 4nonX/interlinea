@@ -5,6 +5,17 @@
 #
 # See compose.yaml for PostgreSQL and the settings.
 
+# The spelling dictionaries that come with Interlinea, fetched from the
+# LibreOffice dictionaries once, on the machine that builds, for every
+# platform of the image.
+FROM --platform=$BUILDPLATFORM golang:1.24-bookworm AS dictionaries
+WORKDIR /src
+COPY go.mod go.sum Makefile ./
+COPY langtag/ langtag/
+COPY internal/unzip/ internal/unzip/
+COPY spell/ spell/
+RUN make dictionaries DICT_DIR=/out/dictionaries
+
 FROM golang:1.24-bookworm AS core
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -24,6 +35,7 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 COPY --from=core /out/core/ public/core/
+COPY --from=dictionaries /out/dictionaries/ public/dictionaries/
 RUN npm run build
 
 FROM gcr.io/distroless/static-debian12:nonroot

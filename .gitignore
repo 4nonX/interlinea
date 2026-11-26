@@ -18,6 +18,8 @@ go.work.sum
 node_modules/
 /web/dist/
 /web/public/core/
+/web/public/dictionaries/
+/.cache/
 
 # Desktop app
 /build/

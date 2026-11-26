@@ -155,6 +155,8 @@ private slots:
         named<QPushButton>(np, QStringLiteral("Add the target language"))->click();
         QTRY_VERIFY(named<QCheckBox>(np, QStringLiteral("English (United Kingdom)")));
         QVERIFY(named<QCheckBox>(np, QStringLiteral("English (United Kingdom)"))->isChecked());
+        // English spells with the dictionary that comes with the app.
+        QCOMPARE(np->form()->settings().value("qa").toObject().value("dictionaries").toObject().value("en-GB").toString(), QStringLiteral("en_GB"));
         QTest::keyClicks(named<QLineEdit>(np, QStringLiteral("Client")), QStringLiteral("Kanzlei Weber"));
         QVERIFY(button(np, QStringLiteral("Continue to memories"))->isEnabled());
         shot(QStringLiteral("new-project-files"));

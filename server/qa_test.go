@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/4nonX/interlinea/analysis"
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/qa"
+	"github.com/4nonX/interlinea/spell"
 )
 
 func dictionaryArchive(t *testing.T) []byte {
@@ -168,5 +170,75 @@ func TestLooseDictionary(t *testing.T) {
 		if r := te.do("POST", "/api/dictionaries", te.pm, bad); r.status != 422 {
 			t.Fatalf("%+v: %d %s", bad, r.status, r.body)
 		}
+	}
+}
+
+// The dictionaries that come with Interlinea are listed and used like
+// installed ones, can't be deleted, and give way to an installed one of
+// the same name.
+func TestIncludedDictionaries(t *testing.T) {
+	fsys := fstest.MapFS{
+		"en_GB.zip":      {Data: dictionaryArchive(t)},
+		spell.ShelfIndex: {Data: []byte(`{"source":"test","commit":"1","dictionaries":[{"name":"en_GB","lang":"en-GB","words":9,"file":"en_GB.zip"}]}`)},
+	}
+	shelf, err := spell.OpenShelf(fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	te := newTeam(t, func(c *Config) { c.Dictionaries = shelf })
+	var ds []dictionaryView
+	ds = nil
+	te.call("GET", "/api/dictionaries", te.ben, nil, 200, &ds)
+	if len(ds) != 1 || ds[0].Name != "en_GB" || ds[0].Lang != "en-GB" || ds[0].Words != 9 || !ds[0].Included {
+		t.Fatalf("listed %+v", ds)
+	}
+	var sr spellResult
+	te.call("POST", "/api/dictionaries/EN_gb/check", te.ben, spellRequest{Words: []string{"tenant", "tennant"}}, 200, &sr)
+	if !sr.Correct[0] || sr.Correct[1] {
+		t.Fatalf("checked %+v", sr)
+	}
+	if r := te.do("DELETE", "/api/dictionaries/en_GB", te.pm, nil); r.status != 409 || r.err().Code != "included" {
+		t.Fatalf("deleting an included dictionary: %d %s", r.status, r.body)
+	}
+
+	// A project spells with it.
+	req := leaseRequest()
+	req.Settings.QA.Dictionaries = map[string]string{"en-GB": "en_GB"}
+	var p projectView
+	te.call("POST", "/api/projects", te.pm, req, 201, &p)
+	base := fmt.Sprintf("/api/projects/%d", p.ID)
+	var issues []qa.Issue
+	te.call("POST", base+"/qa", te.pm, qaRequest{File: "Mietvertrag.txt", Lang: "en-GB", Segments: []string{"s2"},
+		Targets: map[string]content.Content{"s2": content.Text("The tennant pays the rent.")}}, 200, &issues)
+	if len(issues) == 0 || issues[0].Kind != qa.Spelling {
+		t.Fatalf("issues %+v", issues)
+	}
+
+	// One installed under its name takes its place...
+	own := looseDictionary{Name: "en_GB", Lang: "en-GB", Aff: []byte("SET UTF-8\n"), Dic: []byte("3\nThe\ntennant\npays\n")}
+	te.call("POST", "/api/dictionaries", te.pm, own, 200, nil)
+	ds = nil
+	te.call("GET", "/api/dictionaries", te.ben, nil, 200, &ds)
+	if len(ds) != 1 || ds[0].Included || ds[0].Words != 3 {
+		t.Fatalf("listed with an own one %+v", ds)
+	}
+	te.call("POST", "/api/dictionaries/en_GB/check", te.ben, spellRequest{Words: []string{"tenant", "tennant"}}, 200, &sr)
+	if sr.Correct[0] || !sr.Correct[1] {
+		t.Fatalf("checked with the own one %+v", sr)
+	}
+	// ...and can be deleted though the project spells with the name: the
+	// included one is used again.
+	te.call("DELETE", "/api/dictionaries/en_GB", te.pm, nil, 204, nil)
+	ds = nil
+	te.call("GET", "/api/dictionaries", te.ben, nil, 200, &ds)
+	if len(ds) != 1 || !ds[0].Included {
+		t.Fatalf("listed after deleting the own one %+v", ds)
+	}
+	te.call("POST", "/api/dictionaries/en_GB/check", te.ben, spellRequest{Words: []string{"tenant", "tennant"}}, 200, &sr)
+	if !sr.Correct[0] || sr.Correct[1] {
+		t.Fatalf("checked after deleting the own one %+v", sr)
+	}
+	if r := te.do("GET", "/api/dictionaries/fr_FR/suggest?word=x", te.ben, nil); r.status != 404 {
+		t.Fatalf("a dictionary that is nowhere: %d", r.status)
 	}
 }

@@ -2,6 +2,7 @@
 
 #include <QJsonArray>
 #include <QHash>
+#include <QSet>
 #include <QWidget>
 
 class Connection;
@@ -87,6 +88,8 @@ private:
     // person may change them there.
     QHash<QString, QJsonArray> m_templateList;
     QHash<QString, QJsonArray> m_dictionaryList;
+    // Connections whose list of included dictionaries is shown.
+    QSet<QString> m_includedOpen;
     QHash<QString, QJsonArray> m_providerList;
     QHash<QString, QJsonArray> m_tokenList;
     // The form for a new service is open at this place; the token just

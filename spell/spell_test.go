@@ -274,7 +274,22 @@ func TestBadAff(t *testing.T) {
 			t.Errorf("accepted %q", aff)
 		}
 	}
-	if _, err := Load([]byte("FLAG num\n"), []byte("1\nfoo/x\n")); err == nil {
-		t.Error("bad numeric flag in .dic accepted")
+}
+
+// Numeric flags are read as Hunspell reads them: a flag that is no number
+// is 0 (Danish has "A/S"), and an affix class may be 0 (Turkish).
+func TestNumericFlagsAsHunspell(t *testing.T) {
+	d := load(t, "FLAG num\n", "2\nfoo/x\n\"A/S\"\n")
+	if !d.Spell("foo") {
+		t.Error("a word with a flag that is no number is lost")
+	}
+	d = load(t, "FLAG num\nSFX 0 N 1\nSFX 0 0 de .\nSFX 7 N 1\nSFX 7 0 ler .\n", "2\nev/0,7\nkira\n")
+	for _, w := range []string{"ev", "evde", "evler", "kira"} {
+		if !d.Spell(w) {
+			t.Errorf("%s not spelled", w)
+		}
+	}
+	if d.Spell("kirade") {
+		t.Error("an affix of class 0 on a word without it")
 	}
 }

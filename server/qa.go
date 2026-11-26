@@ -7,6 +7,8 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -55,7 +57,8 @@ type loadedDict struct {
 	d  *spell.Dictionary
 }
 
-// dictionary loads an installed dictionary.
+// dictionary loads a dictionary: the installed one of the name, or else
+// the included one.
 func (s *Server) dictionary(ctx context.Context, name string) (*spell.Dictionary, error) {
 	ds, err := s.cfg.Projects.Dictionaries(ctx)
 	if err != nil {
@@ -67,28 +70,75 @@ func (s *Server) dictionary(ctx context.Context, name string) (*spell.Dictionary
 			info = &ds[i]
 		}
 	}
-	if info == nil {
-		return nil, projectdb.ErrNotFound
+	var at time.Time
+	switch {
+	case info != nil:
+		name, at = info.Name, info.CreatedAt
+	default:
+		e, ok := s.cfg.Dictionaries.Find(name)
+		if !ok {
+			return nil, projectdb.ErrNotFound
+		}
+		// Included dictionaries have no time, installed ones always do.
+		name = e.Name
 	}
-	key := strings.ToLower(info.Name)
+	key := strings.ToLower(name)
 	s.dicts.mu.Lock()
 	defer s.dicts.mu.Unlock()
-	if l, ok := s.dicts.loaded[key]; ok && l.at.Equal(info.CreatedAt) {
+	if l, ok := s.dicts.loaded[key]; ok && l.at.Equal(at) {
 		return l.d, nil
 	}
-	_, aff, dic, err := s.cfg.Projects.DictionaryFiles(ctx, info.Name)
-	if err != nil {
-		return nil, err
-	}
-	d, err := spell.Load(aff, dic)
-	if err != nil {
-		return nil, fmt.Errorf("the dictionary %s can't be loaded: %w", info.Name, err)
+	var d *spell.Dictionary
+	if info != nil {
+		_, aff, dic, err := s.cfg.Projects.DictionaryFiles(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		if d, err = spell.Load(aff, dic); err != nil {
+			return nil, fmt.Errorf("the dictionary %s can't be loaded: %w", name, err)
+		}
+	} else if d, err = s.cfg.Dictionaries.Load(name); err != nil {
+		return nil, fmt.Errorf("the dictionary %s can't be loaded: %w", name, err)
 	}
 	if s.dicts.loaded == nil {
 		s.dicts.loaded = map[string]loadedDict{}
 	}
-	s.dicts.loaded[key] = loadedDict{at: info.CreatedAt, d: d}
+	s.dicts.loaded[key] = loadedDict{at: at, d: d}
 	return d, nil
+}
+
+// dictionaryView is a spelling dictionary as the API lists it.
+type dictionaryView struct {
+	projectdb.Dictionary
+	// Included says it comes with Interlinea: it can't be deleted, and
+	// installing one of the same name puts that one in its place.
+	Included bool `json:"included,omitempty"`
+}
+
+// allDictionaries lists the installed dictionaries and the included ones
+// no installed one has the name of, by name.
+func (s *Server) allDictionaries(ctx context.Context) ([]dictionaryView, error) {
+	ds, err := s.cfg.Projects.Dictionaries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dictionaryView, 0, len(ds)+len(s.cfg.Dictionaries.List()))
+	have := map[string]bool{}
+	for _, d := range ds {
+		out = append(out, dictionaryView{Dictionary: d})
+		have[strings.ToLower(d.Name)] = true
+	}
+	for _, e := range s.cfg.Dictionaries.List() {
+		if have[strings.ToLower(e.Name)] {
+			continue
+		}
+		out = append(out, dictionaryView{
+			Dictionary: projectdb.Dictionary{Name: e.Name, Lang: e.Lang, Locales: []string{e.Lang}, Words: e.Words},
+			Included:   true,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out, nil
 }
 
 // qaKinds lists the quality checks, which of them run by default, and what
@@ -99,16 +149,18 @@ func (s *Server) qaKinds(w http.ResponseWriter, r *http.Request, me session) {
 	writeJSON(w, http.StatusOK, qa.Kinds)
 }
 
-// listDictionaries lists the spelling dictionaries installed on the server.
+// listDictionaries lists the spelling dictionaries on the server: those
+// installed and those that come with Interlinea (included), by name. An
+// installed dictionary takes the place of an included one of its name.
 //
 // Access: signed in.
 func (s *Server) listDictionaries(w http.ResponseWriter, r *http.Request, me session) {
-	ds, err := s.cfg.Projects.Dictionaries(r.Context())
+	ds, err := s.allDictionaries(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, nonNil(ds))
+	writeJSON(w, http.StatusOK, ds)
 }
 
 // looseDictionary is a Hunspell dictionary sent as its two files.
@@ -220,7 +272,9 @@ func hasControlRune(s string) bool {
 }
 
 // deleteDictionary removes a spelling dictionary. One a project or
-// template spells with is not removed; the answer names them.
+// template spells with is not removed; the answer names them. Included
+// dictionaries can't be removed; an installed one of the same name can, and
+// the included one is then used again.
 //
 // Access: those who make projects and administrators.
 func (s *Server) deleteDictionary(w http.ResponseWriter, r *http.Request, me session) {
@@ -235,7 +289,23 @@ func (s *Server) deleteDictionary(w http.ResponseWriter, r *http.Request, me ses
 		return
 	}
 	name := r.PathValue("name")
+	installed, err := s.cfg.Projects.Dictionaries(ctx)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if !slices.ContainsFunc(installed, func(d projectdb.Dictionary) bool { return strings.EqualFold(d.Name, name) }) {
+		if e, ok := s.cfg.Dictionaries.Find(name); ok {
+			writeError(w, http.StatusConflict, "included", fmt.Sprintf("%s comes with Interlinea and can't be deleted. Projects choose whether to spell with it.", e.Name))
+			return
+		}
+	}
+	// With an included one of the name, the projects keep a dictionary.
+	_, included := s.cfg.Dictionaries.Find(name)
 	users, err := s.usedBy(ctx, func(set project.Settings) bool {
+		if included {
+			return false
+		}
 		for _, d := range set.QA.Dictionaries {
 			if strings.EqualFold(d, name) {
 				return true

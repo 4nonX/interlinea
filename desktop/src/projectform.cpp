@@ -23,10 +23,12 @@
 #include <QLocale>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSet>
 #include <QSpinBox>
 #include <QStyle>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <memory>
 
 namespace {
@@ -318,9 +320,11 @@ void ProjectForm::setSettings(const QJsonObject &settings, bool newProject)
 {
     m_s = settings;
     m_new = newProject;
+    m_checksTouched = false;
     m_problems.clear();
     m_created.clear();
     m_creatingFor.clear();
+    pickDictionaries();
     fillDetails();
     fillTargets();
     fillMemories();
@@ -605,6 +609,7 @@ void ProjectForm::fillTargets()
             QStringList ts = targetList();
             ts << add->language();
             m_s.insert(QStringLiteral("targetLangs"), array(ts));
+            pickDictionaries();
             fillTargets();
             fillMemories();
             fillTerminology();
@@ -616,6 +621,50 @@ void ProjectForm::fillTargets()
         v->addWidget(problemLabel(QStringLiteral("targetLangs"), w));
         w->setEnabled(!m_readOnly);
     });
+}
+
+// The dictionaries that spell a language: the same region first, then the
+// language; those installed before those that come with Interlinea.
+QList<QJsonObject> ProjectForm::dictionariesFor(const QString &lang) const
+{
+    QList<QJsonObject> out[4];
+    for (const QJsonValue &dv : std::as_const(m_dicts)) {
+        const QJsonObject d = dv.toObject();
+        const QString l = d.value(QLatin1String("lang")).toString();
+        if (!Languages::samePrimary(l, lang))
+            continue;
+        const bool included = d.value(QLatin1String("included")).toBool();
+        out[(l == lang ? 0 : 2) + (included ? 1 : 0)].append(d);
+    }
+    return out[0] + out[1] + out[2] + out[3];
+}
+
+// A new project spells each target language with the dictionary that fits
+// it, until the checks are changed by hand.
+void ProjectForm::pickDictionaries()
+{
+    if (!m_new || m_checksTouched)
+        return;
+    QJsonObject qa = m_s.value(QLatin1String("qa")).toObject();
+    QJsonObject dicts = qa.value(QLatin1String("dictionaries")).toObject();
+    bool changed = false;
+    for (const QString &t : targetList()) {
+        const QString set = dicts.value(t).toString();
+        const bool known = std::any_of(m_dicts.begin(), m_dicts.end(), [&set](const QJsonValue &d) {
+            return d.toObject().value(QLatin1String("name")).toString() == set;
+        });
+        if (!set.isEmpty() && known)
+            continue;
+        const QList<QJsonObject> fit = dictionariesFor(t);
+        if (fit.isEmpty())
+            continue;
+        dicts.insert(t, fit.first().value(QLatin1String("name")).toString());
+        changed = true;
+    }
+    if (!changed)
+        return;
+    qa.insert(QStringLiteral("dictionaries"), dicts);
+    m_s.insert(QStringLiteral("qa"), qa);
 }
 
 // Languages no longer targets lose their memories and dictionaries.
@@ -636,6 +685,7 @@ void ProjectForm::dropStaleMemories()
     }
     qa.insert(QStringLiteral("dictionaries"), dicts);
     m_s.insert(QStringLiteral("qa"), qa);
+    pickDictionaries();
     // A memory made here for a language that is gone is not made.
     for (int i = int(m_created.size()) - 1; i >= 0; --i) {
         if (!ts.contains(m_created[i].targetLang))
@@ -1298,6 +1348,7 @@ void ProjectForm::fillChecks()
             QJsonObject x = m_s.value(QLatin1String("qa")).toObject();
             change(x);
             m_s.insert(QStringLiteral("qa"), x);
+            m_checksTouched = true;
             touch();
         };
 
@@ -1406,17 +1457,7 @@ void ProjectForm::fillChecks()
             auto *combo = new QComboBox(spell);
             combo->setAccessibleName(tr("Spelling dictionary for %1").arg(Languages::name(t)));
             combo->setEnabled(spellingOn);
-            // The same region first, then the language.
-            QList<QJsonObject> fit;
-            for (const QJsonValue &dv : std::as_const(m_dicts)) {
-                const QJsonObject d = dv.toObject();
-                if (!Languages::samePrimary(d.value(QLatin1String("lang")).toString(), t))
-                    continue;
-                if (d.value(QLatin1String("lang")).toString() == t)
-                    fit.prepend(d);
-                else
-                    fit.append(d);
-            }
+            const QList<QJsonObject> fit = dictionariesFor(t);
             combo->addItem(fit.isEmpty() ? tr("No dictionary for this language") : tr("No spelling check"), QString());
             for (const QJsonObject &d : std::as_const(fit))
                 combo->addItem(QStringLiteral("%1 (%2)").arg(d.value(kName).toString(), Languages::name(d.value(QLatin1String("lang")).toString())), d.value(kName).toString());
@@ -1437,7 +1478,17 @@ void ProjectForm::fillChecks()
                 });
             });
         }
-        sv->addWidget(Web::text(tr("Dictionaries are added once under Settings, from a LibreOffice extension (.oxt) or .aff and .dic files."), "help", spell));
+        QSet<QString> includedLangs;
+        for (const QJsonValue &dv : std::as_const(m_dicts)) {
+            if (dv.toObject().value(QLatin1String("included")).toBool())
+                includedLangs.insert(dv.toObject().value(QLatin1String("lang")).toString().section(QLatin1Char('-'), 0, 0));
+        }
+        QString note = tr("Dictionaries are added once under Settings, from a LibreOffice extension (.oxt) or .aff and .dic files.");
+        if (includedLangs.size() == 1)
+            note = tr("A dictionary for one language comes with Interlinea. Others are added once under Settings, from a LibreOffice extension (.oxt) or .aff and .dic files.");
+        else if (includedLangs.size() > 1)
+            note = tr("Dictionaries for %1 languages come with Interlinea. Others are added once under Settings, from a LibreOffice extension (.oxt) or .aff and .dic files.").arg(includedLangs.size());
+        sv->addWidget(Web::text(note, "help", spell));
         v->addWidget(spell);
 
         // Words of the project's own.

@@ -1,8 +1,13 @@
 // Spelling dictionaries for the core's spell checker (Hunspell in Go).
-// A dictionary is added once, from a LibreOffice extension (.oxt), a ZIP
-// file with .aff and .dic files, or an .aff and .dic pair, saved in the
-// browser, and loaded into the core the first time a project needs it.
+// The dictionaries that come with Interlinea are in the app's
+// dictionaries folder, listed in its index.json, and fetched the first time
+// a project needs one. Others are added once, from a LibreOffice extension
+// (.oxt), a ZIP file with .aff and .dic files, or an .aff and .dic pair,
+// saved in the browser, and loaded into the core the first time a project
+// needs them. One added under the name of an included one is used in its
+// place.
 
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { unwrap, type CoreApi, type SpellBundle } from "../core";
 import { load, remove, save } from "../persist";
 import type { LangCode, SpellDictionary } from "../data";
@@ -10,6 +15,98 @@ import { knownLang } from "../setup";
 
 const SAVED = "dict:";
 const loaded = new Set<string>();
+
+/** The dictionaries that come with Interlinea, once their index is read. */
+let included: SpellDictionary[] = [];
+/** Their ZIP files in the dictionaries folder, by lower-case name. */
+const includedFiles = new Map<string, string>();
+let includedRead: Promise<void> | null = null;
+const listeners = new Set<() => void>();
+
+function folder(): string {
+  return new URL("./dictionaries/", document.baseURI).href;
+}
+
+interface IndexEntry {
+  name?: unknown;
+  lang?: unknown;
+  words?: unknown;
+  file?: unknown;
+}
+
+/**
+ * Reads the index of the included dictionaries, once. An app served
+ * without them has none; a failure to fetch the index is tried again on
+ * the next call.
+ */
+export function readIncluded(): Promise<void> {
+  includedRead ??= (async () => {
+    let entries: IndexEntry[] = [];
+    try {
+      const r = await fetch(folder() + "index.json");
+      // Without the folder a web server may answer with the app's page.
+      if (!r.ok || !(r.headers.get("Content-Type") ?? "").includes("json"))
+        return;
+      const idx = (await r.json()) as { dictionaries?: unknown };
+      if (Array.isArray(idx.dictionaries)) entries = idx.dictionaries;
+    } catch {
+      includedRead = null;
+      return;
+    }
+    const list: SpellDictionary[] = [];
+    for (const e of entries) {
+      if (
+        typeof e.name !== "string" ||
+        typeof e.file !== "string" ||
+        typeof e.lang !== "string" ||
+        !/^[\w.-]+\.zip$/.test(e.file)
+      )
+        continue;
+      const lang = knownLang(e.lang);
+      if (!lang) continue;
+      includedFiles.set(e.name.toLowerCase(), e.file);
+      list.push({
+        name: e.name,
+        lang,
+        words: typeof e.words === "number" ? e.words : 0,
+        addedAt: "",
+        included: true,
+      });
+    }
+    included = list;
+    for (const l of listeners) l();
+  })();
+  return includedRead;
+}
+
+function subscribe(l: () => void) {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
+/** The included dictionaries, read when first asked for. */
+export function useIncludedDictionaries(): SpellDictionary[] {
+  useEffect(() => void readIncluded(), []);
+  return useSyncExternalStore(subscribe, () => included);
+}
+
+/**
+ * The dictionaries to choose from: those added in this browser, then the
+ * included ones none of them has the name of.
+ */
+export function allDictionaries(
+  own: SpellDictionary[],
+  inc: SpellDictionary[],
+): SpellDictionary[] {
+  const names = new Set(own.map((d) => d.name.toLowerCase()));
+  return [...own, ...inc.filter((d) => !names.has(d.name.toLowerCase()))];
+}
+
+/** The dictionaries to choose from, with the included ones. */
+export function useDictionaries(own: SpellDictionary[]): SpellDictionary[] {
+  const inc = useIncludedDictionaries();
+  return useMemo(() => allDictionaries(own, inc), [own, inc]);
+}
 
 interface Saved {
   aff: Uint8Array;
@@ -119,7 +216,11 @@ export async function addDictionary(
   };
 }
 
-/** Loads a saved dictionary into the core if it isn't yet; false if its files are gone. */
+/**
+ * Loads a dictionary into the core if it isn't yet: the one saved in the
+ * browser, or else the included one of the name. False if there is
+ * neither.
+ */
 export async function ensureDictionary(
   c: CoreApi,
   name: string,
@@ -127,12 +228,26 @@ export async function ensureDictionary(
   if (loaded.has(name)) return true;
   const files = await load<Saved>(SAVED + name);
   if (
-    !files ||
-    !(files.aff instanceof Uint8Array) ||
-    !(files.dic instanceof Uint8Array)
-  )
-    return false;
-  unwrap(c.spellLoad(name, files.aff, files.dic, "[]"));
+    files &&
+    files.aff instanceof Uint8Array &&
+    files.dic instanceof Uint8Array
+  ) {
+    unwrap(c.spellLoad(name, files.aff, files.dic, "[]"));
+    loaded.add(name);
+    return true;
+  }
+  await readIncluded();
+  const file = includedFiles.get(name.toLowerCase());
+  if (!file) return false;
+  const r = await fetch(folder() + file);
+  if (!r.ok)
+    throw new Error(
+      `The dictionary ${name} could not be fetched (${r.status}).`,
+    );
+  const bundles = unwrap(c.spellArchive(new Uint8Array(await r.arrayBuffer())));
+  const b = bundles.find((x) => x.name.toLowerCase() === name.toLowerCase());
+  if (!b) throw new Error(`${file} has no dictionary ${name}.`);
+  unwrap(c.spellLoad(name, b.aff, b.dic, "[]"));
   loaded.add(name);
   return true;
 }
@@ -142,7 +257,10 @@ export function dictionaryLoaded(name: string): boolean {
   return loaded.has(name);
 }
 
-/** Deletes a dictionary from the core and the browser. */
+/**
+ * Deletes a dictionary from the core and the browser. An included one of
+ * the name is loaded in its place when next needed.
+ */
 export async function dropDictionary(c: CoreApi, name: string): Promise<void> {
   unwrap(c.spellDrop(name));
   loaded.delete(name);

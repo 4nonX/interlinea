@@ -53,8 +53,11 @@ INTERLINEA_ADMIN_PASSWORD='a long password' POSTGRES_PASSWORD='another one' dock
 Without Docker, unpack `interlinea-server-<version>-<system>-<processor>`
 from the release and start `interlinea-server -web web` in it. From the
 source: build it (`go build ./cmd/interlinea-server`), build the web app
-(`make wasm`, then `npm ci && npm run build` in `web/`) and start it
-with `-web web/dist`.
+(`make wasm` and `make dictionaries`, then `npm ci && npm run build` in
+`web/`) and start it with `-web web/dist`. The spelling dictionaries that
+come with Interlinea are in the web app's `dictionaries` folder, where the
+server finds them; dictionaries installed on the server are used in addition,
+and one installed under the name of an included one in its place.
 
 **The first administrator.** With `INTERLINEA_ADMIN_USER` and
 `INTERLINEA_ADMIN_PASSWORD` set, the server makes that account at its first
@@ -75,6 +78,7 @@ them.
 | `-postgres` | `INTERLINEA_POSTGRES` | PostgreSQL connection string, instead of SQLite |
 | `-public-url` | `INTERLINEA_PUBLIC_URL` | the address people reach the server at, `https://...` |
 | `-web` | `INTERLINEA_WEB` | folder of the built web app, served at `/` |
+| `-dictionaries` | `INTERLINEA_DICTIONARIES` | folder of the spelling dictionaries that come with Interlinea, or `none`; without it, the folder next to the program or the web app's `dictionaries` folder |
 | `-origins` | `INTERLINEA_ORIGINS` | other web app addresses allowed to call the API, comma-separated |
 | `-tls-cert`, `-tls-key` | `INTERLINEA_TLS_CERT`, `INTERLINEA_TLS_KEY` | serve HTTPS itself |
 | `-trust-proxy` | `INTERLINEA_TRUST_PROXY` | behind a reverse proxy: take the client's address from `X-Forwarded-For` and HTTPS from `X-Forwarded-Proto` |

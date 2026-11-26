@@ -3,7 +3,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 BIN     := bin
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: all build test race vet fmt-check apidoc apidoc-check languages languages-check lint bench cross wasm sample clean
+.PHONY: all build test race vet fmt-check apidoc apidoc-check languages languages-check lint bench cross wasm dictionaries sample clean
 
 all: lint test build
 
@@ -61,10 +61,32 @@ wasm:
 	mkdir -p $(WASM_DIR)/fonts
 	cp typeset/fonts/*.ttf typeset/fonts/OFL.txt $(WASM_DIR)/fonts/
 
+# The spelling dictionaries that come with Interlinea, from the LibreOffice
+# dictionaries at DICT_COMMIT: one ZIP file each and an index, in the web
+# client's public folder. The release packages copy the folder next to the
+# server and the desktop app's core. Fetching needs git and the network;
+# the copy is kept in .cache and fetched again only for another commit.
+DICT_REPO   := https://github.com/LibreOffice/dictionaries
+DICT_COMMIT := 79195b017e6d70151337856c59e7d13d311d6630
+DICT_SRC    := .cache/lodict
+DICT_DIR    := web/public/dictionaries
+dictionaries:
+	@if [ "$$(git -C $(DICT_SRC) rev-parse HEAD 2>/dev/null)" != "$(DICT_COMMIT)" ]; then \
+		echo "fetching the LibreOffice dictionaries at $(DICT_COMMIT)"; \
+		rm -rf $(DICT_SRC) && mkdir -p $(DICT_SRC) && \
+		git -C $(DICT_SRC) init -q && \
+		git -C $(DICT_SRC) remote add origin $(DICT_REPO) && \
+		git -C $(DICT_SRC) sparse-checkout set --no-cone $$(go run ./spell/shelfgen -files) && \
+		git -C $(DICT_SRC) fetch -q --depth 1 --filter=blob:none origin $(DICT_COMMIT) && \
+		git -C $(DICT_SRC) -c advice.detachedHead=false checkout -q FETCH_HEAD || exit 1; \
+	fi
+	rm -rf $(DICT_DIR)
+	go run ./spell/shelfgen -src $(DICT_SRC) -commit $(DICT_COMMIT) -out $(DICT_DIR)
+
 # The sample lease of the browser client's sample project.
 sample:
 	go run ./filter/docx/docxtest/mksample web/samples/Mietvertrag_Hofmann_2026.docx
 	go run ./cmd/interlinea extract -lang de-DE -json web/samples/Mietvertrag_Hofmann_2026.docx > web/src/editor/hofmann.json
 
 clean:
-	rm -rf $(BIN) $(WASM_DIR)
+	rm -rf $(BIN) $(WASM_DIR) $(DICT_DIR)

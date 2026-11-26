@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -108,5 +110,28 @@ func TestRun(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "first administrator made") {
 		t.Fatalf("log:\n%s", log.String())
+	}
+}
+
+func TestIncludedDictionaries(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	web := t.TempDir()
+	if s, err := includedDictionaries(options{web: web}, log); s != nil || err != nil {
+		t.Fatalf("without a folder: %v %v", s, err)
+	}
+	dicts := filepath.Join(web, "dictionaries")
+	os.MkdirAll(dicts, 0o755)
+	os.WriteFile(filepath.Join(dicts, "index.json"), []byte(`{"source":"test","commit":"1","dictionaries":[]}`), 0o644)
+	if s, err := includedDictionaries(options{web: web}, log); s == nil || err != nil || s.Index().Commit != "1" {
+		t.Fatalf("in the web app's folder: %v %v", s, err)
+	}
+	if s, err := includedDictionaries(options{web: web, dictionaries: "none"}, log); s != nil || err != nil {
+		t.Fatalf("none: %v %v", s, err)
+	}
+	if s, err := includedDictionaries(options{dictionaries: dicts}, log); s == nil || err != nil {
+		t.Fatalf("given: %v %v", s, err)
+	}
+	if _, err := includedDictionaries(options{dictionaries: web}, log); err == nil {
+		t.Fatal("a folder without an index is accepted")
 	}
 }

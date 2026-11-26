@@ -32,6 +32,7 @@ import (
 	"github.com/4nonX/interlinea/auth/oidc"
 	"github.com/4nonX/interlinea/project"
 	"github.com/4nonX/interlinea/project/projectdb"
+	"github.com/4nonX/interlinea/spell"
 	"github.com/4nonX/interlinea/term/termdb"
 	"github.com/4nonX/interlinea/tm/tmdb"
 )
@@ -80,6 +81,10 @@ type Config struct {
 	TrustProxy bool
 	// Web, if set, is the web app, served at /.
 	Web fs.FS
+	// Dictionaries are the spelling dictionaries that come with
+	// Interlinea; nil for none. Each is listed with the installed ones
+	// unless one installed has its name.
+	Dictionaries *spell.Shelf
 	// Version is reported by /api/server.
 	Version string
 	Log     *slog.Logger

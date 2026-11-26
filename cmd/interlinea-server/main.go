@@ -32,6 +32,7 @@ import (
 	"github.com/4nonX/interlinea/internal/sqlstore"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/server"
+	"github.com/4nonX/interlinea/spell"
 	"github.com/4nonX/interlinea/term/termdb"
 	"github.com/4nonX/interlinea/tm/tmdb"
 )
@@ -96,6 +97,7 @@ type options struct {
 	oidcScopes               string
 	oidcCreate, trustProxy   bool
 	web, tlsCert, tlsKey     string
+	dictionaries             string
 	tokenDays                int
 	adminUser, adminPassword string
 	logJSON                  bool
@@ -122,6 +124,7 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.BoolVar(&o.oidcCreate, "oidc-create-users", boolEnv("INTERLINEA_OIDC_CREATE_USERS"), "make an account (without roles) for people the provider signs in (INTERLINEA_OIDC_CREATE_USERS)")
 	fs.BoolVar(&o.trustProxy, "trust-proxy", boolEnv("INTERLINEA_TRUST_PROXY"), "take client addresses from X-Forwarded-For (INTERLINEA_TRUST_PROXY)")
 	fs.StringVar(&o.web, "web", env("INTERLINEA_WEB", ""), "folder of the built web app to serve at / (INTERLINEA_WEB)")
+	fs.StringVar(&o.dictionaries, "dictionaries", env("INTERLINEA_DICTIONARIES", ""), "folder of the spelling dictionaries that come with Interlinea, \"none\" for none; found next to the program or in the web app folder if not given (INTERLINEA_DICTIONARIES)")
 	fs.StringVar(&o.tlsCert, "tls-cert", env("INTERLINEA_TLS_CERT", ""), "TLS certificate file, to serve HTTPS itself (INTERLINEA_TLS_CERT)")
 	fs.StringVar(&o.tlsKey, "tls-key", env("INTERLINEA_TLS_KEY", ""), "TLS key file (INTERLINEA_TLS_KEY)")
 	fs.IntVar(&o.tokenDays, "token-days", days, "days a sign-in lasts (INTERLINEA_TOKEN_DAYS)")
@@ -163,6 +166,33 @@ setup page makes the first administrator with it.`)
 		return o, errors.New("INTERLINEA_ADMIN_USER and INTERLINEA_ADMIN_PASSWORD go together")
 	}
 	return o, nil
+}
+
+// includedDictionaries opens the folder of spelling dictionaries that
+// come with Interlinea: the one given, or the one found next to the
+// program or in the web app's folder. Without one the server has only
+// the dictionaries installed on it.
+func includedDictionaries(o options, log *slog.Logger) (*spell.Shelf, error) {
+	dir := o.dictionaries
+	switch dir {
+	case "none":
+		return nil, nil
+	case "":
+		var web string
+		if o.web != "" {
+			web = filepath.Join(o.web, "dictionaries")
+		}
+		if dir = spell.FindShelf(web); dir == "" {
+			log.Info("no spelling dictionaries come with this server; only installed ones are used")
+			return nil, nil
+		}
+	}
+	shelf, err := spell.OpenShelf(os.DirFS(dir))
+	if err != nil {
+		return nil, fmt.Errorf("the dictionaries in %s can't be read: %w", dir, err)
+	}
+	log.Info("spelling dictionaries included", "folder", dir, "count", len(shelf.List()))
+	return shelf, nil
 }
 
 // withSchema points a PostgreSQL connection string at a schema. public
@@ -317,6 +347,9 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 			return fmt.Errorf("the web app folder %s has no index.html", o.web)
 		}
 		cfg.Web = os.DirFS(o.web)
+	}
+	if cfg.Dictionaries, err = includedDictionaries(o, log); err != nil {
+		return err
 	}
 	if o.oidcIssuer != "" {
 		if o.publicURL == "" {

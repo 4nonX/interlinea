@@ -260,6 +260,42 @@
         },
         "type": "object"
       },
+      "DictionaryView": {
+        "description": "dictionaryView is a spelling dictionary as the API lists it.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "included": {
+            "description": "Included says it comes with Interlinea: it can't be deleted, and installing one of the same name puts that one in its place.",
+            "type": "boolean"
+          },
+          "lang": {
+            "description": "Lang is the language it spells (a BCP 47 tag).",
+            "type": "string"
+          },
+          "locales": {
+            "description": "Locales are the languages its archive declared for it.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "Name identifies it (\"de_DE_frami\").",
+            "type": "string"
+          },
+          "words": {
+            "description": "Words counts its words.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "EntryWrite": {
         "properties": {
           "entry": {
@@ -4545,7 +4581,7 @@
     },
     "/api/dictionaries": {
       "get": {
-        "description": "Access: signed in.",
+        "description": "An installed dictionary takes the place of an included one of its name.\n\nAccess: signed in.",
         "operationId": "listDictionaries",
         "responses": {
           "200": {
@@ -4553,7 +4589,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/projectdb.Dictionary"
+                    "$ref": "#/components/schemas/DictionaryView"
                   },
                   "type": "array"
                 }
@@ -4571,7 +4607,7 @@
             "$ref": "#/components/responses/error"
           }
         },
-        "summary": "Lists the spelling dictionaries installed on the server.",
+        "summary": "Lists the spelling dictionaries on the server: those installed and those that come with Interlinea (included), by name.",
         "tags": [
           "Files, checks and spelling"
         ]
@@ -4633,7 +4669,7 @@
     },
     "/api/dictionaries/{name}": {
       "delete": {
-        "description": "One a project or template spells with is not removed; the answer names them.\n\nAccess: those who make projects and administrators.",
+        "description": "One a project or template spells with is not removed; the answer names them. Included dictionaries can't be removed; an installed one of the same name can, and the included one is then used again.\n\nAccess: those who make projects and administrators.",
         "operationId": "deleteDictionary",
         "parameters": [
           {

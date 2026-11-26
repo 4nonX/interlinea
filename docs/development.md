@@ -35,6 +35,7 @@ make race     # tests with the race detector
 make bench    # benchmarks
 make cross    # binaries for Linux, macOS and Windows (amd64, arm64)
 make wasm     # the core for the browser client (web/public/core)
+make dictionaries  # the included spelling dictionaries (web/public/dictionaries)
 make sample   # regenerate the sample Word document and its extraction
 ```
 
@@ -129,6 +130,7 @@ data folder.
 
 ```
 make wasm            # once, and after changes to the Go filters
+make dictionaries    # once: the spelling dictionaries that come with the app
 cd web
 npm install
 npm run dev

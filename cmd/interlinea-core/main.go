@@ -35,6 +35,7 @@ import (
 	"github.com/4nonX/interlinea/auth/authdb"
 	"github.com/4nonX/interlinea/project/projectdb"
 	"github.com/4nonX/interlinea/server"
+	"github.com/4nonX/interlinea/spell"
 	"github.com/4nonX/interlinea/term/termdb"
 	"github.com/4nonX/interlinea/tm/tmdb"
 )
@@ -66,6 +67,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	data := fs.String("data", "", "folder of the person's data (the app's data folder)")
 	name := fs.String("name", "", "the person's name, for their account")
 	port := fs.Int("port", 0, "port to listen on (0 for a free one)")
+	dicts := fs.String("dictionaries", os.Getenv("INTERLINEA_DICTIONARIES"), "folder of the spelling dictionaries that come with Interlinea, found next to the program if not given (INTERLINEA_DICTIONARIES)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -106,11 +108,17 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return err
 	}
 	addr := ln.Addr().String()
+	shelf, err := includedDictionaries(*dicts, log)
+	if err != nil {
+		ln.Close()
+		return err
+	}
 	srv, err := server.New(server.Config{
-		Stores:  st,
-		Version: version,
-		Log:     log,
-		Hosts:   []string{addr, "localhost:" + portOf(addr)},
+		Stores:       st,
+		Version:      version,
+		Log:          log,
+		Hosts:        []string{addr, "localhost:" + portOf(addr)},
+		Dictionaries: shelf,
 	})
 	if err != nil {
 		ln.Close()
@@ -135,6 +143,24 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	defer cancel()
 	srv.Close()
 	return hs.Shutdown(sctx)
+}
+
+// includedDictionaries opens the spelling dictionaries that come with
+// the app: in the folder given, or the one the package put next to the
+// core. A core without them (one built for the tests) has only the
+// dictionaries the person installs.
+func includedDictionaries(dir string, log *slog.Logger) (*spell.Shelf, error) {
+	if dir == "" {
+		if dir = spell.FindShelf(); dir == "" {
+			log.Info("no spelling dictionaries come with the app")
+			return nil, nil
+		}
+	}
+	shelf, err := spell.OpenShelf(os.DirFS(dir))
+	if err != nil {
+		return nil, fmt.Errorf("the dictionaries in %s can't be read: %w", dir, err)
+	}
+	return shelf, nil
 }
 
 func portOf(addr string) string {

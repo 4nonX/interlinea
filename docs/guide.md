@@ -55,8 +55,17 @@ each checked by the core's project validation:
 Every choice can be changed later on the project's settings page, which also
 adds and removes files and target languages, adds a project memory's units to
 a main memory, pre-translates again, saves a template and deletes the
-project. Settings adds Hunspell spelling dictionaries (LibreOffice .oxt, ZIP,
-or .aff and .dic files) for the core's spell checker. In the editor a spelling
+project.
+
+Spelling dictionaries for 22 languages and regions come with Interlinea:
+English (US, UK), German (Germany, Austria, Switzerland), French, Spanish
+(Spain, Mexico), Italian, Portuguese (Portugal, Brazil), Dutch, Polish,
+Russian, Swedish, Danish, Norwegian Bokmål, Czech, Korean, Ukrainian,
+Hungarian and Romanian. A new project takes the one that fits each target
+language by itself. Settings lists them and adds others: Hunspell
+dictionaries as LibreOffice extensions (.oxt), ZIP files, or .aff and .dic
+files. One added under the name of an included dictionary is used in its
+place, and deleting it brings the included one back. In the editor a spelling
 warning offers the dictionary's suggestions and adding the word to the
 project's words, and a segment with a length limit from its file (XLIFF
 maxwidth) counts its characters.
