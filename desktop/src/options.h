@@ -18,4 +18,7 @@ void setAutoPropagate(bool on);
 // also matches, as Trados) or "both" (before and after, as memoQ).
 QString contextRule();
 void setContextRule(const QString &rule);
+// Light or dark: "light", "dark", or empty to follow the system.
+QString appearance();
+void setAppearance(const QString &appearance);
 }

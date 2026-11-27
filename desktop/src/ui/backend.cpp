@@ -30,6 +30,7 @@
 #include <QSaveFile>
 #include <QTemporaryFile>
 #include <QSettings>
+#include <QStyleHints>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -540,6 +541,28 @@ QString Backend::number(double n, int decimals) const
 bool Backend::gitWords() const
 {
     return Words::git();
+}
+
+QString Backend::appearance() const
+{
+    return Options::appearance();
+}
+
+void Backend::setAppearance(const QString &appearance)
+{
+    if (appearance == Options::appearance())
+        return;
+    Options::setAppearance(appearance);
+    applyAppearance();
+    emit appearanceChanged();
+}
+
+void Backend::applyAppearance()
+{
+    const QString a = Options::appearance();
+    QGuiApplication::styleHints()->setColorScheme(a == QLatin1String("dark")    ? Qt::ColorScheme::Dark
+                                                  : a == QLatin1String("light") ? Qt::ColorScheme::Light
+                                                                                : Qt::ColorScheme::Unknown);
 }
 
 void Backend::setGitWords(bool git)

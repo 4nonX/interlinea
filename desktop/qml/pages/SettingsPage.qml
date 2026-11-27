@@ -173,6 +173,43 @@ Page {
         }
     }
 
+    // Appearance.
+    Panel {
+        title: qsTr("Appearance")
+        ColumnLayout {
+            objectName: "appearance"
+            Layout.fillWidth: true
+            spacing: Theme.s2
+            Accessible.name: qsTr("Appearance")
+            Choice {
+                objectName: "appearance:system"
+                Layout.fillWidth: true
+                text: qsTr("Same as the system")
+                // While the system's setting is the choice, what it shows now.
+                description: Backend.appearance !== "" ? qsTr("Light or dark, as the system is set.")
+                           : Theme.dark ? qsTr("Dark now, as the system is set.") : qsTr("Light now, as the system is set.")
+                checked: Backend.appearance === ""
+                onClicked: Backend.appearance = ""
+            }
+            Choice {
+                objectName: "appearance:light"
+                Layout.fillWidth: true
+                text: qsTr("Light")
+                description: qsTr("Dark text on light surfaces.")
+                checked: Backend.appearance === "light"
+                onClicked: Backend.appearance = "light"
+            }
+            Choice {
+                objectName: "appearance:dark"
+                Layout.fillWidth: true
+                text: qsTr("Dark")
+                description: qsTr("Light text on dark surfaces, easier on the eyes in a dim room.")
+                checked: Backend.appearance === "dark"
+                onClicked: Backend.appearance = "dark"
+            }
+        }
+    }
+
     // Your name.
     Panel {
         title: qsTr("Your name")

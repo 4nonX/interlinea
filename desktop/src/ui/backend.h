@@ -48,6 +48,8 @@ class Backend : public QObject {
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString language READ language CONSTANT)
     Q_PROPERTY(bool gitWords READ gitWords WRITE setGitWords NOTIFY gitWordsChanged)
+    // Light or dark: "light", "dark", or empty to follow the system.
+    Q_PROPERTY(QString appearance READ appearance WRITE setAppearance NOTIFY appearanceChanged)
 public:
     explicit Backend(ConnectionManager *manager, QObject *parent = nullptr);
     // The one the app made, for QML.
@@ -59,6 +61,10 @@ public:
     QString version() const;
     QString language() const;
     bool gitWords() const;
+    QString appearance() const;
+    void setAppearance(const QString &appearance);
+    // Shows the kept choice of light or dark; called once at start.
+    static void applyAppearance();
     void setGitWords(bool git);
     ConnectionManager *manager() const { return m_manager; }
 
@@ -194,6 +200,7 @@ public:
 signals:
     void connectionsChanged();
     void gitWordsChanged();
+    void appearanceChanged();
     void probed(const QString &url, const QVariantMap &info);
     void signedIn(const QString &url, const QString &connectionId, const QVariantMap &error);
     // A connection's live feed: type is "project", "memory", "termbase",

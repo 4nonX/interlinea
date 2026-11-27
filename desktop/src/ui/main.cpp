@@ -70,6 +70,7 @@ int main(int argc, char *argv[])
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     InterfaceLanguage::install(app);
+    Backend::applyAppearance();
 
     // Files named when started, as full paths: the Interlinea already
     // running may have been started elsewhere.
