@@ -174,7 +174,15 @@ foreach(name apiclient eventfeed secretstore providersignin connections ui proje
     target_compile_definitions(tst_${name} PRIVATE INTERLINEA_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../web/e2e/fixtures")
     add_test(NAME ${name} COMMAND tst_${name})
     # A small folder of included dictionaries, the same in every run.
-    set(test_env "QT_QPA_PLATFORM=offscreen" "INTERLINEA_DICTIONARIES=${CMAKE_CURRENT_SOURCE_DIR}/tests/dictionaries")
+    # Without a screen; on Windows on the real one, the only way the
+    # windows get the system's fonts there (offscreen has none, and draws
+    # every letter as a box), so the layout check measures real text.
+    if(WIN32)
+        set(test_platform "windows")
+    else()
+        set(test_platform "offscreen")
+    endif()
+    set(test_env "QT_QPA_PLATFORM=${test_platform}" "INTERLINEA_DICTIONARIES=${CMAKE_CURRENT_SOURCE_DIR}/tests/dictionaries")
     if(INTERLINEA_BUILD_CORE)
         # The tests run against the core built next to the app.
         add_dependencies(tst_${name} interlinea_core)
