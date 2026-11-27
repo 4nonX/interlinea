@@ -57,10 +57,10 @@ with the checksum of the file you downloaded:
 
 ```sh
 # Windows (PowerShell)
-Get-FileHash .\Interlinea-0.5.0-windows-x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Interlinea-0.5.1-windows-x64-setup.exe -Algorithm SHA256
 
 # macOS
-shasum -a 256 Interlinea-0.5.0-macos-universal.dmg
+shasum -a 256 Interlinea-0.5.1-macos-universal.dmg
 
 # Linux, with SHA256SUMS in the same folder
 sha256sum --check --ignore-missing SHA256SUMS
