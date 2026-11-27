@@ -69,8 +69,9 @@ public:
     // while typing (onTextEdited) happens. clear empties it first.
     bool type(QObject *field, const QString &text, bool clear = true) const;
     bool type(const QString &name, const QString &text, bool clear = true) const;
-    // The last notice the window showed.
+    // The last notice the window showed, and all it showed.
     QString notice() const;
+    QStringList notices() const;
     // Shows a page of the window ("projects", "editor", ...).
     void show(const QString &page) const;
     // Saves a picture of the window under INTERLINEA_SCREENSHOTS, if set.

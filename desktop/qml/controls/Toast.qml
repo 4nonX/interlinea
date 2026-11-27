@@ -6,9 +6,12 @@ import Interlinea
 Rectangle {
     id: toast
     property string last: ""
+    // What it said, the latest last.
+    property var said: []
     function say(text) {
         if (!text) return
         last = text
+        said = said.concat([text]).slice(-50)
         label.text = text
         visible = true
         opacity = 1

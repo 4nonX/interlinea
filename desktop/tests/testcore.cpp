@@ -309,3 +309,8 @@ QString QmlApp::notice() const
 {
     return get(QStringLiteral("toast"), "last").toString();
 }
+
+QStringList QmlApp::notices() const
+{
+    return get(QStringLiteral("toast"), "said").toStringList();
+}

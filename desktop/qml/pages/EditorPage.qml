@@ -45,7 +45,7 @@ Item {
     // The open segment.
     property string activeId: ""
     readonly property int activeRow: activeId in rowOf ? rowOf[activeId] : -1
-    readonly property var activeSegment: activeRow >= 0 ? segments[activeRow] : null
+    readonly property var activeSegment: { revision; return activeRow >= 0 ? segments[activeRow] : null }
     property var te: null              // its TargetEdit
     property var marks: []
     property string sourceSelection: ""
