@@ -23,6 +23,8 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
+#include <QTextBrowser>
+#include <QPointer>
 
 static ApiResult wait(ApiReply *reply)
 {
@@ -170,6 +172,21 @@ private slots:
                     ed->move(-1);
                     QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), back - 1, 10000);
                 }
+                // A click into the source, to select a term in it: the text
+                // stays whole, no frame comes around it.
+                QPointer<QTextBrowser> source = ed->findChild<QTextBrowser *>(QStringLiteral("activeSource"));
+                QVERIFY(source);
+                QTest::mouseClick(source->viewport(), Qt::LeftButton, {}, QPoint(10, 5));
+                QTest::qWait(300);
+                // The click may open the segment's editors again.
+                source = ed->findChild<QTextBrowser *>(QStringLiteral("activeSource"));
+                QVERIFY(source);
+                source->setFocus(Qt::MouseFocusReason);
+                QTRY_VERIFY(source->hasFocus());
+                QTest::qWait(100);
+                QVERIFY2(source->viewport()->height() >= int(source->document()->size().height()),
+                         qPrintable(QStringLiteral("%1: the source shows %2 of its %3 px").arg(QLatin1String(lang)).arg(source->viewport()->height()).arg(source->document()->size().height())));
+                QCOMPARE(source->viewport()->geometry(), source->rect());
                 for (const QSize size : {QSize(1280, 820), QSize(1920, 1032)}) {
                     projects.resize(size);
                     QTest::qWait(300);
