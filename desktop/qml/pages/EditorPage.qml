@@ -951,14 +951,16 @@ Item {
                 // and the search go on a line of their own (flex-wrap).
                 GridLayout {
                     width: bar.width
-                    readonly property bool wide: bar.width >= 980
+                    // Side by side while the file keeps room for its name
+                    // beside the filter and the search at their full width.
+                    readonly property bool wide: bar.width >= backButton.implicitWidth + 200 + Theme.s4 + findRow.implicitWidth + columnSpacing
                     columns: wide ? 2 : 1
                     columnSpacing: Theme.s4
                     rowSpacing: Theme.s2
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: Theme.s4
-                    Button { kind: "quiet"; small: true; iconName: "arrow-left"; text: qsTr("Projects"); onClicked: { page.leave(); page.back() } }
+                    Button { id: backButton; kind: "quiet"; small: true; iconName: "arrow-left"; text: qsTr("Projects"); onClicked: { page.leave(); page.back() } }
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 100
@@ -998,7 +1000,9 @@ Item {
                     }
                 }
                 RowLayout {
-                    Layout.fillWidth: !parent.wide
+                    id: findRow
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: parent.wide ? implicitWidth : -1
                     spacing: Theme.s4
                     // .editor-progress
                     // Narrower windows take from the track and the field first.

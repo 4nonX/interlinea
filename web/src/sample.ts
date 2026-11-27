@@ -49,7 +49,7 @@ const TERMBASES: Termbase[] = [
   },
   {
     id: "tb-p-weber-lease",
-    name: "Mietvertrag Hofmann (project)",
+    name: tl("{name} (project)", { name: "Mietvertrag Hofmann" }),
     kind: "project",
     location: "local",
     languages: ["de-DE", "en-GB"],
