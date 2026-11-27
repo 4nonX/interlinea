@@ -461,7 +461,7 @@ function Identities({ user, identities, attempt }: { user: ServerUser; identitie
             <input value={subject} onChange={(e) => setSubject(e.target.value)} />
           </label>
           <button type="submit" className="btn" disabled={!subject.trim()}>
-            <Link2 size={15} aria-hidden="true" />{" "}{tl("Link")}
+            <Link2 size={15} aria-hidden="true" />{" "}{tl("Link the sign-in")}
           </button>
         </form>
       )}

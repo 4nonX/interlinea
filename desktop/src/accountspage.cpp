@@ -919,7 +919,7 @@ void AccountsPage::showIdentities(QVBoxLayout *into, QWidget *host, const QJsonO
     if (!provider.isEmpty()) {
         auto *subject = new QLineEdit(host);
         subject->setObjectName(QStringLiteral("subject"));
-        auto *link = Web::button(tr("Link"), Web::Normal, host, QStringLiteral("link"));
+        auto *link = Web::button(tr("Link the sign-in"), Web::Normal, host, QStringLiteral("link"));
         link->setObjectName(QStringLiteral("link"));
         link->setEnabled(false);
         connect(subject, &QLineEdit::textChanged, link, [link](const QString &t) { link->setEnabled(!t.trimmed().isEmpty()); });

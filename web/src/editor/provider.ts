@@ -81,14 +81,13 @@ export async function mtProblems(s: MtSettings): Promise<{ field: string; messag
   return JSON.parse(unwrap((await coreNow()).mtCheck(JSON.stringify(s))));
 }
 
-async function send(r: MtRequest, name: string, what: string): Promise<{ status: number; body: string }> {
+/** Sends a request to a service; unreachable is what to say when its address can't be reached. */
+async function send(r: MtRequest, unreachable: string): Promise<{ status: number; body: string }> {
   let res: Response;
   try {
     res = await fetch(r.url, { method: r.method, headers: r.header, body: r.method === "GET" ? undefined : r.body });
   } catch {
-    throw new Error(
-      tl("{name} did not {what}: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.", { name, what }),
-    );
+    throw new Error(unreachable);
   }
   return { status: res.status, body: await res.text().catch(() => "") };
 }
@@ -98,7 +97,10 @@ export async function localModels(s: MtSettings): Promise<string[] | null> {
   const c = await coreNow();
   const raw = unwrap(c.mtModels(JSON.stringify(s)));
   if (!raw) return null;
-  const { status, body } = await send(JSON.parse(raw) as MtRequest, tl("The service"), tl("list its models"));
+  const { status, body } = await send(
+    JSON.parse(raw) as MtRequest,
+    tl("The service did not list its models: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app."),
+  );
   return JSON.parse(unwrap(c.mtModelsAnswer(JSON.stringify(s), status, body))) as string[];
 }
 
@@ -194,7 +196,10 @@ export async function askLocalProvider(p: LocalProvider, sourceLang: string, tar
   const segments = JSON.stringify([{ id: "1", text: markup(source) }]);
   const ask = c.mtTranslate(settings, sourceLang, targetLang, segments);
   if (!ask.ok) throw new Error(tl("{name} did not translate: {error}.", { name: p.name, error: ask.error }));
-  const { status, body } = await send(JSON.parse(ask.value) as MtRequest, p.name, "translate");
+  const { status, body } = await send(
+    JSON.parse(ask.value) as MtRequest,
+    tl("{name} did not translate: its address could not be reached from this browser. A service must allow requests from this page (CORS); one that does not is asked through a team server or the desktop app.", { name: p.name }),
+  );
   const got = c.mtAnswer(settings, segments, status, body);
   if (!got.ok) throw new Error(tl("{name} did not translate: {error}.", { name: p.name, error: got.error }));
   const t = (JSON.parse(got.value) as { id: string; text: string }[]).find((x) => x.id === "1");

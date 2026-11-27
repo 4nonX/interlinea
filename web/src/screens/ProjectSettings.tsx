@@ -646,7 +646,7 @@ function SettingsForm({ project }: { project: Project }) {
         )}
         {problems.length > 0 && changed && (
           <p className="error" role="alert">
-            {tlx("{length} attention before saving.", { length: plural(problems.length, "setting needs", "settings need") })}
+            {plural(problems.length, "setting needs attention before saving.", "settings need attention before saving.")}
           </p>
         )}
         <button

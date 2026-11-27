@@ -114,7 +114,7 @@ export default () =>
       await sleep(400);
       t = await text();
       check(
-        t.includes("Kanzlei Weber has no French (France)") &&
+        t.includes("Kanzlei Weber has no French (France).") &&
           t.includes(
             "Otherwise Kanzlei Weber is used for the languages it has",
           ),

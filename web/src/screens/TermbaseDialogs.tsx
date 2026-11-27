@@ -1072,7 +1072,7 @@ export function ImportDialog({
             <p className="detect detect-warn">
               <AlertTriangle size={16} aria-hidden="true" />
               <span>
-                {tlx("{dropped} no terms in the languages you import and will be left out.", { dropped: plural(incoming.dropped, "entry has", "entries have") })}
+                {plural(incoming.dropped, "entry has no terms in the languages you import and will be left out.", "entries have no terms in the languages you import and will be left out.")}
               </span>
             </p>
           )}
@@ -1313,7 +1313,7 @@ function ColumnStep({
   return (
     <>
       <p className="help">
-        {tlx("{name}: {plural} of entries. Each row is one entry. Check what each column holds; the guess comes from the column names.", { name: loaded.name, plural: plural(
+        {tlx("{name}: {plural} with entries. Each row is one entry. Check what each column holds; the guess comes from the column names.", { name: loaded.name, plural: plural(
           (loaded.detected.total ?? rows.length) - (mapping.header ? 1 : 0),
           "row",
           "rows",

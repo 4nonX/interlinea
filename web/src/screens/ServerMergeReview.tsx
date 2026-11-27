@@ -340,7 +340,7 @@ export function ServerMergeReview({ id }: { id: number }) {
             <ConfirmButton
               small={false}
               label={tl("Close the request")}
-              confirm={waiting ? tl("{waiting} still waiting. Close anyway?", { waiting: plural(waiting, "entry is", "entries are") }) : tl("Close the request?")}
+              confirm={waiting ? plural(waiting, "entry is still waiting. Close anyway?", "entries are still waiting. Close anyway?") : tl("Close the request?")}
               action={tl("Close")}
               onConfirm={() =>
                 void r.api!.closeMergeRequest(id).then(

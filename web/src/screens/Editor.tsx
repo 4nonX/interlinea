@@ -311,7 +311,7 @@ export function Editor({
       now: new Date().toISOString(),
     });
     notify(
-      tl("{w}: {incoming} taken in", { w: w("updated"), incoming: plural(incoming, "master change", "master changes") }),
+      tl(w("updatedTakenIn"), { incoming: plural(incoming, "master change", "master changes") }),
     );
     // Once per opening of the editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1078,7 +1078,7 @@ export function Editor({
             />
           </span>
           <span className="progress-text">
-            {tlx("{doneWords} of {toLocaleString} confirmed", { doneWords: plural(doneWords, "word", "words"), toLocaleString: fmtNum(totalWords) })}
+            {tl("{done} of {total} confirmed", { done: plural(doneWords, "word", "words"), total: fmtNum(totalWords) })}
           </span>
         </div>
         <div

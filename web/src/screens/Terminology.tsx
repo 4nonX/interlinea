@@ -30,7 +30,7 @@ import {
   type TermStatus,
 } from "../data";
 import { useStore, useWords } from "../store";
-import { fmtTime, plural } from "../format";
+import { fmtTime, listOf, plural } from "../format";
 import {
   InLang,
   LangChip,
@@ -545,7 +545,7 @@ function ProjectBranchNote({ tb }: { tb: Termbase }) {
     <p className="branch-note">
       <GitBranch size={14} aria-hidden="true" />
       <span>
-        {tlx("{w} {join}. Shows only this project's new and changed entries.", { w: w("basedOn"), join: masters.map((m) => m.name).join(", ") })}
+        {tl(w("basedOnShows"), { names: listOf(masters.map((m) => m.name)) })}
       </span>
       {tb.projectId && (
         <a href={`#/merge/${tb.projectId}`} className="link">

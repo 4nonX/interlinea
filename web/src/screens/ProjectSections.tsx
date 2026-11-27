@@ -36,7 +36,7 @@ import {
   type Problem,
 } from "../project";
 import { LangChip, LocationBadge } from "../components/ui";
-import { inSentence, plural } from "../format";
+import { inSentence, listOf, plural } from "../format";
 import { tl, tlx } from "../i18n";
 
 export function Problems({
@@ -719,7 +719,9 @@ export function TerminologySection({
                   <div className="choice-note choice-note-wrap master-langs">
                     <Info size={14} aria-hidden="true" />
                     <span>
-                      {tlx("{name} has no {join}.", { name: m.name, join: missing.map((c) => lang(c).name).join(", ") })}{" "}<label className="check check-inline">
+                      {missing.length === 1
+                        ? tl("{name} has no {language}.", { name: m.name, language: lang(missing[0]!).name })
+                        : tl("{name} does not have the languages {languages}.", { name: m.name, languages: listOf(missing.map((c) => lang(c).name)) })}{" "}<label className="check check-inline">
                         <input
                           type="checkbox"
                           checked={t.addLanguages.includes(m.id)}
@@ -734,10 +736,11 @@ export function TerminologySection({
                         <span>
                           {(missing.length === 1 ? tl("Add it to {name}", { name: m.name }) : tl("Add them to {name}", { name: m.name }))}</span>
                       </label>
+                      {!t.addLanguages.includes(m.id) && " "}
                       {!t.addLanguages.includes(m.id) &&
                         (t.mode === "direct" && t.writeTo === m.id
-                          ? tl(" New terms go into this master, so it needs the languages.")
-                          : tl(" Otherwise {name} is used for the languages it has, and terms in the others stay in the project termbase.", { name: m.name }))}
+                          ? tl("New terms go into this master, so it needs the languages.")
+                          : tl("Otherwise {name} is used for the languages it has, and terms in the others stay in the project termbase.", { name: m.name }))}
                     </span>
                   </div>
                 )}
@@ -772,7 +775,7 @@ export function TerminologySection({
                 [
                   "layered",
                   <>
-                    {tlx("{w}, then merge into the masters {span}", { w: w("projectTermbase"), span: <span className="tag">{tl("Recommended")}</span> })}</>,
+                    {w("projectTermbaseThenMerge")}{" "}<span className="tag">{tl("Recommended")}</span></>,
                   tl("New and changed terms stay in the project. When the project is done, you review them and merge into the masters. The masters stay unchanged until then."),
                 ],
                 [

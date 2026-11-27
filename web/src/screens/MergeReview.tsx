@@ -580,7 +580,7 @@ function ChangeItem({
               checked={decision !== "skip"}
               onChange={(e) => onDecide(e.target.checked ? "accept" : "skip")}
             />
-            <span>{change.kind === "removed" ? tl("Delete in {name}", { name: master.name }) : tl("{w} in the merge", { w: w("accept") })}</span>
+            <span>{change.kind === "removed" ? tl("Delete in {name}", { name: master.name }) : w("acceptInMerge")}</span>
           </label>
         )}
       </div>
