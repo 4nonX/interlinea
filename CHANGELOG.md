@@ -7,6 +7,14 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Fixed
+
+- New project: a target language picked in the list and not added with
+  Add left the project without a target language, so it could not go on
+  to the memories. The language is now added on continuing, and a line
+  under the list says so; with no target yet the list reads "Choose a
+  language…". In the desktop app and the browser client.
+
 ## [0.5.0] - 2026-11-27
 
 ### Alignment

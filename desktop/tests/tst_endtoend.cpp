@@ -4,6 +4,7 @@
 // each from a document, translate on the server, and get the translated
 // document back. Skipped without a team server.
 #include "newtermbasedialog.h"
+#include "projectform.h"
 #include "termbasedialogs.h"
 #include "accesspanel.h"
 #include "apiclient.h"
@@ -30,6 +31,7 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QFile>
+#include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -277,10 +279,15 @@ private slots:
                                      15000);
             button(np, QStringLiteral("Continue to files and languages"))->click();
             QTRY_VERIFY_WITH_TIMEOUT(named<QComboBox>(np, QStringLiteral("Use of Mietvertrag.txt")) && named<QComboBox>(np, QStringLiteral("Use of Mietvertrag.txt"))->isEnabled(), 15000);
+            // A target language picked and not added is added on continuing.
             named<LanguageCombo>(np, QStringLiteral("Add another target language"))->setLanguage(QStringLiteral("en-GB"));
-            named<QPushButton>(np, QStringLiteral("Add the target language"))->click();
+            auto *pending = np->findChild<QLabel *>(QStringLiteral("pendingTarget"));
+            QVERIFY(pending && pending->isVisibleTo(np));
+            QCOMPARE(pending->text(), QStringLiteral("English (United Kingdom) is added when you continue, or press Add now."));
             QTRY_VERIFY(button(np, QStringLiteral("Continue to memories"))->isEnabled());
             button(np, QStringLiteral("Continue to memories"))->click();
+            QCOMPARE(np->step(), 2);
+            QCOMPARE(np->form()->settings().value("targetLangs").toArray(), QJsonArray({QStringLiteral("en-GB")}));
             button(np, QStringLiteral("Continue to terminology"))->click();
             button(np, QStringLiteral("Continue to review"))->click();
             const QString createText = where->isLocal() ? QStringLiteral("Create project") : QStringLiteral("Create on the server");

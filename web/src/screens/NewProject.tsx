@@ -149,7 +149,11 @@ export function NewProject() {
     const pending = takePendingDocs();
     return draftDocs(pending);
   });
-  const [step, setStep] = useState(0);
+  const [step, setStepNow] = useState(0);
+  // A target language picked and not added yet; it is added when the
+  // project moves on from its step.
+  const pendingTarget = useState<LangCode | "">("");
+  const [pending, setPending] = pendingTarget;
   const stepHeading = useRef<HTMLHeadingElement>(null);
   const [draft, setDraft] = useState<Draft>(() =>
     emptyDraft(state.contextRule),
@@ -731,8 +735,29 @@ export function NewProject() {
     });
   }
 
+  const pendingUsable =
+    !!pending && pending !== draft.sourceLang && !draft.targetLangs.includes(pending);
+  const setStep = (i: number) => {
+    if (step === 1 && pendingUsable) {
+      touch("targets");
+      setDraft((d) =>
+        d.targetLangs.includes(pending)
+          ? d
+          : { ...d, targetLangs: [...d.targetLangs, pending] },
+      );
+    }
+    if (step === 1) setPending("");
+    setStepNow(i);
+  };
+
+  // The language picked and not added yet counts as a target.
+  const waived =
+    pendingUsable && draft.targetLangs.length === 0
+      ? problemsAt(problems, "targetLangs")
+      : [];
   const canContinue = (i: number) =>
-    stepProblems(i).length === 0 && (i !== 1 || translatable.length > 0);
+    stepProblems(i).filter((m) => i !== 1 || !waived.includes(m)).length === 0 &&
+    (i !== 1 || translatable.length > 0);
 
   return (
     <div className="page page-narrow">
@@ -976,13 +1001,18 @@ export function NewProject() {
               }}
               suggestions={recentTargets}
               fixed={fixedTargets}
+              pending={pendingTarget}
             />
             {draft.targetLangs.length > 1 && (
               <p className="help">
                 {tl("Each file is translated into every target language; a bilingual file only into the language it was made for.")}
               </p>
             )}
-            <Problems messages={problemsAt(problems, "targetLangs")} />
+            <Problems
+              messages={problemsAt(problems, "targetLangs").filter(
+                (m) => !waived.includes(m),
+              )}
+            />
           </fieldset>
 
           <div className="field-grid">

@@ -63,9 +63,13 @@ export default () =>
         (await text()).includes("Detected German"),
         "source language detected from the file to translate",
       );
+      // French is picked and not added: it is added on continuing.
       await setValue("#add-lang", "fr-FR");
-      await click(".add-lang button", "Add");
       await sleep(200);
+      check(
+        (await text()).includes("French (France) is added when you continue, or press Add now."),
+        "a picked target language says it is added on continuing",
+      );
       await typeInto("#pname", "Mietvertrag DE-EN-FR");
       await typeInto("#client", "Kanzlei Weber");
       await typeInto("#due", "2026-12-18T16:00");
@@ -78,6 +82,7 @@ export default () =>
       );
       await click("button", "Continue to memories");
       await sleep(400);
+
       let t = await text();
       check(
         t.includes("German (Germany) to English (United Kingdom)") &&

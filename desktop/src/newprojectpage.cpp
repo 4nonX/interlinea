@@ -285,6 +285,7 @@ NewProjectPage::NewProjectPage(ConnectionManager *manager, QWidget *parent)
     m_previewTimer.setSingleShot(true);
     m_previewTimer.setInterval(350);
     connect(&m_previewTimer, &QTimer::timeout, this, &NewProjectPage::preview);
+    connect(m_form, &ProjectForm::pendingChanged, this, &NewProjectPage::refreshContinue);
     connect(m_form, &ProjectForm::changed, this, [this] {
         // A name the person typed stays theirs.
         const QJsonObject s = m_form->settings();
@@ -473,6 +474,9 @@ void NewProjectPage::setStep(int step)
 {
     if (step < 0 || step > 4 || step == m_step)
         return;
+    // A target language picked and not added yet is added on leaving its step.
+    if (m_step == 1)
+        m_form->addPendingTarget();
     m_step = step;
     showStep();
     if (m_step == 4) {
@@ -1015,7 +1019,7 @@ void NewProjectPage::refreshContinue()
     if (m_continue[0])
         m_continue[0]->setEnabled(where);
     const bool files = where && any && !reading && problems.isEmpty() && !s.value(QLatin1String("sourceLang")).toString().isEmpty() &&
-                       !s.value(QLatin1String("targetLangs")).toArray().isEmpty() && !s.value(QLatin1String("name")).toString().trimmed().isEmpty();
+                       (!s.value(QLatin1String("targetLangs")).toArray().isEmpty() || !m_form->pendingTarget().isEmpty()) && !s.value(QLatin1String("name")).toString().trimmed().isEmpty();
     if (m_continue[1]) {
         m_continue[1]->setEnabled(files);
         m_continue[1]->setToolTip(files ? QString()

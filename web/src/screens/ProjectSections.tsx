@@ -90,6 +90,7 @@ export function TargetPicker({
   setTargets,
   suggestions,
   fixed,
+  pending,
 }: {
   source: LangCode;
   targets: LangCode[];
@@ -97,8 +98,14 @@ export function TargetPicker({
   suggestions: LangCode[];
   /** Languages bilingual files need; they can't be unticked. */
   fixed: LangCode[];
+  /**
+   * The language picked and not added yet, kept by a new project, which
+   * adds it when it moves on to the next step.
+   */
+  pending?: [LangCode | "", (c: LangCode | "") => void];
 }) {
-  const [adding, setAdding] = useState("");
+  const own = useState<LangCode | "">("");
+  const [adding, setAdding] = pending ?? own;
   const quick = [...new Set([...suggestions, ...targets])].filter(
     (c) => c !== source,
   );
@@ -142,7 +149,11 @@ export function TargetPicker({
           value={adding}
           onChange={(e) => setAdding(e.target.value)}
         >
-          <option value="">{tl("Add another language…")}</option>
+          <option value="">
+            {pending && targets.length === 0
+              ? tl("Choose a language…")
+              : tl("Add another language…")}
+          </option>
           {others.map((l) => (
             <option key={l.code} value={l.code}>
               {l.name}
@@ -162,6 +173,13 @@ export function TargetPicker({
           {tl("Add")}
         </button>
       </div>
+      {adding && (
+        <p className="help" role="status">
+          {pending
+            ? tl("{name} is added when you continue, or press Add now.", { name: lang(adding).name })
+            : tl("Press Add to add {name} to the project.", { name: lang(adding).name })}
+        </p>
+      )}
     </div>
   );
 }

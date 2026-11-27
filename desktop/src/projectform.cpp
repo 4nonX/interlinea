@@ -547,6 +547,39 @@ QWidget *ProjectForm::targets(QWidget *parent)
     return m_targets;
 }
 
+QString ProjectForm::pendingTarget() const
+{
+    if (!m_adding || !m_adding->isEnabled() || m_readOnly)
+        return QString();
+    const QString t = m_adding->language();
+    if (t.isEmpty() || t == source() || targetList().contains(t))
+        return QString();
+    return t;
+}
+
+void ProjectForm::addPendingTarget()
+{
+    const QString t = pendingTarget();
+    if (!t.isEmpty())
+        addTarget(t);
+}
+
+void ProjectForm::addTarget(const QString &lang)
+{
+    QStringList ts = targetList();
+    if (lang.isEmpty() || ts.contains(lang))
+        return;
+    ts << lang;
+    m_s.insert(QStringLiteral("targetLangs"), array(ts));
+    pickDictionaries();
+    fillTargets();
+    fillMemories();
+    fillTerminology();
+    fillChecks();
+    touch();
+    emit pendingChanged();
+}
+
 void ProjectForm::fillTargets()
 {
     if (!m_targets)
@@ -585,8 +618,9 @@ void ProjectForm::fillTargets()
             });
         }
         auto *add = new LanguageCombo(w);
+        m_adding = add;
         add->setAccessibleName(tr("Add another target language"));
-        add->lineEdit()->setPlaceholderText(tr("Add another language…"));
+        add->lineEdit()->setPlaceholderText(chosen.isEmpty() ? tr("Choose a language…") : tr("Add another language…"));
         // The source and the languages already offered are not offered again.
         for (int i = add->count() - 1; i >= 0; --i) {
             const QString t = add->itemData(i).toString();
@@ -599,26 +633,23 @@ void ProjectForm::fillTargets()
         button->setAccessibleName(tr("Add the target language"));
         button->setEnabled(false);
         v->addWidget(Web::row({add, button}, w));
-        const auto usable = [this, add] {
-            const QString t = add->language();
-            return !t.isEmpty() && t != source() && !targetList().contains(t);
-        };
-        connect(add, &QComboBox::currentTextChanged, button, [button, usable] { button->setEnabled(usable()); });
-        const auto addIt = [this, add, usable] {
-            if (!usable())
-                return;
-            QStringList ts = targetList();
-            ts << add->language();
-            m_s.insert(QStringLiteral("targetLangs"), array(ts));
-            pickDictionaries();
-            fillTargets();
-            fillMemories();
-            fillTerminology();
-            fillChecks();
-            touch();
-        };
-        connect(button, &QPushButton::clicked, this, addIt);
-        connect(add->lineEdit(), &QLineEdit::returnPressed, this, addIt);
+        // A language picked here and not added is added when the project
+        // moves on, so this says so.
+        auto *note = Web::text(QString(), "help", w);
+        note->setObjectName(QStringLiteral("pendingTarget"));
+        note->setVisible(false);
+        v->addWidget(note);
+        connect(add, &QComboBox::currentTextChanged, this, [this, button, note] {
+            const QString t = pendingTarget();
+            button->setEnabled(!t.isEmpty());
+            note->setText(t.isEmpty()  ? QString()
+                          : m_new ? tr("%1 is added when you continue, or press Add now.").arg(Languages::name(t))
+                                  : tr("Press Add to add %1 to the project.").arg(Languages::name(t)));
+            note->setVisible(!t.isEmpty());
+            emit pendingChanged();
+        });
+        connect(button, &QPushButton::clicked, this, &ProjectForm::addPendingTarget);
+        connect(add->lineEdit(), &QLineEdit::returnPressed, this, &ProjectForm::addPendingTarget);
         v->addWidget(problemLabel(QStringLiteral("targetLangs"), w));
         w->setEnabled(!m_readOnly);
     });

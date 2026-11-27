@@ -13,6 +13,7 @@
 #include <QWidget>
 
 class Connection;
+class LanguageCombo;
 class QDateTimeEdit;
 class QLabel;
 class QPushButton;
@@ -69,6 +70,11 @@ public:
     // Target languages offered as check boxes besides the chosen ones, and
     // those bilingual files need, which can't be unticked.
     void setSuggestedTargets(const QStringList &targets);
+    // The language picked under the target languages and not added yet,
+    // when it could be added; empty otherwise.
+    QString pendingTarget() const;
+    // Adds that language, as its Add button does.
+    void addPendingTarget();
     void setFixedTargets(const QStringList &targets);
 
     // Shows what the server refused, by field, in the section it is in.
@@ -108,6 +114,8 @@ public:
 
 signals:
     void changed();
+    // The language picked to be added changed.
+    void pendingChanged();
 
 private:
     struct NewMemory {
@@ -121,6 +129,7 @@ private:
     void touch();
     void fillDetails();
     void fillTargets();
+    void addTarget(const QString &lang);
     void fillMemories();
     void fillTerminology();
     void fillChecks();
@@ -154,6 +163,7 @@ private:
 
     QPointer<QWidget> m_details;
     QPointer<QWidget> m_targets;
+    QPointer<LanguageCombo> m_adding;
     QPointer<QWidget> m_memories;
     QPointer<QWidget> m_terminology;
     QPointer<QWidget> m_checks;
