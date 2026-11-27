@@ -1,6 +1,6 @@
 #include "segmentcontent.h"
 
-#include "theme.h"
+#include "colors.h"
 
 #include <QAbstractTextDocumentLayout>
 #include <QApplication>

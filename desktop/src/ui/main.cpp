@@ -17,6 +17,9 @@
 #include <QQuickWindow>
 #include <QSettings>
 #include <QTimer>
+#include <QtQml/qqmlextensionplugin.h>
+
+Q_IMPORT_QML_PLUGIN(InterlineaPlugin)
 
 // Files the system asks to open (macOS hands them over as events).
 class FileOpener : public QObject {

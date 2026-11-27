@@ -1,6 +1,6 @@
 #include "icons.h"
 
-#include <QApplication>
+#include <QGuiApplication>
 #include <QIconEngine>
 #include <QPainter>
 #include <QPainterPath>
@@ -459,7 +459,7 @@ public:
     QIconEngine *clone() const override { return new LineIcon(m_name, m_color); }
     void paint(QPainter *p, const QRect &rect, QIcon::Mode mode, QIcon::State) override
     {
-        const QPalette pal = QApplication::palette();
+        const QPalette pal = QGuiApplication::palette();
         QColor c = mode == QIcon::Selected ? pal.color(QPalette::Link) : pal.color(QPalette::WindowText);
         if (m_color.isValid())
             c = m_color;

@@ -947,15 +947,25 @@ Item {
                 x: Theme.s5; y: Theme.s3
                 width: parent.width - 2 * Theme.s5
                 spacing: Theme.s2
-                RowLayout {
+                // The file and how far it is; on a narrow window the filter
+                // and the search go on a line of their own (flex-wrap).
+                GridLayout {
                     width: bar.width
+                    readonly property bool wide: bar.width >= 980
+                    columns: wide ? 2 : 1
+                    columnSpacing: Theme.s4
+                    rowSpacing: Theme.s2
+                RowLayout {
+                    Layout.fillWidth: true
                     spacing: Theme.s4
                     Button { kind: "quiet"; small: true; iconName: "arrow-left"; text: qsTr("Projects"); onClicked: { page.leave(); page.back() } }
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.minimumWidth: 100
                         spacing: 0
                         Txt { role: "h3"; text: page.settings.name || ""; elide: Text.ElideRight; Layout.fillWidth: true; wrapMode: Text.NoWrap }
                         RowLayout {
+                            Layout.fillWidth: true
                             spacing: Theme.s3
                             readonly property var files: (page.settings.files || []).filter(f => f.role === "translatable").map(f => f.name)
                             readonly property var targets: page.settings.targetLangs || []
@@ -968,7 +978,7 @@ Item {
                                 Accessible.name: qsTr("File")
                                 onActivated: i => { const f = parent.files[i]; if (f !== page.file) page.open(page.cid, page.projectId, f, page.targetLang) }
                             }
-                            Txt { visible: parent.files.length <= 1; role: "sub"; text: Backend.fileName(page.file) }
+                            Txt { visible: parent.files.length <= 1; role: "sub"; text: Backend.fileName(page.file); Layout.fillWidth: true; Layout.maximumWidth: implicitWidth; Layout.minimumWidth: Math.min(implicitWidth, 90); elide: Text.ElideMiddle; wrapMode: Text.NoWrap }
                             Row {
                                 spacing: Theme.s1
                                 LangChip { code: page.sourceLang; anchors.verticalCenter: parent.verticalCenter }
@@ -986,9 +996,17 @@ Item {
                             }
                         }
                     }
+                }
+                RowLayout {
+                    Layout.fillWidth: !parent.wide
+                    spacing: Theme.s4
                     // .editor-progress
+                    // Narrower windows take from the track and the field first.
                     ColumnLayout {
+                        Layout.fillWidth: true
                         Layout.preferredWidth: 180
+                        Layout.maximumWidth: 180
+                        Layout.minimumWidth: 80
                         spacing: 3
                         Rectangle {
                             Layout.fillWidth: true
@@ -1000,6 +1018,9 @@ Item {
                             Rectangle { height: parent.height; radius: 3; color: Theme.ok; width: parent.width * (page.progress.total ? page.progress.done / page.progress.total : 0) }
                         }
                         Txt {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            wrapMode: Text.NoWrap
                             color: Theme.text3
                             font.pixelSize: Theme.tiny
                             text: Fmt.fill(qsTr("{words} of {total} confirmed"), { words: Fmt.plural(page.progress.done, qsTr("{n} word"), qsTr("{n} words")), total: Fmt.num(page.progress.total) })
@@ -1012,7 +1033,10 @@ Item {
                         onChanged: i => page.show = ["all", "todo", "warnings"][i]
                     }
                     TextField {
-                        implicitWidth: 200
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 200
+                        Layout.maximumWidth: 200
+                        Layout.minimumWidth: 100
                         implicitHeight: 28
                         placeholderText: qsTr("Find in the segments")
                         text: page.find
@@ -1023,6 +1047,7 @@ Item {
                         role: "sub"
                         text: page.found === 0 ? qsTr("Nothing found") : Fmt.plural(page.found, qsTr("{n} segment"), qsTr("{n} segments"))
                     }
+                }
                 }
                 Button {
                     visible: page.reviewCount > 0

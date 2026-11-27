@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QComboBox>
 #include <QDateTime>
 #include <QString>
 #include <QStringList>
@@ -27,15 +26,3 @@ bool samePrimary(const QString &a, const QString &b);
 // primary language ("de-01" and "de" become de-DE); empty when none.
 QString known(const QString &code);
 }
-
-// A choice of language: the common ones, and any other typed as a tag.
-class LanguageCombo : public QComboBox {
-    Q_OBJECT
-public:
-    explicit LanguageCombo(QWidget *parent = nullptr);
-    QString language() const;
-    void setLanguage(const QString &tag);
-
-protected:
-    bool eventFilter(QObject *o, QEvent *e) override;
-};

@@ -163,6 +163,7 @@ Page {
             help: qsTr("Takes effect when Interlinea is started again.")
             ComboBox {
                 id: languagePick
+                objectName: "interfaceLanguage"
                 readonly property var codes: [""].concat(Backend.interfaceLanguages())
                 model: codes.map(c => c === "" ? Fmt.fill(qsTr("The system's language ({name})"), { name: Backend.interfaceLanguageName(Backend.systemLanguage()) })
                                                : Backend.interfaceLanguageName(c))

@@ -1,10 +1,7 @@
 #pragma once
 
-#include <QJsonArray>
 #include <QString>
 #include <QStringList>
-
-class QComboBox;
 
 // Roles are sets of permissions. Five roles come with the core, each a
 // permission and the ones before it (read, suggest, edit, approve,
@@ -19,7 +16,4 @@ bool allows(const QString &role, const QString &need);
 // A permission or built-in role in words ("Suggest changes"); a role of
 // one's own by its name.
 QString text(const QString &name);
-// Fills a choice of role with the roles a place has (as GET /api/roles
-// lists them; the five built-in ones if that is empty) and chooses one.
-void fill(QComboBox *box, const QJsonArray &defined, const QString &current);
 }

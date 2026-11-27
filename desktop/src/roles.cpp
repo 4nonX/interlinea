@@ -1,6 +1,5 @@
 #include "roles.h"
 
-#include <QComboBox>
 #include <QCoreApplication>
 #include <QJsonObject>
 
@@ -40,27 +39,6 @@ QString text(const QString &name)
         return parts.join(QStringLiteral(", "));
     }
     return name;
-}
-
-void fill(QComboBox *box, const QJsonArray &defined, const QString &current)
-{
-    box->clear();
-    if (defined.isEmpty()) {
-        for (const QString &p : permissions())
-            box->addItem(text(p), p);
-    } else {
-        for (const QJsonValue &v : defined) {
-            const QString name = v.toObject().value(QLatin1String("name")).toString();
-            box->addItem(text(name), name);
-        }
-    }
-    int at = box->findData(current);
-    // A role that is no longer defined is still shown as what it is.
-    if (at < 0 && !current.isEmpty()) {
-        box->addItem(text(current), current);
-        at = box->count() - 1;
-    }
-    box->setCurrentIndex(qMax(0, at));
 }
 
 } // namespace Roles

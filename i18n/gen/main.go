@@ -12,7 +12,8 @@
 //
 // The browser client marks its strings with tl("…"), tlx("…") and
 // plural(n, "…", "…"); the desktop app with tr("…"), QT_TR_NOOP("…"),
-// QT_TRANSLATE_NOOP("Context", "…") and QCoreApplication::translate. Both
+// QT_TRANSLATE_NOOP("Context", "…") and QCoreApplication::translate, and
+// in its QML with qsTr("…"). Both
 // apps look a string up by its English text, so one catalog serves both.
 // The names of the languages the apps list (package langtag) are strings
 // of both as well.
@@ -299,6 +300,9 @@ func collect(root string) (map[string]string, error) {
 	if err := walk("desktop/src", []string{".cpp", ".h"}, scanCPP); err != nil {
 		return nil, err
 	}
+	if err := walk("desktop/qml", []string{".qml"}, scanQML); err != nil {
+		return nil, err
+	}
 	for k := range keys {
 		if !others[k] {
 			desktopOnly[k] = true
@@ -357,7 +361,18 @@ var (
 	goLiteral = regexp.MustCompile("^(?:\"(?:[^\"\\\\\n]|\\\\.)*\"|`[^`]*`)")
 	tsCall    = regexp.MustCompile(`(?:^|[^A-Za-z0-9_$.])(tl|tlx|plural)\(`)
 	cppCall   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])(tr|QT_TR_NOOP|QT_TRANSLATE_NOOP|QCoreApplication::translate)\(`)
+	qmlCall   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_$.])(qsTr|QT_TR_NOOP)\(`)
 )
+
+// scanQML finds the strings of qsTr("…") and QT_TR_NOOP("…") in the
+// desktop app's QML, written as JavaScript strings.
+func scanQML(src string, add func(string, int)) {
+	for _, m := range qmlCall.FindAllStringSubmatchIndex(src, -1) {
+		if s, _, ok := jsString(src, skipSpace(src, m[1])); ok {
+			add(s, m[0])
+		}
+	}
+}
 
 // scanTS finds tl("…"), tlx("…") and the two forms of plural(n, "…", "…"),
 // keyed "{n} …" as plural shows them.

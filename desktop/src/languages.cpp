@@ -1,10 +1,7 @@
 #include "languages.h"
-#include <QEvent>
-#include <QLineEdit>
 
 #include "languagelist.h"
 
-#include <QLineEdit>
 #include <QCoreApplication>
 #include <QLocale>
 #include <QRegularExpression>
@@ -115,52 +112,3 @@ QString known(const QString &code)
 }
 
 } // namespace Languages
-
-LanguageCombo::LanguageCombo(QWidget *parent)
-    : QComboBox(parent)
-{
-    setEditable(true);
-    setInsertPolicy(QComboBox::NoInsert);
-    for (const QString &t : Languages::common())
-        addItem(Languages::label(t), t);
-    setCurrentIndex(-1);
-    lineEdit()->setPlaceholderText(tr("Choose a language"));
-    setMaxVisibleItems(14);
-    // A list to choose from first of all: a click on the field opens it,
-    // as a click on its arrow does. A language that is not listed can
-    // still be typed as its tag (gsw-CH).
-    lineEdit()->installEventFilter(this);
-    setToolTip(tr("Choose a language from the list. A language that is not listed can be typed as its tag, such as gsw-CH."));
-}
-
-bool LanguageCombo::eventFilter(QObject *o, QEvent *e)
-{
-    if (o == lineEdit() && e->type() == QEvent::MouseButtonRelease && isEnabled() && !lineEdit()->hasSelectedText() && lineEdit()->text().isEmpty()) {
-        showPopup();
-        return true;
-    }
-    return QComboBox::eventFilter(o, e);
-}
-
-QString LanguageCombo::language() const
-{
-    const int i = findText(currentText());
-    if (i >= 0)
-        return itemData(i).toString();
-    // A typed tag, possibly with its name before it.
-    QString t = currentText();
-    if (t.contains(QLatin1Char(',')))
-        t = t.section(QLatin1Char(','), -1);
-    return Languages::normalize(t);
-}
-
-void LanguageCombo::setLanguage(const QString &tag)
-{
-    const QString n = Languages::normalize(tag);
-    int i = findData(n);
-    if (i < 0 && !n.isEmpty()) {
-        addItem(Languages::label(n), n);
-        i = count() - 1;
-    }
-    setCurrentIndex(i);
-}

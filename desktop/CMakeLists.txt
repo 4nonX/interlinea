@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets Network Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Quick QuickControls2 Test)
 
 # Newer macOS SDKs have no AGL framework, which Qt's OpenGL wrapper still
 # names; nothing in the app uses it.
@@ -21,7 +21,9 @@ endif()
 option(INTERLINEA_BUILD_CORE "Build interlinea-core with Go next to the app" ON)
 set(INTERLINEA_VERSION "${PROJECT_VERSION}" CACHE STRING "Version shown by the app")
 
-# The app's code, shared by the app and the tests.
+# The app's code without its interface, shared by the app and the tests:
+# the connections to the core and to team servers, sign-ins, the live
+# feed, the interface languages, and what the interface asks of C++.
 add_library(interlinea_app STATIC
     src/apierror.cpp
     src/apiclient.cpp
@@ -32,42 +34,15 @@ add_library(interlinea_app STATIC
     src/connectionmanager.cpp
     src/providersignin.cpp
     src/singleinstance.cpp
-    src/navigationrail.cpp
-    src/signindialog.cpp
-    src/settingspage.cpp
     src/interfacelanguage.cpp
-    src/mainwindow.cpp
     src/languages.cpp
-    src/projectsmodel.cpp
-    src/projectform.cpp
-    src/newprojectpage.cpp
-    src/projectpage.cpp
-    src/projectspage.cpp
-    src/theme.cpp
-    src/icons.cpp
-    src/progressdelegate.cpp
-    src/segmentcontent.cpp
-    src/documentpreview.cpp
-    src/segmentmodel.cpp
-    src/targeteditor.cpp
-    src/editorpage.cpp
-    src/bands.cpp
-    src/flowlayout.cpp
-    src/webui.cpp
-    src/accesspanel.cpp
-    src/accountspage.cpp
-    src/alignmentdialog.cpp
-    src/memoriespage.cpp
     src/options.cpp
     src/roles.cpp
-    src/reviewpage.cpp
-    src/termbasedialogs.cpp
-    src/termfields.cpp
-    src/layoutcheck.cpp
-    src/newtermbasedialog.cpp
-    src/termdata.cpp
-    src/terminologypage.cpp
     src/words.cpp
+    src/colors.cpp
+    src/icons.cpp
+    src/segmentcontent.cpp
+    src/documentpreview.cpp
 )
 # The licence and the copyright notice are in the app, which shows them.
 qt_add_resources(interlinea_app "legal" PREFIX "/legal" BASE .. FILES ../LICENSE ../NOTICE)
@@ -76,6 +51,27 @@ qt_add_resources(interlinea_app "i18n" PREFIX "/i18n" BASE ../i18n FILES ../i18n
 target_include_directories(interlinea_app PUBLIC src)
 target_compile_definitions(interlinea_app PUBLIC INTERLINEA_VERSION="${INTERLINEA_VERSION}")
 target_link_libraries(interlinea_app PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
+
+# The interface in Qt Quick: the app's own controls in the web app's
+# design (qml/controls), its parts and pages (qml/parts, qml/pages), and
+# the bridge to the C++ side (src/ui). A library the app and the tests
+# both load the interface from.
+qt_policy(SET QTP0001 NEW)
+qt_policy(SET QTP0004 NEW)
+qt_add_library(interlinea_ui STATIC)
+file(GLOB interlinea_qml RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS qml/*.qml qml/controls/*.qml qml/parts/*.qml qml/pages/*.qml)
+set_source_files_properties(qml/Theme.qml qml/Fmt.qml qml/Api.qml qml/Words.qml qml/Roles.qml qml/TermData.qml qml/Fields.qml qml/Bands.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+qt_add_qml_module(interlinea_ui
+    URI Interlinea
+    VERSION 1.0
+    # Not "Interlinea" in the build folder, where the app's program is.
+    OUTPUT_DIRECTORY qml/Interlinea
+    SOURCES src/ui/backend.h src/ui/backend.cpp src/ui/iconprovider.h src/ui/iconprovider.cpp src/ui/segmentdocument.h src/ui/segmentdocument.cpp
+            src/ui/shothook.h src/ui/shothook.cpp
+    QML_FILES ${interlinea_qml}
+)
+target_include_directories(interlinea_ui PUBLIC src/ui)
+target_link_libraries(interlinea_ui PUBLIC interlinea_app Qt6::Quick Qt6::QuickControls2)
 
 # Sign-ins go to the system's keychain.
 if(WIN32)
@@ -99,8 +95,8 @@ else()
     target_compile_options(interlinea_app PUBLIC -Wall -Wextra -Wpedantic)
 endif()
 
-qt_add_executable(interlinea WIN32 MACOSX_BUNDLE src/main.cpp)
-target_link_libraries(interlinea PRIVATE interlinea_app)
+qt_add_executable(interlinea WIN32 MACOSX_BUNDLE src/ui/main.cpp)
+target_link_libraries(interlinea PRIVATE interlinea_ui interlinea_uiplugin)
 set_target_properties(interlinea PROPERTIES
     OUTPUT_NAME Interlinea
     MACOSX_BUNDLE_BUNDLE_NAME Interlinea
@@ -109,29 +105,6 @@ set_target_properties(interlinea PROPERTIES
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_COPYRIGHT "Copyright (C) 2026 Dan Dreßen. GNU Affero General Public License, version 3.")
 
-# The interface in Qt Quick: the app's own controls in the web app's
-# design (qml/controls), its pages (qml/pages), and the bridge to the C++
-# side (src/ui).
-find_package(Qt6 6.8 COMPONENTS Quick QuickControls2)
-if(Qt6Quick_FOUND)
-    qt_policy(SET QTP0001 NEW)
-    qt_policy(SET QTP0004 NEW)
-    qt_add_executable(interlinea_next WIN32 MACOSX_BUNDLE src/ui/main.cpp src/ui/shothook.h src/ui/shothook.cpp)
-    file(GLOB interlinea_qml RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS qml/*.qml qml/controls/*.qml qml/parts/*.qml qml/pages/*.qml)
-    set_source_files_properties(qml/Theme.qml qml/Fmt.qml qml/Api.qml qml/Words.qml qml/Roles.qml qml/TermData.qml qml/Fields.qml qml/Bands.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
-    qt_add_qml_module(interlinea_next
-        URI Interlinea
-        VERSION 1.0
-        # Not "Interlinea" in the build folder, where the app's program is.
-        OUTPUT_DIRECTORY qml/Interlinea
-        SOURCES src/ui/backend.h src/ui/backend.cpp src/ui/iconprovider.h src/ui/iconprovider.cpp src/ui/segmentdocument.h src/ui/segmentdocument.cpp
-        QML_FILES ${interlinea_qml}
-    )
-    target_include_directories(interlinea_next PRIVATE src/ui)
-    target_link_libraries(interlinea_next PRIVATE interlinea_app Qt6::Quick Qt6::QuickControls2)
-    set_target_properties(interlinea_next PROPERTIES OUTPUT_NAME InterlineaNext)
-    qt_add_resources(interlinea_next "appicon_next" PREFIX "/" BASE packaging FILES packaging/interlinea.png)
-endif()
 
 # The app's icon: in the program file on Windows, in the bundle on macOS,
 # and as the icon of its windows everywhere.
@@ -191,10 +164,10 @@ else()
 endif()
 
 enable_testing()
-foreach(name apiclient eventfeed secretstore providersignin connections ui projects editor memories terminology interfacelanguage endtoend)
+foreach(name apiclient eventfeed secretstore providersignin connections interfacelanguage)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
-    target_link_libraries(tst_${name} PRIVATE interlinea_app Qt6::Test)
+    target_link_libraries(tst_${name} PRIVATE interlinea_ui interlinea_uiplugin Qt6::Test)
     # One small document of every format, shared with the browser tests.
     target_compile_definitions(tst_${name} PRIVATE INTERLINEA_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../web/e2e/fixtures")
     add_test(NAME ${name} COMMAND tst_${name})
