@@ -355,7 +355,10 @@ QFrame#issue QLabel { color: @warn; }
 QFrame#issue[forbidden="true"] { background: @dangerBg; }
 QFrame#issue[forbidden="true"] QLabel { color: @danger; }
 QTextEdit#targetEditor { background: @surface; border: 2px solid @accent; border-radius: 0; padding: 10px; }
-QTextBrowser#activeSource { background: transparent; border: 0; padding: 0; }
+/* The open segment's source: text to select in, never a field, also
+   when a click gives it focus (the fields' focus rule would add a frame
+   and padding the row has no room for). */
+QTextBrowser#activeSource, QTextBrowser#activeSource:focus, QTextBrowser#activeSource:hover { background: transparent; border: 0; padding: 0; }
 )");
     // The arrows of lists and number fields are pictures to a style
     // sheet: drawn here in the theme's colours, and kept as files.
