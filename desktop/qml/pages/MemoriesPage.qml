@@ -14,7 +14,6 @@ Page {
     description: qsTr("Translation memories, in the core. Projects choose which to use for each target language.")
 
     signal notice(string text)
-    signal align(string connectionId, var into, var taken, string memory)
 
     // Per connection: { memories, projects, templates, error, read }.
     property var places: ({})
@@ -90,6 +89,29 @@ Page {
 
     function open(cid, name) {
         opened = put(opened, cid, name)
+    }
+
+    // A document and its translation, done before, into units of a memory:
+    // of the one named, or of one chosen of those given (into), or a new one.
+    function align(cid, into, taken, memory) { alignDialog.start(cid, into, taken, memory) }
+    // The memories the units may go into: here the main ones, on a server
+    // those the person may edit.
+    function alignHere(cid) {
+        const all = (places[cid] || {}).memories || []
+        const local = Backend.connection(cid).local
+        align(cid, all.filter(m => local ? !ownerProject(cid, m.name) : Roles.allows(m.role, "edit")), all.map(m => m.name), "")
+    }
+    AlignmentDialog {
+        id: alignDialog
+        objectName: "alignDocuments"
+        onAdded: (units, name) => {
+            const conn = Backend.connection(cid)
+            const what = Fmt.plural(units, qsTr("{n} unit"), qsTr("{n} units"))
+            page.notice(!choice ? Fmt.fill(qsTr("Added {units} to {memory}"), { units: what, memory: name })
+                        : conn.local ? Fmt.fill(qsTr("Added {units} to {memory}"), { units: what, memory: name })
+                        : Fmt.fill(qsTr("Added {units} to {memory} on {host}"), { units: what, memory: name, host: conn.displayName }))
+            page.reload()
+        }
     }
 
     // Memory files in and out.
@@ -248,9 +270,7 @@ Page {
                     page.reload()
                     if (!place.local) page.open(place.cid, name)
                 }
-                onAlignHere: page.align(place.cid,
-                                        place.memories.filter(m => place.local ? !page.ownerProject(place.cid, m.name) : Roles.allows(m.role, "edit")),
-                                        place.memories.map(m => m.name), "")
+                onAlignHere: page.alignHere(place.cid)
             }
 
             component MemoryTable: Table {

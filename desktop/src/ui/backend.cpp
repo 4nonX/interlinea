@@ -418,6 +418,14 @@ QString Backend::base64File(const QString &path) const
     return f.open(QIODevice::ReadOnly) ? QString::fromLatin1(f.readAll().toBase64()) : QString();
 }
 
+QVariantMap Backend::readBase64(const QVariant &path) const
+{
+    QFile f(localPath(path));
+    if (!f.open(QIODevice::ReadOnly))
+        return {{QStringLiteral("error"), f.errorString()}};
+    return {{QStringLiteral("data"), QString::fromLatin1(f.readAll().toBase64())}};
+}
+
 QString Backend::baseUrl(const QString &connectionId) const
 {
     Connection *c = m_manager->find(connectionId);

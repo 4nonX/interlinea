@@ -164,7 +164,7 @@ T.ApplicationWindow {
                 onOpenMerge: (c, id, tb) => window.openMerge(c, tb)
                 onOpenEditor: (c, id) => window.openEditor(c, id, "", "")
             }
-            MemoriesPage { onNotice: text => toast.say(text) }
+            MemoriesPage { objectName: "memoriesPage"; onNotice: text => toast.say(text) }
             // Terminology, with the review of a merge request in its place
             // while one is open.
             Item {

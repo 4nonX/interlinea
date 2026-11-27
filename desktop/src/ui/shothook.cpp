@@ -53,6 +53,7 @@ void installShotHook(QQuickWindow *window, Backend *backend)
                 }
                 if (!QMetaObject::invokeMethod(target, call.constData()) && !QMetaObject::invokeMethod(target, call.constData(), Q_ARG(QVariant, args[0]))
                     && !QMetaObject::invokeMethod(target, call.constData(), Q_ARG(QVariant, args[0]), Q_ARG(QVariant, args[1]))
+                    && !QMetaObject::invokeMethod(target, call.constData(), Q_ARG(QVariant, args[0]), Q_ARG(QVariant, args[1]), Q_ARG(QVariant, args[2]))
                     && !QMetaObject::invokeMethod(target, call.constData(), Q_ARG(QVariant, args[0]), Q_ARG(QVariant, args[1]), Q_ARG(QVariant, args[2]),
                                                   Q_ARG(QVariant, args[3])))
                     QMetaObject::invokeMethod(target, "open");

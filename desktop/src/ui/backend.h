@@ -118,6 +118,8 @@ public:
     Q_INVOKABLE QVariantList filesOf(const QVariantList &urls) const;
     // A file's bytes in base64, for requests that carry files in JSON.
     Q_INVOKABLE QString base64File(const QString &path) const;
+    // A file in base64 as data, or why it could not be read as error.
+    Q_INVOKABLE QVariantMap readBase64(const QVariant &path) const;
     // A connection's address, without a slash at the end.
     Q_INVOKABLE QString baseUrl(const QString &connectionId) const;
 
