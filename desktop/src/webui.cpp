@@ -1137,13 +1137,6 @@ QSize DialogScroll::sizeHint() const
     return QSize(hint.width(), h + 2 * frameWidth());
 }
 
-bool DialogScroll::eventFilter(QObject *o, QEvent *e)
-{
-    if (o == widget() && e->type() == QEvent::LayoutRequest)
-        updateGeometry();
-    return QScrollArea::eventFilter(o, e);
-}
-
 QSize DialogScroll::minimumSizeHint() const
 {
     // It may scroll rather than push the dialog off the screen.

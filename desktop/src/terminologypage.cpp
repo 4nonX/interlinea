@@ -142,6 +142,21 @@ QScrollArea *scroller(QWidget *parent, QVBoxLayout **body, int margin, int spaci
     return s;
 }
 
+// The head of the entries pane: as tall as what it holds asks for, which
+// changes with the termbase shown, and scrolling when the window is lower.
+class HeadScroll : public Web::DialogScroll {
+public:
+    using Web::DialogScroll::DialogScroll;
+
+protected:
+    bool eventFilter(QObject *o, QEvent *e) override
+    {
+        if (o == widget() && e->type() == QEvent::LayoutRequest)
+            updateGeometry();
+        return Web::DialogScroll::eventFilter(o, e);
+    }
+};
+
 } // namespace
 
 // The entries the list shows.
@@ -380,7 +395,7 @@ TerminologyPage::TerminologyPage(ConnectionManager *manager, QWidget *parent)
     // The head (the termbase's name and tools, its notes and the form to
     // submit it for review) scrolls when the window is too low for it and
     // the entries.
-    auto *headScroll = new Web::DialogScroll(middle);
+    auto *headScroll = new HeadScroll(middle);
     headScroll->setObjectName(QStringLiteral("entriesHead"));
     Theme::role(headScroll, "paneScroll");
     headScroll->setWidgetResizable(true);

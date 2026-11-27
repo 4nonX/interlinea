@@ -257,10 +257,6 @@ public:
     using QScrollArea::QScrollArea;
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
-
-protected:
-    // What it holds asks for another height: so does the area.
-    bool eventFilter(QObject *o, QEvent *e) override;
 };
 
 // .dialog: a window over the page with its title (17 px, 600) and 24 px
