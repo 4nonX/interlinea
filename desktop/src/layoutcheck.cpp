@@ -4,12 +4,15 @@
 #include <QAbstractScrollArea>
 #include <QApplication>
 #include <QComboBox>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QSet>
 #include <QStackedLayout>
@@ -129,6 +132,108 @@ void checkChildren(QWidget *parent, QStringList &out)
     }
 }
 
+// Watches every widget's size for a layout that never settles: a widget
+// that keeps going back and forth between the same few sizes, without
+// anyone doing anything, is laid out by parts that undo each other (a
+// scrollbar shown and hidden again, a height set and taken back).
+class Settling : public QObject {
+public:
+    explicit Settling(std::function<void(const QString &)> report)
+        : QObject(qApp)
+        , m_report(std::move(report))
+    {
+        m_clock.start();
+        qApp->installEventFilter(this);
+    }
+
+protected:
+    bool eventFilter(QObject *o, QEvent *e) override
+    {
+        switch (e->type()) {
+        case QEvent::KeyPress:
+        case QEvent::KeyRelease:
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease:
+        case QEvent::MouseButtonDblClick:
+        case QEvent::Wheel:
+        case QEvent::DragMove:
+        case QEvent::Drop:
+            // What follows a person's typing or clicking is their doing:
+            // a layout is judged once they have stopped.
+            m_lastInput = m_clock.elapsed();
+            m_tracks.clear();
+            return false;
+        default:
+            break;
+        }
+        if (e->type() != QEvent::Resize || !o->isWidgetType())
+            return false;
+        if (m_clock.elapsed() - m_lastInput < Quiet)
+            return false;
+        auto *w = static_cast<QWidget *>(o);
+        if (!w->isVisible() || overlay(w) || w->objectName().startsWith(QLatin1String("qt_")))
+            return false;
+        const qint64 now = m_clock.elapsed();
+        Track &t = m_tracks[w];
+        if (t.widget != w) {
+            t = Track();
+            t.widget = w;
+        }
+        t.sizes.append({now, static_cast<QResizeEvent *>(e)->size()});
+        while (!t.sizes.isEmpty() && now - t.sizes.first().first > Window)
+            t.sizes.removeFirst();
+        if (t.sizes.size() >= Changes && !t.reported) {
+            // Few sizes, each come back to again and again.
+            QList<QSize> seen;
+            int returns = 0;
+            for (int i = 0; i < t.sizes.size(); ++i) {
+                const QSize s = t.sizes[i].second;
+                if (seen.contains(s) && (i == 0 || t.sizes[i - 1].second != s))
+                    ++returns;
+                if (!seen.contains(s))
+                    seen << s;
+            }
+            if (seen.size() <= 3 && returns >= Changes / 2) {
+                t.reported = true;
+                QStringList sizes;
+                for (const QSize &s : std::as_const(seen))
+                    sizes << QStringLiteral("%1x%2").arg(s.width()).arg(s.height());
+                const auto *l = qobject_cast<const QLabel *>(w);
+                const QString what = l && !l->text().isEmpty() ? QStringLiteral("%1 in %2").arg(shown(l->text()), where(w)) : where(w);
+                m_report(QStringLiteral("layout never settles: %1 keeps switching between %2").arg(what, sizes.join(QLatin1String(" and "))));
+            }
+        }
+        // Widgets gone or quiet for a while are forgotten.
+        if (++m_seen % 512 == 0) {
+            for (auto it = m_tracks.begin(); it != m_tracks.end();) {
+                if (!it->widget || it->sizes.isEmpty() || now - it->sizes.last().first > Window)
+                    it = m_tracks.erase(it);
+                else
+                    ++it;
+            }
+        }
+        return false;
+    }
+
+private:
+    // Changes of size within a second that count as unsettled: far more than
+    // a person or a test makes, as many as parts undoing each other make.
+    static constexpr qint64 Window = 1000;
+    static constexpr int Changes = 30;
+    // How long after the last input a layout may still be following it.
+    static constexpr qint64 Quiet = 300;
+    struct Track {
+        QPointer<QWidget> widget;
+        QList<QPair<qint64, QSize>> sizes;
+        bool reported = false;
+    };
+    std::function<void(const QString &)> m_report;
+    QHash<const QObject *, Track> m_tracks;
+    QElapsedTimer m_clock;
+    quint64 m_seen = 0;
+    qint64 m_lastInput = -Quiet;
+};
+
 } // namespace
 
 QStringList problems(QWidget *window)
@@ -167,6 +272,8 @@ void watch(std::function<void(const QString &)> report)
     if (on)
         return;
     on = true;
+    // A layout that keeps changing is told at once, once.
+    new Settling(report);
     auto *reported = new QSet<QString>;
     auto *held = new QHash<QString, int>;
     auto *timer = new QTimer(qApp);

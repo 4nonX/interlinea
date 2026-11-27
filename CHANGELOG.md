@@ -7,6 +7,24 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Desktop app: a page could flicker without end when its content was
+  about as tall as the window (seen after deleting the last memory): the
+  room added for wrapped text brought a scrollbar, the narrower page took
+  the room back, and the scrollbar went again. Pages now keep at least
+  the height their layout asks and only ever add to it while the window
+  keeps its width. The same change ends texts squeezed to nothing in a
+  dialog whose content had just changed, such as a termbase's settings.
+- Desktop app: the rows of the match band tables are fitted a limited
+  number of times and no longer fit again because of their own height.
+
+### Tests
+
+- The layout check every test runs now also fails on a layout that keeps
+  switching between sizes without anyone doing anything, and a test sweeps
+  a page across the point where it starts to scroll.
+
 ## [0.5.1] - 2026-11-27
 
 ### Fixed

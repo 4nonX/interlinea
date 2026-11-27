@@ -36,6 +36,7 @@
 #include <QJsonArray>
 #include <QTest>
 #include <QTreeWidget>
+#include <QVBoxLayout>
 
 // Every control a person can reach says what it is: its text, an
 // accessible name, or a label that names it.
@@ -78,6 +79,105 @@ private slots:
         QCoreApplication::setApplicationName(QStringLiteral("tst_ui"));
         QSettings().clear();
         qputenv("INTERLINEA_SECRETS_FILE", m_secrets.filePath(QStringLiteral("sign-ins.json")).toUtf8());
+    }
+
+    void scrollFitSettles()
+    {
+        // A text its layout gives one line while it needs several: the
+        // page grows by what it lacks. Narrower (with a scrollbar) it
+        // lacks more, so the page must keep the scrollbar it brought,
+        // not take it back and bring it again without end.
+        class OneLine : public QLabel {
+        public:
+            using QLabel::QLabel;
+            QSize sizeHint() const override { return QSize(QLabel::sizeHint().width(), fontMetrics().height()); }
+            QSize minimumSizeHint() const override { return QSize(10, fontMetrics().height()); }
+        };
+        QWidget host;
+        auto *v = new QVBoxLayout(&host);
+        v->setContentsMargins(0, 0, 0, 0);
+        Web::Page page = Web::page(&host);
+        QString words;
+        for (int i = 0; i < 90; ++i)
+            words += QStringLiteral("Mietvertrag ");
+        auto *text = new OneLine(words);
+        text->setWordWrap(true);
+        QSizePolicy policy = text->sizePolicy();
+        policy.setHeightForWidth(false);
+        text->setSizePolicy(policy);
+        page.body->addWidget(text);
+        auto *rest = new QWidget;
+        rest->setFixedHeight(300);
+        page.body->addWidget(rest);
+        v->addWidget(page.scroll);
+        host.resize(500, 400);
+        host.show();
+        QTRY_VERIFY(text->height() >= text->heightForWidth(text->width()));
+        int resizes = 0;
+        struct Count : QObject {
+            int *n;
+            bool eventFilter(QObject *, QEvent *e) override
+            {
+                if (e->type() == QEvent::Resize)
+                    ++*n;
+                return false;
+            }
+        } count;
+        count.n = &resizes;
+        page.scroll->viewport()->installEventFilter(&count);
+        const int needed = page.scroll->widget()->height();
+        for (int h = needed - 120; h <= needed + 60; h += 2) {
+            host.resize(500, h);
+            QTest::qWait(30);
+            resizes = 0;
+            QTest::qWait(100);
+            QVERIFY2(resizes <= 2, qPrintable(QStringLiteral("the page view changed size %1 times in 100 ms at %2 px").arg(resizes).arg(h)));
+            QVERIFY2(text->height() + 1 >= text->heightForWidth(text->width()), qPrintable(QStringLiteral("text short by %1 px at %2 px").arg(text->heightForWidth(text->width()) - text->height()).arg(h)));
+        }
+    }
+
+    void pagesSettleAtTheEdgeOfScrolling()
+    {
+        // A page as tall as the window, give or take the room its texts
+        // lack, is where a scrollbar shown for that room could take it
+        // back again and again. Pixel by pixel across that edge, the page
+        // settles each time; the layout check fails the test on a layout
+        // that keeps switching.
+        Theme::apply(*qApp);
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        MainWindow w(&m);
+        auto *page = new SettingsPage(&m, &w);
+        w.addPage(QStringLiteral("settings"), QStringLiteral("Settings"), QIcon(), page, QKeySequence());
+        w.resize(1100, 800);
+        w.show();
+        m.start();
+        QTRY_VERIFY_WITH_TIMEOUT(m.local()->isReady(), 30000);
+        auto *scroll = page->findChild<QScrollArea *>(QStringLiteral("page"));
+        QVERIFY(scroll);
+        QTest::qWait(500);
+        // The window as much taller than the page's view as the content is.
+        const int chrome = w.height() - scroll->viewport()->height();
+        const int content = scroll->widget()->height();
+        int resizes = 0;
+        struct Count : QObject {
+            int *n;
+            bool eventFilter(QObject *, QEvent *e) override
+            {
+                if (e->type() == QEvent::Resize)
+                    ++*n;
+                return false;
+            }
+        } count;
+        count.n = &resizes;
+        scroll->viewport()->installEventFilter(&count);
+        for (int h = content - 90; h <= content + 90; h += 3) {
+            w.resize(1100, h + chrome);
+            QTest::qWait(40);
+            resizes = 0;
+            QTest::qWait(120);
+            QVERIFY2(resizes <= 2, qPrintable(QStringLiteral("the page view changed size %1 times in 120 ms at a view %2 px high").arg(resizes).arg(h)));
+        }
     }
 
     void settings()

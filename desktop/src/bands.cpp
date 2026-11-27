@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QHash>
 #include <QLocale>
+#include <QResizeEvent>
 #include <QTableWidget>
 
 namespace {
@@ -27,7 +28,15 @@ public:
 protected:
     bool eventFilter(QObject *, QEvent *e) override
     {
-        if ((e->type() == QEvent::Show || e->type() == QEvent::Resize) && !m_pending) {
+        // Its own setting of the height is no reason to fit again; another
+        // width or showing again starts the fitting afresh.
+        if (m_fitting)
+            return false;
+        if (e->type() == QEvent::Show || (e->type() == QEvent::Resize && static_cast<QResizeEvent *>(e)->size().width() != m_width)) {
+            m_width = m_table->width();
+            m_rounds = 0;
+        }
+        if ((e->type() == QEvent::Show || e->type() == QEvent::Resize) && !m_pending && m_rounds < MaxRounds) {
             m_pending = true;
             // Once now, and once when the cells have the widths they keep.
             QTimer::singleShot(0, m_table, [this] { fit(); });
@@ -41,6 +50,11 @@ protected:
 
     void fit()
     {
+        // A row whose text never comes out as measured would otherwise be
+        // fitted again and again.
+        if (++m_rounds > MaxRounds)
+            return;
+        m_fitting = true;
         int rows = 0;
         for (int r = 0; r < m_table->rowCount(); ++r) {
             // A row of plain cells keeps the height it has.
@@ -72,11 +86,16 @@ protected:
         } else {
             m_table->updateGeometry();
         }
+        m_fitting = false;
     }
 
 private:
+    static constexpr int MaxRounds = 8;
     QTableWidget *m_table;
     bool m_pending = false;
+    bool m_fitting = false;
+    int m_width = -1;
+    int m_rounds = 0;
 };
 
 } // namespace

@@ -10,7 +10,8 @@ class QWidget;
 // off or lying over other text, a button narrower than its label, a box
 // for text too low for one line, parts lying over each other or reaching
 // out of what holds them. The tests run it over every window they show,
-// at several scalings, and fail on what it finds; with
+// at several scalings, and fail on what it finds, and on a layout that
+// keeps switching between sizes without settling; with
 // INTERLINEA_LAYOUT_CHECK set, the app writes what it finds to the log.
 namespace LayoutCheck {
 

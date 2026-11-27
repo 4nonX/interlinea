@@ -1051,6 +1051,7 @@ public:
         : QObject(scroll)
         , m_scroll(scroll)
     {
+        scroll->installEventFilter(this);
         scroll->viewport()->installEventFilter(this);
         if (scroll->widget())
             scroll->widget()->installEventFilter(this);
@@ -1059,7 +1060,7 @@ public:
 protected:
     bool eventFilter(QObject *o, QEvent *e) override
     {
-        const bool mine = (o == m_scroll->viewport() && e->type() == QEvent::Resize) || (o == m_scroll->widget() && (e->type() == QEvent::LayoutRequest || e->type() == QEvent::Resize));
+        const bool mine = ((o == m_scroll || o == m_scroll->viewport()) && e->type() == QEvent::Resize) || (o == m_scroll->widget() && (e->type() == QEvent::LayoutRequest || e->type() == QEvent::Resize));
         if (mine && !m_pending) {
             m_pending = true;
             QTimer::singleShot(0, this, [this] {
@@ -1071,32 +1072,43 @@ protected:
     }
 
 private:
+    // The content is at least as tall as its layout asks at the width it
+    // has, and as much more as the texts the layout gives too little room
+    // needed. That extra only grows, at most eight times, while the area
+    // keeps its width: what it adds never takes itself back, so a
+    // scrollbar it brings stays, instead of the page going back and forth
+    // between wide without a scrollbar and narrow with one. Only another
+    // width of the whole area (the window resized) measures afresh.
     void fit()
     {
         QWidget *inner = m_scroll->widget();
         if (!inner)
             return;
-        // Another width, another wrapping: from the start.
-        if (m_scroll->viewport()->width() != m_width) {
-            m_width = m_scroll->viewport()->width();
-            m_passes = 0;
-            if (inner->minimumHeight() > 0) {
-                inner->setMinimumHeight(0);
-                return;
-            }
+        if (m_scroll->width() != m_width) {
+            m_width = m_scroll->width();
+            m_extra = 0;
+            m_raises = 0;
         }
         const int lack = textDeficit(inner);
-        if (lack <= 0) {
-            m_passes = 0;
-            return;
+        if (lack > 0 && m_raises < 8 && m_extra + lack <= MaxExtra) {
+            ++m_raises;
+            m_extra += lack;
         }
-        if (m_passes++ < 8)
-            inner->setMinimumHeight(inner->height() + lack);
+        // Never less than its layout asks: a scroll area that has not taken
+        // a change in what it holds into account yet would otherwise squeeze
+        // every text in it to nothing.
+        const int natural = inner->hasHeightForWidth() ? inner->heightForWidth(inner->width()) : inner->sizeHint().height();
+        const int want = natural + m_extra;
+        if (want != inner->minimumHeight())
+            inner->setMinimumHeight(want);
     }
 
+    // More than any text a page holds could lack.
+    static constexpr int MaxExtra = 2000;
     QScrollArea *m_scroll;
     int m_width = -1;
-    int m_passes = 0;
+    int m_extra = 0;
+    int m_raises = 0;
     bool m_pending = false;
 };
 
