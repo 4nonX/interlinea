@@ -1,6 +1,7 @@
 #include "backend.h"
 
 #include "apiclient.h"
+#include "colors.h"
 #include "connectionmanager.h"
 #include "documentpreview.h"
 #include "eventfeed.h"
@@ -158,6 +159,7 @@ void Backend::setInstance(Backend *b)
 Backend::Backend(ConnectionManager *manager, QObject *parent)
     : QObject(parent), m_manager(manager)
 {
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &Backend::darkChanged);
     for (Connection *c : manager->all())
         watch(c);
     connect(manager, &ConnectionManager::added, this, [this](Connection *c) {
@@ -555,8 +557,16 @@ void Backend::setAppearance(const QString &appearance)
     Options::setAppearance(appearance);
     applyAppearance();
     emit appearanceChanged();
+    emit darkChanged();
 }
 
+bool Backend::dark() const
+{
+    return Theme::dark();
+}
+
+// The window frame and the system's own dialogs follow where the system
+// lets them; the app's colours follow the choice in any case (dark()).
 void Backend::applyAppearance()
 {
     const QString a = Options::appearance();

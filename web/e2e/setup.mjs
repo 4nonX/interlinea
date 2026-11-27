@@ -904,5 +904,37 @@ export default () =>
         "the browser's language brings English back",
       );
       check(errors.length === 0, "no console errors in the other languages: " + errors.join(" | "));
+
+      // Light or dark, chosen in Settings, kept, and the system's again.
+      const choose = (i) => evaluate(`document.querySelectorAll("input[name=appearance]")[${i}].click(), true`);
+      const ground = () => evaluate("getComputedStyle(document.body).backgroundColor");
+      check(
+        (await evaluate("[...document.querySelectorAll('input[name=appearance]')].map(i => i.closest('label').querySelector('.choice-title').textContent).join('|')")) ===
+          "Same as the system|Light|Dark",
+        "the appearance choices are offered",
+      );
+      await choose(2);
+      check(
+        await waitFor("document.documentElement.dataset.theme === 'dark'"),
+        "Dark: the page turns dark at once",
+      );
+      check((await ground()) === "rgb(20, 23, 28)", "with the dark ground: " + (await ground()));
+      await open("/projects", { keep: true, wait: 1200 });
+      check(
+        (await evaluate("document.documentElement.dataset.theme")) === "dark" && (await ground()) === "rgb(20, 23, 28)",
+        "and stays dark when the page is loaded again",
+      );
+      await open("/settings", { reload: false, wait: 600 });
+      await choose(1);
+      check(
+        await waitFor("document.documentElement.dataset.theme === 'light'") && (await ground()) === "rgb(243, 245, 248)",
+        "Light: the light ground again",
+      );
+      await choose(0);
+      check(
+        await waitFor("document.documentElement.dataset.theme === (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') && localStorage.getItem('interlinea.appearance') === null"),
+        "the system's setting: nothing kept, and shown as the system is set",
+      );
+      check(errors.length === 0, "no console errors changing the appearance: " + errors.join(" | "));
     },
   );

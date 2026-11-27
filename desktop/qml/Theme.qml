@@ -3,12 +3,12 @@ import QtQuick
 
 // The design system the web app uses (web/src/styles.css, DESIGN.md):
 // cool neutral shell, white work surfaces, one blue accent, 6 px controls
-// on 10 px panels. The same on every system; light or dark as the
-// system is set.
+// on 10 px panels. The same on every system; light or dark as chosen in
+// Settings, or as the system is set.
 QtObject {
     id: theme
 
-    readonly property bool dark: Application.styleHints.colorScheme === Qt.ColorScheme.Dark
+    readonly property bool dark: Backend.dark
 
     // Colours
     readonly property color bg: dark ? "#14171c" : "#f3f5f8"

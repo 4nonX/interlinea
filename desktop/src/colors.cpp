@@ -1,5 +1,7 @@
 #include "colors.h"
 
+#include "options.h"
+
 #include <QGuiApplication>
 #include <QPalette>
 #include <QStyleHints>
@@ -29,6 +31,10 @@ namespace Theme {
 
 bool dark()
 {
+    // The choice made in Settings, then the system's setting.
+    const QString chosen = Options::appearance();
+    if (!chosen.isEmpty())
+        return chosen == QLatin1String("dark");
     const Qt::ColorScheme s = QGuiApplication::styleHints()->colorScheme();
     if (s != Qt::ColorScheme::Unknown)
         return s == Qt::ColorScheme::Dark;

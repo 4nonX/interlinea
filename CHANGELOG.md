@@ -7,6 +7,14 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Added
+
+- Light and dark in both clients: Settings, Appearance chooses light,
+  dark, or the system's setting (the default). The browser client, light
+  only until now, has the desktop app's dark colours; the desktop app,
+  which followed the system only, can now be set to either. The change is
+  shown at once.
+
 ### Changed
 
 - Desktop app: the interface is now built in Qt Quick, in Interlinea's
@@ -25,6 +33,8 @@ takes its notes from its section here.
 
 ### Fixed
 
+- Site: on phones the rounded corner of the download cards cut into the
+  Windows, macOS and Linux icons.
 - Browser client in German and Korean: no more English on the screen.
   The names, descriptions and messages of the checks, the rows of an
   analysis, the descriptions of tags in the editor ("Footnote reference",

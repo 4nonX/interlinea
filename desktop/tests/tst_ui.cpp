@@ -140,10 +140,9 @@ private slots:
         QString why;
         QVERIFY2(app.start(&why), qPrintable(why));
         app.show(QStringLiteral("settings"));
-        QStyleHints *hints = QGuiApplication::styleHints();
 
         QVERIFY(app.click(QStringLiteral("appearance:dark")));
-        QTRY_COMPARE(hints->colorScheme(), Qt::ColorScheme::Dark);
+        QTRY_VERIFY(app.backend.dark());
         QTRY_COMPARE(app.window->color(), QColor(QStringLiteral("#14171c")));
         QCOMPARE(QSettings().value(QStringLiteral("interface/appearance")).toString(), QStringLiteral("dark"));
         QVERIFY(app.get(QStringLiteral("appearance:dark"), "checked").toBool());
@@ -152,14 +151,15 @@ private slots:
         QVERIFY2(layoutProblems(app.window).isEmpty(), qPrintable(layoutProblems(app.window)));
 
         QVERIFY(app.click(QStringLiteral("appearance:light")));
-        QTRY_COMPARE(hints->colorScheme(), Qt::ColorScheme::Light);
+        QTRY_VERIFY(!app.backend.dark());
         QTRY_COMPARE(app.window->color(), QColor(QStringLiteral("#f3f5f8")));
         QCOMPARE(QSettings().value(QStringLiteral("interface/appearance")).toString(), QStringLiteral("light"));
 
         QVERIFY(app.click(QStringLiteral("appearance:system")));
         QTRY_VERIFY(app.get(QStringLiteral("appearance:system"), "checked").toBool());
         QVERIFY(!QSettings().contains(QStringLiteral("interface/appearance")));
-        const bool dark = hints->colorScheme() == Qt::ColorScheme::Dark;
+        const bool dark = app.backend.dark();
+        QCOMPARE(app.window->color(), QColor(dark ? QStringLiteral("#14171c") : QStringLiteral("#f3f5f8")));
         QCOMPARE(app.get(QStringLiteral("appearance:system"), "description").toString(),
                  dark ? QStringLiteral("Dark now, as the system is set.") : QStringLiteral("Light now, as the system is set."));
     }
