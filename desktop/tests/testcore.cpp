@@ -138,11 +138,16 @@ bool QmlApp::start(QString *why)
     return true;
 }
 
+// Items made by views, and what they hold that is no item (dialogs,
+// timers), are only in the item tree.
 static QObject *findItem(QQuickItem *in, const QString &name)
 {
     for (QQuickItem *c : in->childItems()) {
         if (c->objectName() == name)
             return c;
+        for (QObject *o : c->children())
+            if (!qobject_cast<QQuickItem *>(o) && o->objectName() == name)
+                return o;
         if (QObject *o = findItem(c, name))
             return o;
     }

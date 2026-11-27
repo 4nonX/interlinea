@@ -89,7 +89,7 @@ ColumnLayout {
     Row {
         visible: !nm.opened
         spacing: Theme.s2
-        Button { small: nm.local; iconName: nm.local ? "plus" : ""; text: nm.local ? qsTr("New memory") : qsTr("New memory on the server"); onClicked: { nm.opened = true; name.forceActiveFocus() } }
+        Button { objectName: "newMemory"; small: nm.local; iconName: nm.local ? "plus" : ""; text: nm.local ? qsTr("New memory") : qsTr("New memory on the server"); onClicked: { nm.opened = true; name.forceActiveFocus() } }
         Button { small: nm.local; iconName: nm.local ? "columns" : ""; text: qsTr("Align documents"); onClicked: nm.alignHere() }
     }
     Panel {
@@ -100,10 +100,10 @@ ColumnLayout {
             columns: 2
             columnSpacing: Theme.s4
             rowSpacing: Theme.s4
-            Field { label: qsTr("Name"); TextField { id: name; onAccepted: nm.submit() } }
-            Field { visible: nm.local; label: qsTr("Client"); optional: true; TextField { id: client; onAccepted: nm.submit() } }
-            Field { label: nm.local ? qsTr("Source language") : qsTr("From"); LanguageField { id: source; language: "de-DE" } }
-            Field { label: nm.local ? qsTr("Target language") : qsTr("To"); LanguageField { id: target; language: "en-GB" } }
+            Field { label: qsTr("Name"); TextField { id: name; objectName: "memoryName"; onAccepted: nm.submit() } }
+            Field { visible: nm.local; label: qsTr("Client"); optional: true; TextField { id: client; objectName: "memoryClient"; onAccepted: nm.submit() } }
+            Field { label: nm.local ? qsTr("Source language") : qsTr("From"); LanguageField { id: source; objectName: "memorySource"; language: "de-DE" } }
+            Field { label: nm.local ? qsTr("Target language") : qsTr("To"); LanguageField { id: target; objectName: "memoryTarget"; language: "en-GB" } }
             Field {
                 visible: nm.local
                 label: qsTr("Fill it from a memory file")
@@ -125,7 +125,7 @@ ColumnLayout {
         }
         Row {
             spacing: Theme.s2
-            Button { kind: "primary"; small: true; text: nm.local ? qsTr("Create memory") : qsTr("Make the memory"); enabled: nm.problem() === ""; onClicked: nm.submit() }
+            Button { objectName: "createMemory"; kind: "primary"; small: true; text: nm.local ? qsTr("Create memory") : qsTr("Make the memory"); enabled: nm.problem() === ""; onClicked: nm.submit() }
             Button { kind: "quiet"; small: true; text: qsTr("Cancel"); onClicked: nm.reset() }
         }
         Txt {

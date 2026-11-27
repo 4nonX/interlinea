@@ -240,6 +240,7 @@ Page {
 
             // The opened memory: its units searched and changed.
             MemoryDetail {
+                objectName: "memoryDetail:" + place.cid
                 visible: !!place.openMemory
                 cid: place.cid
                 local: place.local
@@ -261,6 +262,7 @@ Page {
 
             // New memories.
             NewMemory {
+                objectName: "newMemory:" + place.cid
                 cid: place.cid
                 local: place.local
                 host: place.modelData.displayName

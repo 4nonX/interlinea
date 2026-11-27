@@ -42,12 +42,12 @@ Panel {
             Layout.fillWidth: false
             Layout.preferredWidth: 280
             label: qsTr("Search the units")
-            TextField { id: query; onAccepted: detail.search() }
+            TextField { id: query; objectName: "unitQuery"; onAccepted: detail.search() }
         }
-        CheckBox { id: inTarget; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 6; text: qsTr("In the translations") }
+        CheckBox { id: inTarget; objectName: "inTranslations"; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 6; text: qsTr("In the translations") }
         Button { Layout.alignment: Qt.AlignBottom; iconName: "search"; text: qsTr("Search"); enabled: query.text.trim() !== ""; onClicked: detail.search() }
         Item { Layout.fillWidth: true }
-        Button { visible: detail.edit; Layout.alignment: Qt.AlignBottom; iconName: "plus"; text: qsTr("Add a unit"); onClicked: addUnit.open() }
+        Button { objectName: "addUnitButton"; visible: detail.edit; Layout.alignment: Qt.AlignBottom; iconName: "plus"; text: qsTr("Add a unit"); onClicked: addUnit.open() }
         Button { visible: detail.edit; Layout.alignment: Qt.AlignBottom; iconName: "columns"; text: qsTr("Align documents"); onClicked: detail.align() }
     }
     Txt { visible: detail.found !== null && detail.found.length === 0; role: "muted"; text: qsTr("Nothing found.") }
@@ -71,12 +71,14 @@ Panel {
                     visible: detail.edit
                     spacing: Theme.s1
                     Button {
+                        objectName: "changeUnit:" + urow.modelData.id
                         small: true; kind: "quiet"; iconName: "pencil"
                         text: qsTr("Change")
                         Accessible.name: Fmt.fill(qsTr("Change the translation of “{text}”"), { text: urow.said })
                         onClicked: editUnit.start(urow.modelData)
                     }
                     ConfirmButton {
+                        objectName: "deleteUnit:" + urow.modelData.id
                         text: ""
                         iconName: "trash"
                         action: qsTr("Delete")
@@ -135,16 +137,18 @@ Panel {
     // A new unit: the sentence and its translation, as plain text.
     Dialog {
         id: addUnit
+        objectName: "addUnit"
         wide: true
         title: Fmt.fill(qsTr("Add a unit to {name}"), { name: detail.name })
         onOpened: { unitSource.text = ""; unitTarget.text = ""; overwrite.checked = false; error = ""; unitSource.area.forceActiveFocus() }
-        Field { label: detail.memory ? Backend.languageName(detail.memory.sourceLang) : ""; TextArea { id: unitSource; minimumLines: 2 } }
-        Field { label: detail.memory ? Backend.languageName(detail.memory.targetLang) : ""; TextArea { id: unitTarget; minimumLines: 2 } }
+        Field { label: detail.memory ? Backend.languageName(detail.memory.sourceLang) : ""; TextArea { id: unitSource; objectName: "unitSource"; minimumLines: 2 } }
+        Field { label: detail.memory ? Backend.languageName(detail.memory.targetLang) : ""; TextArea { id: unitTarget; objectName: "unitTarget"; minimumLines: 2 } }
         CheckBox { id: overwrite; text: qsTr("Replace other translations of this sentence") }
         Txt { Layout.fillWidth: true; role: "help"; text: qsTr("Without it, a sentence that is there already keeps its translations and gets this one as well.") }
         buttons: [
             Button { kind: "quiet"; small: true; text: qsTr("Cancel"); onClicked: addUnit.close() },
             Button {
+                objectName: "saveUnit"
                 kind: "primary"; small: true
                 text: qsTr("Add the unit")
                 enabled: unitSource.text.trim() !== "" && unitTarget.text.trim() !== ""
@@ -163,12 +167,13 @@ Panel {
     // A unit found, to change its translation; the formatting tags stay.
     Dialog {
         id: editUnit
+        objectName: "editUnit"
         wide: true
         title: qsTr("Change the unit")
         property var unit: null
         function start(u) { unit = u; error = ""; open(); editTarget.content = u.target; editSource.content = u.source }
         Field { label: detail.memory ? Backend.languageName(detail.memory.sourceLang) : ""; SegmentEdit { id: editSource; readOnly: true; language: detail.memory ? detail.memory.sourceLang : "" } }
-        Field { label: detail.memory ? Backend.languageName(detail.memory.targetLang) : ""; SegmentEdit { id: editTarget; language: detail.memory ? detail.memory.targetLang : "" } }
+        Field { label: detail.memory ? Backend.languageName(detail.memory.targetLang) : ""; SegmentEdit { id: editTarget; objectName: "editTarget"; language: detail.memory ? detail.memory.targetLang : "" } }
         Txt {
             Layout.fillWidth: true
             visible: !!editUnit.unit && detail.changed(editUnit.unit) !== ""
@@ -179,6 +184,7 @@ Panel {
         buttons: [
             Button { kind: "quiet"; small: true; text: qsTr("Cancel"); onClicked: editUnit.close() },
             Button {
+                objectName: "saveChange"
                 kind: "primary"; small: true
                 text: qsTr("Save")
                 onClicked: {
