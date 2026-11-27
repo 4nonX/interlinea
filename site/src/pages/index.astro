@@ -168,7 +168,8 @@ main > #workflow[data-moment]:not(.is-live) > .mo-pc__grid { align-self: center;
 .dl__card { transition: transform .18s cubic-bezier(.22,1,.36,1), box-shadow .18s; }
 .dl__card:hover { transform: translateY(-2px); box-shadow: 0 14px 32px -18px rgb(20 50 120 / .35); }
 @media (max-width: 639px) {
-  main #download .dl__card { row-gap: 4px; padding: 0; background: none; border: 0; box-shadow: none; }
+  /* without its box the card has no corner to round: a rounded, clipping corner would cut into the icon */
+  main #download .dl__card { row-gap: 4px; padding: 0; background: none; border: 0; box-shadow: none; border-radius: 0; overflow: visible; }
   .dl__card img { height: 24px; } .dl__card h3 { margin-top: 0; } .dl__card .btn { margin-top: var(--s-2); justify-self: stretch; justify-content: center; }
   main #download .card--open .panel { --p-h: 170px; }
   #download .section-head p { font-size: 16px; }
