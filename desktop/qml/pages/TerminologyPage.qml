@@ -371,20 +371,32 @@ Item {
             Layout.fillHeight: true
             spacing: Theme.s5
             Txt { text: qsTr("Terminology"); role: "h1"; Accessible.role: Accessible.Heading }
-            RowLayout {
+            // Three panes side by side (the web's .workspace); on a
+            // narrower window the termbases go over the entries, and the
+            // entry has the rest of the width.
+            GridLayout {
+                id: workspace
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: Theme.s3
+                readonly property bool wide: width >= 1000
+                columns: wide ? 3 : 2
+                columnSpacing: Theme.s3
+                rowSpacing: Theme.s3
 
                 TermbaseLists {
-                    Layout.preferredWidth: 220
-                    Layout.fillHeight: true
+                    Layout.row: 0
+                    Layout.column: 0
+                    Layout.preferredWidth: workspace.wide ? 220 : 300
+                    Layout.fillHeight: workspace.wide
+                    Layout.preferredHeight: workspace.wide ? -1 : 220
                     page: tb
                 }
 
                 // The entries of the opened termbase.
                 Rectangle {
-                    Layout.preferredWidth: 360
+                    Layout.row: workspace.wide ? 0 : 1
+                    Layout.column: workspace.wide ? 1 : 0
+                    Layout.preferredWidth: workspace.wide ? 360 : 300
                     Layout.fillHeight: true
                     radius: Theme.rPanel
                     color: Theme.surface
@@ -430,6 +442,9 @@ Item {
                 }
 
                 EntryDetail {
+                    Layout.row: 0
+                    Layout.column: workspace.wide ? 2 : 1
+                    Layout.rowSpan: workspace.wide ? 1 : 2
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     tb: tb
@@ -437,7 +452,13 @@ Item {
                     masterView: tb.view === 3
                     visible: tb.opened
                 }
-                Item { visible: !tb.opened; Layout.fillWidth: true }
+                Item {
+                    visible: !tb.opened
+                    Layout.row: 0
+                    Layout.column: workspace.wide ? 2 : 1
+                    Layout.rowSpan: workspace.wide ? 1 : 2
+                    Layout.fillWidth: true
+                }
             }
         }
     }

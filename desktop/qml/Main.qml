@@ -245,6 +245,7 @@ T.ApplicationWindow {
                 function start(connectionId, request) { review.open(connectionId, Number(request)); review.visible = true }
                 TerminologyPage {
                     id: terminology
+                    objectName: "terminology"
                     anchors.fill: parent
                     visible: !review.visible
                     onNotice: text => toast.say(text)
