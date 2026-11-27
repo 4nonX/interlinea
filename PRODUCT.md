@@ -14,7 +14,7 @@ same way.
 ## Stack
 
 React 19 + TypeScript + Vite for the browser client (`web/`). Go core and
-server (this repository). Desktop client: Qt 6 Widgets and C++20
+server (this repository). Desktop client: Qt 6 Quick (QML) and C++20
 (`desktop/`).
 
 ## Users

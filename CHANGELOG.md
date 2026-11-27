@@ -33,6 +33,9 @@ takes its notes from its section here.
 
 ### Fixed
 
+- Desktop app on macOS: settings saved by Interlinea 0.4 or earlier come
+  along again when it starts for the first time; the move to Qt Quick had
+  left this out.
 - Site: on phones the rounded corner of the download cards cut into the
   Windows, macOS and Linux icons.
 - Browser client in German and Korean: no more English on the screen.

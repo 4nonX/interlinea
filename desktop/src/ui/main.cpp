@@ -62,6 +62,21 @@ int main(int argc, char *argv[])
     QApplication::setOrganizationName(QStringLiteral("Interlinea"));
     QApplication::setOrganizationDomain(QStringLiteral("interlinea.dev"));
     QApplication::setApplicationName(QStringLiteral("Interlinea"));
+#ifdef Q_OS_MACOS
+    // On macOS the settings are named after the domain, which was
+    // interlinea.org before 0.5: what was saved there comes along once.
+    {
+        QSettings now;
+        now.setFallbacksEnabled(false);
+        if (now.allKeys().isEmpty()) {
+            QSettings before(QSettings::NativeFormat, QSettings::UserScope, QStringLiteral("interlinea.org"), QStringLiteral("Interlinea"));
+            before.setFallbacksEnabled(false);
+            for (const QString &k : before.allKeys())
+                now.setValue(k, before.value(k));
+            now.sync();
+        }
+    }
+#endif
     QApplication::setApplicationVersion(QStringLiteral(INTERLINEA_VERSION));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/interlinea.png")));
     QGuiApplication::setDesktopFileName(QStringLiteral("dev.interlinea.Interlinea"));
