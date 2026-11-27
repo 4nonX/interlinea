@@ -1,7 +1,8 @@
 # Desktop app
 
-The desktop app is Interlinea's main client: a native Qt 6 Widgets
-application for Windows, macOS and Linux. It works entirely on its own,
+The desktop app is Interlinea's main client: a Qt 6 application for
+Windows, macOS and Linux, with its interface in Qt Quick (QML) drawn in
+Interlinea's own design, the same on every system. It works entirely on its own,
 without a team server, and connects to one or more team servers when a
 team works together. This page describes how it is built; using it is in
 [Using Interlinea](guide.md), the same for the desktop app and the browser
@@ -10,9 +11,9 @@ client.
 ## Architecture
 
 ```
-┌──────────────────────── Interlinea (Qt 6 Widgets, C++20) ───────────────────────┐
-│  Projects · Editor · Memories · Terminology · Review · Accounts · Settings      │
-│                                                                                  │
+┌────────────────────── Interlinea (Qt 6, Qt Quick + C++20) ──────────────────────┐
+│  QML: Projects · Editor · Memories · Terminology · Review · Accounts · Settings  │
+│  Backend (C++): requests, files, segments with tags, preview, settings           │
 │  ApiClient (QNetworkAccessManager, JSON, versions, errors)  ·  Live feed (SSE)   │
 │        │                                   │                                     │
 │        ▼                                   ▼                                     │
@@ -99,27 +100,45 @@ computer only and not notarized, so both systems warn on the first start;
 certificates are there.
 
 Not done yet: a review with NVDA, VoiceOver and Orca by people who use
-them every day, and a Flatpak.
+them every day, a variant for the system's high contrast setting, and a
+Flatpak.
 
 ## Look
 
-The app uses Qt's Fusion style with a style sheet built from the tokens in
-`DESIGN.md`, in a light and a dark variant that follow the system's
-setting. `INTERLINEA_THEME=light` or `dark` sets one. Under a high contrast
-setting, or with `INTERLINEA_NATIVE_STYLE=1`, the app leaves the
-platform's own style alone.
+The interface is written in QML (`desktop/qml`): its own controls in
+`qml/controls` (buttons, fields, tables, tabs, dialogs, menus) drawn from
+the tokens in `DESIGN.md`, the parts of pages in `qml/parts` and the pages
+in `qml/pages`. It looks the same on Windows, macOS and Linux and follows
+the system's light or dark setting. `src/ui` is the bridge to C++: the
+`Backend` object the pages call for requests to the core and team servers,
+files and their dialogs, segments with tags (`SegmentDocument`), the
+document preview, regular expressions with Unicode classes (which the QML
+engine lacks) and the settings.
+
+Desktop behaviour: a menu bar (File, Edit, View, Help) with the system's
+shortcuts, native file dialogs, documents dropped on the window or named
+when Interlinea starts begin a project, a second start hands its files to
+the running app and brings its window up, and the window keeps its place
+and size.
 
 | | |
 |---|---|
-| ![New project: the memories for each language](screenshots/desktop-new-project.png) | ![Review of a merge request in the dark variant](screenshots/desktop-merge-review-dark.png) |
+| ![New project, its first step](screenshots/desktop-new-project.png) | ![Review of a merge request](screenshots/desktop-merge-review.png) |
 
 ## Tests
 
-`ctest` runs the app's tests on the offscreen platform against a real core:
-the API client, the live feed, the keychain, sign-in with an identity
-provider, connections, the window and its accessible names, projects. The
-end-to-end test (`tst_endtoend`) also needs a team server and its
-administrator:
+`ctest` runs the app's tests on the offscreen platform against a real
+core, each also at 150 % scaling: the API client, the live feed, the
+keychain, sign-in with an identity provider, connections, and the QML
+window worked as a person does (`tests/testcore.h`, `QmlApp`: parts found
+by their `objectName`, buttons clicked, text typed key by key, notices
+read). `tst_ui` covers every page at three window sizes and Settings,
+`tst_editor` the editor, `tst_memories` memories and alignment,
+`tst_terminology` termbases and merge review, `tst_interfacelanguage` the
+pages in German and Korean. At every step that matters a layout check
+looks for text that is cut off or runs out of its row, and for parts that
+lie over each other. The end-to-end test (`tst_endtoend`) also needs a
+team server and its administrator:
 
 ```
 INTERLINEA_TEAM_SERVER=http://127.0.0.1:18080 \
@@ -127,20 +146,22 @@ INTERLINEA_TEAM_USER=anna INTERLINEA_TEAM_PASSWORD='a long enough password' \
 ctest --test-dir build/desktop -R endtoend
 ```
 
-It makes a project on this computer and one on the team server, adds
-files, fills them from memories, runs the analysis, saves translated files
-and return packages, and checks that each step shows in the app. CI runs it
-on Linux against a server it starts.
+It signs in, makes and fills a memory on the server from the Memories
+page, translates a project on the server in the editor and gets the
+document back, makes an account on the Accounts page, and adds an entry to
+a termbase on the server. CI runs it on Linux against a server it starts.
 
-`INTERLINEA_SCREENSHOTS=<folder>` makes the tests save every page they
-reach, which is where the desktop screenshots here come from;
-`INTERLINEA_THEME=dark` takes them in the dark variant.
+`INTERLINEA_SCREENSHOTS=<folder>` makes the tests save the window at the
+steps they check.
 
 ## Conventions
 
-- C++20, Qt 6.8 LTS (the code also builds with Qt 6.4 for development on
-  older Linux), Qt Widgets with the platform's style. No other C++
+- C++20 and QML, Qt 6.8 LTS (Qt Quick, Quick Controls for the templates
+  the controls are built on, Quick Layouts, Quick Dialogs). No other
   dependencies besides the platform keychain APIs.
-- Sources in `desktop/`: `src/` (lowercase file names, one class per pair
-  of files), `tests/`, `packaging/`. Classes in PascalCase.
+- Sources in `desktop/`: `src/` (the connections, sign-ins and catalogs;
+  lowercase file names, one class per pair of files), `src/ui/` (the
+  bridge), `qml/`, `tests/`, `packaging/`. Classes and QML types in
+  PascalCase; every function a page calls from a button can be called by a
+  test as well.
 - No placeholders: a control that is shown works.

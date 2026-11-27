@@ -221,6 +221,8 @@ jobs:
           curl -fsSL -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
           chmod +x linuxdeploy linuxdeploy-plugin-qt
           export QMAKE="$(which qmake6 || which qmake)"
+          # The QML the interface imports, so the Qt Quick modules go in.
+          export QML_SOURCES_PATHS="$PWD/desktop/qml"
           export LINUXDEPLOY_OUTPUT_VERSION="$VERSION"
           export OUTPUT="Interlinea-$VERSION-linux-x86_64.AppImage"
           ./linuxdeploy --appdir AppDir --plugin qt --output appimage \
@@ -282,7 +284,7 @@ jobs:
           New-Item -ItemType Directory -Force stage/Interlinea | Out-Null
           Copy-Item build/desktop/Release/Interlinea.exe, build/desktop/Release/interlinea-core.exe stage/Interlinea/
           Copy-Item -Recurse build/desktop/Release/dictionaries stage/Interlinea/
-          windeployqt --release --compiler-runtime --no-system-d3d-compiler --no-opengl-sw stage/Interlinea/Interlinea.exe
+          windeployqt --release --compiler-runtime --no-system-d3d-compiler --no-opengl-sw --qmldir desktop/qml stage/Interlinea/Interlinea.exe
           Copy-Item README.md, CHANGELOG.md, LICENSE, NOTICE stage/Interlinea/
       # The app and its core are signed before they go into the installer
       # and the portable zip, and the installer after it is made.
@@ -449,7 +451,7 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           app=build/desktop/Interlinea.app
-          macdeployqt "$app"
+          macdeployqt "$app" -qmldir=desktop/qml
           cp LICENSE NOTICE "$app/Contents/Resources/"
           dmg="out/Interlinea-$VERSION-macos-universal.dmg"
           if [ "$SIGN" = true ]; then

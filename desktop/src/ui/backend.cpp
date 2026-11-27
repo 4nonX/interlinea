@@ -279,7 +279,7 @@ QString Backend::keep(const QString &temp, const QVariant &to) const
     if (!from.exists())
         return tr("The file is no longer there.");
     if (QFile::exists(target) && !QFile::remove(target))
-        return tr("%1 can't be replaced.").arg(QDir::toNativeSeparators(target));
+        return tr("{file} can't be replaced.").replace(QStringLiteral("{file}"), QDir::toNativeSeparators(target));
     if (from.rename(target))
         return QString();
     // Across drives a copy does it.

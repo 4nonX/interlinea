@@ -278,7 +278,7 @@ Page {
                                     width: parent.width
                                     visible: (row.work || []).length > 0
                                     role: "sub"
-                                    text: (row.work || []).map(a => page.workScope(a)).join("; ") + ((row.work || []).length && row.work.every(a => a.done) ? qsTr(", done") : "")
+                                    text: (row.work || []).map(a => page.workScope(a)).join("; ") + ((row.work || []).length && row.work.every(a => a.done) ? " · " + qsTr("Done") : "")
                                 }
                                 Txt {
                                     width: parent.width

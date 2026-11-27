@@ -40,10 +40,10 @@ Panel {
             Layout.fillWidth: true
             role: "sub"
             text: {
-                let meta = Fmt.fill(qsTr("by {author}, {date}"), { author: card.item.author || "", date: card.review.day(card.item.changedAt) })
                 const who = card.item.reviewers || []
-                if (who.length && card.waits) meta += Fmt.fill(qsTr("; for {reviewers} to review"), { reviewers: who.join(", ") })
-                return meta
+                const said = { author: card.item.author || "", date: card.review.day(card.item.changedAt), reviewers: Fmt.listOf(who) }
+                return who.length && card.waits ? Fmt.fill(qsTr("by {author}, {date}, for {reviewers} to review"), said)
+                                                : Fmt.fill(qsTr("by {author}, {date}"), said)
             }
         }
         Badge {

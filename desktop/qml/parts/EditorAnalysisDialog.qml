@@ -23,8 +23,10 @@ Dialog {
             const memories = rep.memories || []
             const files = (rep.files || []).length
             const projectMemory = (settings.name || "") + " (" + lang + ")"
-            let t = Fmt.fill(qsTr("{files} in {language} against {memories}, counted in this order: context matches first, then repetitions within a file and across files, then the best match. Below 50% counts as new."),
-                             { files: Fmt.plural(files, qsTr("{n} file"), qsTr("{n} files")), language: Backend.languageName(lang), memories: memories.length ? memories.join(qsTr(" and ")) : qsTr("no memory") })
+            const said = { files: Fmt.plural(files, qsTr("{n} file"), qsTr("{n} files")), language: Backend.languageName(lang), memories: Fmt.listOf(memories) }
+            let t = memories.length
+                ? Fmt.fill(qsTr("{files} in {language} against {memories}, counted in this order: context matches first, then repetitions within a file and across files, then the best match. Below 50% counts as new."), said)
+                : Fmt.fill(qsTr("{files} in {language}, against no memory: only repetitions count. Below 50% counts as new."), said)
             if (settings.projectMemory && memories.indexOf(projectMemory) < 0)
                 t += " " + qsTr("The project memory is left out: it holds this project's own translations.")
             text = t

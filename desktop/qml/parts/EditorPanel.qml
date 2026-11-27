@@ -224,7 +224,8 @@ Rectangle {
                     Txt {
                         Layout.fillWidth: true
                         role: "help"
-                        text: panel.editor.suggestion ? Fmt.fill(qsTr("From {name}"), { name: panel.editor.suggestion.name }) + (panel.editor.suggestion.tagsLost ? qsTr(", without the source's tags: put them in by hand") : "") : ""
+                        text: !panel.editor.suggestion ? ""
+                              : Fmt.fill(panel.editor.suggestion.tagsLost ? qsTr("From {name}, without the source's tags: put them in by hand.") : qsTr("From {name}"), { name: panel.editor.suggestion.name })
                     }
                     Button { small: true; text: qsTr("Insert"); onClicked: panel.editor.insertSuggestion() }
                 }

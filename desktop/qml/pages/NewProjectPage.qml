@@ -576,10 +576,12 @@ Page {
                                         targets: Fmt.listOf((pkg.targetLangs || []).map(t => Backend.languageName(Backend.normalizeLanguage(t)))),
                                         files: Fmt.plural((pkg.files || []).length, qsTr("{n} file"), qsTr("{n} files")) })
                                     if (b) {
-                                        let sub = page.bilingualName(b.format)
+                                        const said = { format: page.bilingualName(b.format), translated: Fmt.num(b.translated || 0),
+                                                       segments: Fmt.plural(frow.inn.segments || 0, qsTr("{n} segment"), qsTr("{n} segments")) }
                                         if (b.targetLang && b.sourceLang)
-                                            sub += Fmt.fill(qsTr(", {source} to {target}"), { source: Backend.languageName(Backend.normalizeLanguage(b.sourceLang)), target: Backend.languageName(Backend.normalizeLanguage(b.targetLang)) })
-                                        return sub + Fmt.fill(qsTr(", {translated} of {segments} translated"), { translated: Fmt.num(b.translated || 0), segments: Fmt.plural(frow.inn.segments || 0, qsTr("{n} segment"), qsTr("{n} segments")) })
+                                            return Fmt.fill(qsTr("{format}, {source} to {target}: {translated} of {segments} translated"),
+                                                            Object.assign(said, { source: Backend.languageName(Backend.normalizeLanguage(b.sourceLang)), target: Backend.languageName(Backend.normalizeLanguage(b.targetLang)) }))
+                                        return Fmt.fill(qsTr("{format}: {translated} of {segments} translated"), said)
                                     }
                                     return page.documentFormatText(frow.inn.format || "") || qsTr("No text Interlinea can read")
                                 }
@@ -766,8 +768,13 @@ Page {
             Txt {
                 Layout.fillWidth: true
                 textFormat: Text.StyledText
-                text: parent.esc(form.s.name) + (form.s.client ? parent.muted(Fmt.fill(qsTr(" for {client}"), { client: form.s.client })) : "")
-                      + (form.s.due ? parent.muted(Fmt.fill(qsTr(", due {date}"), { date: Fmt.time(form.s.due) })) : "")
+                text: {
+                    const c = form.s.client, d = form.s.due ? Fmt.time(form.s.due) : ""
+                    const more = c && d ? Fmt.fill(qsTr("For {client}, due {date}"), { client: c, date: d })
+                               : c ? Fmt.fill(qsTr("For {client}"), { client: c })
+                               : d ? Fmt.fill(qsTr("Due {date}"), { date: d }) : ""
+                    return parent.esc(form.s.name) + (more ? parent.muted(" · " + more) : "")
+                }
             }
             Txt { Layout.alignment: Qt.AlignTop; role: "muted"; text: qsTr("Files") }
             Txt {
@@ -782,7 +789,7 @@ Page {
                     }
                     let t = parent.esc(Fmt.fill(qsTr("{files} to translate"), { files: Fmt.plural(translatable, qsTr("{n} file"), qsTr("{n} files")) }))
                     if (reference) t += ", " + parent.esc(Fmt.plural(reference, qsTr("{n} reference file"), qsTr("{n} reference files")))
-                    if (pkg) t += parent.muted(Fmt.fill(qsTr(" from the {kind} {name}"), { kind: page.packageKind(pkg), name: pkg }))
+                    if (pkg) t += parent.muted(" · " + Fmt.fill(qsTr("From the {kind} {name}"), { kind: page.packageKind(pkg), name: pkg }))
                     return t
                 }
             }
@@ -797,7 +804,7 @@ Page {
                 textFormat: Text.StyledText
                 text: form.targets.map(t => {
                     const names = form.memoriesFor(t).map(m => m.penalty ? m.memory + " (−" + m.penalty + ")" : m.memory)
-                    return "<b>" + parent.esc(t) + "</b> " + parent.esc(names.length ? names.join(", ") : qsTr("none")) + (form.s.projectMemory ? parent.muted(qsTr(", and a project memory")) : "")
+                    return "<b>" + parent.esc(t) + "</b> " + parent.esc(names.length ? names.join(", ") : qsTr("none")) + (form.s.projectMemory ? parent.muted(" · " + qsTr("Also a project memory")) : "")
                 }).join("<br>")
             }
             Txt { Layout.alignment: Qt.AlignTop; role: "muted"; text: qsTr("Terminology") }
@@ -885,7 +892,7 @@ Page {
                 Layout.fillWidth: true
                 role: "help"
                 text: !parent.pv ? "" : (parent.pv.memories || []).length === 0 ? qsTr("No memory for this language, so only repetitions count.")
-                    : Fmt.fill(qsTr("Against {memories}, counted in this order: context matches first, then repetitions within a file and across files, then the best match."), { memories: parent.pv.memories.join(qsTr(" and ")) })
+                    : Fmt.fill(qsTr("Against {memories}, counted in this order: context matches first, then repetitions within a file and across files, then the best match."), { memories: Fmt.listOf(parent.pv.memories) })
             }
             AnalysisTable {
                 visible: !!parent.pv

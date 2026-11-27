@@ -136,9 +136,9 @@ Page {
                 return
             }
             const left = (res.data.needResolution || []).length
-            let text = (what || stateText(state)) + ": " + TermData.entries(res.data.decided || 0)
-            if (left) text += left === 1 ? qsTr("; 1 entry needs a decision one by one (the master changed the same places)")
-                                         : Fmt.fill(qsTr("; {n} entries need a decision one by one (the master changed the same places)"), { n: left })
+            let text = (what || stateText(state)) + ": " + TermData.entries(res.data.decided || 0) + "."
+            if (left) text += " " + Fmt.plural(left, qsTr("1 entry needs a decision one by one: the master changed the same places."),
+                                               qsTr("{n} entries need a decision one by one: the master changed the same places."))
             notice(text)
             reload()
         })
@@ -173,11 +173,9 @@ Page {
         Layout.fillWidth: true
         role: "help"
         text: {
-            let about = Fmt.fill(qsTr("{project} into {termbase}. Submitted by {author} on {date}"),
-                                 { project: page.request.project || "", termbase: page.targetName, author: page.request.createdBy || "", date: page.day(page.request.createdAt) })
-            const by = page.day(page.request.deadline)
-            if (by) about += Fmt.fill(qsTr(", to be decided by {date}"), { date: by })
-            about += "."
+            const said = { project: page.request.project || "", termbase: page.targetName, author: page.request.createdBy || "", date: page.day(page.request.createdAt), by: page.day(page.request.deadline) }
+            let about = said.by ? Fmt.fill(qsTr("{project} into {termbase}. Submitted by {author} on {date}, to be decided by {by}."), said)
+                                : Fmt.fill(qsTr("{project} into {termbase}. Submitted by {author} on {date}."), said)
             if (page.read && !page.isOpen) about += " " + Fmt.fill(qsTr("Closed on {date}."), { date: page.day(page.request.closedAt || page.request.createdAt) })
             return about
         }
@@ -193,10 +191,10 @@ Page {
                 const parts = []
                 for (const s of ["waiting", "approved", "approved-with-edits", "changes-requested", "rejected", "postponed", "reverted"])
                     if (page.states[s]) parts.push(Fmt.num(page.states[s]) + " " + page.stateText(s).toLowerCase())
-                let t = TermData.entries(page.count) + ": " + parts.join(", ")
+                let t = TermData.entries(page.count) + ": " + parts.join(", ") + "."
                 const c = page.progress.conflicts || 0
-                if (c) t += c === 1 ? qsTr("; 1 conflict with the master") : Fmt.fill(qsTr("; {n} conflicts with the master"), { n: c })
-                return t + "."
+                if (c) t += " " + Fmt.plural(c, qsTr("1 of them conflicts with the master."), qsTr("{n} of them conflict with the master."))
+                return t
             }
         }
         Rectangle {

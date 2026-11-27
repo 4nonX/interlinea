@@ -7,6 +7,22 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Changed
+
+- Desktop app: the interface is now built in Qt Quick, in Interlinea's
+  own design, and looks like the browser client on Windows, macOS and
+  Linux alike. Every page came over with all it did: projects and New
+  project, the project page, the editor with its panel, preview and
+  dialogs, memories with alignment, terminology with merge review,
+  accounts and settings. It has a menu bar (File, Edit, View, Help) with
+  the system's shortcuts and native file dialogs; documents named when
+  Interlinea starts, handed over by a second start or opened from the
+  system (macOS) begin a project, and the window keeps its place and size.
+- Desktop app: narrow windows. The editor's bar puts the filter and the
+  search on a line of their own, Terminology puts the termbases over the
+  entries, and an account's details and the role form wrap; the roles
+  table scrolls sideways where it can't.
+
 ### Fixed
 
 - Browser client in German and Korean: no more English on the screen.
@@ -24,21 +40,15 @@ takes its notes from its section here.
   who manage the termbase, after saying how many values go with it. Until
   now that was only possible in the termbase's settings.
 
-- Desktop app: a page could flicker without end when its content was
-  about as tall as the window (seen after deleting the last memory): the
-  room added for wrapped text brought a scrollbar, the narrower page took
-  the room back, and the scrollbar went again. Pages now keep at least
-  the height their layout asks and only ever add to it while the window
-  keeps its width. The same change ends texts squeezed to nothing in a
-  dialog whose content had just changed, such as a termbase's settings.
-- Desktop app: the rows of the match band tables are fitted a limited
-  number of times and no longer fit again because of their own height.
-
 ### Tests
 
-- The layout check every test runs now also fails on a layout that keeps
-  switching between sizes without anyone doing anything, and a test sweeps
-  a page across the point where it starts to scroll.
+- The desktop tests work the Qt Quick window as a person does: parts are
+  found by name, buttons clicked, text typed key by key and notices read,
+  and a layout check looks for text that is cut off or runs out of its
+  row. They found and fixed: comments and review issues of the open
+  segment showing only after moving on, a new translation service's form
+  without the service's name, and a missing message when the core does
+  not start.
 
 ## [0.5.1] - 2026-11-27
 

@@ -197,8 +197,8 @@ Page {
                             id: urow
                             required property var modelData
                             readonly property string heading: modelData.name || modelData.username
-                            readonly property string sub: modelData.username + (modelData.admin ? qsTr(", administrator") : "")
-                                                          + (modelData.disabled ? qsTr(", disabled") : "") + (!modelData.hasPassword ? qsTr(", provider sign-in only") : "")
+                            readonly property string sub: [modelData.username].concat(modelData.admin ? [qsTr("Administrator")] : [],
+                                                          modelData.disabled ? [qsTr("Disabled")] : [], !modelData.hasPassword ? [qsTr("Signs in only through the provider")] : []).join(" · ")
                             Layout.fillWidth: true
                             implicitHeight: ucol.implicitHeight + 2 * Theme.s2
                             hoverEnabled: true

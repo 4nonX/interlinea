@@ -347,8 +347,9 @@ Item {
                             border.color: entry.picked || activeFocus ? Theme.accent : entry.alone ? Theme.warn : Theme.border
                             border.width: entry.picked || activeFocus ? 2 : 1
                             Accessible.role: Accessible.Button
-                            Accessible.name: Fmt.fill(qsTr("{what} {n}{alone}: {text}"), { what: col.side === 0 ? qsTr("Sentence") : qsTr("Translation"), n: entry.i + 1,
-                                                                                        alone: entry.alone ? qsTr(", no pair") : "", text: Fmt.plain(board.d.segs[col.side][entry.i]) })
+                            Accessible.name: Fmt.fill(col.side === 0 ? (entry.alone ? qsTr("Sentence {n}, no pair: {text}") : qsTr("Sentence {n}: {text}"))
+                                                                     : (entry.alone ? qsTr("Translation {n}, no pair: {text}") : qsTr("Translation {n}: {text}")),
+                                                      { n: entry.i + 1, text: Fmt.plain(board.d.segs[col.side][entry.i]) })
                             Accessible.description: entry.picked ? qsTr("Chosen") : ""
                             RowLayout {
                                 id: segRow

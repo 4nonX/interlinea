@@ -309,9 +309,9 @@ Item {
             Layout.fillWidth: true
             role: "help"
             text: {
-                let where = project.local ? qsTr("On this computer") : Fmt.fill(qsTr("On the team server {server}"), { server: project.conn ? project.conn.displayName : "" })
-                if (project.s.client) where += Fmt.fill(qsTr(", for {client}"), { client: project.s.client })
-                where += "."
+                const at = { server: project.conn ? project.conn.displayName : "", client: project.s.client || "" }
+                let where = project.local ? (at.client ? Fmt.fill(qsTr("On this computer, for {client}."), at) : qsTr("On this computer."))
+                                          : (at.client ? Fmt.fill(qsTr("On the team server {server}, for {client}."), at) : Fmt.fill(qsTr("On the team server {server}."), at))
                 const made = project.data_.createdAt, by = project.data_.createdBy || ""
                 if (made) where += " " + (by ? Fmt.fill(qsTr("Made by {who} on {date}."), { who: by, date: Fmt.date(made) }) : Fmt.fill(qsTr("Made on {date}."), { date: Fmt.date(made) }))
                 return where
@@ -568,7 +568,7 @@ Item {
                     role: "help"
                     readonly property var mems: ((project.s.memories || {})[analysisPart.shown] || []).filter(m => m.lookup).map(m => m.memory)
                     text: mems.length === 0 ? qsTr("No memory for this language, so only repetitions count.")
-                        : Fmt.fill(qsTr("Against {memories}, counted in this order: context matches first, then repetitions within a file and across files, then the best match."), { memories: mems.join(qsTr(" and ")) })
+                        : Fmt.fill(qsTr("Against {memories}, counted in this order: context matches first, then repetitions within a file and across files, then the best match."), { memories: Fmt.listOf(mems) })
                 }
                 AnalysisTable {
                     visible: !!analysisPart.rep

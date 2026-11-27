@@ -453,7 +453,7 @@ Dialog {
         Txt {
             visible: !!dlg.plan && (dlg.plan.actions || 0) > 12
             role: "help"
-            text: dlg.plan ? Fmt.plural((dlg.plan.actions || 0) - 12, qsTr("and {n} more entry"), qsTr("and {n} more entries")) : ""
+            text: dlg.plan ? Fmt.plural((dlg.plan.actions || 0) - 12, qsTr("1 more entry"), qsTr("{n} more entries")) : ""
         }
     }
 

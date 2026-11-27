@@ -147,7 +147,7 @@ go build -o bin/ ./cmd/...        # the server, the command line, the desktop ap
 go test ./...
 
 make wasm dictionaries && cd web && npm install && npm run dev   # the browser client
-cmake -S desktop -B build/desktop && cmake --build build/desktop   # the desktop app (Qt 6.4+)
+cmake -S desktop -B build/desktop && cmake --build build/desktop   # the desktop app (Qt 6.8+)
 ```
 
 [docs/development.md](docs/development.md) has the rest: tests, fuzzing,

@@ -153,9 +153,14 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(app.notice(), QStringLiteral("Added “Miete”"), 10000);
         app.call(tb, "addEntry", {QStringLiteral("Miete"), QStringLiteral("de-DE"), QStringLiteral("proposed")});
         QTRY_COMPARE_WITH_TIMEOUT(tb->property("entries").toList().size(), 3, 10000);
+        // Asked once the page has read again what the new entries changed.
         tb->setProperty("dupLang", QStringLiteral("de-DE"));
-        app.call(tb, "loadDuplicates");
-        QTRY_VERIFY_WITH_TIMEOUT(!tb->property("duplicates").isNull() && tb->property("duplicates").toList().size() == 1, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            if (tb->property("duplicates").isNull() && !tb->property("loading").toBool())
+                app.call(tb, "loadDuplicates");
+            QTest::qWait(300);
+            return !tb->property("duplicates").isNull() && tb->property("duplicates").toList().size() == 1;
+        }(), 15000);
         app.call(tb, "mergeGroup", {tb->property("duplicates").toList().first()});
         QTRY_COMPARE_WITH_TIMEOUT(waitFor(api->get(QStringLiteral("/api/termbases/Kanzlei%20Weber"))).object().value("entries").toInt(), 2, 10000);
 
@@ -224,7 +229,7 @@ private slots:
         QVERIFY2(layoutProblems(app.window).isEmpty(), qPrintable(layoutProblems(app.window)));
         app.shot(QStringLiteral("review"));
         app.call(review, "decide", {QVariantMap{{"ids", QVariantList{review->property("items").toList().first().toMap().value("id")}}}, QStringLiteral("approved"), QVariant(), QString()});
-        QTRY_VERIFY_WITH_TIMEOUT(app.notice().endsWith(QStringLiteral(": 1 entry")), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(app.notice().endsWith(QStringLiteral(": 1 entry.")), 10000);
         const ApiResult closed = waitFor(api->post(QStringLiteral("/api/merge-requests/%1/close").arg(mr.object().value("id").toInteger())));
         QVERIFY2(closed.ok(), qPrintable(closed.error.message));
         QCOMPARE(terms(waitFor(api->get(QStringLiteral("/api/termbases/Kanzlei%20Weber/entries/") + master.object().value("id").toString())).object(), QStringLiteral("en-GB")),

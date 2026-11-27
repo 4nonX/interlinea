@@ -69,7 +69,7 @@ func main() {
 	bad := 0
 	if *check {
 		for _, k := range sortedKeys(keys) {
-			if why := pieceOfSentence(k); why != "" && !desktopOnly[k] {
+			if why := pieceOfSentence(k); why != "" {
 				fmt.Fprintf(os.Stderr, "%q (%s) %s: write the whole sentence, with named placeholders\n", k, keys[k], why)
 				bad++
 			}
@@ -113,11 +113,6 @@ func main() {
 		os.Exit(1)
 	}
 }
-
-// desktopOnly holds the strings only the desktop app has: its pages are
-// being made again as a desktop application, with whole sentences, and
-// are held to pieceOfSentence once they are.
-var desktopOnly = map[string]bool{}
 
 var (
 	opaquePlaceholder = regexp.MustCompile(`\{x\d*\}`)
@@ -293,20 +288,11 @@ func collect(root string) (map[string]string, error) {
 	if err := walk("web/src", []string{".ts", ".tsx"}, scanTS); err != nil {
 		return nil, err
 	}
-	others := map[string]bool{}
-	for k := range keys {
-		others[k] = true
-	}
 	if err := walk("desktop/src", []string{".cpp", ".h"}, scanCPP); err != nil {
 		return nil, err
 	}
 	if err := walk("desktop/qml", []string{".qml"}, scanQML); err != nil {
 		return nil, err
-	}
-	for k := range keys {
-		if !others[k] {
-			desktopOnly[k] = true
-		}
 	}
 	// The core's texts the apps show, marked with i18n.N.
 	if err := walkGo(root, func(k, where string) { add(k, where) }); err != nil {

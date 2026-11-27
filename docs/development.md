@@ -120,7 +120,7 @@ which keeps the person's work in SQLite files in the app's data folder, and
 connects to team servers; sign-ins are kept in the system's keychain.
 
 ```
-cmake -S desktop -B build/desktop      # needs Qt 6.4 or later and Go
+cmake -S desktop -B build/desktop      # needs Qt 6.8 or later and Go
 cmake --build build/desktop
 ctest --test-dir build/desktop         # starts the core; QT_QPA_PLATFORM=offscreen is set
 ```
