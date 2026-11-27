@@ -37,6 +37,25 @@ QSize FlowLayout::minimumSize() const
     return size + QSize(m.left() + m.right(), m.top() + m.bottom());
 }
 
+QSize FlowLayout::sizeHint() const
+{
+    int width = 0;
+    int height = 0;
+    int shown = 0;
+    for (QLayoutItem *item : m_items) {
+        if (item->widget() && item->widget()->isHidden())
+            continue;
+        const QSize hint = item->sizeHint().expandedTo(item->minimumSize());
+        width += hint.width();
+        height = qMax(height, hint.height());
+        ++shown;
+    }
+    if (shown > 1)
+        width += (shown - 1) * m_spacing;
+    const QMargins m = contentsMargins();
+    return QSize(width, height).expandedTo(minimumSize() - QSize(m.left() + m.right(), m.top() + m.bottom())) + QSize(m.left() + m.right(), m.top() + m.bottom());
+}
+
 void FlowLayout::setGeometry(const QRect &rect)
 {
     QLayout::setGeometry(rect);
@@ -59,11 +78,12 @@ int FlowLayout::doLayout(const QRect &rect, bool measureOnly) const
             y += lineHeight + m_spacing;
             lineHeight = 0;
         }
-        // A part wider than the line gets the line, and the height that
-        // width asks for (a row of buttons that wraps in turn).
+        // A part wider than the line gets the line. Every part is as tall
+        // as the width it gets asks for (a row of buttons that wraps in
+        // turn).
         const int w = qMin(hint.width(), area.width());
         int h = hint.height();
-        if (w < hint.width() && item->hasHeightForWidth())
+        if (item->hasHeightForWidth())
             h = qMax(h, item->heightForWidth(w));
         if (!measureOnly)
             item->setGeometry(QRect(QPoint(x, y), QSize(w, h)));

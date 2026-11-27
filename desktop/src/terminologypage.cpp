@@ -269,9 +269,12 @@ public:
         } else {
             p->setFont(bold);
             p->setPen(Theme::color("text"));
-            const QFontMetrics fm(bold);
+            // Measured as the painter draws, on its device: on Windows the
+            // fonts' widths there differ from those without a device, and
+            // " +1" would then lie over the end of the term.
+            const QFontMetrics fm(bold, p->device());
             const QString more = own.size() > 1 ? QStringLiteral(" +%1").arg(own.size() - 1) : QString();
-            const int moreWidth = more.isEmpty() ? 0 : QFontMetrics(option.font).horizontalAdvance(more);
+            const int moreWidth = more.isEmpty() ? 0 : QFontMetrics(option.font, p->device()).horizontalAdvance(more);
             const QString shownHead = fm.elidedText(head, Qt::ElideRight, w - moreWidth);
             p->drawText(QRect(x, y, w, 20), Qt::AlignVCenter | Qt::AlignLeft, shownHead);
             if (!more.isEmpty()) {
@@ -374,7 +377,17 @@ TerminologyPage::TerminologyPage(ConnectionManager *manager, QWidget *parent)
     m_middle = new QVBoxLayout(middle);
     m_middle->setContentsMargins(1, 1, 1, 1);
     m_middle->setSpacing(0);
-    auto *head = new QFrame(middle);
+    // The head (the termbase's name and tools, its notes and the form to
+    // submit it for review) scrolls when the window is too low for it and
+    // the entries.
+    auto *headScroll = new Web::DialogScroll(middle);
+    headScroll->setObjectName(QStringLiteral("entriesHead"));
+    Theme::role(headScroll, "paneScroll");
+    headScroll->setWidgetResizable(true);
+    headScroll->setFrameShape(QFrame::NoFrame);
+    headScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    headScroll->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    auto *head = new QFrame(headScroll);
     Theme::role(head, "paneHead");
     auto *headLayout = new QVBoxLayout(head);
     headLayout->setContentsMargins(S4, S3, S4, S3);
@@ -385,7 +398,9 @@ TerminologyPage::TerminologyPage(ConnectionManager *manager, QWidget *parent)
     m_noteHolder = new QVBoxLayout;
     m_noteHolder->setSpacing(S2);
     headLayout->addLayout(m_noteHolder);
-    m_middle->addWidget(head);
+    headScroll->setWidget(head);
+    Web::fitScroll(headScroll);
+    m_middle->addWidget(headScroll);
 
     m_tabs = new Web::Tabs(tr("Entry lists"), middle, true);
     m_tabs->setObjectName(QStringLiteral("entryViews"));
@@ -443,10 +458,9 @@ TerminologyPage::TerminologyPage(ConnectionManager *manager, QWidget *parent)
     m_list->setSelectionMode(QAbstractItemView::SingleSelection);
     m_list->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_listStack->addWidget(m_list);
-    auto *empty = new QWidget(m_listStack);
-    m_emptyHolder = new QVBoxLayout(empty);
-    m_emptyHolder->setContentsMargins(S5, S5, S5, S5);
-    m_emptyHolder->setSpacing(S2);
+    // What the list says when it is empty scrolls, like the list, when
+    // the window is low.
+    QScrollArea *empty = scroller(m_listStack, &m_emptyHolder, S5, S2);
     m_listStack->addWidget(empty);
     ev->addWidget(m_listStack, 1);
     m_views->addWidget(entriesView);

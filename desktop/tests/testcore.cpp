@@ -42,12 +42,16 @@ static void reportLayout()
     fprintf(stderr, "FAIL!  : broken layout in %lld places:\n", static_cast<long long>(found.size()));
     for (const QString &line : found)
         fprintf(stderr, "   %s\n", qPrintable(line));
+    fflush(stdout);
     fflush(stderr);
     std::_Exit(1);
 }
 
 static void startLayoutCheck()
 {
+    // What the test says goes out at once: into a pipe, as under ctest,
+    // it would otherwise wait in a buffer a crash or a quick exit loses.
+    setvbuf(stdout, nullptr, _IONBF, 0);
     const QString out = qEnvironmentVariable("INTERLINEA_OVERFLOW");
     LayoutCheck::watch([out](const QString &line) {
         layoutFound()->append(line);
