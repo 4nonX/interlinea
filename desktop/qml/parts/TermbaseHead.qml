@@ -25,12 +25,14 @@ ColumnLayout {
                  : !page.name ? qsTr("No termbase yet. Make a master on the left, or import a termbase file.")
                  : Fmt.fill(qsTr("Opening {name}…"), { name: page.name })
         }
-        Flow {
+        // The name sits above its tools, and the tools wrap within the pane.
+        ColumnLayout {
             Layout.fillWidth: true
             visible: page.opened
-            spacing: Theme.s2
-            Txt { text: page.name; role: "h2"; wrapMode: Text.NoWrap }
+            spacing: Theme.s1
+            Txt { Layout.fillWidth: true; text: page.name; role: "h2"; wrapMode: Text.NoWrap; elide: Text.ElideRight }
             Flow {
+                Layout.fillWidth: true
                 spacing: 2
                 Accessible.name: Fmt.fill(qsTr("{name} tools"), { name: page.name })
                 Button { visible: page.may("edit"); kind: "quiet"; small: true; iconName: "upload"; text: qsTr("Import"); onClicked: importInto.start(page.cid, page.name) }
