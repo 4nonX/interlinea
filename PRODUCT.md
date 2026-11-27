@@ -61,7 +61,7 @@ managing a database schema.
 
 ## Capabilities and Constraints
 
-- Built and released (0.4.0): the editor with memories, termbases, checks,
+- Built and released (0.5.0): the editor with memories, termbases, checks,
   spelling and machine translation; projects with analysis, assignments
   and review; document, subtitle, software and bilingual formats, Trados
   and memoQ packages back as packages; termbases with project termbases,

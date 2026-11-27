@@ -7,6 +7,8 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-27
+
 ### Alignment
 
 - Where a translation has its sections in another order than the
@@ -485,7 +487,8 @@ version 3.
   a test, and the steps of each store's schema can no longer be changed
   once recorded.
 
-[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/4nonX/interlinea/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/4nonX/interlinea/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/4nonX/interlinea/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/4nonX/interlinea/compare/v0.1.0...v0.2.0
