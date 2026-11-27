@@ -441,7 +441,9 @@ QWidget *MemoriesPage::localTable(Part *p, const QList<QJsonObject> &memories, b
         const QString client = m.value(QLatin1String("client")).toString();
         const qint64 count = m.value(QLatin1String("units")).toInteger();
         QStringList users = usedBy(p, name);
-        const QString sub = (client.isEmpty() ? QString() : client + QStringLiteral(", ")) + tr("created %1").arg(date(m.value(QLatin1String("createdAt")).toString()));
+        // A date is never split over two lines.
+        const QString created = date(m.value(QLatin1String("createdAt")).toString()).replace(QLatin1Char(' '), QChar(0x00A0));
+        const QString sub = (client.isEmpty() ? QString() : client + QStringLiteral(", ")) + tr("created %1").arg(created);
         QWidget *used = users.isEmpty() ? Web::cellText(tr("No project"), table, false, true) : Web::cellText(users.join(QLatin1String(", ")), table);
 
         QList<QWidget *> actions;

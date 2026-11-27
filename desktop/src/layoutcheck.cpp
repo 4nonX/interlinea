@@ -71,7 +71,7 @@ void checkLabel(QLabel *l, QStringList &out)
         return;
     const int need = l->wordWrap() ? l->heightForWidth(l->width()) : l->sizeHint().height();
     if (need > l->height() + 2)
-        out << QStringLiteral("text cut off at the bottom by %1px: %2 in %3").arg(need - l->height()).arg(shown(l->text()), where(l));
+        out << QStringLiteral("text cut off at the bottom by %1px: %2 in %3 (%4x%5)").arg(need - l->height()).arg(shown(l->text()), where(l)).arg(l->width()).arg(l->height());
     else if (!l->wordWrap() && l->textFormat() != Qt::RichText && l->sizeHint().width() > l->width() + 2)
         out << QStringLiteral("text cut off at the side by %1px: %2 in %3").arg(l->sizeHint().width() - l->width()).arg(shown(l->text()), where(l));
 }
@@ -123,7 +123,14 @@ void checkChildren(QWidget *parent, QStringList &out)
         if (a.width() <= 0 || a.height() <= 0)
             continue;
         if (!scrolled(parent) && (a.right() > inside.right() + 2 || a.bottom() > inside.bottom() + 2 || a.left() < -2 || a.top() < -2))
-            out << QStringLiteral("part reaches out of what holds it: %1 in %2").arg(where(kids[i]), where(parent));
+            out << QStringLiteral("part reaches out of what holds it: %1 in %2 (%3,%4 %5x%6 in %7x%8)")
+                       .arg(where(kids[i]), where(parent))
+                       .arg(a.x())
+                       .arg(a.y())
+                       .arg(a.width())
+                       .arg(a.height())
+                       .arg(inside.width())
+                       .arg(inside.height());
         for (int k = i + 1; k < kids.size(); ++k) {
             const QRect both = a.intersected(kids[k]->geometry());
             if (both.width() > 2 && both.height() > 2)

@@ -411,7 +411,12 @@ void Table::fitRows()
             QWidget *w = cellWidget(r, c);
             if (!w)
                 continue;
-            const int width = columnWidth(c) - inset().width();
+            // Measured at the width the widget really has once it is laid
+            // out: with scaling, that can be a pixel less than the column
+            // says, and a line that just fits then wraps.
+            int width = columnWidth(c) - inset().width();
+            if (w->isVisible() && w->width() > 0)
+                width = qMin(width, w->width());
             h = qMax(h, w->hasHeightForWidth() && width > 0 ? w->heightForWidth(width) : w->sizeHint().height());
             h = qMax(h, w->minimumSizeHint().height());
         }
