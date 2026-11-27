@@ -163,12 +163,23 @@ jobs:
       - name: tests
         shell: bash
         # What a failed test said is in the log, also where the run shows
-        # none of it.
+        # none of it. A run started by hand keeps what the windows looked
+        # like, for checking the layout on each system.
+        env:
+          INTERLINEA_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && format('{0}/screenshots', runner.temp) || '' }}
         run: |
+          if [ -n "$INTERLINEA_SCREENSHOTS" ]; then mkdir -p "$INTERLINEA_SCREENSHOTS"; fi
           ctest --test-dir build/desktop -C Release --output-on-failure || {
             grep -a -E "FAIL!|Loc:|Actual|Expected|QFATAL|Totals|Exception|crashed" build/desktop/Testing/Temporary/LastTest.log | head -60
             exit 1
           }
+      - name: keep the screenshots
+        if: always() && github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.os }}
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: ignore
       - name: the whole app against a team server
         if: runner.os == 'Linux'
         run: |

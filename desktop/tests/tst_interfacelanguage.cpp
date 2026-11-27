@@ -1,4 +1,8 @@
+#include "apiclient.h"
+#include "connection.h"
 #include "connectionmanager.h"
+#include "editorpage.h"
+#include "projectpage.h"
 #include "interfacelanguage.h"
 #include "mainwindow.h"
 #include "accountspage.h"
@@ -11,10 +15,22 @@
 
 #include <QApplication>
 #include <QComboBox>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QPushButton>
 #include <QFrame>
 #include <QSettings>
+#include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTest>
+
+static ApiResult wait(ApiReply *reply)
+{
+    QSignalSpy spy(reply, &ApiReply::finished);
+    if (!spy.wait(20000))
+        return {};
+    return spy.first().first().value<ApiResult>();
+}
 
 // The interface in German and Korean: the catalogs are built in, strings
 // are looked up by their English text, the setting is kept, and every page
@@ -93,6 +109,46 @@ private slots:
                     w.resize(1366, 768);
                     QTest::qWait(300);
                     w.grab().save(QStringLiteral("%1/%2-%3.png").arg(dir, QLatin1String(lang), page));
+                }
+            }
+            // The editor, on a document: its bar holds its longer buttons at
+            // the sizes a window has, from a small one to a full screen.
+            {
+                ApiClient *api = m.local()->api();
+                QJsonObject settings = wait(api->get(QStringLiteral("/api/projects/defaults"))).object();
+                settings.insert("name", QStringLiteral("Test"));
+                settings.insert("sourceLang", "de-DE");
+                settings.insert("targetLangs", QJsonArray{"en-US"});
+                // A heading, segments of one sign, a long one with tags.
+                const QByteArray html = QStringLiteral(
+                    "<html><body><h1>HA-Setup Pro/Contra</h1><p>+</p><p>-</p>"
+                    "<p>Besseres Verständnis des Systems für Dritte (IT-Dienstleister, Nachfolger, etc.), da System nach "
+                    "„Industriestandard“ (Setups dieser Art gibt es in vielen anderen Unternehmen).</p>"
+                    "<p>Komplettes neu aufsetzen EINES Servers notwendig.</p>"
+                    "<p><b>Weniger</b> Management-Aufwand, beide Server müssen auf derselben Softwareversion gehalten werden, "
+                    "<i>dafür aber Alles in einer Management-Oberfläche und System nach gut dokumentierten Standards.</i></p>"
+                    "</body></html>").toUtf8();
+                const ApiResult made = wait(api->post(QStringLiteral("/api/projects"),
+                    QJsonObject{{"settings", settings}, {"files", QJsonArray{QJsonObject{{"name", "HA-Setup Pro-Contra.html"}, {"role", "translatable"}, {"data", QString::fromLatin1(html.toBase64())}}}}}));
+                QVERIFY2(made.ok(), qPrintable(made.error.message));
+                ProjectsPage projects(&m);
+                projects.resize(1280, 820);
+                projects.show();
+                projects.open(m.local()->id(), made.object().value("id").toInteger());
+                ProjectPage *page = projects.openProject();
+                QVERIFY(page);
+                QPushButton *open = nullptr;
+                QTRY_VERIFY_WITH_TIMEOUT((open = page->findChild<QPushButton *>(QStringLiteral("progress"))) != nullptr, 10000);
+                open->click();
+                EditorPage *ed = projects.openEditor();
+                QVERIFY(ed);
+                QTRY_VERIFY_WITH_TIMEOUT(ed->model()->rowCount() > 0 && ed->activeRow() == 0, 10000);
+                for (const QSize size : {QSize(1024, 700), QSize(1280, 820), QSize(1700, 1000), QSize(1920, 1032)}) {
+                    projects.resize(size);
+                    const QString broken = layoutProblems(&projects);
+                    if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty())
+                        projects.grab().save(QStringLiteral("%1/%2-editor-%3.png").arg(dir, QLatin1String(lang)).arg(size.width()));
+                    QVERIFY2(broken.isEmpty(), qPrintable(QStringLiteral("%1, editor at %2x%3:\n%4").arg(QLatin1String(lang)).arg(size.width()).arg(size.height()).arg(broken)));
                 }
             }
             QCoreApplication::removeTranslator(&tr);
