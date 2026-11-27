@@ -69,8 +69,11 @@ void Connection::setUser(const QJsonObject &user)
 
 void Connection::setServerInfo(const QString &version, const QString &provider)
 {
+    if (m_version == version && m_provider == provider)
+        return;
     m_version = version;
     m_provider = provider;
+    emit infoChanged();
 }
 
 void Connection::setState(State state, const QString &message)

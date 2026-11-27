@@ -72,6 +72,12 @@ void draw(QPainter &p, const QString &name)
         path.moveTo(11, 6);
         path.lineTo(5, 12);
         path.lineTo(11, 18);
+    } else if (name == QLatin1String("arrow-right")) {
+        path.moveTo(5, 12);
+        path.lineTo(19, 12);
+        path.moveTo(13, 6);
+        path.lineTo(19, 12);
+        path.lineTo(13, 18);
     } else if (name == QLatin1String("bar-chart")) {
         for (const auto &[x, top] : {std::pair{6.0, 13.0}, {12.0, 5.0}, {18.0, 9.0}}) {
             path.moveTo(x, 20);

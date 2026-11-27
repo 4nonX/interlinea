@@ -94,6 +94,7 @@ void ConnectionManager::start()
         adopt(c);
     }
     settings.endArray();
+    emit loaded();
     for (Connection *c : std::as_const(m_teams))
         restore(c);
     m_core->start();

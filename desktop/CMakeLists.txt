@@ -47,6 +47,7 @@ add_library(interlinea_app STATIC
     src/icons.cpp
     src/progressdelegate.cpp
     src/segmentcontent.cpp
+    src/documentpreview.cpp
     src/segmentmodel.cpp
     src/targeteditor.cpp
     src/editorpage.cpp
@@ -107,6 +108,30 @@ set_target_properties(interlinea PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_COPYRIGHT "Copyright (C) 2026 Dan Dreßen. GNU Affero General Public License, version 3.")
+
+# The interface in Qt Quick: the app's own controls in the web app's
+# design (qml/controls), its pages (qml/pages), and the bridge to the C++
+# side (src/ui).
+find_package(Qt6 6.8 COMPONENTS Quick QuickControls2)
+if(Qt6Quick_FOUND)
+    qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0004 NEW)
+    qt_add_executable(interlinea_next WIN32 MACOSX_BUNDLE src/ui/main.cpp src/ui/shothook.h src/ui/shothook.cpp)
+    file(GLOB interlinea_qml RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS qml/*.qml qml/controls/*.qml qml/parts/*.qml qml/pages/*.qml)
+    set_source_files_properties(qml/Theme.qml qml/Fmt.qml qml/Api.qml qml/Words.qml qml/Roles.qml qml/TermData.qml qml/Fields.qml qml/Bands.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+    qt_add_qml_module(interlinea_next
+        URI Interlinea
+        VERSION 1.0
+        # Not "Interlinea" in the build folder, where the app's program is.
+        OUTPUT_DIRECTORY qml/Interlinea
+        SOURCES src/ui/backend.h src/ui/backend.cpp src/ui/iconprovider.h src/ui/iconprovider.cpp src/ui/segmentdocument.h src/ui/segmentdocument.cpp
+        QML_FILES ${interlinea_qml}
+    )
+    target_include_directories(interlinea_next PRIVATE src/ui)
+    target_link_libraries(interlinea_next PRIVATE interlinea_app Qt6::Quick Qt6::QuickControls2)
+    set_target_properties(interlinea_next PROPERTIES OUTPUT_NAME InterlineaNext)
+    qt_add_resources(interlinea_next "appicon_next" PREFIX "/" BASE packaging FILES packaging/interlinea.png)
+endif()
 
 # The app's icon: in the program file on Windows, in the bundle on macOS,
 # and as the icon of its windows everywhere.

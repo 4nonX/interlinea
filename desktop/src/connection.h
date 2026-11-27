@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QUrl>
+#include <QVariantMap>
 
 class ApiClient;
 class EventFeed;
@@ -11,6 +12,20 @@ class EventFeed;
 // and who is signed in there.
 class Connection : public QObject {
     Q_OBJECT
+    // For the interface.
+    Q_PROPERTY(QString id READ id CONSTANT)
+    Q_PROPERTY(bool local READ isLocal CONSTANT)
+    Q_PROPERTY(QString displayName READ displayName NOTIFY stateChanged)
+    Q_PROPERTY(QString address READ address CONSTANT)
+    Q_PROPERTY(int state READ stateValue NOTIFY stateChanged)
+    Q_PROPERTY(bool ready READ isReady NOTIFY stateChanged)
+    Q_PROPERTY(QString message READ message NOTIFY stateChanged)
+    Q_PROPERTY(QString userName READ userName NOTIFY userChanged)
+    Q_PROPERTY(QString login READ login NOTIFY userChanged)
+    Q_PROPERTY(bool admin READ isAdmin NOTIFY userChanged)
+    Q_PROPERTY(QVariantMap user READ userMap NOTIFY userChanged)
+    Q_PROPERTY(QString provider READ provider NOTIFY infoChanged)
+    Q_PROPERTY(QString serverVersion READ serverVersion NOTIFY infoChanged)
 public:
     enum class Kind { Local, Team };
     Q_ENUM(Kind)
@@ -52,6 +67,10 @@ public:
     State state() const { return m_state; }
     QString message() const { return m_message; }
     bool isReady() const { return m_state == State::Ready; }
+    int stateValue() const { return int(m_state); }
+    QVariantMap userMap() const { return m_user.toVariantMap(); }
+    // The server's address as typed, without the scheme; empty here.
+    QString address() const { return isLocal() ? QString() : m_url.host() + (m_url.port() > 0 ? QStringLiteral(":%1").arg(m_url.port()) : QString()); }
 
     // Signed in: requests go with token, the live feed runs.
     void activate(const QString &token, const QJsonObject &user);
@@ -62,6 +81,8 @@ public:
 signals:
     void stateChanged(Connection::State state);
     void userChanged();
+    // What the server said of itself: its version and identity provider.
+    void infoChanged();
 
 private:
     Kind m_kind;

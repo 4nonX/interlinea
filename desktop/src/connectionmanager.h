@@ -67,6 +67,8 @@ public:
 signals:
     void added(Connection *c);
     void removed(const QString &id);
+    // The servers kept from the last time were read (start()).
+    void loaded();
     // A connection's state or user changed.
     void changed(Connection *c);
 
