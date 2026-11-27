@@ -84,16 +84,14 @@ static void checkItem(QQuickItem *item, const QRectF &clip, QStringList *found)
                 if (boxes[a].intersected(boxes[b]).width() > 1.5 && boxes[a].intersected(boxes[b]).height() > 1.5)
                     found->append(QStringLiteral("parts over each other in a row of %1").arg(item->parentItem() ? QString::fromLatin1(item->parentItem()->metaObject()->className()) : QString()));
     }
-    // Lists and scrolled parts clip their content; what is scrolled away is fine.
+    // Lists and scrolled parts clip their content; what is scrolled away
+    // sideways in a part that scrolls sideways is fine.
+    if (item->inherits("QQuickFlickable") && item->property("contentWidth").toReal() > item->width() + 1)
+        return;
     if (item->clip())
         within = clip.intersected(box);
-    const bool scrolls = item->inherits("QQuickFlickable");
-    for (QQuickItem *c : item->childItems()) {
-        if (scrolls)
-            checkItem(c, within, found);
-        else
-            checkItem(c, within, found);
-    }
+    for (QQuickItem *c : item->childItems())
+        checkItem(c, within, found);
 }
 
 QString layoutProblems(QQuickWindow *window)

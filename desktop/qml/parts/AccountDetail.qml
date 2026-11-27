@@ -119,7 +119,8 @@ Panel {
             RowLayout {
                 required property var modelData
                 spacing: Theme.s3
-                Txt { role: "sub"; text: Fmt.fill(qsTr("{host}, subject {subject}"), { host: (modelData.issuer || "").replace(/^[a-z]+:\/\//, "").replace(/[\/:].*$/, ""), subject: modelData.subject || "" }) }
+                Layout.fillWidth: true
+                Txt { Layout.fillWidth: true; role: "sub"; text: Fmt.fill(qsTr("{host}, subject {subject}"), { host: (modelData.issuer || "").replace(/^[a-z]+:\/\//, "").replace(/[\/:].*$/, ""), subject: modelData.subject || "" }) }
                 Button {
                     kind: "quiet"
                     small: true
@@ -196,10 +197,14 @@ Panel {
             }
         }
     }
-    // .role-add
-    RowLayout {
+    // .role-add: in a row, or two to a row where the account is narrow.
+    GridLayout {
         id: give
-        spacing: Theme.s3
+        Layout.fillWidth: true
+        readonly property bool wide: detail.width >= 760
+        columns: wide ? 5 : 2
+        columnSpacing: Theme.s3
+        rowSpacing: Theme.s3
         Accessible.name: qsTr("Give a role")
         readonly property var kinds: ["project", "memory", "termbase", "all"]
         readonly property string kind: kinds[kindBox.currentIndex]
@@ -213,20 +218,20 @@ Panel {
         }
         readonly property var roleChoices: Roles.choices(detail.accounts.roles, "")
         Field {
-            Layout.fillWidth: false
+            Layout.fillWidth: !give.wide
             Layout.preferredWidth: 160
             label: qsTr("On")
             ComboBox { id: kindBox; model: [qsTr("Projects"), qsTr("Memories"), qsTr("Termbases"), qsTr("Everything")] }
         }
         Field {
             visible: give.kind !== "all"
-            Layout.fillWidth: false
+            Layout.fillWidth: !give.wide
             Layout.preferredWidth: 240
             label: qsTr("Which")
             ComboBox { id: whichBox; model: give.resources.map(r => r.label) }
         }
         Field {
-            Layout.fillWidth: false
+            Layout.fillWidth: !give.wide
             Layout.preferredWidth: 160
             label: qsTr("Role")
             ComboBox { id: roleBox; model: give.roleChoices.map(c => c.label); currentIndex: Math.max(0, give.roleChoices.findIndex(c => c.id === "edit")) }
@@ -240,7 +245,7 @@ Panel {
                 role: give.roleChoices[roleBox.currentIndex].id
             }, qsTr("Gave the role"))
         }
-        Item { Layout.fillWidth: true }
+        Item { visible: give.wide; Layout.fillWidth: true }
     }
     Txt {
         Layout.fillWidth: true

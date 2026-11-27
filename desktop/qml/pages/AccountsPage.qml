@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as C
 import QtQuick.Controls.Basic as B
 import Interlinea
 
@@ -223,6 +224,7 @@ Page {
                 // .account-new
                 ColumnLayout {
                     id: newAccount
+                    objectName: "newAccount"
                     Layout.fillWidth: true
                     spacing: Theme.s3
                     Accessible.name: qsTr("New account")
@@ -246,18 +248,18 @@ Page {
                         })
                     }
                     Txt { role: "label"; text: qsTr("New account") }
-                    Field { label: qsTr("Username"); error: page.newProblems.username || ""; TextField { id: newUsername; invalid: !!page.newProblems.username; onAccepted: newAccount.submit() } }
-                    Field { label: qsTr("Name"); TextField { id: newName; onAccepted: newAccount.submit() } }
-                    Field { label: qsTr("Email"); error: page.newProblems.email || ""; TextField { id: newEmail; invalid: !!page.newProblems.email; onAccepted: newAccount.submit() } }
+                    Field { label: qsTr("Username"); error: page.newProblems.username || ""; TextField { id: newUsername; objectName: "newUsername"; invalid: !!page.newProblems.username; onAccepted: newAccount.submit() } }
+                    Field { label: qsTr("Name"); TextField { id: newName; objectName: "newName"; onAccepted: newAccount.submit() } }
+                    Field { label: qsTr("Email"); error: page.newProblems.email || ""; TextField { id: newEmail; objectName: "newEmail"; invalid: !!page.newProblems.email; onAccepted: newAccount.submit() } }
                     Field {
                         label: qsTr("Password")
                         help: qsTr("12 characters or more. Leave it empty for someone who signs in only through the identity provider.")
                         error: page.newProblems.password || ""
-                        TextField { id: newPassword; echoMode: TextInput.Password; invalid: !!page.newProblems.password; onAccepted: newAccount.submit() }
+                        TextField { id: newPassword; objectName: "newPassword"; echoMode: TextInput.Password; invalid: !!page.newProblems.password; onAccepted: newAccount.submit() }
                     }
                     CheckBox { id: newAdmin; text: qsTr("Administrator") }
                     Txt { visible: !!page.newProblems.form; Layout.fillWidth: true; role: "error"; text: page.newProblems.form || "" }
-                    Button { kind: "primary"; iconName: "user-plus"; text: qsTr("Make the account"); enabled: newUsername.text.trim() !== ""; onClicked: newAccount.submit() }
+                    Button { objectName: "makeAccount"; kind: "primary"; iconName: "user-plus"; text: qsTr("Make the account"); enabled: newUsername.text.trim() !== ""; onClicked: newAccount.submit() }
                 }
             }
 
@@ -267,12 +269,11 @@ Page {
                 visible: !page.user
                 Txt { role: "muted"; text: qsTr("Choose an account to see and change it.") }
             }
-            Loader {
+            AccountDetail {
                 Layout.alignment: Qt.AlignTop
                 Layout.fillWidth: true
-                active: !!page.user
-                visible: active
-                sourceComponent: detailPanel
+                visible: !!page.user
+                accounts: page
             }
         }
 
@@ -287,80 +288,93 @@ Page {
                 text: qsTr("What each role allows. The first five come with the server. Define your own for other combinations, such as a reviewer who suggests and approves but does not edit. A change applies at once to everyone who has the role.")
             }
             Txt { visible: page.roleProblem !== ""; Layout.fillWidth: true; role: "error"; text: page.roleProblem }
-            Table {
-                id: roleTable
-                readonly property var perms: Roles.permissions()
-                name: qsTr("Roles")
-                columns: [{ title: qsTr("Role"), fill: 1 }].concat(perms.map(p => ({ title: Roles.text(p), width: 156 })), [{ title: qsTr("Given"), width: 72, align: "right" }, { title: "", width: 110 }])
-                Repeater {
-                    model: page.roles
-                    TableRow {
-                        id: rr
-                        required property var modelData
-                        required property int index
-                        readonly property string roleName: modelData.name
-                        readonly property bool builtIn: !!modelData.builtIn
-                        readonly property var has: modelData.permissions || []
-                        readonly property int given: modelData.grants || 0
-                        readonly property string route: "/api/roles/" + Api.seg(roleName)
-                        last: index === page.roles.length - 1
-                        Item {
-                            implicitHeight: rr.builtIn ? builtInCell.implicitHeight : 32
-                            CellTitle { id: builtInCell; visible: rr.builtIn; width: parent.width; title: Roles.text(rr.roleName); sub: qsTr("Comes with the server") }
-                            TextField {
-                                visible: !rr.builtIn
-                                width: Math.min(parent.width, 256)
-                                text: rr.roleName
-                                Accessible.name: Fmt.fill(qsTr("Name of the role {role}"), { role: rr.roleName })
-                                onEditingFinished: {
-                                    const v = text.trim()
-                                    if (!v || v === rr.roleName) { text = rr.roleName; return }
-                                    page.attemptRole("PUT", rr.route, { name: v, permissions: rr.has }, Fmt.fill(qsTr("Renamed the role to {role}"), { role: v }))
-                                }
-                            }
-                        }
-                        Repeater {
-                            model: roleTable.perms
+            // Wider than the panel on a narrow window: it scrolls sideways.
+            Flickable {
+                Layout.fillWidth: true
+                implicitHeight: roleTable.implicitHeight + (contentWidth > width ? 12 : 0)
+                contentWidth: Math.max(width, 880)
+                contentHeight: roleTable.implicitHeight
+                flickableDirection: Flickable.HorizontalFlick
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+                C.ScrollBar.horizontal: ScrollBar {}
+                Table {
+                    id: roleTable
+                    width: parent.width
+                    readonly property var perms: Roles.permissions()
+                    name: qsTr("Roles")
+                    columns: [{ title: qsTr("Role"), fill: 1 }].concat(perms.map(p => ({ title: Roles.text(p), width: 156 })), [{ title: qsTr("Given"), width: 72, align: "right" }, { title: "", width: 110 }])
+                    Repeater {
+                        model: page.roles
+                        TableRow {
+                            id: rr
+                            required property var modelData
+                            required property int index
+                            readonly property string roleName: modelData.name
+                            readonly property bool builtIn: !!modelData.builtIn
+                            readonly property var has: modelData.permissions || []
+                            readonly property int given: modelData.grants || 0
+                            readonly property string route: "/api/roles/" + Api.seg(roleName)
+                            last: index === page.roles.length - 1
                             Item {
-                                required property string modelData
-                                required property int index
-                                readonly property int cell: index + 1
-                                implicitHeight: 20
-                                CheckBox {
-                                    checked: rr.has.indexOf(modelData) >= 0
-                                    enabled: !rr.builtIn && modelData !== "read"
-                                    Accessible.name: Roles.text(rr.roleName) + ": " + Roles.text(modelData)
-                                    onToggled: {
-                                        const p = modelData, on = checked
-                                        const now = roleTable.perms.filter(x => x === p ? on : rr.has.indexOf(x) >= 0)
-                                        page.attemptRole("PUT", rr.route, { permissions: now },
-                                                         Fmt.fill(on ? qsTr("{role} now allows: {permission}") : qsTr("{role} no longer allows: {permission}"),
-                                                                  { role: rr.roleName, permission: Roles.text(p).toLowerCase() }))
+                                implicitHeight: rr.builtIn ? builtInCell.implicitHeight : 32
+                                CellTitle { id: builtInCell; visible: rr.builtIn; width: parent.width; title: Roles.text(rr.roleName); sub: qsTr("Comes with the server") }
+                                TextField {
+                                    visible: !rr.builtIn
+                                    width: Math.min(parent.width, 256)
+                                    text: rr.roleName
+                                    Accessible.name: Fmt.fill(qsTr("Name of the role {role}"), { role: rr.roleName })
+                                    onEditingFinished: {
+                                        const v = text.trim()
+                                        if (!v || v === rr.roleName) { text = rr.roleName; return }
+                                        page.attemptRole("PUT", rr.route, { name: v, permissions: rr.has }, Fmt.fill(qsTr("Renamed the role to {role}"), { role: v }))
                                     }
                                 }
                             }
-                        }
-                        Txt { readonly property int cell: roleTable.perms.length + 1; horizontalAlignment: Text.AlignRight; text: Fmt.num(rr.given) }
-                        Item {
-                            readonly property int cell: roleTable.perms.length + 2
-                            implicitHeight: 28
-                            // A role people have stays until they have another.
-                            ConfirmButton {
-                                visible: !rr.builtIn
-                                available: rr.given === 0
-                                text: qsTr("Delete")
-                                accessibleName: Fmt.fill(qsTr("Delete the role {role}"), { role: rr.roleName })
-                                question: Fmt.fill(qsTr("Delete the role {role}?"), { role: rr.roleName })
-                                onConfirmed: page.attemptRole("DELETE", rr.route, undefined, Fmt.fill(qsTr("Deleted the role {role}"), { role: rr.roleName }))
+                            Repeater {
+                                model: roleTable.perms
+                                Item {
+                                    required property string modelData
+                                    required property int index
+                                    readonly property int cell: index + 1
+                                    implicitHeight: 20
+                                    CheckBox {
+                                        checked: rr.has.indexOf(modelData) >= 0
+                                        enabled: !rr.builtIn && modelData !== "read"
+                                        Accessible.name: Roles.text(rr.roleName) + ": " + Roles.text(modelData)
+                                        onToggled: {
+                                            const p = modelData, on = checked
+                                            const now = roleTable.perms.filter(x => x === p ? on : rr.has.indexOf(x) >= 0)
+                                            page.attemptRole("PUT", rr.route, { permissions: now },
+                                                             Fmt.fill(on ? qsTr("{role} now allows: {permission}") : qsTr("{role} no longer allows: {permission}"),
+                                                                      { role: rr.roleName, permission: Roles.text(p).toLowerCase() }))
+                                        }
+                                    }
+                                }
+                            }
+                            Txt { readonly property int cell: roleTable.perms.length + 1; horizontalAlignment: Text.AlignRight; text: Fmt.num(rr.given) }
+                            Item {
+                                readonly property int cell: roleTable.perms.length + 2
+                                implicitHeight: 28
+                                // A role people have stays until they have another.
+                                ConfirmButton {
+                                    visible: !rr.builtIn
+                                    available: rr.given === 0
+                                    text: qsTr("Delete")
+                                    accessibleName: Fmt.fill(qsTr("Delete the role {role}"), { role: rr.roleName })
+                                    question: Fmt.fill(qsTr("Delete the role {role}?"), { role: rr.roleName })
+                                    onConfirmed: page.attemptRole("DELETE", rr.route, undefined, Fmt.fill(qsTr("Deleted the role {role}"), { role: rr.roleName }))
+                                }
                             }
                         }
                     }
                 }
             }
-            // .role-add: a new role.
-            RowLayout {
+            // .role-add: a new role; what it allows wraps on a narrow window.
+            ColumnLayout {
                 id: newRole
-                spacing: Theme.s4
+                Layout.fillWidth: true
+                spacing: Theme.s3
                 Accessible.name: qsTr("New role")
                 property var allows: ["read"]
                 function submit() {
@@ -376,8 +390,8 @@ Page {
                     })
                 }
                 Field {
-                    Layout.fillWidth: false
-                    Layout.preferredWidth: 240
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 320
                     label: qsTr("New role")
                     TextField {
                         id: roleName
@@ -388,9 +402,9 @@ Page {
                     }
                 }
                 Field {
-                    Layout.fillWidth: false
+                    Layout.fillWidth: true
                     label: qsTr("It allows")
-                    Row {
+                    Flow {
                         spacing: Theme.s4
                         topPadding: 6
                         Repeater {
@@ -405,14 +419,9 @@ Page {
                         }
                     }
                 }
-                Button { Layout.alignment: Qt.AlignBottom; text: qsTr("Make the role"); enabled: roleName.text.trim() !== ""; onClicked: newRole.submit() }
-                Item { Layout.fillWidth: true }
+                Button { text: qsTr("Make the role"); enabled: roleName.text.trim() !== ""; onClicked: newRole.submit() }
             }
         }
     }
 
-    Component {
-        id: detailPanel
-        AccountDetail { accounts: page }
-    }
 }

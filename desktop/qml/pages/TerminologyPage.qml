@@ -378,7 +378,7 @@ Item {
                 id: workspace
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                readonly property bool wide: width >= 1000
+                readonly property bool wide: (parent ? parent.width : width) >= 1000
                 columns: wide ? 3 : 2
                 columnSpacing: Theme.s3
                 rowSpacing: Theme.s3

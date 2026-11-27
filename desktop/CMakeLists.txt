@@ -164,7 +164,7 @@ else()
 endif()
 
 enable_testing()
-foreach(name apiclient eventfeed secretstore providersignin connections interfacelanguage ui editor memories terminology)
+foreach(name apiclient eventfeed secretstore providersignin connections interfacelanguage ui editor memories terminology endtoend)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_ui interlinea_uiplugin Qt6::Test)
