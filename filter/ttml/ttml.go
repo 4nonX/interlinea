@@ -23,6 +23,7 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/para"
+	"github.com/4nonX/interlinea/i18n"
 )
 
 // Format is the name stored with a project's files.
@@ -209,7 +210,7 @@ func (d *doc) read(p *node, preserve bool, when span) {
 			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: strconv.Itoa(id), Type: "comment", Native: d.src[k.start:k.end]})
 		case local(k.name) == "br":
 			id++
-			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: strconv.Itoa(id), Type: "break", Desc: "line break", Native: d.src[k.start:k.end]})
+			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: strconv.Itoa(id), Type: "break", Desc: i18n.N("line break"), Native: d.src[k.start:k.end]})
 		case k.inner == k.end || len(k.kids) == 0:
 			id++
 			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: strconv.Itoa(id), Type: local(k.name), Native: d.src[k.start:k.end]})

@@ -22,6 +22,7 @@ import (
 	"github.com/4nonX/interlinea/filter/xliff"
 	"github.com/4nonX/interlinea/filter/xlsx"
 	"github.com/4nonX/interlinea/filter/xmlfmt"
+	"github.com/4nonX/interlinea/i18n"
 )
 
 // The formats, by the names stored with a project's files.
@@ -154,49 +155,49 @@ func Package(format string) bool {
 func Name(format string) string {
 	switch format {
 	case Word:
-		return "Word document"
+		return i18n.N("Word document")
 	case PowerPoint:
-		return "PowerPoint presentation"
+		return i18n.N("PowerPoint presentation")
 	case Excel:
-		return "Excel workbook"
+		return i18n.N("Excel workbook")
 	case HTML:
-		return "web page"
+		return i18n.N("web page")
 	case InDesign:
-		return "InDesign document (IDML)"
+		return i18n.N("InDesign document (IDML)")
 	case Properties:
-		return "properties file"
+		return i18n.N("properties file")
 	case JSON:
-		return "JSON file"
+		return i18n.N("JSON file")
 	case YAML:
-		return "YAML file"
+		return i18n.N("YAML file")
 	case PO:
-		return "PO file"
+		return i18n.N("PO file")
 	case RESX:
-		return "RESX file"
+		return i18n.N("RESX file")
 	case SubRip, WebVTT, YouTube, SubStation, MicroDVD, TimedText, EBUSTL, SCC:
-		return "subtitle file"
+		return i18n.N("subtitle file")
 	case XML:
-		return "XML file"
+		return i18n.N("XML file")
 	case OpenText:
-		return "OpenDocument text"
+		return i18n.N("OpenDocument text")
 	case OpenSheet:
-		return "OpenDocument spreadsheet"
+		return i18n.N("OpenDocument spreadsheet")
 	case OpenSlides:
-		return "OpenDocument presentation"
+		return i18n.N("OpenDocument presentation")
 	case Markdown:
-		return "Markdown file"
+		return i18n.N("Markdown file")
 	case XLIFF:
-		return "bilingual file"
+		return i18n.N("bilingual file")
 	case MemoQArchive:
-		return "MQXLIFF archive"
+		return i18n.N("MQXLIFF archive")
 	case TradosPackage:
-		return "project package"
+		return i18n.N("project package")
 	case MemoQPackage:
-		return "handoff package"
+		return i18n.N("handoff package")
 	case Text:
-		return "text file"
+		return i18n.N("text file")
 	case PDF:
-		return "PDF document"
+		return i18n.N("PDF document")
 	}
 	return format
 }

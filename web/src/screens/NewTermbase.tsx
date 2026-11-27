@@ -23,7 +23,7 @@ import {
   type FieldDraft,
 } from "./TermbaseFields";
 import { tl, tlx } from "../i18n";
-import { listOf } from "../format";
+import { inSentence, listOf } from "../format";
 
 type Kind = "master" | "project";
 type Step = "start" | "languages" | "fields" | "review";
@@ -48,12 +48,12 @@ function toCore(f: Pick<FieldDraft, "name" | "level" | "kind" | "values">) {
 /** A field as it is described in a list: “Gender (term, a list of values)”. */
 function fieldLine(f: Pick<FieldDraft, "name" | "level" | "kind" | "values">) {
   const level =
-    FIELD_LEVELS.find((l) => l.level === f.level)?.name.toLocaleLowerCase() ??
-    f.level;
+    inSentence(FIELD_LEVELS.find((l) => l.level === f.level)?.name ?? f.level);
   const kind =
-    FIELD_KINDS.find((k) => k.kind === f.kind)?.name.toLocaleLowerCase() ??
-    f.kind;
-  return `${f.name.trim()} (${level}, ${kind}${f.kind === "picklist" ? `: ${f.values.join(", ")}` : ""})`;
+    inSentence(FIELD_KINDS.find((k) => k.kind === f.kind)?.name ?? f.kind);
+  return f.kind === "picklist"
+    ? tl("{name} ({level}, {kind}: {values})", { name: f.name.trim(), level, kind, values: f.values.join(", ") })
+    : tl("{name} ({level}, {kind})", { name: f.name.trim(), level, kind });
 }
 
 /**
@@ -465,11 +465,12 @@ export function NewTermbaseDialog({
                 onChange={() => setKind("project")}
               />
               <span>
-                {tlx("{strong} Based on masters: it shows their entries, gets their languages and fields, and sends its new and changed entries to them for review.{x}", { strong: <strong>{tl("A project termbase.")}</strong>, x: !canBranch && (
+                {tlx("{strong} Based on masters: it shows their entries, gets their languages and fields, and sends its new and changed entries to them for review.", { strong: <strong>{tl("A project termbase.")}</strong> })}
+                {!canBranch && (
                   <span className="muted">
                     {" "}{tl("Made on the team server; in this browser a project gets its termbase with the project.")}
                   </span>
-                ) })}</span>
+                )}</span>
             </label>
           </fieldset>
           {kind === "project" && (
@@ -514,7 +515,7 @@ export function NewTermbaseDialog({
 
       {step === "languages" && (
         <div className="field">
-          <span className="field-label">{tl("The languages of")}{" "}{name.trim()}</span>
+          <span className="field-label">{tl("The languages of {name}", { name: name.trim() })}</span>
           <LanguageChecklist
             chosen={langs}
             onChange={setLangs}
@@ -595,13 +596,11 @@ export function NewTermbaseDialog({
             </fieldset>
           ) : (
             <div className="field">
-              <span className="field-label">{tl("From")}{" "}{listOf(based)}</span>
+              <span className="field-label">{tl("From {list}", { list: listOf(based) })}</span>
               <p className="help">
-                {inherited.languages.length > 0
-                  ? `Languages: ${inherited.languages.map((l) => lang(l).name).join(", ")}. `
-                  : ""}
+                {inherited.languages.length > 0 && tl("Languages: {languages}.", { languages: inherited.languages.map((l) => lang(l).name).join(", ") }) + " "}
                 {inherited.fields.length > 0
-                  ? `Fields: ${inherited.fields.map(fieldLine).join("; ")}.`
+                  ? tl("Fields: {fields}.", { fields: inherited.fields.map(fieldLine).join("; ") })
                   : tl("The masters have no fields.")}
               </p>
               <span className="field-label">{tl("Fields of its own")}</span>

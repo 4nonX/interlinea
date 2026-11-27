@@ -169,8 +169,8 @@ export default () =>
       );
       t = await body();
       check(
-        t.includes("segments pre-translated") &&
-          t.includes("template “Weber DE-EN-FR” saved"),
+        /Pre-translated \d+ segments\./.test(t) &&
+          t.includes("Saved the template “Weber DE-EN-FR”."),
         "creation reports pre-translation and the template",
       );
       check(

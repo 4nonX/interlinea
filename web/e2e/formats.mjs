@@ -352,7 +352,7 @@ export default () =>
       await sleep(200);
       await through();
       await evaluate("[...document.querySelectorAll('details.settings-details')].find(d => d.querySelector('summary').textContent.includes('Segmentation')).open = true");
-      check((await text()).includes("Segmentation as usual for the language"), "the review says the documents are cut as usual");
+      check((await text()).includes("Segmentation (as usual for the language)"), "the review says the documents are cut as usual");
       await click("details.settings-details button", "Add a segmentation rule");
       await sleep(200);
       check((await text()).includes("Say what stands before the place, after it, or both."), "a rule that says nothing is a problem");

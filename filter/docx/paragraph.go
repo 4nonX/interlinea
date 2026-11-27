@@ -11,6 +11,7 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	parag "github.com/4nonX/interlinea/filter/para"
+	"github.com/4nonX/interlinea/i18n"
 )
 
 // dialect is the markup a paragraph is written in.
@@ -406,49 +407,49 @@ var instrRe = regexp.MustCompile(`<[a-zA-Z0-9]*:?instrText[^>]*>([^<]*)<`)
 func placeholderDesc(typ, native string) string {
 	switch typ {
 	case "tab":
-		return "Tab"
+		return i18n.N("Tab")
 	case "lb":
-		return "Line break"
+		return i18n.N("Line break")
 	case "pagebreak":
-		return "Page break"
+		return i18n.N("Page break")
 	case "columnbreak":
-		return "Column break"
+		return i18n.N("Column break")
 	case "field":
 		var code []string
 		for _, m := range instrRe.FindAllStringSubmatch(native, -1) {
 			code = append(code, m[1])
 		}
 		if c := strings.Fields(strings.Join(code, "")); len(c) > 0 {
-			return "Field " + c[0]
+			return i18n.Fill(i18n.N("Field {name}"), "name", c[0])
 		}
 		if i := strings.Index(native, `instr="`); i >= 0 {
 			if f := strings.Fields(native[i+7:]); len(f) > 0 {
-				return "Field " + strings.Trim(f[0], `"`)
+				return i18n.Fill(i18n.N("Field {name}"), "name", strings.Trim(f[0], `"`))
 			}
 		}
-		return "Field"
+		return i18n.N("Field")
 	case "footnote":
-		return "Footnote reference"
+		return i18n.N("Footnote reference")
 	case "note-mark":
-		return "Note number"
+		return i18n.N("Note number")
 	case "image":
-		return "Image or drawing"
+		return i18n.N("Image or drawing")
 	case "symbol":
-		return "Symbol"
+		return i18n.N("Symbol")
 	case "anchor":
-		return "Bookmark or comment range"
+		return i18n.N("Bookmark or comment range")
 	case "comment":
-		return "Comment mark"
+		return i18n.N("Comment mark")
 	case "control":
-		return "Content control"
+		return i18n.N("Content control")
 	case "math":
-		return "Equation"
+		return i18n.N("Equation")
 	case "deletion":
-		return "Tracked deletion"
+		return i18n.N("Tracked deletion")
 	case "end":
-		return "Paragraph end"
+		return i18n.N("Paragraph end")
 	}
-	return "Inline code"
+	return i18n.N("Inline code")
 }
 
 func (ip *itemParser) placeholder(typ string, native []byte, ranges []span, wraps []*wrapper) {
@@ -526,7 +527,7 @@ func (ip *itemParser) walk(kids []*node, wraps []*wrapper, top bool) {
 		case "r":
 			ip.run(k, wraps)
 		case "hyperlink":
-			ip.walk(k.Kids, withWrap(wraps, &wrapper{typ: "link", desc: "Link", open: string(k.Start), close: string(k.End)}), false)
+			ip.walk(k.Kids, withWrap(wraps, &wrapper{typ: "link", desc: i18n.N("Link"), open: string(k.Start), close: string(k.End)}), false)
 		case "sdt":
 			c := k.Child("sdtContent")
 			if c == nil || len(c.End) == 0 {
@@ -535,11 +536,11 @@ func (ip *itemParser) walk(kids []*node, wraps []*wrapper, top bool) {
 			}
 			// The control's properties stay with its start; its content is text.
 			open := string(k.Raw[:c.Off-k.Off+len(c.Start)])
-			ip.walk(c.Kids, withWrap(wraps, &wrapper{typ: "control", desc: "Content control", open: open, close: string(c.End) + string(k.End)}), false)
+			ip.walk(c.Kids, withWrap(wraps, &wrapper{typ: "control", desc: i18n.N("Content control"), open: open, close: string(c.End) + string(k.End)}), false)
 		case "ins", "moveTo":
 			ip.revisions = true
 			if ip.keepRevisions {
-				ip.walk(k.Kids, withWrap(wraps, &wrapper{typ: "insertion", desc: "Tracked insertion", open: string(k.Start), close: string(k.End)}), false)
+				ip.walk(k.Kids, withWrap(wraps, &wrapper{typ: "insertion", desc: i18n.N("Tracked insertion"), open: string(k.Start), close: string(k.End)}), false)
 			} else {
 				ip.walk(k.Kids, wraps, false)
 			}
@@ -695,9 +696,9 @@ func (ip *itemParser) dmlItems(p *node) {
 			ip.placeholder("lb", k.Raw, []span{k.Whole()}, nil)
 		case "fld":
 			nat := string(k.Raw)
-			desc := "Field"
+			desc := i18n.N("Field")
 			if v, ok := k.AttrAny("type"); ok {
-				desc = "Field " + v
+				desc = i18n.Fill(i18n.N("Field {name}"), "name", v)
 			}
 			ip.items = append(ip.items, item{tag: content.Tag{Kind: content.TagStandalone, Type: "field", Desc: desc, Native: nat}, ranges: []span{k.Whole()}})
 		case "endParaRPr":

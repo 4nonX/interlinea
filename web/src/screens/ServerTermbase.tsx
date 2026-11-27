@@ -21,7 +21,7 @@ import { fmtTime, listOf, plural } from "../format";
 import { InLang, LangChip, StatusBadge } from "../components/ui";
 import { ConfirmButton, Modal } from "./TermbaseDialogs";
 import { AccessPanel } from "./AccessPanel";
-import { tl, tlx } from "../i18n";
+import { tl, tlCore, tlx } from "../i18n";
 
 /**
  * Whether the signed-in person may do something in a termbase. On this
@@ -133,7 +133,7 @@ export function ServerHistory({ tb, entry }: { tb: Termbase; entry: Entry }) {
     <ol className="history">
       {[...versions].reverse().map((v) => (
         <li key={v.version}>
-          <div className="history-summary">{v.summary || tl("Changed")}</div>
+          <div className="history-summary">{v.summary ? tlCore(v.summary) : tl("Changed")}</div>
           <div className="history-meta">
             {v.by ? `${v.by}, ` : ""}
             {fmtTime(v.at)}
@@ -215,7 +215,13 @@ export function ServerDeleted({ tb }: { tb: Termbase }) {
               ))}
           </dl>
           <p className="history-meta">
-            {(d.by ? tl("Deleted {at} by {by}", { at: fmtTime(d.at), by: d.by }) : tl("Deleted {at}", { at: fmtTime(d.at) })) + (d.summary && d.summary !== "Deleted" ? `. ${d.summary}` : "")}</p>
+            {d.summary && d.summary !== "Deleted"
+              ? d.by
+                ? tl("Deleted {at} by {by}. {summary}", { at: fmtTime(d.at), by: d.by, summary: tlCore(d.summary) })
+                : tl("Deleted {at}. {summary}", { at: fmtTime(d.at), summary: tlCore(d.summary) })
+              : d.by
+                ? tl("Deleted {at} by {by}", { at: fmtTime(d.at), by: d.by })
+                : tl("Deleted {at}", { at: fmtTime(d.at) })}</p>
           {may(tb, "edit") && (
             <button
               type="button"
@@ -324,7 +330,7 @@ export function ServerMasterList({
                   <span className="entry-term">{parts[0] ?? tl("No term")}</span>
                 </span>
                 {parts.length > 1 && <span className="entry-other">{parts.slice(1).join(" · ")}</span>}
-                <span className="tb-count">{tl("In")}{" "}{e.termbase}</span>
+                <span className="tb-count">{tl("In {name}", { name: e.termbase })}</span>
               </button>
             </li>
           );
@@ -395,7 +401,7 @@ export function ServerMasterDetail({
         </div>
         <div className="pane-sub">
           <span>
-            {tlx("In {termbase}{x}", { termbase: entry.termbase, x: changed ? tl(", last changed {changed}", { changed: fmtTime(changed) }) : "" })}</span>
+            {changed ? tl("In {name}, last changed {changed}", { name: entry.termbase, changed: fmtTime(changed) }) : tl("In {name}", { name: entry.termbase })}</span>
         </div>
       </div>
       <div className="detail-body">

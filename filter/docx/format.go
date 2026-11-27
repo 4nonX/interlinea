@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/4nonX/interlinea/i18n"
 )
 
 // Run formatting: how it is compared (to find what differs from the
@@ -133,103 +135,103 @@ func describe(base, rpr []byte, dml bool, styleName func(string) string) (typ, d
 		switch k {
 		case "b":
 			if on {
-				changes = append(changes, change{"bold", "Bold"})
+				changes = append(changes, change{"bold", i18n.N("Bold")})
 			} else {
-				changes = append(changes, change{"format", "Not bold"})
+				changes = append(changes, change{"format", i18n.N("Not bold")})
 			}
 		case "i":
 			if on {
-				changes = append(changes, change{"italic", "Italic"})
+				changes = append(changes, change{"italic", i18n.N("Italic")})
 			} else {
-				changes = append(changes, change{"format", "Not italic"})
+				changes = append(changes, change{"format", i18n.N("Not italic")})
 			}
 		case "u":
 			if inB && bv != "none" {
-				changes = append(changes, change{"underline", "Underline"})
+				changes = append(changes, change{"underline", i18n.N("Underline")})
 			} else {
-				changes = append(changes, change{"format", "Not underlined"})
+				changes = append(changes, change{"format", i18n.N("Not underlined")})
 			}
 		case "strike", "dstrike":
 			if inB && bv != "noStrike" && (dml || isOn(bv)) {
-				changes = append(changes, change{"strike", "Strikethrough"})
+				changes = append(changes, change{"strike", i18n.N("Strikethrough")})
 			} else {
-				changes = append(changes, change{"format", "Not struck through"})
+				changes = append(changes, change{"format", i18n.N("Not struck through")})
 			}
 		case "vertAlign":
 			switch bv {
 			case "superscript":
-				changes = append(changes, change{"superscript", "Superscript"})
+				changes = append(changes, change{"superscript", i18n.N("Superscript")})
 			case "subscript":
-				changes = append(changes, change{"subscript", "Subscript"})
+				changes = append(changes, change{"subscript", i18n.N("Subscript")})
 			default:
-				changes = append(changes, change{"format", "Normal position"})
+				changes = append(changes, change{"format", i18n.N("Normal position")})
 			}
 		case "baseline":
 			n, _ := strconv.Atoi(bv)
 			switch {
 			case n > 0:
-				changes = append(changes, change{"superscript", "Superscript"})
+				changes = append(changes, change{"superscript", i18n.N("Superscript")})
 			case n < 0:
-				changes = append(changes, change{"subscript", "Subscript"})
+				changes = append(changes, change{"subscript", i18n.N("Subscript")})
 			default:
-				changes = append(changes, change{"format", "Normal position"})
+				changes = append(changes, change{"format", i18n.N("Normal position")})
 			}
 		case "color":
 			if inB {
 				if len(bv) == 6 && strings.Trim(strings.ToUpper(bv), "0123456789ABCDEF") == "" {
 					bv = "#" + strings.ToUpper(bv)
 				}
-				changes = append(changes, change{"color", "Colour " + bv})
+				changes = append(changes, change{"color", i18n.Fill(i18n.N("Colour {value}"), "value", bv)})
 			} else {
-				changes = append(changes, change{"color", "Automatic colour"})
+				changes = append(changes, change{"color", i18n.N("Automatic colour")})
 			}
 		case "highlight":
 			if inB && bv != "none" {
-				changes = append(changes, change{"highlight", "Highlight " + bv})
+				changes = append(changes, change{"highlight", i18n.Fill(i18n.N("Highlight {value}"), "value", bv)})
 			} else {
-				changes = append(changes, change{"format", "No highlight"})
+				changes = append(changes, change{"format", i18n.N("No highlight")})
 			}
 		case "shd":
-			changes = append(changes, change{"highlight", "Shading"})
+			changes = append(changes, change{"highlight", i18n.N("Shading")})
 		case "font":
-			changes = append(changes, change{"font", "Font " + bv})
+			changes = append(changes, change{"font", i18n.Fill(i18n.N("Font {value}"), "value", bv)})
 		case "sz":
 			if n, err := strconv.ParseFloat(bv, 64); err == nil {
 				pt := n / 2
 				if dml {
 					pt = n / 100
 				}
-				changes = append(changes, change{"size", "Size " + strconv.FormatFloat(pt, 'f', -1, 64) + " pt"})
+				changes = append(changes, change{"size", i18n.Fill(i18n.N("Size {n} pt"), "n", strconv.FormatFloat(pt, 'f', -1, 64))})
 			} else {
-				changes = append(changes, change{"size", "Size"})
+				changes = append(changes, change{"size", i18n.N("Size")})
 			}
 		case "caps":
-			changes = append(changes, change{"caps", "All caps"})
+			changes = append(changes, change{"caps", i18n.N("All caps")})
 		case "smallCaps":
-			changes = append(changes, change{"caps", "Small caps"})
+			changes = append(changes, change{"caps", i18n.N("Small caps")})
 		case "cap":
-			changes = append(changes, change{"caps", map[string]string{"all": "All caps", "small": "Small caps"}[bv]})
+			changes = append(changes, change{"caps", map[string]string{"all": i18n.N("All caps"), "small": i18n.N("Small caps")}[bv]})
 		case "rStyle":
 			name := bv
 			if styleName != nil && styleName(bv) != "" {
 				name = styleName(bv)
 			}
 			if inB {
-				changes = append(changes, change{"style", "Character style " + name})
+				changes = append(changes, change{"style", i18n.Fill(i18n.N("Character style {name}"), "name", name)})
 			} else {
-				changes = append(changes, change{"style", "No character style"})
+				changes = append(changes, change{"style", i18n.N("No character style")})
 			}
 		case "vanish", "specVanish":
-			changes = append(changes, change{"hidden", "Hidden text"})
+			changes = append(changes, change{"hidden", i18n.N("Hidden text")})
 		case "hlinkClick":
-			changes = append(changes, change{"link", "Link"})
+			changes = append(changes, change{"link", i18n.N("Link")})
 		default:
-			changes = append(changes, change{"format", "Other formatting (" + k + ")"})
+			changes = append(changes, change{"format", i18n.Fill(i18n.N("Other formatting ({name})"), "name", k)})
 		}
 	}
 	switch len(changes) {
 	case 0:
-		return "format", "Formatting"
+		return "format", i18n.N("Formatting")
 	case 1:
 		return changes[0].typ, changes[0].desc
 	}

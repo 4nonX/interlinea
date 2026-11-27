@@ -201,7 +201,7 @@ function TerminologyPage({ tb, entryId }: { tb: Termbase; entryId?: string }) {
               <div
                 className="pane-tools"
                 role="toolbar"
-                aria-label={`${tb.name} tools`}
+                aria-label={tl("{name} tools", { name: tb.name })}
               >
                 {edit && (
                   <button
@@ -833,7 +833,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
             action={tl("Delete")}
             onConfirm={() => {
               dispatch({ type: "deleteEntries", entryIds: [entry.id] });
-              notify(tl("Deleted the entry{x}", { x: head ? ` “${head.text}”` : "" }));
+              notify(head ? tl("Deleted the entry “{term}”", { term: head.text }) : tl("Deleted the entry"));
               go({ page: "terminology", termbaseId: tb.id });
             }}
           />}
@@ -1402,7 +1402,7 @@ function Duplicates({ tb, entries }: { tb: Termbase; entries: Entry[] }) {
                         keepId: keep!.id,
                         removeIds: rest.map((r) => r.id),
                         content: fromCoreEntry(merged, ids, "proposed"),
-                        summary: tl("Merged with {x}", { x: plural(rest.length, "duplicate entry", "duplicate entries") }),
+                        summary: tl("Merged with {entries}", { entries: plural(rest.length, "duplicate entry", "duplicate entries") }),
                         now: new Date().toISOString(),
                       });
                       notify(tl("Merged {length} entries into one", { length: group.length }));

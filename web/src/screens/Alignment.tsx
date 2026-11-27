@@ -6,7 +6,7 @@ import { asRead, confirm, documentOrder, draw, fixedOf, inDocumentOrder, joined,
 import { fmtNum, plural } from "../format";
 import { LangChip } from "../components/ui";
 import { Modal } from "./TermbaseDialogs";
-import { tl, tlx } from "../i18n";
+import { keyName, tl, tlx } from "../i18n";
 
 const ACCEPT = ".docx,.docm,.pptx,.pptm,.ppsx,.xlsx,.xlsm,.html,.htm,.xhtml,.idml,.odt,.ods,.odp,.xml,.md,.markdown,.properties,.json,.yaml,.yml,.po,.resx,.srt,.vtt,.sbv,.ass,.ssa,.sub,.ttml,.dfxp,.itt,.stl,.scc,.pdf,.txt,text/plain";
 
@@ -298,11 +298,11 @@ export function AlignDocuments({
             </div>
           )}
           <label className="field">
-            <span className="field-label">{tl("Document in")}{" "}{lang(sourceLang).name}</span>
+            <span className="field-label">{tl("Document in {language}", { language: lang(sourceLang).name })}</span>
             <input type="file" accept={ACCEPT} onChange={(e) => setSource(e.target.files?.[0] ?? null)} />
           </label>
           <label className="field">
-            <span className="field-label">{tl("Its translation in")}{" "}{lang(targetLang).name}</span>
+            <span className="field-label">{tl("Its translation in {language}", { language: lang(targetLang).name })}</span>
             <input type="file" accept={ACCEPT} onChange={(e) => setTarget(e.target.files?.[0] ?? null)} />
           </label>
           {(problem || (destination && newName)) && (
@@ -474,7 +474,7 @@ export function AlignDocuments({
                 data-side={side}
                 data-i={i}
                 aria-pressed={on}
-                aria-label={`${what} ${i + 1}${lone ? tl(", no pair") : ""}: ${plain(coreToRuns(runs))}`}
+                aria-label={lone ? tl("{what} {n}, no pair: {text}", { what, n: i + 1, text: plain(coreToRuns(runs)) }) : tl("{what} {n}: {text}", { what, n: i + 1, text: plain(coreToRuns(runs)) })}
                 onClick={() => choose({ side, i })}
                 onPointerDown={() => {
                   pulling.current = { side, i };
@@ -513,7 +513,15 @@ export function AlignDocuments({
     <Modal title={tl("Align documents into {name}", { name })} onClose={() => leave("close")} wide>
       <div className="dialog-form align-review">
         <p role="status">
-          {tlx("{length} from {length2} and {length3}. {x}{x2}{x3}{x4}", { length: plural(units.length, "unit", "units"), length2: fmtNum(result.source.length), length3: plural(result.target.length, "segment", "segments"), x: fixed.length > 0 && (fixed.length === 1 ? tl("1 unit is checked. ") : tl("{n} units are checked. ", { n: fmtNum(fixed.length) })), x2: alone > 0 && (alone === 1 ? tl("1 segment has no pair and is left out. ") : tl("{n} segments have no pair and are left out. ", { n: fmtNum(alone) })), x3: look.length > 0 && (look.length === 1 ? tl("1 pair needs a look: the lengths or numbers do not fit.") : tl("{n} pairs need a look: the lengths or numbers do not fit.", { n: fmtNum(look.length) })), x4: alone === 0 && look.length === 0 && tl("All of them fit.") })}</p>
+          {[
+            tl("{units} from {source} and {target}.", { units: plural(units.length, "unit", "units"), source: fmtNum(result.source.length), target: plural(result.target.length, "segment", "segments") }),
+            fixed.length === 1 ? tl("1 unit is checked.") : fixed.length > 1 ? tl("{n} units are checked.", { n: fmtNum(fixed.length) }) : "",
+            alone === 1 ? tl("1 segment has no pair and is left out.") : alone > 1 ? tl("{n} segments have no pair and are left out.", { n: fmtNum(alone) }) : "",
+            look.length === 1 ? tl("1 pair needs a look: the lengths or numbers do not fit.") : look.length > 1 ? tl("{n} pairs need a look: the lengths or numbers do not fit.", { n: fmtNum(look.length) }) : "",
+            alone === 0 && look.length === 0 ? tl("All of them fit.") : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}</p>
         <p className="help">
           {tl("A line joins a sentence and its translation, from the point on the one to the point on the other; a ring instead of a point means nothing is joined there. To draw a line, choose a sentence and then its translation, or pull from one point to the other; the same takes a line away, as does choosing the line. Sentences joined by lines become one unit. A dotted line was paired for you; one you draw or confirm is solid, and stays when the rest is paired again around it.")}
         </p>
@@ -526,10 +534,10 @@ export function AlignDocuments({
         <div className="align-head">
           <LangChip code={sourceLang} />
           <span className="row">
-            <button type="button" className="btn btn-quiet btn-small" disabled={!past.length} onClick={undo} title="Ctrl+Z">
+            <button type="button" className="btn btn-quiet btn-small" disabled={!past.length} onClick={undo} title={keyName("Ctrl+Z")}>
               {tl("Undo")}
             </button>
-            <button type="button" className="btn btn-quiet btn-small" disabled={!future.length} onClick={redo} title="Ctrl+Y">
+            <button type="button" className="btn btn-quiet btn-small" disabled={!future.length} onClick={redo} title={keyName("Ctrl+Y")}>
               {tl("Redo")}
             </button>
             <button

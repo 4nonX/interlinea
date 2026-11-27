@@ -85,7 +85,7 @@ export function ServerMemories() {
                 <tr key={m.name} aria-current={m.name === open ? "true" : undefined}>
                   <th scope="row" className="cell-title">
                     {m.name}
-                    <div className="cell-sub">{tl("Since")}{" "}{fmtDate(m.createdAt)}</div>
+                    <div className="cell-sub">{tl("Since {date}", { date: fmtDate(m.createdAt) })}</div>
                   </th>
                   <td>
                     <span className="lang-pair">

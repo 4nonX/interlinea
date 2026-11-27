@@ -447,9 +447,9 @@ export default () =>
       check(
         (await evaluate("document.querySelectorAll('.issue').length")) === 3 &&
           issueText.includes(
-            "1.250,00 and 220,00 from the source are not in the translation",
+            "“1.250,00”, “220,00” from the source are not in the translation",
           ) &&
-          issueText.includes("980.00 and 180.00 are not in the source") &&
+          issueText.includes("“980.00”, “180.00” are not in the source") &&
           issueText.includes("97% match is unchanged"),
         "segment 10 shows the core's checks (numbers missing and extra) and the unchanged match: " +
           issueText,
@@ -644,7 +644,7 @@ export default () =>
       )
         await sleep(100);
       check(
-        /Imported 1 unit from test\.tmx into [^;]+; 1 without both languages skipped/.test(
+        /Imported 1 unit from test\.tmx into [^.]+\. Skipped 1 unit without both languages\./.test(
           await evaluate("document.body.innerText"),
         ),
         "TMX imported through the core",

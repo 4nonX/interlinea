@@ -102,7 +102,7 @@ export function AccessPanel({
                   <select
                     className="select-small"
                     value={g.role}
-                    aria-label={tl("Role of {x}", { x: g.name || g.username })}
+                    aria-label={tl("Role of {name}", { name: g.name || g.username })}
                     onChange={(e) => void attempt(() => r.api!.setGrant({ userId: g.userId, kind, resource, role: e.target.value as Role }))}
                   >
                     {r.roles.map((x) => (

@@ -34,8 +34,8 @@ type View = "waiting" | "decided" | "all";
  */
 function resolution(it: MergeItem, side: "ours" | "theirs"): string {
   const cs = it.conflicts ?? [];
-  if (cs.length === 1) return `“${cs[0]![side] || "nothing"}”`;
-  return `${cs.length} places`;
+  if (cs.length === 1) return tl("“{value}”", { value: cs[0]![side] || tl("nothing") });
+  return plural(cs.length, "place", "places");
 }
 const DECIDED = ["approved", "approved-with-edits", "changes-requested", "rejected", "postponed", "reverted"];
 
@@ -57,10 +57,10 @@ function Terms({ entry }: { entry: CoreEntry }) {
 /** The part of a request a reviewer has, in words. */
 function partText(scope: MergeFilter): string {
   const parts: string[] = [];
-  if (scope.langs?.length) parts.push(tl("entries with terms in {x}", { x: scope.langs.map((l) => lang(l).name).join(", ") }));
+  if (scope.langs?.length) parts.push(tl("entries with terms in {languages}", { languages: scope.langs.map((l) => lang(l).name).join(", ") }));
   for (const k of scope.kinds ?? []) parts.push(k === "new" ? tl("new entries") : k === "changed" ? tl("changed entries") : tl("entries deleted in the project"));
   if (scope.conflicts) parts.push(tl("entries with conflicts"));
-  if (scope.authors?.length) parts.push(tl("entries by {x}", { x: scope.authors.join(", ") }));
+  if (scope.authors?.length) parts.push(tl("entries by {names}", { names: scope.authors.join(", ") }));
   return parts.length ? parts.join("; ") : tl("all of it");
 }
 
@@ -261,12 +261,12 @@ export function ServerMergeReview({ id }: { id: number }) {
       if (one) setNotes(({ [one]: _sent, ...rest }) => rest);
       const left = res.needResolution?.length ?? 0;
       notify(
-        `${what ?? STATE_TEXT[state]}: ${plural(res.decided, "entry", "entries")}` +
-          (left ? tl("; {x} a decision one by one (the master changed the same places)", { x: plural(left, "entry needs", "entries need") }) : ""),
+        tl("{state}: {entries}", { state: what ?? STATE_TEXT[state]!, entries: plural(res.decided, "entry", "entries") }) +
+          (left ? ". " + plural(left, "entry needs a decision one by one (the master changed the same places).", "entries need a decision one by one (the master changed the same places).") : ""),
       );
       await load();
     } catch (e) {
-      notify(e instanceof ApiError && e.status === 403 ? tl("{message} Ask a manager of {x} for the approve role.", { message: e.message, x: mr?.target }) : errorText(e));
+      notify(e instanceof ApiError && e.status === 403 ? tl("{message} Ask a manager of {termbase} for the approve role.", { message: e.message, termbase: mr?.target }) : errorText(e));
     }
   }
 
@@ -307,17 +307,23 @@ export function ServerMergeReview({ id }: { id: number }) {
         </a>
       </PageHeader>
       <p className="help">
-        {tlx("{project} into {target}. Submitted by {createdBy} on {createdAt}{x}. {x2}", { project: mr.project, target: mr.target, createdBy: mr.createdBy, createdAt: fmtDate(mr.createdAt), x: mr.deadline ? tl(", to be decided by {deadline}", { deadline: fmtDate(mr.deadline) }) : "", x2: open ? "" : tl("Closed on {fmtDate}.", { fmtDate: fmtDate(mr.closedAt ?? mr.createdAt) }) })}</p>
+        {mr.deadline
+          ? tl("{project} into {target}. Submitted by {createdBy} on {createdAt}, to be decided by {deadline}.", { project: mr.project, target: mr.target, createdBy: mr.createdBy, createdAt: fmtDate(mr.createdAt), deadline: fmtDate(mr.deadline) })
+          : tl("{project} into {target}. Submitted by {createdBy} on {createdAt}.", { project: mr.project, target: mr.target, createdBy: mr.createdBy, createdAt: fmtDate(mr.createdAt) })}
+        {!open && " " + tl("Closed on {date}.", { date: fmtDate(mr.closedAt ?? mr.createdAt) })}</p>
       <section className="panel" aria-labelledby="mr-progress">
         <h2 id="mr-progress" className="panel-title">
           {tl("Progress")}
         </h2>
         <p>
-          {plural(progress.total, "entry", "entries")}: {Object.entries(progress.states)
-            .filter(([, n]) => n > 0)
-            .map(([s, n]) => `${n} ${(STATE_TEXT[s] ?? s).toLowerCase()}`)
-            .join(", ")}
-          {progress.conflicts ? tl("; {conflicts} with the master", { conflicts: plural(progress.conflicts, "conflict", "conflicts") }) : ""}.
+          {tl("{entries}: {states}.", {
+            entries: plural(progress.total, "entry", "entries"),
+            states: Object.entries(progress.states)
+              .filter(([, n]) => n > 0)
+              .map(([s, n]) => tl("{state} {n}", { state: STATE_TEXT[s] ?? s, n }))
+              .join(", "),
+          })}
+          {progress.conflicts > 0 && " " + plural(progress.conflicts, "conflict with the master.", "conflicts with the master.")}
         </p>
         <progress max={progress.total || 1} value={progress.total - waiting} aria-label={tl("Decided")} />
         {open && target && !approve && <p className="help">{tlx("Those who may approve changes to {target} decide. You see how far they are.", { target: mr.target })}</p>}
@@ -391,7 +397,9 @@ export function ServerMergeReview({ id }: { id: number }) {
               <div className="mr-head">
                 <span className="cell-title">{KIND_TEXT[it.kind]}</span>
                 <span className="cell-sub">
-                  {tlx("by {author}, {changedAt}{x}", { author: it.author, changedAt: fmtDate(it.changedAt), x: it.reviewers?.length && (it.state === "waiting" || it.state === "postponed") ? tl("; for {join} to review", { join: listOf(it.reviewers) }) : "" })}</span>
+                  {it.reviewers?.length && (it.state === "waiting" || it.state === "postponed")
+                    ? tl("by {author}, {changedAt}; for {reviewers} to review", { author: it.author, changedAt: fmtDate(it.changedAt), reviewers: listOf(it.reviewers) })
+                    : tl("by {author}, {changedAt}", { author: it.author, changedAt: fmtDate(it.changedAt) })}</span>
                 <span className={`status ${it.state === "waiting" ? "status-proposed" : it.state.startsWith("approved") ? "status-approved" : "status-forbidden"}`}>
                   {STATE_TEXT[it.state] ?? it.state}
                 </span>
@@ -414,7 +422,9 @@ export function ServerMergeReview({ id }: { id: number }) {
                     <ul className="mr-changes">
                       {it.conflicts.map((c, i) => (
                         <li key={i}>
-                          {tlx("{path}: the project has “{x}”, {target} has “{x2}”{x3}", { path: c.path, x: c.ours || tl("nothing"), target: mr.target, x2: c.theirs || tl("nothing"), x3: c.base ? tl(" (was “{base}”)", { base: c.base }) : "" })}</li>
+                          {c.base
+                            ? tl("{path}: the project has “{ours}”, {target} has “{theirs}” (was “{base}”)", { path: c.path, ours: c.ours || tl("nothing"), target: mr.target, theirs: c.theirs || tl("nothing"), base: c.base })
+                            : tl("{path}: the project has “{ours}”, {target} has “{theirs}”", { path: c.path, ours: c.ours || tl("nothing"), target: mr.target, theirs: c.theirs || tl("nothing") })}</li>
                       ))}
                     </ul>
                     {open && approve && (it.state === "waiting" || it.state === "postponed") && it.merged && (
@@ -427,12 +437,14 @@ export function ServerMergeReview({ id }: { id: number }) {
               )}
               {it.forbidden && <p className="cell-sub cell-warn">{tl("It has a forbidden term.")}</p>}
               {it.duplicates && it.duplicates.length > 0 && (
-                <p className="cell-sub cell-warn">{plural(it.duplicates.length, "master entry shares", "master entries share")}{" "}{tl("a term with it.")}</p>
+                <p className="cell-sub cell-warn">{plural(it.duplicates.length, "master entry shares a term with it.", "master entries share a term with it.")}</p>
               )}
               {it.comment && <p className="cell-sub">“{it.comment}”{it.reviewer ? `, ${it.reviewer}` : ""}</p>}
               {(it.state === "reverted" || it.state === "rejected" || it.state === "changes-requested") && (
                 <p className="cell-sub">
-                  {tlx("{x} It is submitted again once the project has changed it.", { x: it.state === "reverted" ? tl("Taken out of {target} again.", { target: mr.target }) : tl("Not in {target}.", { target: mr.target }) })}
+                  {it.state === "reverted"
+                    ? tl("Taken out of {target} again. It is submitted again once the project has changed it.", { target: mr.target })
+                    : tl("Not in {target}. It is submitted again once the project has changed it.", { target: mr.target })}
                 </p>
               )}
               {open && approve && it.state.startsWith("approved") && it.rule !== "identical" && (
@@ -476,14 +488,14 @@ export function ServerMergeReview({ id }: { id: number }) {
                       <button
                         type="button"
                         className="btn btn-small"
-                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.mergedOurs ?? it.entry, tl("Used the project version ({x})", { x: resolution(it, "ours") }))}
+                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.mergedOurs ?? it.entry, tl("Used the project version ({resolution})", { resolution: resolution(it, "ours") }))}
                       >
                         <Check size={14} aria-hidden="true" /> {w("useProject")}: {resolution(it, "ours")}
                       </button>
                       <button
                         type="button"
                         className="btn btn-small"
-                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.merged, tl("Kept the master version ({x})", { x: resolution(it, "theirs") }))}
+                        onClick={() => void decide({ ids: [it.id] }, "approved-with-edits", it.merged, tl("Kept the master version ({resolution})", { resolution: resolution(it, "theirs") }))}
                       >
                         <Check size={14} aria-hidden="true" /> {w("keepMaster")}: {resolution(it, "theirs")}
                       </button>

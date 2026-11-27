@@ -20,6 +20,7 @@ import (
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/para"
+	"github.com/4nonX/interlinea/i18n"
 	"github.com/4nonX/interlinea/segment"
 )
 
@@ -285,7 +286,7 @@ func inline(text string) content.Content {
 		at = m[1]
 		switch {
 		case lit == hardMark:
-			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: next(), Type: "break", Desc: "line break", Native: "  \n"})
+			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: next(), Type: "break", Desc: i18n.N("line break"), Native: "  \n"})
 		case strings.HasPrefix(lit, "`"):
 			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: next(), Type: "code", Desc: lit, Native: lit})
 		case strings.HasPrefix(lit, "<"):

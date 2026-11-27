@@ -337,7 +337,7 @@ function Services({ kind }: { kind: Kind }) {
       <p className="help">{tl("A service kept here is asked by this browser, for projects on this computer, and its key is kept in this browser.")}</p>
       {api && onServer && (
         <>
-          <h3 className="field-label">{tl("On")}{" "}{host}</h3>
+          <h3 className="field-label">{tl("On {host}", { host })}</h3>
           <ProviderList
             items={onServer.filter((p) => (p.kind === "check") === check).map((p) => ({ name: p.name, where: where(p.service, p.host, p.model) }))}
             onDelete={
@@ -439,9 +439,9 @@ export function ProgramAccess() {
         {tokens.map((t) => (
           <li key={t.id} className="row">
             <span>
-              <span className="cell-title">{t.name || "Sign-in"}</span>{" "}
+              <span className="cell-title">{t.name || tl("Sign-in")}</span>{" "}
               <span className="muted">
-                {tlx("{x}until {expiresAt}", { x: t.current ? tl("this sign-in, ") : "", expiresAt: fmtDate(t.expiresAt) })}</span>
+                {t.current ? tl("This sign-in, until {expiresAt}", { expiresAt: fmtDate(t.expiresAt) }) : tl("Until {expiresAt}", { expiresAt: fmtDate(t.expiresAt) })}</span>
             </span>
             {!t.current && (
               <ConfirmButton

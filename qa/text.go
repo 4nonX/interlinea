@@ -1,11 +1,12 @@
 package qa
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/4nonX/interlinea/i18n"
 )
 
 // Languages that write a decimal comma (1.250,00 or 1 250,00); the others
@@ -233,18 +234,25 @@ func (c *checker) numbers(out *[]Issue, s Segment, src, tgt string) {
 		extra = append(extra, n.text)
 	}
 	if len(missing) > 0 {
-		c.add(out, s, NumbersMissing, listMessage("The number %s from the source is not in the translation.", "The numbers %s from the source are not in the translation.", missing), strings.Join(missing, ", "))
+		c.add(out, s, NumbersMissing, listMessage(i18n.N("The number “{number}” from the source is not in the translation."), i18n.N("The numbers {numbers} from the source are not in the translation."), missing), strings.Join(missing, ", "))
 	}
 	if len(extra) > 0 {
-		c.add(out, s, NumbersExtra, listMessage("The number %s is not in the source.", "The numbers %s are not in the source.", extra), strings.Join(extra, ", "))
+		c.add(out, s, NumbersExtra, listMessage(i18n.N("The number “{number}” is not in the source."), i18n.N("The numbers {numbers} are not in the source."), extra), strings.Join(extra, ", "))
 	}
 }
 
+// listMessage says one item with one, several with many: each in quotes,
+// as a number may have commas of its own (1.250,00), listed with commas,
+// which read the same in every interface language.
 func listMessage(one, many string, items []string) string {
 	if len(items) == 1 {
-		return fmt.Sprintf(one, items[0])
+		return i18n.Fill(one, "number", items[0])
 	}
-	return fmt.Sprintf(many, strings.Join(items[:len(items)-1], ", ")+" and "+items[len(items)-1])
+	quoted := make([]string, len(items))
+	for i, it := range items {
+		quoted[i] = "“" + it + "”"
+	}
+	return i18n.Fill(many, "numbers", strings.Join(quoted, ", "))
 }
 
 // endPunct maps sentence-final punctuation to a common form, so the
@@ -286,32 +294,32 @@ func (c *checker) punctuation(out *[]Issue, s Segment, src, tgt string) {
 		if sp != tp && !stopOnly {
 			switch {
 			case sp == "":
-				c.add(out, s, EndPunctuation, fmt.Sprintf("The translation ends with “%s”; the source has no final punctuation.", tp), tp)
+				c.add(out, s, EndPunctuation, i18n.Fill(i18n.N("The translation ends with “{mark}”; the source has no final punctuation."), "mark", tp), tp)
 			case tp == "":
-				c.add(out, s, EndPunctuation, fmt.Sprintf("The source ends with “%s”; the translation has no final punctuation.", sp), "")
+				c.add(out, s, EndPunctuation, i18n.Fill(i18n.N("The source ends with “{mark}”; the translation has no final punctuation."), "mark", sp), "")
 			default:
-				c.add(out, s, EndPunctuation, fmt.Sprintf("The source ends with “%s”, the translation with “%s”.", sp, tp), tp)
+				c.add(out, s, EndPunctuation, i18n.Fill(i18n.N("The source ends with “{source}”, the translation with “{target}”."), "source", sp, "target", tp), tp)
 			}
 		}
 	}
 	if c.on[DoubleSpace] && strings.Count(tgt, "  ") > strings.Count(src, "  ") {
-		c.add(out, s, DoubleSpace, "The translation has a double space.", "  ")
+		c.add(out, s, DoubleSpace, i18n.N("The translation has a double space."), "  ")
 	}
 	if c.on[EdgeSpace] {
 		lead := func(x string) bool { r, _ := utf8.DecodeRuneInString(x); return unicode.IsSpace(r) }
 		trail := func(x string) bool { r, _ := utf8.DecodeLastRuneInString(x); return unicode.IsSpace(r) }
 		if lead(src) != lead(tgt) {
 			if lead(tgt) {
-				c.add(out, s, EdgeSpace, "The translation starts with a space; the source does not.", "")
+				c.add(out, s, EdgeSpace, i18n.N("The translation starts with a space; the source does not."), "")
 			} else {
-				c.add(out, s, EdgeSpace, "The source starts with a space; the translation does not.", "")
+				c.add(out, s, EdgeSpace, i18n.N("The source starts with a space; the translation does not."), "")
 			}
 		}
 		if trail(src) != trail(tgt) {
 			if trail(tgt) {
-				c.add(out, s, EdgeSpace, "The translation ends with a space; the source does not.", "")
+				c.add(out, s, EdgeSpace, i18n.N("The translation ends with a space; the source does not."), "")
 			} else {
-				c.add(out, s, EdgeSpace, "The source ends with a space; the translation does not.", "")
+				c.add(out, s, EdgeSpace, i18n.N("The source ends with a space; the translation does not."), "")
 			}
 		}
 	}
@@ -323,7 +331,7 @@ func (c *checker) punctuation(out *[]Issue, s Segment, src, tgt string) {
 		}
 	}
 	if c.on[Brackets] && bracketsBalanced(src) && !bracketsBalanced(tgt) {
-		c.add(out, s, Brackets, "Brackets in the translation do not pair up.", "")
+		c.add(out, s, Brackets, i18n.N("Brackets in the translation do not pair up."), "")
 	}
 	if c.on[RepeatedWord] {
 		// A doubled word in the source ("bye bye") may rightly be one in
@@ -331,7 +339,7 @@ func (c *checker) punctuation(out *[]Issue, s Segment, src, tgt string) {
 		allowed := len(repeatedWords(src))
 		for i, w := range repeatedWords(tgt) {
 			if i >= allowed {
-				c.add(out, s, RepeatedWord, fmt.Sprintf("“%s” is repeated.", w), w+" "+w)
+				c.add(out, s, RepeatedWord, i18n.Fill(i18n.N("“{word}” is repeated."), "word", w), w+" "+w)
 			}
 		}
 	}
@@ -341,11 +349,11 @@ func (c *checker) punctuation(out *[]Issue, s Segment, src, tgt string) {
 			su, tu := unicode.IsUpper(sr), unicode.IsUpper(tr)
 			switch {
 			case su && !tu:
-				c.add(out, s, Capitalization, "The source starts with a capital letter; the translation does not.", "")
+				c.add(out, s, Capitalization, i18n.N("The source starts with a capital letter; the translation does not."), "")
 			case !su && tu && c.tgtLang != "de" && c.tgtLang != "lb":
 				// German nouns are capitalized, so a lower-case English
 				// start may rightly become a capital in German.
-				c.add(out, s, Capitalization, "The translation starts with a capital letter; the source does not.", "")
+				c.add(out, s, Capitalization, i18n.N("The translation starts with a capital letter; the source does not."), "")
 			}
 		}
 	}
@@ -395,13 +403,13 @@ func spacingIssues(t, lang string) []spacing {
 		switch r {
 		case ',', '.':
 			if i > 0 && rs[i-1] == ' ' && followedByBoundary(i) && !(r == '.' && i+1 < len(rs) && rs[i+1] == '.') && !(i > 1 && rs[i-2] == '.') {
-				addIssue(" "+string(r), fmt.Sprintf("A space before “%s”.", string(r)))
+				addIssue(" "+string(r), i18n.Fill(i18n.N("A space before “{mark}”."), "mark", string(r)))
 			}
 		case ';', ':', '!', '?':
 			if lang == "fr-ca" && r != ':' {
 				// Canadian French sets ; ! ? close, as English does.
 				if i > 0 && rs[i-1] == ' ' && followedByBoundary(i) {
-					addIssue(" "+string(r), fmt.Sprintf("A space before “%s”.", string(r)))
+					addIssue(" "+string(r), i18n.Fill(i18n.N("A space before “{mark}”."), "mark", string(r)))
 				}
 				continue
 			}
@@ -415,11 +423,11 @@ func spacingIssues(t, lang string) []spacing {
 				if !unicode.IsLetter(rs[i-1]) && !unicode.IsDigit(rs[i-1]) && !strings.ContainsRune(trailingClosers, rs[i-1]) {
 					continue
 				}
-				addIssue(string(rs[i-1])+string(r), fmt.Sprintf("French needs a (narrow) no-break space before “%s”.", string(r)))
+				addIssue(string(rs[i-1])+string(r), i18n.Fill(i18n.N("French needs a (narrow) no-break space before “{mark}”."), "mark", string(r)))
 				continue
 			}
 			if i > 0 && rs[i-1] == ' ' && followedByBoundary(i) {
-				addIssue(" "+string(r), fmt.Sprintf("A space before “%s”.", string(r)))
+				addIssue(" "+string(r), i18n.Fill(i18n.N("A space before “{mark}”."), "mark", string(r)))
 			}
 		case '«':
 			if (lang == "fr" || lang == "fr-ca") && i+1 < len(rs) && !isSpace(rs[i+1]) {
@@ -546,7 +554,7 @@ func (c *checker) spelling(out *[]Issue, s Segment, tgt string) {
 		reported[w.text] = true
 		*out = append(*out, Issue{
 			Segment: s.ID, Kind: Spelling, Severity: severityOf(Spelling),
-			Message:     fmt.Sprintf("“%s” is not in the dictionary.", w.text),
+			Message:     i18n.Fill(i18n.N("“{word}” is not in the dictionary."), "word", w.text),
 			Found:       w.text,
 			Suggestions: c.suggest(w.text),
 		})

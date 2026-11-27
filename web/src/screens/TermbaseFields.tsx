@@ -238,7 +238,7 @@ export function FieldTable({
                     <input
                       ref={i === fields.length - 1 ? lastName : undefined}
                       value={f.name}
-                      aria-label={tl("Name of field {x}", { x: i + 1 })}
+                      aria-label={tl("Name of field {n}", { n: i + 1 })}
                       aria-invalid={!!problem}
                       placeholder={tl("Name of the field")}
                       onChange={(e) => set(f.key, { name: e.target.value })}

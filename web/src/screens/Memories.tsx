@@ -35,7 +35,7 @@ export function Memories() {
       (e: unknown) =>
         live &&
         notify(
-          tl("The memories could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
+          tl("The memories could not be loaded: {error}", { error: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -251,7 +251,7 @@ function MemoryTable({
                   <th scope="row">
                     <span className="cell-title">{m.name}</span>
                     <span className="cell-sub">
-                      {tlx("{x}created {createdAt}", { x: m.client ? `${m.client}, ` : "", createdAt: fmtDate(m.createdAt) })}</span>
+                      {m.client ? tl("{client}, created {createdAt}", { client: m.client, createdAt: fmtDate(m.createdAt) }) : tl("Created {createdAt}", { createdAt: fmtDate(m.createdAt) })}</span>
                   </th>
                   <td>
                     <span className="lang-pair">
@@ -264,7 +264,7 @@ function MemoryTable({
                     {users.length || inTemplates.length ? (
                       [
                         ...users.map((p) => p.name),
-                        ...inTemplates.map((t) => `template ${t.name}`),
+                        ...inTemplates.map((t) => tl("template {name}", { name: t.name })),
                       ].join(", ")
                     ) : (
                       <span className="muted">{tl("No project")}</span>
@@ -370,12 +370,12 @@ function MemoryTable({
               );
               const kept = st.stored === 0 || (await persistMemory(c, importInto));
               notify(
-                `${importNotice(st, importInto, f.name)}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
+                importNotice(st, importInto, f.name) + (kept ? "" : " " + tl("It is kept only until you close this page: this browser does not allow saving.")),
               );
               onChange();
             } catch (err) {
               notify(
-                tl("Could not import {name}: {x}", { name: f.name, x: err instanceof Error ? err.message : String(err) }),
+                tl("Could not import {name}: {error}", { name: f.name, error: err instanceof Error ? err.message : String(err) }),
               );
             }
           }}
@@ -455,14 +455,14 @@ function NewMemoryForm({
           );
         } catch (err) {
           setError(
-            tl("Could not read {x}: {x2}", { x: tmx?.name, x2: err instanceof Error ? err.message : String(err) }),
+            tl("Could not read {name}: {error}", { name: tmx?.name, error: err instanceof Error ? err.message : String(err) }),
           );
           return;
         }
         dispatch({ type: "createMemory", memory });
         const kept = await persistMemory(c, memory.name);
         notify(
-          (units ? tl("Created the memory {name} with {units}", { name: memory.name, units: plural(units, "unit", "units") }) : tl("Created the memory {name}", { name: memory.name })) + (kept ? "" : tl(". It is kept only until you close this page: this browser does not allow saving")),
+          (units ? tl("Created the memory {name} with {units}.", { name: memory.name, units: plural(units, "unit", "units") }) : tl("Created the memory {name}.", { name: memory.name })) + (kept ? "" : " " + tl("It is kept only until you close this page: this browser does not allow saving.")),
         );
         setOpen(false);
         setName("");
@@ -544,7 +544,7 @@ function NewMemoryForm({
                 if (src) setSource(src);
                 if (tgt) setTarget(tgt);
               } catch (err) {
-                setError(tl("Could not read {name}: {x}", { name: f.name, x: err instanceof Error ? err.message : String(err) }));
+                setError(tl("Could not read {name}: {error}", { name: f.name, error: err instanceof Error ? err.message : String(err) }));
               }
             }}
           />

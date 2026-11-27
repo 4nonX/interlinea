@@ -15,7 +15,7 @@ import {
   useIncludedDictionaries,
   type FoundDictionary,
 } from "../editor/spelling";
-import { fmtNum, plural } from "../format";
+import { listOf, plural } from "../format";
 import { storageStatus } from "../persist";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { LangChip, PageHeader } from "../components/ui";
@@ -257,7 +257,7 @@ function Dictionaries() {
       (e: unknown) =>
         live &&
         notify(
-          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
+          tl("The core could not be loaded: {error}", { error: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -271,7 +271,7 @@ function Dictionaries() {
       .map((p) => p.name),
     ...state.templates
       .filter((t) => Object.values(t.qa.dictionaries).includes(name))
-      .map((t) => `template ${t.name}`),
+      .map((t) => tl("template {name}", { name: t.name })),
   ];
 
   async function add() {
@@ -297,10 +297,9 @@ function Dictionaries() {
     setBusy(false);
     if (added.length)
       notify(
-        `Added ${added.join(", ")}` +
-          (kept
-            ? ""
-            : ". They are kept only until you close this page: this browser does not allow saving"),
+        kept
+          ? tl("Added {names}.", { names: listOf(added) })
+          : tl("Added {names}. They are kept only until you close this page: this browser does not allow saving.", { names: listOf(added) }),
       );
   }
 
@@ -328,11 +327,11 @@ function Dictionaries() {
                     <span className="cell-title">{d.name}</span>{" "}
                     <LangChip code={d.lang} />{" "}
                     <span className="muted">
-                      {tlx("{words} words{x}", { words: fmtNum(d.words), x: isAdded(d.name)
-                        ? tl(", replaced by the one you added")
+                      {isAdded(d.name)
+                        ? tl("{words}, replaced by the one you added", { words: plural(d.words, "word", "words") })
                         : users.length
-                          ? tl(", used by {join}", { join: users.join(", ") })
-                          : "" })}</span>
+                          ? tl("{words}, used by {projects}", { words: plural(d.words, "word", "words"), projects: listOf(users) })
+                          : plural(d.words, "word", "words")}</span>
                   </span>
                 </li>
               );
@@ -357,11 +356,11 @@ function Dictionaries() {
                   <span className="cell-title">{d.name}</span>{" "}
                   <LangChip code={d.lang} />{" "}
                   <span className="muted">
-                    {tlx("{words} words{x}", { words: fmtNum(d.words), x: isIncluded(d.name)
-                      ? tl(", used instead of the included one")
+                    {isIncluded(d.name)
+                      ? tl("{words}, used instead of the included one", { words: plural(d.words, "word", "words") })
                       : users.length
-                        ? tl(", used by {join}", { join: users.join(", ") })
-                        : "" })}</span>
+                        ? tl("{words}, used by {projects}", { words: plural(d.words, "word", "words"), projects: listOf(users) })
+                        : plural(d.words, "word", "words")}</span>
                 </span>
                 <ConfirmButton
                   label={tl("Delete")}
@@ -516,7 +515,7 @@ function Templates() {
                   ))}
                 </span>{" "}
                 <span className="muted">
-                  {tlx("{x}saved {createdAt}", { x: t.client ? `${t.client}, ` : "", createdAt: fmtDate(t.createdAt) })}</span>
+                  {t.client ? tl("{client}, saved {createdAt}", { client: t.client, createdAt: fmtDate(t.createdAt) }) : tl("Saved {createdAt}", { createdAt: fmtDate(t.createdAt) })}</span>
               </span>
               <ConfirmButton
                 label={tl("Delete")}

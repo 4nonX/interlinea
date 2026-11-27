@@ -19,6 +19,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/i18n"
 	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/term"
 )
@@ -68,31 +69,31 @@ var Kinds = []struct {
 	Default     bool   `json:"default"`
 	Description string `json:"description"`
 }{
-	{Empty, "Empty translation", true, "A segment to translate has no translation."},
-	{Untranslated, "Same as source", true, "The translation is the source text unchanged."},
-	{TagsMissing, "Missing tags", true, "Tags of the source are not in the translation."},
-	{TagsExtra, "Extra tags", true, "The translation has tags the source does not."},
-	{TagOrder, "Tag order", true, "Paired tags are nested differently than in the source."},
-	{NumbersMissing, "Missing numbers", true, "A number of the source is not in the translation (separators of each language understood)."},
-	{NumbersExtra, "Extra numbers", true, "The translation has a number the source does not."},
-	{EndPunctuation, "End punctuation", true, "The translation ends with different punctuation than the source."},
-	{DoubleSpace, "Double spaces", true, "The translation has double spaces the source does not."},
-	{EdgeSpace, "Leading and trailing spaces", true, "Spaces at the start or end differ from the source."},
-	{SpaceBeforePunct, "Space before punctuation", true, "A space before a comma or full stop, or in French a missing space before ; : ! ?"},
-	{Brackets, "Unpaired brackets", true, "Brackets in the translation do not pair up."},
-	{RepeatedWord, "Repeated words", true, "The same word twice in a row."},
-	{Capitalization, "Capital letter at the start", true, "The source starts with a capital letter and the translation does not, or the other way round."},
-	{Length, "Length limit", true, "The translation is longer than the file allows."},
-	{LengthRatio, "Length compared to the source", false, "The translation is much longer or shorter than the source."},
-	{Inconsistent, "Inconsistent translations", true, "The same source text is translated differently."},
-	{InconsistentSrc, "Same translation for different sources", false, "Different source texts have the same translation."},
-	{TermMissing, "Terminology", true, "A recognized term is not translated as the termbase says."},
-	{TermForbidden, "Forbidden terms", true, "The translation uses a term the termbase forbids."},
-	{Spelling, "Spelling", true, "A word is not in the dictionary."},
-	{Rule, "Own rules", true, "A rule of your own (a regular expression) is broken."},
-	{LineLength, "Subtitle line length", true, "A line of a subtitle has more characters than the project allows."},
-	{LineCount, "Subtitle lines", true, "A subtitle has more lines than the project allows."},
-	{ReadingSpeed, "Reading speed", true, "A subtitle has more characters per second than the project allows for the time it is shown."},
+	{Empty, i18n.N("Empty translation"), true, i18n.N("A segment to translate has no translation.")},
+	{Untranslated, i18n.N("Same as source"), true, i18n.N("The translation is the source text unchanged.")},
+	{TagsMissing, i18n.N("Missing tags"), true, i18n.N("Tags of the source are not in the translation.")},
+	{TagsExtra, i18n.N("Extra tags"), true, i18n.N("The translation has tags the source does not.")},
+	{TagOrder, i18n.N("Tag order"), true, i18n.N("Paired tags are nested differently than in the source.")},
+	{NumbersMissing, i18n.N("Missing numbers"), true, i18n.N("A number of the source is not in the translation (separators of each language understood).")},
+	{NumbersExtra, i18n.N("Extra numbers"), true, i18n.N("The translation has a number the source does not.")},
+	{EndPunctuation, i18n.N("End punctuation"), true, i18n.N("The translation ends with different punctuation than the source.")},
+	{DoubleSpace, i18n.N("Double spaces"), true, i18n.N("The translation has double spaces the source does not.")},
+	{EdgeSpace, i18n.N("Leading and trailing spaces"), true, i18n.N("Spaces at the start or end differ from the source.")},
+	{SpaceBeforePunct, i18n.N("Space before punctuation"), true, i18n.N("A space before a comma or full stop, or in French a missing space before ; : ! ?")},
+	{Brackets, i18n.N("Unpaired brackets"), true, i18n.N("Brackets in the translation do not pair up.")},
+	{RepeatedWord, i18n.N("Repeated words"), true, i18n.N("The same word twice in a row.")},
+	{Capitalization, i18n.N("Capital letter at the start"), true, i18n.N("The source starts with a capital letter and the translation does not, or the other way round.")},
+	{Length, i18n.N("Length limit"), true, i18n.N("The translation is longer than the file allows.")},
+	{LengthRatio, i18n.N("Length compared to the source"), false, i18n.N("The translation is much longer or shorter than the source.")},
+	{Inconsistent, i18n.N("Inconsistent translations"), true, i18n.N("The same source text is translated differently.")},
+	{InconsistentSrc, i18n.N("Same translation for different sources"), false, i18n.N("Different source texts have the same translation.")},
+	{TermMissing, i18n.N("Terminology"), true, i18n.N("A recognized term is not translated as the termbase says.")},
+	{TermForbidden, i18n.N("Forbidden terms"), true, i18n.N("The translation uses a term the termbase forbids.")},
+	{Spelling, i18n.N("Spelling"), true, i18n.N("A word is not in the dictionary.")},
+	{Rule, i18n.N("Own rules"), true, i18n.N("A rule of your own (a regular expression) is broken.")},
+	{LineLength, i18n.N("Subtitle line length"), true, i18n.N("A line of a subtitle has more characters than the project allows.")},
+	{LineCount, i18n.N("Subtitle lines"), true, i18n.N("A subtitle has more lines than the project allows.")},
+	{ReadingSpeed, i18n.N("Reading speed"), true, i18n.N("A subtitle has more characters per second than the project allows for the time it is shown.")},
 }
 
 // Severity says how serious an issue is.
@@ -411,18 +412,18 @@ func (c *checker) tags(out *[]Issue, s Segment) {
 	}
 	switch {
 	case missing == 1:
-		c.add(out, s, TagsMissing, "A tag of the source is missing.", "")
+		c.add(out, s, TagsMissing, i18n.N("A tag of the source is missing."), "")
 	case missing > 1:
-		c.add(out, s, TagsMissing, fmt.Sprintf("%d tags of the source are missing.", missing), "")
+		c.add(out, s, TagsMissing, i18n.Fill(i18n.N("{n} tags of the source are missing."), "n", strconv.Itoa(missing)), "")
 	}
 	switch {
 	case extra == 1:
-		c.add(out, s, TagsExtra, "The translation has a tag the source does not.", "")
+		c.add(out, s, TagsExtra, i18n.N("The translation has a tag the source does not."), "")
 	case extra > 1:
-		c.add(out, s, TagsExtra, fmt.Sprintf("The translation has %d tags the source does not.", extra), "")
+		c.add(out, s, TagsExtra, i18n.Fill(i18n.N("The translation has {n} tags the source does not."), "n", strconv.Itoa(extra)), "")
 	}
 	if missing == 0 && extra == 0 && !sameNesting(srcTags, tgtTags) {
-		c.add(out, s, TagOrder, "Paired tags are nested differently than in the source.", "")
+		c.add(out, s, TagOrder, i18n.N("Paired tags are nested differently than in the source."), "")
 	}
 }
 
@@ -466,16 +467,16 @@ func sameNesting(a, b []content.Tag) bool {
 func (c *checker) length(out *[]Issue, s Segment, src, tgt string) {
 	n := utf8.RuneCountInString(tgt)
 	if s.MaxLength > 0 && n > s.MaxLength {
-		c.add(out, s, Length, fmt.Sprintf("The translation has %d characters; at most %d are allowed.", n, s.MaxLength), "")
+		c.add(out, s, Length, i18n.Fill(i18n.N("The translation has {n} characters; at most {max} are allowed."), "n", strconv.Itoa(n), "max", strconv.Itoa(s.MaxLength)), "")
 	}
 	sn := utf8.RuneCountInString(strings.TrimSpace(src))
 	if sn >= 20 {
 		r := float64(utf8.RuneCountInString(strings.TrimSpace(tgt))) / float64(sn)
 		switch {
 		case r > c.opts.RatioMax:
-			c.add(out, s, LengthRatio, fmt.Sprintf("The translation is %d%% of the source's length.", int(r*100+0.5)), "")
+			c.add(out, s, LengthRatio, i18n.Fill(i18n.N("The translation is {percent}% of the source's length."), "percent", strconv.Itoa(int(r*100+0.5))), "")
 		case r < c.opts.RatioMin:
-			c.add(out, s, LengthRatio, fmt.Sprintf("The translation is only %d%% of the source's length.", int(r*100+0.5)), "")
+			c.add(out, s, LengthRatio, i18n.Fill(i18n.N("The translation is only {percent}% of the source's length."), "percent", strconv.Itoa(int(r*100+0.5))), "")
 		}
 	}
 }
@@ -532,7 +533,7 @@ func (c *checker) subtitle(out *[]Issue, s Segment) {
 	lines := SubtitleLines(s.Source, s.Target)
 	for i, l := range lines {
 		if n := utf8.RuneCountInString(strings.TrimSpace(l)); n > lim.LineLength {
-			c.add(out, s, LineLength, fmt.Sprintf("Line %d has %d characters; at most %d are allowed.", i+1, n, lim.LineLength), strings.TrimSpace(l))
+			c.add(out, s, LineLength, i18n.Fill(i18n.N("Line {line} has {n} characters; at most {max} are allowed."), "line", strconv.Itoa(i+1), "n", strconv.Itoa(n), "max", strconv.Itoa(lim.LineLength)), strings.TrimSpace(l))
 		}
 	}
 	shown := 0
@@ -542,10 +543,10 @@ func (c *checker) subtitle(out *[]Issue, s Segment) {
 		}
 	}
 	if shown > lim.Lines {
-		c.add(out, s, LineCount, fmt.Sprintf("The subtitle has %d lines; at most %d are allowed.", shown, lim.Lines), "")
+		c.add(out, s, LineCount, i18n.Fill(i18n.N("The subtitle has {n} lines; at most {max} are allowed."), "n", strconv.Itoa(shown), "max", strconv.Itoa(lim.Lines)), "")
 	}
 	if cps := CharsPerSecond(lines, s.Timing); cps > lim.CPS {
-		c.add(out, s, ReadingSpeed, fmt.Sprintf("The subtitle needs %.1f characters per second in its %.2f seconds; at most %s are allowed.", cps, float64(s.Timing.Duration())/1000, strconv.FormatFloat(lim.CPS, 'f', -1, 64)), "")
+		c.add(out, s, ReadingSpeed, i18n.Fill(i18n.N("The subtitle needs {cps} characters per second in its {seconds} seconds; at most {max} are allowed."), "cps", strconv.FormatFloat(cps, 'f', 1, 64), "seconds", strconv.FormatFloat(float64(s.Timing.Duration())/1000, 'f', 2, 64), "max", strconv.FormatFloat(lim.CPS, 'f', -1, 64)), "")
 	}
 }
 
@@ -557,11 +558,11 @@ func (c *checker) terms(out *[]Issue, s Segment, src, tgt string) {
 	for _, is := range c.opts.Terms.Check(hits, tgt, c.opts.TargetLang) {
 		switch is.Kind {
 		case "missing":
-			c.add(out, s, TermMissing, fmt.Sprintf("“%s” is usually “%s”.", is.Term, is.Expected), is.Term)
+			c.add(out, s, TermMissing, i18n.Fill(i18n.N("“{term}” is usually “{expected}”."), "term", is.Term, "expected", is.Expected), is.Term)
 		case "forbidden":
-			msg := fmt.Sprintf("“%s” is a forbidden term.", is.Found)
+			msg := i18n.Fill(i18n.N("“{term}” is a forbidden term."), "term", is.Found)
 			if is.Term != "" {
-				msg = fmt.Sprintf("“%s” is a forbidden term for “%s”.", is.Found, is.Term)
+				msg = i18n.Fill(i18n.N("“{term}” is a forbidden term for “{source}”."), "term", is.Found, "source", is.Term)
 			}
 			c.add(out, s, TermForbidden, msg, is.Found)
 		}
@@ -594,7 +595,7 @@ func (c *checker) userRules(out *[]Issue, s Segment, src, tgt string) {
 		}
 		msg := r.Message
 		if msg == "" {
-			msg = fmt.Sprintf("Rule “%s” is broken.", r.Name)
+			msg = i18n.Fill(i18n.N("Rule “{name}” is broken."), "name", r.Name)
 		}
 		sev := r.Severity
 		if sev == "" {
@@ -646,7 +647,7 @@ func (c *checker) consistency(segs []Segment) []Issue {
 			for _, t := range g.order {
 				shown = append(shown, "“"+g.targets[t]+"”")
 			}
-			msg := fmt.Sprintf("The same source is translated in %d ways: %s.", len(g.targets), strings.Join(shown, ", "))
+			msg := i18n.Fill(i18n.N("The same source is translated in {n} ways: {list}."), "n", strconv.Itoa(len(g.targets)), "list", strings.Join(shown, ", "))
 			for _, id := range g.ids {
 				out = append(out, Issue{Segment: id, Kind: Inconsistent, Severity: Warning, Message: msg})
 			}
@@ -672,7 +673,7 @@ func (c *checker) consistency(segs []Segment) []Issue {
 			if len(byTarget[t]) < 2 {
 				continue
 			}
-			msg := fmt.Sprintf("%d different sources have this translation.", len(byTarget[t]))
+			msg := i18n.Fill(i18n.N("{n} different sources have this translation."), "n", strconv.Itoa(len(byTarget[t])))
 			for _, id := range ids[t] {
 				out = append(out, Issue{Segment: id, Kind: InconsistentSrc, Severity: Warning, Message: msg})
 			}

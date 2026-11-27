@@ -124,7 +124,7 @@ import {
 import { InLang, LangChip, LocationBadge, StatusBadge } from "../components/ui";
 import { fmtDate, fmtDec, fmtNum, inSentence, listOf, plural } from "../format";
 import { usePresence, useResegment, useSegmentComments, useSegmentIssues, useGrammar, useServerConcordance, useTranslationServices } from "../remote";
-import { tl, tlx } from "../i18n";
+import { keyName, tl, tlCore, tlx } from "../i18n";
 
 /** Up to two letters of a name, for presence markers. */
 function initials(name: string): string {
@@ -250,7 +250,7 @@ export function Editor({
       (e: unknown) =>
         live &&
         notify(
-          tl("The translation memory could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
+          tl("The translation memory could not be loaded: {error}", { error: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -341,7 +341,7 @@ export function Editor({
     const files = project.files
       .filter((f) => f.role === "translatable")
       .flatMap((f) => Object.entries(f.segments).map(([l, segs]) => ({ name: f.name, lang: l, segments: segs })));
-    const name = `${project.name} review.csv`;
+    const name = tl("{name} review.csv", { name: project.name });
     download(new TextEncoder().encode(await reviewCsv(files)), name, "text/csv");
     notify(tl("Saved {name}", { name }));
   }
@@ -467,7 +467,7 @@ export function Editor({
       (e: unknown) =>
         live &&
         notify(
-          tl("The dictionary {dictName} could not be loaded: {x}", { dictName, x: e instanceof Error ? e.message : String(e) }),
+          tl("The dictionary {dictName} could not be loaded: {error}", { dictName, error: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -490,10 +490,10 @@ export function Editor({
       found: i.found,
       text:
         i.kind === "tags-missing"
-          ? tl("{message} Press F9 to insert the next one.", { message: i.message })
+          ? tl("{message} Press F9 to insert the next one.", { message: tlCore(i.message) })
           : i.kind === "spelling" && i.suggestions?.length
-            ? `${i.message} Perhaps ${i.suggestions.slice(0, 3).join(", ")}.`
-            : i.message,
+            ? tl("{message} Perhaps {words}.", { message: tlCore(i.message), words: i.suggestions.slice(0, 3).join(", ") })
+            : tlCore(i.message),
     }));
   }, [
     active,
@@ -633,7 +633,7 @@ export function Editor({
     setSelected(0);
     sourceSelection.current = "";
     const parts = [
-      `Segment ${index + 1} of ${segments.length}`,
+      tl("Segment {n} of {total}", { n: index + 1, total: segments.length }),
       STATUS_TEXT[active.status],
     ];
     const best = matches[0];
@@ -646,10 +646,10 @@ export function Editor({
       !plain(active.target).trim()
     ) {
       insertMatch(best);
-      parts.push(`${scoreDescription(best.score, best.context)} inserted`);
+      parts.push(tl("{match} inserted", { match: scoreDescription(best.score, best.context) }));
     } else if (best) {
       parts.push(
-        `${plural(matches.length, "memory match", "memory matches")}, best ${scoreLabel(best.score, best.context)}`,
+        tl("{matches}, best {score}", { matches: plural(matches.length, "memory match", "memory matches"), score: scoreLabel(best.score, best.context) }),
       );
     }
     if (hits.length) parts.push(plural(hits.length, "term", "terms"));
@@ -805,12 +805,12 @@ export function Editor({
 
     const said = [
       warnings.length
-        ? tl("Confirmed with {x}", { x: plural(warnings.length, "warning", "warnings") })
+        ? tl("Confirmed with {warnings}", { warnings: plural(warnings.length, "warning", "warnings") })
         : tl("Confirmed"),
     ];
     if (repetitions.length) {
       said.push(
-        `${plural(repetitions.length, "repetition", "repetitions")} filled: segment ${repetitions.map((r) => segments.indexOf(r) + 1).join(", ")}`,
+        tl("{repetitions} filled: segment {list}", { repetitions: plural(repetitions.length, "repetition", "repetitions"), list: repetitions.map((r) => segments.indexOf(r) + 1).join(", ") }),
       );
       notify(
         tl("Also filled {length} (segment {join})", { length: plural(repetitions.length, "repetition", "repetitions"), join: repetitions.map((r) => segments.indexOf(r) + 1).join(", ") }),
@@ -855,7 +855,7 @@ export function Editor({
         (s) => s.status !== "confirmed" && !s.locked,
       ).length;
       const pending = open
-        ? tl(" {x} not confirmed yet.", { x: plural(open, "segment is", "segments are") })
+        ? " " + plural(open, "segment is not confirmed yet.", "segments are not confirmed yet.")
         : "";
       if (file.kind === "xliff") {
         const pkg = project.sdlPackage;
@@ -875,7 +875,7 @@ export function Editor({
           const name = returnPackageName(pkg.name);
           download(rpx, name, SDL_RETURN_TYPE);
           notify(
-            tl("Saved the return package {name} with {length}.{pending}", { name, length: plural(Object.keys(translated).length, "file", "files"), pending }),
+            tl("Saved the return package {name} with {files}.", { name, files: plural(Object.keys(translated).length, "file", "files") }) + pending,
           );
           return;
         }
@@ -883,7 +883,7 @@ export function Editor({
         const out = await mergeXliff(await bytesOf(file), segments, file.targetLang);
         const name = file.name.split("/").pop() ?? file.name;
         download(out, name, bilingualType(name));
-        notify(`Saved ${name}.${pending}`);
+        notify(tl("Saved {name}.", { name }) + pending);
         return;
       }
       const out = await mergeDocx(
@@ -903,7 +903,7 @@ export function Editor({
       );
     } catch (e) {
       notify(
-        tl("Could not save the document: {x}", { x: e instanceof Error ? e.message : String(e) }),
+        tl("Could not save the document: {error}", { error: e instanceof Error ? e.message : String(e) }),
       );
     } finally {
       setSaving(false);
@@ -1219,7 +1219,7 @@ export function Editor({
           onReplace={(changes, places) => {
             dispatch({ type: "replaceTargets", at, changes });
             setReplacing(false);
-            const said = `Replaced ${plural(places, "place", "places")} in ${plural(changes.length, "segment", "segments")}`;
+            const said = tl("Replaced {places} in {segments}", { places: plural(places, "place", "places"), segments: plural(changes.length, "segment", "segments") });
             notify(said);
             setAnnouncement(said);
           }}
@@ -1265,10 +1265,12 @@ export function Editor({
                   const look = refs.lookup.find((m) => m.name === name);
                   const uses = [
                     look
-                      ? `lookup${look.penalty ? ` (penalty ${look.penalty})` : ""}`
+                      ? look.penalty
+                        ? tl("lookup (penalty {penalty})", { penalty: look.penalty })
+                        : tl("lookup")
                       : "",
                     refs.concordance.some((m) => m.name === name)
-                      ? "concordance"
+                      ? tl("concordance")
                       : "",
                     refs.update.some((m) => m.name === name)
                       ? tl("updated on confirm")
@@ -1364,11 +1366,11 @@ export function Editor({
                 setMemVersion((v) => v + 1);
                 const kept = st.stored === 0 || (await persistMemory(c, projectMemory.name));
                 notify(
-                  `${importNotice(st, projectMemory.name, f.name)}${kept ? "" : ". It is kept only until you close this page: this browser does not allow saving"}`,
+                  importNotice(st, projectMemory.name, f.name) + (kept ? "" : " " + tl("It is kept only until you close this page: this browser does not allow saving.")),
                 );
               } catch (err) {
                 notify(
-                  tl("Could not import {name}: {x}", { name: f.name, x: err instanceof Error ? err.message : String(err) }),
+                  tl("Could not import {name}: {error}", { name: f.name, error: err instanceof Error ? err.message : String(err) }),
                 );
               }
             }}
@@ -1389,11 +1391,11 @@ export function Editor({
             {tl("Analysis")}
           </h2>
           <p className="help">
-            {tlx("{length} in {name} against {x}, counted in this order: context matches first, then repetitions within a file and across files, then the best match. Below 50% counts as new. The project memory is left out: it holds this project's own translations.", { length: plural(
+            {tlx("{length} in {name} against {memories}, counted in this order: context matches first, then repetitions within a file and across files, then the best match. Below 50% counts as new. The project memory is left out: it holds this project's own translations.", { length: plural(
               project.files.filter((f) => f.segments[target]).length,
               "file",
               "files",
-            ), name: lang(target).name, x: listOf(analysisMemories.map((m) => m.name)) || tl("no memory") })}
+            ), name: lang(target).name, memories: listOf(analysisMemories.map((m) => m.name)) || tl("no memory") })}
           </p>
           {c ? (
             <DialogAnalysis
@@ -1464,7 +1466,7 @@ export function Editor({
                         ref={lockedView}
                         tabIndex={0}
                         onKeyDown={onKeyDown}
-                        aria-label={`Segment ${n}: ${plain(s.target) || tl("not translated")}. ${s.lockedReason ?? tl("Locked in the file")}`}
+                        aria-label={tl("Segment {n}: {text}. {state}", { n, text: plain(s.target) || tl("not translated"), state: s.lockedReason ?? tl("Locked in the file") })}
                       >
                         <span className="seg-target-text">
                           {s.target.length ? (
@@ -1510,7 +1512,7 @@ export function Editor({
                         className="seg-target-view"
                         lang={target}
                         onClick={() => activate(s.id)}
-                        aria-label={`Segment ${n}: ${plain(s.target) || tl("not translated")}. ${STATUS_TEXT[s.status]}${s.warnings?.length ? `, ${plural(s.warnings.length, "warning", "warnings")}` : ""}. Edit`}
+                        aria-label={s.warnings?.length ? tl("Segment {n}: {text}. {state}, {warnings}. Edit", { n, text: plain(s.target) || tl("not translated"), state: STATUS_TEXT[s.status], warnings: plural(s.warnings.length, "warning", "warnings") }) : tl("Segment {n}: {text}. {state}. Edit", { n, text: plain(s.target) || tl("not translated"), state: STATUS_TEXT[s.status] })}
                       >
                         <span className="seg-target-text">
                           {s.target.length ? (
@@ -1858,14 +1860,14 @@ export function Editor({
                           onClick={openCapture}
                         >
                           <Plus size={14} aria-hidden="true" />
-                          {tlx("Add term{kbd}", { kbd: <kbd>Ctrl+E</kbd> })}</button>
+                          {tlx("Add term{kbd}", { kbd: <kbd>{keyName("Ctrl+E")}</kbd> })}</button>
                         <button
                           type="button"
                           className="btn btn-small"
                           onClick={openLookup}
                         >
                           <Search size={14} aria-hidden="true" />
-                          {tlx("Search memory{kbd}", { kbd: <kbd>Ctrl+K</kbd> })}</button>
+                          {tlx("Search memory{kbd}", { kbd: <kbd>{keyName("Ctrl+K")}</kbd> })}</button>
                       </div>
                     </div>
                   )}
@@ -1880,7 +1882,7 @@ export function Editor({
                     }
                   >
                     <Copy size={14} aria-hidden="true" />
-                    {tlx("Copy source{kbd}", { kbd: <kbd>Ctrl+Ins</kbd> })}</button>
+                    {tlx("Copy source{kbd}", { kbd: <kbd>{keyName("Ctrl+Ins")}</kbd> })}</button>
                   <button
                     type="button"
                     className="btn btn-small"
@@ -1890,24 +1892,24 @@ export function Editor({
                     }
                   >
                     <Tag size={14} aria-hidden="true" />
-                    {tlx("Next tag{kbd}", { kbd: <kbd>F9</kbd> })}</button>
+                    {tlx("Next tag{kbd}", { kbd: <kbd>{keyName("F9")}</kbd> })}</button>
                   <button
                     type="button"
                     className="btn btn-primary btn-small"
                     onClick={confirmAndNext}
                   >
                     <Check size={14} aria-hidden="true" />
-                    {tlx("Confirm{kbd}", { kbd: <kbd>Ctrl+Enter</kbd> })}</button>
+                    {tlx("Confirm{kbd}", { kbd: <kbd>{keyName("Ctrl+Enter")}</kbd> })}</button>
                 </div>
 
                 {cuttable && (
                   <div className="tool-row">
                     <button type="button" className="btn btn-small" onClick={() => setSplitting(true)} disabled={!cuts}>
                       <Scissors size={14} aria-hidden="true" />
-                      {tlx("Split{kbd}", { kbd: <kbd>Alt+Shift+S</kbd> })}</button>
+                      {tlx("Split{kbd}", { kbd: <kbd>{keyName("Alt+Shift+S")}</kbd> })}</button>
                     <button type="button" className="btn btn-small" onClick={() => void join()} disabled={!joins}>
                       <Combine size={14} aria-hidden="true" />
-                      {tlx("Join with next{kbd}", { kbd: <kbd>Alt+Shift+J</kbd> })}</button>
+                      {tlx("Join with next{kbd}", { kbd: <kbd>{keyName("Alt+Shift+J")}</kbd> })}</button>
                     {(fixed || active.joined || active.split) && (
                       <p className="help cut-note">
                         {fixed
@@ -1976,7 +1978,7 @@ function unitMeta(u: TmUnit & { memory?: MemoryRef }): string {
       ? `${u.memory.name}${u.memory.project ? tl(" (project memory)") : ""}`
       : tl("Memory"),
   ];
-  if (u.memory?.penalty) parts.push(`penalty ${u.memory.penalty}`);
+  if (u.memory?.penalty) parts.push(tl("penalty {penalty}", { penalty: u.memory.penalty }));
   if (u.project && u.project !== u.memory?.name) parts.push(u.project);
   if (u.by) parts.push(u.by);
   if (u.at) parts.push(fmtDate(u.at));
@@ -2002,7 +2004,7 @@ function SegmentStatusCell({ s }: { s: Segment }) {
     STATUS_TEXT[s.status],
     s.locked ? (s.lockedReason ?? tl("Locked in the file")) : "",
     fileNote ?? "",
-    ...(s.notes ?? []).map((n) => `Note: ${n}`),
+    ...(s.notes ?? []).map((n) => tl("Note: {note}", { note: n })),
     ...(s.comments ?? []).map((c) => `${c.by}: ${c.text}`),
     ...warnings.map((x) => x.text),
   ]
@@ -2086,7 +2088,7 @@ function ScoreBadge({
   edited: boolean;
 }) {
   const label = scoreLabel(origin.score, origin.context);
-  const desc = `${scoreDescription(origin.score, origin.context)}${edited ? ", edited" : ""}`;
+  const desc = edited ? tl("{match}, edited", { match: scoreDescription(origin.score, origin.context) }) : scoreDescription(origin.score, origin.context);
   return (
     <span
       className={`score band-${bandOf(origin.score, origin.context)}${edited ? " is-edited" : ""}`}
@@ -2262,7 +2264,7 @@ export function RunsView({ runs }: { runs: Run[] }) {
             className={`tag-chip tag-${r.kind}`}
             role="img"
             aria-label={tagDescription(r)}
-            title={r.desc}
+            title={r.desc ? tlCore(r.desc) : undefined}
           >
             {chipText(r)}
           </span>
@@ -2288,7 +2290,7 @@ function SourceText({ runs, hits }: { runs: Run[]; hits: TermHit[] }) {
           className={`tag-chip tag-${r.kind}`}
           role="img"
           aria-label={tagDescription(r)}
-          title={r.desc}
+          title={r.desc ? tlCore(r.desc) : undefined}
         >
           {chipText(r)}
         </span>,
@@ -2393,7 +2395,7 @@ function CaptureForm({
         onChange={(e) => setNote(e.target.value)}
       />
       <p className="help">
-        {tlx("Saved as proposed to {termbaseName}", { termbaseName: termbaseName })}{" "}<LocationBadge location={location} />{tl(", with this sentence.")}
+        {tl("Saved as proposed to {termbase}, with this sentence.", { termbase: termbaseName })}{" "}<LocationBadge location={location} />
       </p>
       <div className="row">
         <button
@@ -2455,11 +2457,11 @@ function SubtitleCounter({
   const cps = seconds > 0 ? chars / seconds : 0;
   const parts: [string, boolean][] = [
     [tl("Longest line {longest} of {maxLine}", { longest, maxLine }), longest > maxLine],
-    [`${plural(lines.length, "line", "lines")} of ${limits.lines}`, lines.length > limits.lines],
+    [tl("{lines} of {max}", { lines: plural(lines.length, "line", "lines"), max: limits.lines }), lines.length > limits.lines],
   ];
   if (seconds > 0)
     parts.push([
-      tl("{x} of {cps} characters per second in {x2} s", { x: fmtDec(cps, 1), cps: limits.cps, x2: fmtDec(seconds, 2) }),
+      tl("{actual} of {cps} characters per second in {seconds} s", { actual: fmtDec(cps, 1), cps: limits.cps, seconds: fmtDec(seconds, 2) }),
       cps > limits.cps,
     ]);
   return (
@@ -2482,7 +2484,7 @@ function LengthCounter({ length, max }: { length: number; max: number }) {
       className={`length-counter${over ? " is-over" : ""}`}
       aria-live="polite"
     >
-      {tlx("{length} of {max} characters{x}", { length: length, max: max, x: over ? tl(", {x} too many", { x: length - max }) : "" })}</span>
+      {over ? tl("{length} of {max} characters, {over} too many", { length, max, over: length - max }) : tl("{length} of {max} characters", { length, max })}</span>
   );
 }
 
@@ -2535,7 +2537,7 @@ function ServiceSuggestions({
             }}
           >
             <Languages size={14} aria-hidden="true" />
-            {busy === name ? `Asking ${name}…` : tl("Suggest with {name}", { name })}
+            {busy === name ? tl("Asking {name}…", { name }) : tl("Suggest with {name}", { name })}
           </button>
         ))}
       </div>
@@ -2548,7 +2550,7 @@ function ServiceSuggestions({
         <div className="suggestion" role="status">
           <p lang={targetLang}>{plain(got.runs)}</p>
           <p className="result-meta">
-            {tlx("From {name}{x}", { name: got.name, x: got.tagsLost ? tl(", without the source's tags: put them in by hand") : "" })}</p>
+            {got.tagsLost ? tl("From {name}, without the source's tags: put them in by hand", { name: got.name }) : tl("From {name}", { name: got.name })}</p>
           <div className="row">
             <button type="button" className="btn btn-small" onClick={() => onInsert(got.runs)}>
               {tl("Insert")}
@@ -2566,13 +2568,18 @@ const severityPoints = (v: string) => ISSUE_SEVERITIES.find(([id]) => id === v)?
 
 /** What a file's score says, in a sentence. */
 export function qualityText(q: Quality): string {
-  if (q.issues === 0) return tl("No issues marked in {x}.", { x: plural(q.words, "word", "words") });
+  if (q.issues === 0) return tl("No issues marked in {words}.", { words: plural(q.words, "word", "words") });
   const parts = [
-    q.minor ? `${q.minor} minor` : "",
-    q.major ? `${q.major} major` : "",
-    q.critical ? `${q.critical} critical` : "",
+    q.minor ? tl("{n} minor", { n: q.minor }) : "",
+    q.major ? tl("{n} major", { n: q.major }) : "",
+    q.critical ? tl("{n} critical", { n: q.critical }) : "",
   ].filter(Boolean);
-  return `${plural(q.issues, "issue", "issues")} (${parts.join(", ")}), ${plural(q.penalty, "penalty point", "penalty points")} in ${plural(q.words, "word", "words")}.`;
+  return tl("{issues} ({severities}), {points} in {words}.", {
+    issues: plural(q.issues, "issue", "issues"),
+    severities: parts.join(", "),
+    points: plural(q.penalty, "penalty point", "penalty points"),
+    words: plural(q.words, "word", "words"),
+  });
 }
 
 /** The issues a reviewer marked on the open segment, a form for a new one, and the file's score. */
@@ -2835,7 +2842,8 @@ function SplitDialog({
         }}
       >
         <p className="help" id="split-help">
-          {tlx("Click where the second part begins, or go there with the arrow keys. The translation stays with the first part.{x}", { x: segment.joined ? tl(" Split where two joined segments met, they stand apart again.") : "" })}</p>
+          {tl("Click where the second part begins, or go there with the arrow keys. The translation stays with the first part.")}
+          {segment.joined && " " + tl("Split where two joined segments met, they stand apart again.")}</p>
         <div
           ref={box}
           className="split-source"
@@ -2940,7 +2948,7 @@ function ReplaceDialog({
             ? tl("Nothing to find yet.")
             : places === 0
               ? tl("Not found in the translations of this file.")
-              : `${plural(places, "place", "places")} in ${plural(changes.length, "segment", "segments")}.`}
+              : tl("{places} in {segments}.", { places: plural(places, "place", "places"), segments: plural(changes.length, "segment", "segments") })}
           {locked > 0 && " " + (locked === 1 ? tl("1 locked segment has it too and stays as it is.") : tl("{n} locked segments have it too and stay as they are.", { n: fmtNum(locked) }))}
         </p>
         <p className="help">{tl("Formatting tags stay where they are. A confirmed segment that changes is a draft again, to be confirmed anew.")}</p>

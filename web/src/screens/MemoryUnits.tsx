@@ -370,7 +370,7 @@ function ChangeUnit({
         </div>
         {who && (
           <p className="help">
-            {tl("Last changed by {who}.", { who }) + (used === 1 ? " " + tl("Used once.") : used > 1 ? " " + tl("Used {n} times.", { n: fmtNum(used) }) : "")}</p>
+            {used === 1 ? tl("Last changed by {who}. Used once.", { who }) : used > 1 ? tl("Last changed by {who}. Used {n} times.", { who, n: fmtNum(used) }) : tl("Last changed by {who}.", { who })}</p>
         )}
         {problem && (
           <p className="error" role="alert">

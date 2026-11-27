@@ -52,7 +52,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
     openMemory(c, m, x.projects);
     if (tm.count(c, m.name) > 0) await api.importMemory(m.name, tm.exportTMX(c, m.name));
     onServer.add(fold(name));
-    uploaded.push(`memory ${name}`);
+    uploaded.push(tl("memory {name}", { name }));
   }
 
   // Masters the project uses that the server doesn't have, by name.
@@ -75,7 +75,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
     }
     if ((full.entries ?? []).length) await api.importTermbase(tb.name, term.write(c, full, "tbx"));
     tbOnServer.add(fold(tb.name));
-    uploaded.push(`termbase ${tb.name}`);
+    uploaded.push(tl("termbase {name}", { name: tb.name }));
   }
 
   // The project's own memories are made by the server with the project,
@@ -125,7 +125,7 @@ export async function publish(c: CoreApi, api: Client, x: PublishInput): Promise
     settings,
     files,
     memories: newMemories,
-    termbase: t.mode !== "direct" ? { name: `${p.name} (project)` } : undefined,
+    termbase: t.mode !== "direct" ? { name: tl("{name} (project)", { name: p.name }) } : undefined,
   });
   return { project: made, uploaded };
 }

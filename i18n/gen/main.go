@@ -66,6 +66,14 @@ func main() {
 		return
 	}
 	bad := 0
+	if *check {
+		for _, k := range sortedKeys(keys) {
+			if why := pieceOfSentence(k); why != "" && !desktopOnly[k] {
+				fmt.Fprintf(os.Stderr, "%q (%s) %s: write the whole sentence, with named placeholders\n", k, keys[k], why)
+				bad++
+			}
+		}
+	}
 	for _, lang := range Languages {
 		cat, err := load(root, lang)
 		if err != nil {
@@ -103,6 +111,34 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%d problems; run go run ./i18n/gen and translate what it adds\n", bad)
 		os.Exit(1)
 	}
+}
+
+// desktopOnly holds the strings only the desktop app has: its pages are
+// being made again as a desktop application, with whole sentences, and
+// are held to pieceOfSentence once they are.
+var desktopOnly = map[string]bool{}
+
+var (
+	opaquePlaceholder = regexp.MustCompile(`\{x\d*\}`)
+	leadingPiece      = regexp.MustCompile(`^(?:[,;:]|\. | [a-z{]| and )`)
+	trailingPiece     = regexp.MustCompile(`[ ,;(]$`)
+)
+
+// pieceOfSentence says why a string reads as part of a sentence that is
+// glued to others, which no other language can translate: one that starts
+// with a comma or a lower-case word after a space, ends open, or has a
+// placeholder that says nothing of what goes in it ({x}). Whole sentences
+// after a space (" The rules below.") and remarks in brackets are whole.
+func pieceOfSentence(k string) string {
+	switch {
+	case opaquePlaceholder.MatchString(k):
+		return "has a placeholder that does not say what goes in it"
+	case leadingPiece.MatchString(k):
+		return "starts in the middle of a sentence"
+	case trailingPiece.MatchString(k):
+		return "ends in the middle of a sentence"
+	}
+	return ""
 }
 
 func fail(err error) {
@@ -256,7 +292,20 @@ func collect(root string) (map[string]string, error) {
 	if err := walk("web/src", []string{".ts", ".tsx"}, scanTS); err != nil {
 		return nil, err
 	}
+	others := map[string]bool{}
+	for k := range keys {
+		others[k] = true
+	}
 	if err := walk("desktop/src", []string{".cpp", ".h"}, scanCPP); err != nil {
+		return nil, err
+	}
+	for k := range keys {
+		if !others[k] {
+			desktopOnly[k] = true
+		}
+	}
+	// The core's texts the apps show, marked with i18n.N.
+	if err := walkGo(root, func(k, where string) { add(k, where) }); err != nil {
 		return nil, err
 	}
 	// The names of the languages both apps list.
@@ -266,9 +315,48 @@ func collect(root string) (map[string]string, error) {
 	return keys, nil
 }
 
+// walkGo finds i18n.N("…") in the Go sources of the core, not in tests
+// or in this command.
+func walkGo(root string, add func(k, where string)) error {
+	return filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case "node_modules", "web", "desktop", "testdata", ".git", "gen":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		src := string(data)
+		rel, _ := filepath.Rel(root, p)
+		for _, m := range goCall.FindAllStringIndex(src, -1) {
+			i := skipSpace(src, m[1])
+			lit := goLiteral.FindString(src[i:])
+			if lit == "" {
+				continue
+			}
+			if s, err := strconv.Unquote(lit); err == nil {
+				add(s, fmt.Sprintf("%s:%d", filepath.ToSlash(rel), strings.Count(src[:m[0]], "\n")+1))
+			}
+		}
+		return nil
+	})
+}
+
 var (
-	tsCall  = regexp.MustCompile(`(?:^|[^A-Za-z0-9_$.])(tl|tlx|plural)\(`)
-	cppCall = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])(tr|QT_TR_NOOP|QT_TRANSLATE_NOOP|QCoreApplication::translate)\(`)
+	goCall    = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])i18n\.N\(`)
+	goLiteral = regexp.MustCompile("^(?:\"(?:[^\"\\\\\n]|\\\\.)*\"|`[^`]*`)")
+	tsCall    = regexp.MustCompile(`(?:^|[^A-Za-z0-9_$.])(tl|tlx|plural)\(`)
+	cppCall   = regexp.MustCompile(`(?:^|[^A-Za-z0-9_])(tr|QT_TR_NOOP|QT_TRANSLATE_NOOP|QCoreApplication::translate)\(`)
 )
 
 // scanTS finds tl("…"), tlx("…") and the two forms of plural(n, "…", "…"),

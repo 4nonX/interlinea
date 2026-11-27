@@ -62,7 +62,7 @@ import {
 import { FilesField, fromLocalInput, toLocalInput } from "./NewProject";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { LangChip, PageHeader } from "../components/ui";
-import { fmtNum, plural } from "../format";
+import { fmtNum, listOf, plural } from "../format";
 import { go } from "../App";
 import { tl, tlx } from "../i18n";
 
@@ -96,7 +96,7 @@ function SettingsForm({ project }: { project: Project }) {
       (e: unknown) =>
         live &&
         notify(
-          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
+          tl("The core could not be loaded: {error}", { error: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -327,10 +327,9 @@ function SettingsForm({ project }: { project: Project }) {
         },
       });
       notify(
-        tl("Saved the settings of “{name}”", { name: next.name }) +
-          (newTargets.length
-            ? tl("; {x} added to every file", { x: newTargets.map((x) => lang(x).name).join(", ") })
-            : ""),
+        newTargets.length
+          ? tl("Saved the settings of “{name}”. {languages} added to every file.", { name: next.name, languages: listOf(newTargets.map((x) => lang(x).name)) })
+          : tl("Saved the settings of “{name}”", { name: next.name }),
       );
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
@@ -341,7 +340,7 @@ function SettingsForm({ project }: { project: Project }) {
 
   return (
     <div className="page page-narrow">
-      <PageHeader title={`${project.name}: settings`}>
+      <PageHeader title={tl("{name}: settings", { name: project.name })}>
         <a className="btn btn-quiet" href="#/projects">
           <ArrowLeft size={14} aria-hidden="true" />
           {tl("Projects")}
@@ -552,9 +551,9 @@ function SettingsForm({ project }: { project: Project }) {
             <p className="detect detect-warn">
               <AlertTriangle size={16} aria-hidden="true" />
               <span>
-                {tlx("Removing {join} drops {lostWork}{x}.", { join: removedTargets.map((x) => lang(x).name).join(", "), lostWork: plural(lostWork, "translated segment", "translated segments"), x: draft.projectMemory
-                  ? tl(" and the project memory of that language")
-                  : "" })}
+                {draft.projectMemory
+                  ? tl("Removing {languages} drops {lostWork} and the project memory of that language.", { languages: listOf(removedTargets.map((x) => lang(x).name)), lostWork: plural(lostWork, "translated segment", "translated segments") })
+                  : tl("Removing {languages} drops {lostWork}.", { languages: listOf(removedTargets.map((x) => lang(x).name)), lostWork: plural(lostWork, "translated segment", "translated segments") })}
               </span>
             </p>
           )}
@@ -805,10 +804,9 @@ function ProjectMemoryTransfer({
                       const st = tm.importTMX(c, main.name, bytes);
                       const kept = await persistMemory(c, main.name);
                       notify(
-                        `Added ${plural(st.stored, "unit", "units")} of ${m.name} to ${main.name}` +
-                          (kept
-                            ? ""
-                            : ". It is kept only until you close this page: this browser does not allow saving"),
+                        kept
+                          ? tl("Added {units} of {name} to {into}.", { units: plural(st.stored, "unit", "units"), name: m.name, into: main.name })
+                          : tl("Added {units} of {name} to {into}. It is kept only until you close this page: this browser does not allow saving.", { units: plural(st.stored, "unit", "units"), name: m.name, into: main.name }),
                       );
                     }}
                   >
@@ -886,7 +884,7 @@ function PretranslateNow({
               });
             notify(
               filled
-                ? `Pre-translated ${plural(filled, "segment", "segments")}, ${confirmed} confirmed`
+                ? tl("Pre-translated {segments}, {confirmed} confirmed", { segments: plural(filled, "segment", "segments"), confirmed })
                 : tl("No empty segment has a match good enough to insert"),
             );
           }}

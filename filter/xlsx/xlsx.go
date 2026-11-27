@@ -27,6 +27,7 @@ import (
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
 	"github.com/4nonX/interlinea/filter/para"
+	"github.com/4nonX/interlinea/i18n"
 	"github.com/4nonX/interlinea/internal/xmlraw"
 	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/segment"
@@ -473,7 +474,7 @@ func itemContent(n *xmlraw.Node) (content.Content, string) {
 	text := func(s string) {
 		for i, line := range strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
 			if i > 0 {
-				c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: next(), Type: "lb", Desc: "Line break", Native: "\n"})
+				c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: next(), Type: "lb", Desc: i18n.N("Line break"), Native: "\n"})
 			}
 			c = c.Append(line)
 		}
@@ -608,36 +609,36 @@ func describe(base, props string) (typ, desc string) {
 			changes = append(changes, change{"format", off})
 		}
 	}
-	flag("b", "bold", "Bold", "Not bold")
-	flag("i", "italic", "Italic", "Not italic")
-	flag("u", "underline", "Underline", "Not underlined")
-	flag("strike", "strike", "Strikethrough", "Not struck through")
+	flag("b", "bold", i18n.N("Bold"), i18n.N("Not bold"))
+	flag("i", "italic", i18n.N("Italic"), i18n.N("Not italic"))
+	flag("u", "underline", i18n.N("Underline"), i18n.N("Not underlined"))
+	flag("strike", "strike", i18n.N("Strikethrough"), i18n.N("Not struck through"))
 	if a["vertAlign"] != b["vertAlign"] {
 		switch b["vertAlign"] {
 		case "superscript":
-			changes = append(changes, change{"superscript", "Superscript"})
+			changes = append(changes, change{"superscript", i18n.N("Superscript")})
 		case "subscript":
-			changes = append(changes, change{"subscript", "Subscript"})
+			changes = append(changes, change{"subscript", i18n.N("Subscript")})
 		default:
-			changes = append(changes, change{"format", "Normal position"})
+			changes = append(changes, change{"format", i18n.N("Normal position")})
 		}
 	}
 	if a["color"] != b["color"] {
 		if v := b["color"]; v == "" {
-			changes = append(changes, change{"color", "Automatic colour"})
+			changes = append(changes, change{"color", i18n.N("Automatic colour")})
 		} else {
-			changes = append(changes, change{"color", "Colour " + v})
+			changes = append(changes, change{"color", i18n.Fill(i18n.N("Colour {value}"), "value", v)})
 		}
 	}
 	if a["rFont"] != b["rFont"] && b["rFont"] != "" {
-		changes = append(changes, change{"font", "Font " + b["rFont"]})
+		changes = append(changes, change{"font", i18n.Fill(i18n.N("Font {value}"), "value", b["rFont"])})
 	}
 	if a["sz"] != b["sz"] && b["sz"] != "" {
-		changes = append(changes, change{"size", "Size " + b["sz"] + " pt"})
+		changes = append(changes, change{"size", i18n.Fill(i18n.N("Size {n} pt"), "n", b["sz"])})
 	}
 	switch len(changes) {
 	case 0:
-		return "format", "Formatting"
+		return "format", i18n.N("Formatting")
 	case 1:
 		return changes[0].typ, changes[0].desc
 	}

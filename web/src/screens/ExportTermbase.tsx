@@ -236,7 +236,7 @@ export function ExportTermbaseDialog({
                     ))}
                   </optgroup>
                 )}
-                <optgroup label="Ready-made">
+                <optgroup label={tl("Ready-made")}>
                   {ready.map((p) => (
                     <option key={`r-${p.name}`} value={p.name}>
                       {p.name}
@@ -332,7 +332,7 @@ export function ExportTermbaseDialog({
               <div className="check-stack">
               <label className="check">
                 <input type="radio" name="export-scope" checked={scope === "all"} onChange={() => setScope("all")} />
-                <span>{tl("All")}{" "}{plural(entries.length, "entry", "entries")}</span>
+                <span>{tl("All {entries}", { entries: plural(entries.length, "entry", "entries") })}</span>
               </label>
               <label className="check">
                 <input type="radio" name="export-scope" checked={scope === "shown"} onChange={() => setScope("shown")} />
@@ -530,7 +530,7 @@ export function ExportTermbaseDialog({
           </button>
         )}
         <button type="button" className="btn btn-primary btn-small" disabled={busy || !!blocking || (!c && !(tb.remote && o.format === "pdf"))} onClick={() => void run()}>
-          {busy ? tl("Exporting…") : tl("Export to {x}", { x: glossary ? `.${o.format}` : (FORMATS.find((f) => f.id === o.format)?.label ?? o.format) })}
+          {busy ? tl("Exporting…") : tl("Export to {format}", { format: glossary ? `.${o.format}` : (FORMATS.find((f) => f.id === o.format)?.label ?? o.format) })}
         </button>
       </div>
     </Modal>

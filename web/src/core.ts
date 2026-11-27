@@ -298,10 +298,8 @@ export function importNotice(st: MemoryImport, into: string, from?: string): str
       ? tl("Nothing was imported from {from}. {note}", { from, note: st.note })
       : tl("Nothing was imported. {note}", { note: st.note });
   const units = plural(st.stored, "unit", "units");
-  const skipped = st.skipped ? tl("; {n} without both languages skipped", { n: st.skipped }) : "";
-  return from
-    ? tl("Imported {units} from {from} into {into}{skipped}", { units, from, into, skipped })
-    : tl("Imported {units} into {into}{skipped}", { units, into, skipped });
+  const done = from ? tl("Imported {units} from {from} into {into}.", { units, from, into }) : tl("Imported {units} into {into}.", { units, into });
+  return st.skipped ? done + " " + tl("Skipped {units} without both languages.", { units: plural(st.skipped, "unit", "units") }) : done;
 }
 
 declare global {

@@ -9,6 +9,21 @@ takes its notes from its section here.
 
 ### Fixed
 
+- Browser client in German and Korean: no more English on the screen.
+  The names, descriptions and messages of the checks, the rows of an
+  analysis, the descriptions of tags in the editor ("Footnote reference",
+  "Bold") and the history of termbases on a team server come from the
+  core and are now translated where they are shown. About 80 places that
+  put sentences together from pieces ("Konflikts", "Projekt-Termbanks",
+  "Tag 1 end, Bold", "Segment 8 of 38") are whole translated sentences.
+  Shortcuts use the German key names (Strg, Umschalt, Einfg). A new
+  termbase's standard fields and their values are named in the interface
+  language. Numbers in the messages of the checks are each in quotes, as
+  a German number has commas of its own.
+- Terminology: a field can be removed where an entry shows it, by those
+  who manage the termbase, after saying how many values go with it. Until
+  now that was only possible in the termbase's settings.
+
 - Desktop app: a page could flicker without end when its content was
   about as tall as the window (seen after deleting the last memory): the
   room added for wrapped text brought a scrollbar, the narrower page took

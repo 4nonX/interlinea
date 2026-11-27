@@ -1,6 +1,6 @@
 import type { CoreBand, CoreCounts, CoreRow } from "../project";
 import { fmtNum } from "../format";
-import { tl } from "../i18n";
+import { tl, tlCore } from "../i18n";
 
 const SHORT: Record<CoreBand, string> = {
   locked: tl("Lock"),
@@ -77,7 +77,7 @@ export function AnalysisTable({
                   {SHORT[r.band]}
                 </span>
                 <span className="analysis-label">
-                  {r.name}
+                  {tlCore(r.name)}
                   {HINT[r.band] && (
                     <span className="analysis-hint">{HINT[r.band]}</span>
                   )}

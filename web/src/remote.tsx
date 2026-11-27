@@ -404,7 +404,9 @@ export function RemoteProvider({ children }: { children: ReactNode }) {
                 const holder = others(x.id).find((a) => a.task === "translate") ?? others(x.id)[0];
                 seg.locked = true;
                 seg.lockedReason = holder
-                  ? `${holder.task === "translate" ? tl("Translated") : tl("Reviewed")} by ${holder.userName}`
+                  ? holder.task === "translate"
+                    ? tl("Translated by {name}", { name: holder.userName })
+                    : tl("Reviewed by {name}", { name: holder.userName })
                   : tl("Not assigned to you");
               }
               known.current.add(seg);

@@ -128,10 +128,7 @@ export function Accounts() {
                   >
                     <span className="cell-title">{u.name || u.username}</span>
                     <span className="cell-sub">
-                      {u.username}
-                      {u.admin ? ", administrator" : ""}
-                      {u.disabled ? ", disabled" : ""}
-                      {!u.hasPassword ? tl(", provider sign-in only") : ""}
+                      {[u.username, u.admin ? tl("administrator") : "", u.disabled ? tl("disabled") : "", !u.hasPassword ? tl("provider sign-in only") : ""].filter(Boolean).join(", ")}
                     </span>
                   </button>
                 </li>
@@ -281,7 +278,7 @@ function AccountDetail({
     }
   };
 
-  const projectName = (id: string) => projects.find((p) => String(p.id) === id)?.settings.name ?? `Project ${id}`;
+  const projectName = (id: string) => projects.find((p) => String(p.id) === id)?.settings.name ?? tl("Project {id}", { id });
   const resourceName = (g: Grant) =>
     g.kind === "all" ? tl("Everything") : g.resource === "*" ? (g.kind === "memory" ? tl("All memories") : g.kind === "project" ? tl("All projects") : tl("All termbases")) : g.kind === "project" ? projectName(g.resource) : g.resource;
 
@@ -428,7 +425,7 @@ function Identities({ user, identities, attempt }: { user: ServerUser; identitie
   if (!r.info?.provider && identities.length === 0) return null;
   return (
     <>
-      <h3 className="field-label">{tl("Sign-in through")}{" "}{r.info?.provider ?? tl("the identity provider")}</h3>
+      <h3 className="field-label">{r.info?.provider ? tl("Sign-in through {provider}", { provider: r.info.provider }) : tl("Sign-in through the identity provider")}</h3>
       {identities.length === 0 ? (
         <p className="muted">{tlx("Not linked. {username} signs in with a password, or links it themselves after signing in.", { username: user.username })}</p>
       ) : (
@@ -681,7 +678,7 @@ function RoleDefinitions() {
             await api.setRole(name.trim(), perms);
             setName("");
             setPerms(["read"]);
-          }, tl("Made the role {x}", { x: name.trim() }));
+          }, tl("Made the role {name}", { name: name.trim() }));
         }}
       >
         <label>

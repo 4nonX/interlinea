@@ -11,7 +11,7 @@ import {
 } from "../merge";
 import { fmtDate, fmtTime, inSentence, plural } from "../format";
 import { InLang, LangChip, LocationBadge, PageHeader } from "../components/ui";
-import { tl, tlx } from "../i18n";
+import { tl, tlCore, tlx } from "../i18n";
 
 export function MergeReview({ projectId }: { projectId: string }) {
   const { state } = useLocalStore();
@@ -136,7 +136,7 @@ function MergeIntoMaster({
       <div className="panel done">
         <CheckCircle2 size={28} aria-hidden="true" className="done-icon" />
         <h2 className="panel-title" tabIndex={-1} ref={(el) => el?.focus()}>
-          {tlx("{w} {done} into {name}", { w: w("merged"), done: plural(done, w("change"), w("changes")), name: master.name })}</h2>
+          {state.gitWords ? tl("Merged {commits} into {name}", { commits: plural(done, "commit", "commits"), name: master.name }) : tl("Merged {changes} into {name}", { changes: plural(done, "change", "changes"), name: master.name })}</h2>
         <p>
           {tlx("Every merged entry keeps its {history}: who added it, when, and the sentence it came from.", { history: inSentence(w("history")) })}
         </p>
@@ -172,7 +172,7 @@ function MergeIntoMaster({
         </div>
         <dl className="merge-counts">
           <div>
-            <dt>{w("conflict")}s</dt>
+            <dt>{w("conflicts")}</dt>
             <dd className={counts.conflict ? "count-conflict" : undefined}>
               {counts.conflict}
             </dd>
@@ -231,7 +231,7 @@ function MergeIntoMaster({
 
       {changes.length === 0 ? (
         <div className="empty">
-          <p className="empty-title">{tlx("No {w} to merge", { w: w("changes") })}</p>
+          <p className="empty-title">{state.gitWords ? tl("No commits to merge") : tl("No changes to merge")}</p>
           <p>{tl("Terms you add or change in this project appear here.")}</p>
         </div>
       ) : (
@@ -249,7 +249,7 @@ function MergeIntoMaster({
                   {k === "all"
                     ? tl("All")
                     : k === "conflict"
-                      ? `${w("conflict")}s`
+                      ? w("conflicts")
                       : k === "changed"
                         ? w("changedEntry")
                         : k === "removed"
@@ -306,7 +306,7 @@ function MergeIntoMaster({
             <p className="merge-bar-text" aria-live="polite">
               {unresolved > 0
                 ? tl("Resolve {unresolved} to merge.", { unresolved: plural(unresolved, "conflict", "conflicts") })
-                : tl("{included} will be merged. What you do not accept stays in the project.", { included: plural(included, w("change"), w("changes")) })}
+                : tl("{included} will be merged. What you do not accept stays in the project.", { included: (state.gitWords ? plural(included, "commit", "commits") : plural(included, "change", "changes")) })}
             </p>
             <button
               type="button"
@@ -322,7 +322,9 @@ function MergeIntoMaster({
                   now: new Date().toISOString(),
                 });
                 notify(
-                  `${w("merged")} ${plural(included, w("change"), w("changes"))} into ${master.name}`,
+                  state.gitWords
+                    ? tl("Merged {commits} into {name}", { commits: plural(included, "commit", "commits"), name: master.name })
+                    : tl("Merged {changes} into {name}", { changes: plural(included, "change", "changes"), name: master.name }),
                 );
                 setDone(included);
               }}
@@ -354,10 +356,7 @@ function IncomingItem({
         {entry.terms[src]?.[0]?.text}
       </InLang>{" "}
       <span className="muted">
-        {created
-          ? "new"
-          : last.summary.charAt(0).toLowerCase() + last.summary.slice(1)}
-        , {last.by}, {fmtDate(last.at)}
+        {tl("{what}, {by}, {at}", { what: created ? tl("New entry") : tlCore(last.summary), by: last.by, at: fmtDate(last.at) })}
       </span>
     </>
   );
@@ -456,9 +455,14 @@ function ChangeItem({
           </dl>
           <p className="change-context">
             {(change.author ? tl("Left out {at} by {by}.", { at: change.leftOutAt ? fmtTime(change.leftOutAt) : "", by: change.author }) : tl("Left out {at}.", { at: change.leftOutAt ? fmtTime(change.leftOutAt) : "" })) + " "}
-            {tlx("Accepting deletes the entry in {name}; it can be brought back from Deleted there.{x3}", { name: master.name, x3: change.masterHistory[0]
-              ? tl(" {name} changed it since, last {by} on {at}.", { name: master.name, by: change.masterHistory[change.masterHistory.length - 1]!.by, at: fmtDate(change.masterHistory[change.masterHistory.length - 1]!.at) })
-              : "" })}</p>
+            {tl("Accepting deletes the entry in {name}; it can be brought back from Deleted there.", { name: master.name })}
+            {change.masterHistory[0] &&
+              " " +
+                tl("{name} changed it since, last {by} on {at}.", {
+                  name: master.name,
+                  by: change.masterHistory[change.masterHistory.length - 1]!.by,
+                  at: fmtDate(change.masterHistory[change.masterHistory.length - 1]!.at),
+                })}</p>
         </>
       )}
 
@@ -566,7 +570,7 @@ function ChangeItem({
                 checked={decision === "keep-both"}
                 onChange={() => onDecide("keep-both")}
               />
-              <span>{w("keepBoth")}{tl(", as synonyms")}</span>
+              <span>{w("keepBothSynonyms")}</span>
             </label>
           </>
         ) : (

@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/4nonX/interlinea/i18n"
 	"github.com/4nonX/interlinea/term"
 )
 
@@ -984,7 +986,7 @@ func (mr *MergeRequest) apply(ctx context.Context, tx *wtx, it *Item, edited *te
 	if err != nil {
 		return err
 	}
-	summary := fmt.Sprintf("Merged from %s (merge request %d)", mr.Project, mr.ID)
+	summary := i18n.Fill(i18n.N("Merged from {project} (merge request {id})"), "project", mr.Project, "id", strconv.FormatInt(int64(mr.ID), 10))
 	var result Stored
 	before := 0
 	switch it.Kind {
@@ -1241,7 +1243,7 @@ func (mr *MergeRequest) Revert(ctx context.Context, itemID int64, by string) err
 	}
 	m := mr.target()
 	now := mr.db.now()
-	summary := fmt.Sprintf("Reverted the merge of merge request %d", mr.ID)
+	summary := i18n.Fill(i18n.N("Reverted the merge of merge request {id}"), "id", strconv.FormatInt(int64(mr.ID), 10))
 	switch {
 	case kind == ItemDeleted:
 		e, err := m.versionAt(ctx, tx, re, before)

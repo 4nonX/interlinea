@@ -280,9 +280,9 @@ export function MemoriesSection({
               {tlx("{name} to {name2}", { name: lang(draft.sourceLang).name, name2: lang(l).name })}</legend>
             {list.length === 0 ? (
               <p className="muted">
-                {tlx("No memory chosen.{x}", { x: draft.projectMemory
-                  ? tl(" Matches come only from the project memory.")
-                  : tl(" The editor will show no matches.") })}</p>
+                {draft.projectMemory
+                  ? tl("No memory chosen. Matches come only from the project memory.")
+                  : tl("No memory chosen. The editor will show no matches.")}</p>
             ) : (
               <div className="table-wrap">
                 <table className="table memory-table">
@@ -850,7 +850,7 @@ export function TerminologySection({
               checked={t.autoUpdate}
               onChange={(e) => set({ autoUpdate: e.target.checked })}
             />
-            <span>{w("updateFromMaster")}{" "}{tl("each time the project opens")}</span>
+            <span>{w("autoUpdate")}</span>
           </label>
           <p className="help">
             {t.autoUpdate
@@ -895,7 +895,9 @@ function GrammarField({ qa, setQa, problems }: { qa: QaSettings; setQa: (q: QaSe
       </div>
       <Problems messages={problems} />
       <p className="help">
-        {tlx("With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under {a}{x}.", { a: <a href="#/settings">{tl("Settings")}</a>, x: o ? tl(", by an administrator of the server") : "" })}
+        {o
+          ? tlx("With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under {settings}, by an administrator of the server.", { settings: <a href="#/settings">{tl("Settings")}</a> })
+          : tlx("With a service, each translation is sent to it while you work on the segment, and what it finds is listed with the checks. Services are added under {settings}.", { settings: <a href="#/settings">{tl("Settings")}</a> })}
       </p>
     </fieldset>
   );
@@ -1153,9 +1155,11 @@ export function ChecksSection({
           })}
         </ul>
         <p className="help">
-          {tlx("{x}{x2}{x3} added once under {a}, from a LibreOffice extension (.oxt) or .aff and .dic files.", { x: includedLangs === 1 &&
-            tl("A dictionary for one language comes with Interlinea. "), x2: includedLangs > 1 &&
-            tl("Dictionaries for {includedLangs} languages come with Interlinea. ", { includedLangs }), x3: includedLangs > 0 ? tl("Others are") : tl("Dictionaries are"), a: <a href="#/settings">{tl("Settings")}</a> })}
+          {includedLangs === 1
+            ? tlx("A dictionary for one language comes with Interlinea. Others are added once under {settings}, from a LibreOffice extension (.oxt) or .aff and .dic files.", { settings: <a href="#/settings">{tl("Settings")}</a> })
+            : includedLangs > 1
+              ? tlx("Dictionaries for {n} languages come with Interlinea. Others are added once under {settings}, from a LibreOffice extension (.oxt) or .aff and .dic files.", { n: includedLangs, settings: <a href="#/settings">{tl("Settings")}</a> })
+              : tlx("Dictionaries are added once under {settings}, from a LibreOffice extension (.oxt) or .aff and .dic files.", { settings: <a href="#/settings">{tl("Settings")}</a> })}
         </p>
         <div className="field">
           <span className="field-label" id="words-label">
@@ -1224,7 +1228,7 @@ export function ChecksSection({
               key={i}
               className="rule"
               role="group"
-              aria-label={r.name || tl("Rule {x}", { x: i + 1 })}
+              aria-label={r.name || tl("Rule {n}", { n: i + 1 })}
             >
               <div className="field-grid">
                 <div className="field">
@@ -1350,12 +1354,12 @@ export function SegmentationSection({
     <fieldset className="field">
       <legend>{tl("Segmentation rules of your own")}</legend>
       <p className="help">
-        {tlx("Sentences end as is usual for the source language. A rule changes that at every place where the text before it ends with the first pattern and the text after it begins with the second (regular expressions; one may stay empty). Your rules come first. {x} Files that bring their own segments keep them.", { x: existing ? tl("They cut the documents added from now on; the files in the project stay as they are.") : tl("They cut the documents of the project.") })}
+        {tlx("Sentences end as is usual for the source language. A rule changes that at every place where the text before it ends with the first pattern and the text after it begins with the second (regular expressions; one may stay empty). Your rules come first. {cut} Files that bring their own segments keep them.", { cut: existing ? tl("They cut the documents added from now on; the files in the project stay as they are.") : tl("They cut the documents of the project.") })}
       </p>
       {rules.map((r, i) => {
         const id = `seg-rule-${i}`;
         return (
-          <div key={i} className="rule" role="group" aria-label={tl("Segmentation rule {x}", { x: i + 1 })}>
+          <div key={i} className="rule" role="group" aria-label={tl("Segmentation rule {n}", { n: i + 1 })}>
             <div className="field-grid">
               <div className="field">
                 <label htmlFor={`${id}-break`}>{tl("At this place")}</label>
@@ -1414,7 +1418,7 @@ export function PrepareSection({
 }) {
   return (
     <fieldset className="field">
-      <legend>{existing ? tl("Matches to insert") : "Pre-translation"}</legend>
+      <legend>{existing ? tl("Matches to insert") : tl("Pre-translation")}</legend>
       {!existing && (
         <label className="check">
           <input

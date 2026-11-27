@@ -58,7 +58,7 @@ export function useCore(): CoreApi | null {
       (e: unknown) =>
         live &&
         notify(
-          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
+          tl("The core could not be loaded: {error}", { error: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -410,7 +410,7 @@ export function SettingsDialog({
                     label={
                       <>
                         <Trash2 size={14} aria-hidden="true" />
-                        <span className="sr-only">{tl("Remove")}{" "}{lang(l).name}</span>
+                        <span className="sr-only">{tl("Remove {name}", { name: lang(l).name })}</span>
                       </>
                     }
                     confirm={
@@ -653,7 +653,7 @@ function FieldSettingsRow({
           label={
             <>
               <Trash2 size={14} aria-hidden="true" />
-              <span className="sr-only">{tl("Remove")}{" "}{it.name}</span>
+              <span className="sr-only">{tl("Remove {name}", { name: it.name })}</span>
             </>
           }
           confirm={
@@ -789,7 +789,7 @@ export function ImportDialog({
       const p = term.plan(c, coreExisting, incoming.entries, effective);
       return { actions: p.actions ?? [], report: p.report };
     } catch (e) {
-      return tl("The import could not be planned: {x}", { x: errText(e) });
+      return tl("The import could not be planned: {error}", { error: errText(e) });
     }
   }, [
     c,
@@ -886,13 +886,13 @@ export function ImportDialog({
     });
     const r = plan.report;
     const parts = [
-      r.added && `${r.added} added`,
-      r.merged && `${r.merged} merged`,
-      r.overwritten && `${r.overwritten} replaced`,
-      r.skipped + r.unchanged && tl("{x} left as they were", { x: r.skipped + r.unchanged }),
+      r.added && tl("{n} added", { n: r.added }),
+      r.merged && tl("{n} merged", { n: r.merged }),
+      r.overwritten && tl("{n} replaced", { n: r.overwritten }),
+      r.skipped + r.unchanged && tl("{n} left as they were", { n: r.skipped + r.unchanged }),
     ].filter(Boolean);
     notify(
-      tl("Imported {name} into {x}: {x2}", { name: loaded.name, x: create?.name ?? dest!.name, x2: parts.join(", ") || tl("nothing changed") }),
+      tl("Imported {name} into {termbase}: {changes}", { name: loaded.name, termbase: create?.name ?? dest!.name, changes: parts.join(", ") || tl("nothing changed") }),
     );
     onClose();
     go({ page: "terminology", termbaseId });
@@ -1008,13 +1008,9 @@ export function ImportDialog({
       {step === "languages" && read && loaded && (
         <>
           <p className="help">
-            {FORMAT_LABEL[loaded.detected.format]}:{" "}
-            {plural(read.report.entries, "entry", "entries")},{" "}
-            {plural(read.report.terms, "term", "terms")}
             {read.report.skipped
-              ? tl(", {skipped} rows without terms skipped", { skipped: read.report.skipped })
-              : ""}
-            .
+              ? tl("{format}: {entries}, {terms}, {skipped} without terms skipped.", { format: FORMAT_LABEL[loaded.detected.format], entries: plural(read.report.entries, "entry", "entries"), terms: plural(read.report.terms, "term", "terms"), skipped: plural(read.report.skipped, "row", "rows") })
+              : tl("{format}: {entries}, {terms}.", { format: FORMAT_LABEL[loaded.detected.format], entries: plural(read.report.entries, "entry", "entries"), terms: plural(read.report.terms, "term", "terms") })}
           </p>
           <table className="table">
             <caption className="sr-only">{tl("Languages of the file")}</caption>
@@ -1280,7 +1276,7 @@ function Warnings({ items }: { items?: string[] }) {
         </li>
       ))}
       {items.length > 6 && (
-        <li className="help">{tlx("and {x} more notes", { x: items.length - 6 })}</li>
+        <li className="help">{tlx("and {n} more notes", { n: items.length - 6 })}</li>
       )}
     </ul>
   );
@@ -1349,7 +1345,7 @@ function ColumnStep({
       </div>
       <div className="table-wrap mapping-wrap">
         <table className="table mapping">
-          <caption className="sr-only">{tl("Columns of")}{" "}{loaded.name}</caption>
+          <caption className="sr-only">{tl("Columns of {name}", { name: loaded.name })}</caption>
           <thead>
             <tr>
               {Array.from({ length: width }, (_, i) => {
@@ -1360,10 +1356,10 @@ function ColumnStep({
                 return (
                   <th key={i} scope="col">
                     <span className="mapping-head">
-                      {col.header || tl("Column {x}", { x: i + 1 })}
+                      {col.header || tl("Column {n}", { n: i + 1 })}
                     </span>
                     <label htmlFor={`col-${i}-role`} className="sr-only">
-                      {tlx("Column {x} holds", { x: i + 1 })}
+                      {tlx("Column {n} holds", { n: i + 1 })}
                     </label>
                     <select
                       id={`col-${i}-role`}
@@ -1393,7 +1389,7 @@ function ColumnStep({
                       (col.role === "field" && col.level !== "entry")) && (
                       <>
                         <label htmlFor={`col-${i}-lang`} className="sr-only">
-                          {tlx("Language of column {x}", { x: i + 1 })}</label>
+                          {tlx("Language of column {n}", { n: i + 1 })}</label>
                         <select
                           id={`col-${i}-lang`}
                           value={col.lang ?? ""}
@@ -1413,7 +1409,7 @@ function ColumnStep({
                     {col.role === "field" && (
                       <>
                         <label htmlFor={`col-${i}-field`} className="sr-only">
-                          {tlx("Field name of column {x}", { x: i + 1 })}</label>
+                          {tlx("Field name of column {n}", { n: i + 1 })}</label>
                         <input
                           id={`col-${i}-field`}
                           value={col.field ?? ""}
@@ -1421,7 +1417,7 @@ function ColumnStep({
                           onChange={(e) => set(i, { field: e.target.value })}
                         />
                         <label htmlFor={`col-${i}-level`} className="sr-only">
-                          {tlx("Column {x} applies to", { x: i + 1 })}
+                          {tlx("Column {n} applies to", { n: i + 1 })}
                         </label>
                         <select
                           id={`col-${i}-level`}

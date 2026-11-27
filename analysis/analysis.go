@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/4nonX/interlinea/content"
+	"github.com/4nonX/interlinea/i18n"
 	"github.com/4nonX/interlinea/tm"
 )
 
@@ -41,16 +42,16 @@ var Bands = []struct {
 	Name string `json:"name"`
 	Hint string `json:"hint"`
 }{
-	{Locked, "Locked", "Locked in the file; not to be translated"},
-	{ContextMatch, "Context match", "100% match whose neighbouring segments match too (101%)"},
-	{Repetition, "Repetitions", "Same text and tags earlier in the same file"},
-	{CrossFile, "Cross-file repetitions", "Same text and tags in an earlier file of the project"},
-	{Exact, "100%", "Same text and tags as a memory unit"},
-	{Fuzzy95, "95% to 99%", ""},
-	{Fuzzy85, "85% to 94%", ""},
-	{Fuzzy75, "75% to 84%", ""},
-	{Fuzzy50, "50% to 74%", "Usually charged like new text"},
-	{New, "New", "No match of 50% or more"},
+	{Locked, i18n.N("Locked"), i18n.N("Locked in the file; not to be translated")},
+	{ContextMatch, i18n.N("Context match"), i18n.N("100% match whose neighbouring segments match too (101%)")},
+	{Repetition, i18n.N("Repetitions"), i18n.N("Same text and tags earlier in the same file")},
+	{CrossFile, i18n.N("Cross-file repetitions"), i18n.N("Same text and tags in an earlier file of the project")},
+	{Exact, i18n.N("100%"), i18n.N("Same text and tags as a memory unit")},
+	{Fuzzy95, i18n.N("95% to 99%"), ""},
+	{Fuzzy85, i18n.N("85% to 94%"), ""},
+	{Fuzzy75, i18n.N("75% to 84%"), ""},
+	{Fuzzy50, i18n.N("50% to 74%"), i18n.N("Usually charged like new text")},
+	{New, i18n.N("New"), i18n.N("No match of 50% or more")},
 }
 
 // BandName is the readable name of a band.

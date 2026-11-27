@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/4nonX/interlinea/i18n"
 )
 
 // Report is the result of a QA run for export: the issues with the text
@@ -84,7 +86,7 @@ func NewReport(document string, segs []Segment, issues []Issue, o Options, now t
 // KindName is the readable name of a check.
 func KindName(k Kind) string {
 	if k == Grammar {
-		return "Grammar"
+		return i18n.N("Grammar")
 	}
 	for _, x := range Kinds {
 		if x.Kind == k {

@@ -33,6 +33,7 @@ import (
 	"github.com/4nonX/interlinea/filter"
 	"github.com/4nonX/interlinea/filter/docx"
 	"github.com/4nonX/interlinea/filter/para"
+	"github.com/4nonX/interlinea/i18n"
 	"github.com/4nonX/interlinea/internal/xmlraw"
 	"github.com/4nonX/interlinea/langtag"
 	"github.com/4nonX/interlinea/segment"
@@ -446,9 +447,9 @@ func (d *document) paragraph(r *styleRange, pieces []piece) *paragraph {
 			c = c.Append(pc.text)
 		case specialItem:
 			tid := next()
-			typ, desc := "special", "Special character "+pc.raw
+			typ, desc := "special", i18n.Fill(i18n.N("Special character {code}"), "code", pc.raw)
 			if pc.text == "lb" {
-				typ, desc = "lb", "Forced line break"
+				typ, desc = "lb", i18n.N("Forced line break")
 			}
 			p.tags[tid] = tagSource{kind: specialItem, raw: pc.raw}
 			c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: tid, Type: typ, Desc: desc, Native: pc.raw})
@@ -468,17 +469,17 @@ func (d *document) paragraph(r *styleRange, pieces []piece) *paragraph {
 			tid := next()
 			links = append(links, tid)
 			p.tags[tid] = tagSource{kind: linkOpen, raw: pc.raw, outer: pc.outer}
-			c = c.AppendTag(content.Tag{Kind: content.TagOpen, ID: tid, Type: "link", Desc: "Link", Native: pc.raw})
+			c = c.AppendTag(content.Tag{Kind: content.TagOpen, ID: tid, Type: "link", Desc: i18n.N("Link"), Native: pc.raw})
 		case linkClose:
 			closeFmt()
 			if n := len(links); n > 0 {
-				c = c.AppendTag(content.Tag{Kind: content.TagClose, ID: links[n-1], Type: "link", Desc: "Link"})
+				c = c.AppendTag(content.Tag{Kind: content.TagClose, ID: links[n-1], Type: "link", Desc: i18n.N("Link")})
 				links = links[:n-1]
 			} else {
 				// The end of a link that began in an earlier paragraph.
 				tid := next()
 				p.tags[tid] = tagSource{kind: linkClose, outer: pc.outer}
-				c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: tid, Type: "link", Desc: "End of a link"})
+				c = c.AppendTag(content.Tag{Kind: content.TagStandalone, ID: tid, Type: "link", Desc: i18n.N("End of a link")})
 			}
 		}
 	}
@@ -488,7 +489,7 @@ func (d *document) paragraph(r *styleRange, pieces []piece) *paragraph {
 		for i := range c {
 			if c[i].IsTag() && c[i].Tag.ID == tid {
 				c[i].Tag.Kind = content.TagStandalone
-				c[i].Tag.Desc = "Start of a link"
+				c[i].Tag.Desc = i18n.N("Start of a link")
 			}
 		}
 	}
@@ -526,48 +527,48 @@ func describe(base, f format) (typ, desc string) {
 	a, err1 := xmlraw.ParseFragment([]byte(base.open + "</CharacterStyleRange>"))
 	b, err2 := xmlraw.ParseFragment([]byte(f.open + "</CharacterStyleRange>"))
 	if err1 != nil || err2 != nil {
-		return "format", "Formatting"
+		return "format", i18n.N("Formatting")
 	}
 	type change struct{ typ, desc string }
 	var changes []change
 	if s := b.Get("AppliedCharacterStyle"); s != a.Get("AppliedCharacterStyle") && s != "" {
 		if name := styleName(s); name != "[No character style]" {
-			changes = append(changes, change{"style", "Character style " + name})
+			changes = append(changes, change{"style", i18n.Fill(i18n.N("Character style {name}"), "name", name)})
 		}
 	}
 	if s := b.Get("FontStyle"); s != a.Get("FontStyle") && s != "" {
 		switch strings.ToLower(s) {
 		case "bold":
-			changes = append(changes, change{"bold", "Bold"})
+			changes = append(changes, change{"bold", i18n.N("Bold")})
 		case "italic", "oblique":
-			changes = append(changes, change{"italic", "Italic"})
+			changes = append(changes, change{"italic", i18n.N("Italic")})
 		default:
 			changes = append(changes, change{"format", s})
 		}
 	}
 	if b.Get("Underline") == "true" && a.Get("Underline") != "true" {
-		changes = append(changes, change{"underline", "Underline"})
+		changes = append(changes, change{"underline", i18n.N("Underline")})
 	}
 	if b.Get("StrikeThru") == "true" && a.Get("StrikeThru") != "true" {
-		changes = append(changes, change{"strike", "Strikethrough"})
+		changes = append(changes, change{"strike", i18n.N("Strikethrough")})
 	}
 	if p := b.Get("Position"); p != a.Get("Position") {
 		switch p {
 		case "Superscript", "OTSuperscript":
-			changes = append(changes, change{"superscript", "Superscript"})
+			changes = append(changes, change{"superscript", i18n.N("Superscript")})
 		case "Subscript", "OTSubscript":
-			changes = append(changes, change{"subscript", "Subscript"})
+			changes = append(changes, change{"subscript", i18n.N("Subscript")})
 		}
 	}
 	if s := b.Get("PointSize"); s != a.Get("PointSize") && s != "" {
-		changes = append(changes, change{"size", "Size " + s + " pt"})
+		changes = append(changes, change{"size", i18n.Fill(i18n.N("Size {n} pt"), "n", s)})
 	}
 	if s := b.Get("FillColor"); s != a.Get("FillColor") && s != "" {
-		changes = append(changes, change{"color", "Colour " + strings.TrimPrefix(s, "Color/")})
+		changes = append(changes, change{"color", i18n.Fill(i18n.N("Colour {value}"), "value", strings.TrimPrefix(s, "Color/"))})
 	}
 	switch len(changes) {
 	case 0:
-		return "format", "Formatting"
+		return "format", i18n.N("Formatting")
 	case 1:
 		return changes[0].typ, changes[0].desc
 	}

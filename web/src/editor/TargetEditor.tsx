@@ -8,7 +8,7 @@ import {
   type Ref,
 } from "react";
 import { normalize, type Run, type TagRun } from "./model";
-import { tl } from "../i18n";
+import { tl, tlCore } from "../i18n";
 
 export interface TargetEditorHandle {
   focus(): void;
@@ -19,20 +19,20 @@ export interface TargetEditorHandle {
 }
 
 export function tagDescription(t: TagRun): string {
-  const what =
-    t.desc ??
-    (t.label === "b"
-      ? "bold"
+  const what = t.desc
+    ? tlCore(t.desc)
+    : t.label === "b"
+      ? tl("bold")
       : t.label === "fn"
-        ? "footnote"
+        ? tl("footnote")
         : t.label === "br"
           ? tl("line break")
-          : t.label);
+          : t.label;
   return t.kind === "open"
-    ? `Tag ${t.id} start, ${what}`
+    ? tl("Tag {id} start, {what}", { id: t.id, what })
     : t.kind === "close"
-      ? `Tag ${t.id} end, ${what}`
-      : `Tag ${t.id}, ${what}`;
+      ? tl("Tag {id} end, {what}", { id: t.id, what })
+      : tl("Tag {id}, {what}", { id: t.id, what });
 }
 
 export function chipText(t: TagRun): string {
@@ -52,7 +52,7 @@ function chip(t: TagRun): HTMLElement {
   el.dataset.label = t.label;
   el.setAttribute("role", "img");
   el.setAttribute("aria-label", tagDescription(t));
-  if (t.desc) el.title = t.desc;
+  if (t.desc) el.title = tlCore(t.desc);
   if (t.type) el.dataset.type = t.type;
   if (t.desc) el.dataset.desc = t.desc;
   el.textContent = chipText(t);

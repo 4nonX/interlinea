@@ -103,7 +103,9 @@ async function request(
     res = await fetch(url + path, { ...init, headers });
   } catch (e) {
     throw new OfflineError(
-      tl("The server at {url} can't be reached{x}.", { url, x: e instanceof Error && e.message ? ` (${e.message})` : "" }),
+      e instanceof Error && e.message
+        ? tl("The server at {url} can't be reached ({error}).", { url, error: e.message })
+        : tl("The server at {url} can't be reached.", { url }),
     );
   }
   if (!res.ok) {

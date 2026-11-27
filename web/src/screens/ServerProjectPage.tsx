@@ -137,7 +137,8 @@ export function ServerProjectPage({ projectId }: { projectId: string }) {
               <li key={x.userId}>
                 <span className="cell-title">{x.userName}</span>{" "}
                 <span className="cell-sub">
-                  {x.file}, <LangChip code={x.targetLang} />{tlx(", segment {segment}, since {since}", { segment: x.segment, since: fmtDate(x.since) })}</span>
+                  <LangChip code={x.targetLang} />{" "}
+                  {tl("{file}, segment {segment}, since {since}", { file: x.file, segment: x.segment, since: fmtDate(x.since) })}</span>
               </li>
             ))}
           </ul>

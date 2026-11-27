@@ -498,28 +498,25 @@ export function freshCopy(segments: Segment[]): Segment[] {
   }));
 }
 
+// The fields a new termbase starts with, named in the interface language
+// it is made in: from then on they are the termbase's own.
 export const DEFAULT_INFO_TYPES: InfoType[] = [
   {
     id: "domain",
-    name: "Domain",
+    name: tl("Domain"),
     level: "concept",
     kind: "picklist",
-    values: [
-      "Tenancy law",
-      "Contract law",
-      "Civil procedure",
-      "Medical devices",
-    ],
+    values: [tl("Tenancy law"), tl("Contract law"), tl("Civil procedure"), tl("Medical devices")],
   },
-  { id: "definition", name: "Definition", level: "concept", kind: "text" },
+  { id: "definition", name: tl("Definition"), level: "concept", kind: "text" },
   {
     id: "grammar",
-    name: "Grammar",
+    name: tl("Grammar"),
     level: "term",
     kind: "picklist",
-    values: ["noun, masc.", "noun, fem.", "noun, neut.", "verb", "adjective"],
+    values: [tl("noun, masc."), tl("noun, fem."), tl("noun, neut."), tl("noun, pl."), tl("verb"), tl("adjective")],
   },
-  { id: "note", name: "Note", level: "term", kind: "text" },
+  { id: "note", name: tl("Note"), level: "term", kind: "text" },
 ];
 
 /** The name work on this computer is signed with until the person sets their own. */

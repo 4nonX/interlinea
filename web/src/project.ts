@@ -3,6 +3,7 @@
 // the quality checks. Everything here calls the core (WebAssembly), so the
 // web client accepts and counts exactly what the desktop apps will.
 
+import { tlCore } from "./i18n";
 import { unwrap, type CoreApi } from "./core";
 import {
   type ContextRule,
@@ -440,7 +441,7 @@ let kinds: QaKind[] | null = null;
 
 /** The core's quality checks. */
 export function qaKinds(c: CoreApi): QaKind[] {
-  kinds ??= JSON.parse(unwrap(c.qaKinds())) as QaKind[];
+  kinds ??= (JSON.parse(unwrap(c.qaKinds())) as QaKind[]).map((k) => ({ ...k, name: tlCore(k.name), description: tlCore(k.description) }));
   return kinds;
 }
 

@@ -187,7 +187,7 @@ export function NewProject() {
       (e: unknown) =>
         live &&
         notify(
-          tl("The core could not be loaded: {x}", { x: e instanceof Error ? e.message : String(e) }),
+          tl("The core could not be loaded: {error}", { error: e instanceof Error ? e.message : String(e) }),
         ),
     );
     return () => {
@@ -682,9 +682,13 @@ export function NewProject() {
             template: templateOf(`tpl-${Date.now().toString(36)}`, templateName, full, now),
           });
         notify(
-          tl("Created project “{name}” on {host}", { name, host: new URL(remote.conn.url).host }) +
-            (done.uploaded.length ? `; uploaded ${done.uploaded.join(", ")}` : "") +
-            (filled ? `; ${plural(filled, "segment", "segments")} pre-translated` : ""),
+          [
+            tl("Created project “{name}” on {host}.", { name, host: new URL(remote.conn.url).host }),
+            done.uploaded.length ? tl("Uploaded {names}.", { names: done.uploaded.join(", ") }) : "",
+            filled ? tl("Pre-translated {segments}.", { segments: plural(filled, "segment", "segments") }) : "",
+          ]
+            .filter(Boolean)
+            .join(" "),
         );
         await remote.refresh();
         go({ page: "project", projectId: remoteId(done.project.id) });
@@ -715,14 +719,14 @@ export function NewProject() {
         ),
       });
     notify(
-      tl("Created project “{name}”", { name }) +
-        (filled
-          ? `; ${plural(filled, "segment", "segments")} pre-translated`
-          : "") +
-        (asTemplate ? tl("; template “{x}” saved", { x: templateName.trim() }) : "") +
-        (kept
-          ? ""
-          : ". The new memories are kept only until you close this page: this browser does not allow saving"),
+      [
+        tl("Created project “{name}”.", { name }),
+        filled ? tl("Pre-translated {segments}.", { segments: plural(filled, "segment", "segments") }) : "",
+        asTemplate ? tl("Saved the template “{name}”.", { name: templateName.trim() }) : "",
+        kept ? "" : tl("The new memories are kept only until you close this page: this browser does not allow saving."),
+      ]
+        .filter(Boolean)
+        .join(" "),
     );
     const first = files.find(
       (f) => f.role === "translatable" && Object.keys(f.segments).length,
@@ -834,7 +838,7 @@ export function NewProject() {
                     />
                     <span className="choice-body">
                       <span className="choice-title">
-                        {tlx("Template: {name}{x}", { name: t.name, x: t.client && <span className="tag">{t.client}</span> })}</span>
+                        {tl("Template: {name}", { name: t.name })}{t.client && <>{" "}<span className="tag">{t.client}</span></>}</span>
                       <span className="choice-meta">
                         <span className="lang-pair">
                           <LangChip code={t.sourceLang} /> →{" "}
@@ -1195,20 +1199,29 @@ export function NewProject() {
             <dt>{tl("Project")}</dt>
             <dd>
               {draft.name.trim()}
-              {draft.client.trim() && (
-                <span className="muted">{" "}{tl("for")}{" "}{draft.client.trim()}</span>
-              )}
-              {draft.due && (
-                <span className="muted">{tl(", due")}{" "}{fmtDate(draft.due)}</span>
+              {(draft.client.trim() || draft.due) && (
+                <span className="muted">
+                  {" "}
+                  {draft.client.trim() && draft.due
+                    ? tl("for {client}, due {due}", { client: draft.client.trim(), due: fmtDate(draft.due) })
+                    : draft.client.trim()
+                      ? tl("for {client}", { client: draft.client.trim() })
+                      : tl("due {due}", { due: fmtDate(draft.due) })}
+                </span>
               )}
             </dd>
             <dt>{tl("Files")}</dt>
             <dd>
-              {tlx("{length} to translate{x}{x2}", { length: plural(translatable.length, "file", "files"), x: docs.length > translatable.length &&
-                `, ${plural(docs.length - translatable.length, "reference file", "reference files")}`, x2: packages[0] && (
+              {docs.length > translatable.length
+                ? tl("{files} to translate, {references}", { files: plural(translatable.length, "file", "files"), references: plural(docs.length - translatable.length, "reference file", "reference files") })
+                : tl("{files} to translate", { files: plural(translatable.length, "file", "files") })}
+              {packages[0] && (
                 <span className="muted">
-                  {" "}{tlx("from the {packageKind} {x}", { packageKind: packageKind(packages[0]), x: packages[0] })}</span>
-              ) })}</dd>
+                  {" "}
+                  {tl("(from the {packageKind} {name})", { packageKind: packageKind(packages[0]), name: packages[0] })}
+                </span>
+              )}
+            </dd>
             <dt>{tl("Languages")}</dt>
             <dd>
               {tlx("{name} into {join}", { name: lang(draft.sourceLang).name, join: draft.targetLangs.map((t) => lang(t).name).join(", ") })}</dd>
@@ -1219,14 +1232,11 @@ export function NewProject() {
                   <LangChip code={t} />{" "}
                   {(draft.memories[t] ?? []).length
                     ? (draft.memories[t] ?? [])
-                        .map(
-                          (m) =>
-                            `${m.memory}${m.penalty ? ` (−${m.penalty})` : ""}`,
-                        )
+                        .map((m) => (m.penalty ? tl("{memory} (−{penalty})", { memory: m.memory, penalty: m.penalty }) : m.memory))
                         .join(", ")
-                    : "none"}
+                    : tl("No memory")}
                   {draft.projectMemory && (
-                    <span className="muted">{tl(", and a project memory")}</span>
+                    <span className="muted">{" "}{tl("(and a project memory)")}</span>
                   )}
                 </div>
               ))}
@@ -1239,10 +1249,16 @@ export function NewProject() {
 
           <details className="settings-details">
             <summary>
-              {tlx("Checks and context matches{span}", { span: <span className="muted">
-                {c &&
-                  (draft.context === "both" ? tl(" {on} of {of} checks on, context matches by the segments before and after", { on: checksOn(c, draft.qa).on, of: checksOn(c, draft.qa).of }) : tl(" {on} of {of} checks on, context matches by the segment before", { on: checksOn(c, draft.qa).on, of: checksOn(c, draft.qa).of }))}
-              </span> })}</summary>
+              {tl("Checks and context matches")}
+              {c && (
+                <span className="muted">
+                  {" "}
+                  {draft.context === "both"
+                    ? tl("({on} of {of} checks on, context matches by the segments before and after)", { on: checksOn(c, draft.qa).on, of: checksOn(c, draft.qa).of })
+                    : tl("({on} of {of} checks on, context matches by the segment before)", { on: checksOn(c, draft.qa).on, of: checksOn(c, draft.qa).of })}
+                </span>
+              )}
+            </summary>
             <ChecksSection
               c={c}
               targetLangs={draft.targetLangs}
@@ -1259,9 +1275,14 @@ export function NewProject() {
 
           <details className="settings-details">
             <summary>
-              {tlx("Segmentation{span}", { span: <span className="muted">
-                {draft.segmentation.length ? tl(" {length} of your own", { length: plural(draft.segmentation.length, "rule", "rules") }) : tl(" as usual for the language")}
-              </span> })}</summary>
+              {tl("Segmentation")}
+              <span className="muted">
+                {" "}
+                {draft.segmentation.length
+                  ? tl("({rules} of your own)", { rules: plural(draft.segmentation.length, "rule", "rules") })
+                  : tl("(as usual for the language)")}
+              </span>
+            </summary>
             <SegmentationSection rules={draft.segmentation} setRules={(segmentation) => setDraft((d) => ({ ...d, segmentation }))} problems={problems} />
           </details>
 
@@ -1274,9 +1295,9 @@ export function NewProject() {
                 ? draft.targetLangs
                     .map(
                       (t) =>
-                        `${lang(t).name}: ${plural(review[t]?.filled ?? 0, "segment", "segments")} filled, ${review[t]?.confirmed ?? 0} confirmed`,
+                        tl("{language}: {segments} filled, {confirmed} confirmed.", { language: lang(t).name, segments: plural(review[t]?.filled ?? 0, "segment", "segments"), confirmed: review[t]?.confirmed ?? 0 }),
                     )
-                    .join(". ") + "."
+                    .join(" ")
                 : undefined
             }
           />
@@ -1369,7 +1390,7 @@ export function NewProject() {
               <label className="choice">
                 <input type="radio" name="where" checked={where === "server"} onChange={() => setWhere("server")} />
                 <span className="choice-body">
-                  <span className="choice-title">{tl("On the team server")}{" "}{new URL(remote.conn.url).host}</span>
+                  <span className="choice-title">{tl("On the team server {host}", { host: new URL(remote.conn.url).host })}</span>
                   <span className="choice-desc">
                     {tl("Shared: you give work to translators and reviewers there, and everyone's translations are saved on the server. Memories and master termbases the server doesn't have yet are uploaded with it; the project termbase is kept there.")}
                   </span>
@@ -1647,12 +1668,13 @@ function describe(doc: PendingDoc): string {
     const done = bi.segments.filter((s) => s.status === "confirmed").length;
     const locked = bi.segments.filter((s) => s.locked).length;
     const what = doc.sdlPackage
-      ? tl("From the {x} {name}", { x: packageKind(doc.sdlPackage.name), name: doc.sdlPackage.name })
+      ? tl("From the {packageKind} {name}", { packageKind: packageKind(doc.sdlPackage.name), name: doc.sdlPackage.name })
       : (XLIFF_FORMAT_NAME[bi.format] ?? "XLIFF");
-    const langs = bi.targetLang
-      ? `, ${lang(knownLang(bi.sourceLang)).name} to ${lang(knownLang(bi.targetLang)).name}`
-      : "";
-    return `${what}${langs}, ${done} of ${plural(bi.segments.length, "segment", "segments")} confirmed${locked ? `, ${locked} locked` : ""}`;
+    const parts = [what];
+    if (bi.targetLang) parts.push(tl("{source} to {target}", { source: lang(knownLang(bi.sourceLang)).name, target: lang(knownLang(bi.targetLang)).name }));
+    parts.push(tl("{done} of {segments} confirmed", { done, segments: plural(bi.segments.length, "segment", "segments") }));
+    if (locked) parts.push(tl("{n} locked", { n: locked }));
+    return parts.join(", ");
   }
   switch (kindOf(doc)) {
     case "docx":
@@ -1677,18 +1699,21 @@ function TerminologySummary({ draft }: { draft: Draft }) {
   if (t.mode === "direct")
     return (
       <>
-        {tlx("New terms go straight into {x}.", { x: state.termbases.find((x) => x.id === t.writeTo)?.name ?? names })}
+        {tl("New terms go straight into {name}.", { name: state.termbases.find((x) => x.id === t.writeTo)?.name ?? names })}
       </>
     );
   if (t.mode === "own") return <>{tl("A new project termbase on this computer, no master.")}</>;
   return (
     <>
-      {tlx("A new project termbase on this computer, based on {names}. {x}{x2}", { names: names, x: t.autoUpdate
-        ? tl("Takes in master changes each time the project opens.")
-        : tl("Master changes wait until you take them in."), x2: t.addLanguages.length > 0 &&
-        tl(" Languages are added to {join}.", { join: t.addLanguages
-          .map((id) => state.termbases.find((x) => x.id === id)?.name)
-          .join(", ") }) })}</>
+      {[
+        tl("A new project termbase on this computer, based on {names}.", { names }),
+        t.autoUpdate ? tl("Takes in master changes each time the project opens.") : tl("Master changes wait until you take them in."),
+        t.addLanguages.length > 0
+          ? tl("Languages are added to {names}.", { names: t.addLanguages.map((id) => state.termbases.find((x) => x.id === id)?.name).join(", ") })
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}</>
   );
 }
 
@@ -1716,8 +1741,9 @@ function SourceDetection({
           <Info size={16} aria-hidden="true" />
         )}
         <span>
-          {tlx("Set to {name}.{x}", { name: lang(source).name, x: differs &&
-            tl(" The files look {name} ({round}%). Check the source language.", { name: lang(detection.code!).name, round: Math.round(detection.confidence * 100) }) })}</span>
+          {differs
+            ? tl("Set to {name}. The files look {detected} ({percent}%). Check the source language.", { name: lang(source).name, detected: lang(detection.code!).name, percent: Math.round(detection.confidence * 100) })
+            : tl("Set to {name}.", { name: lang(source).name })}</span>
       </p>
     );
   }
@@ -1750,7 +1776,9 @@ function SourceDetection({
       <p className="detect detect-warn">
         <AlertTriangle size={16} aria-hidden="true" />
         <span>
-          {tlx("Probably {name} ({pct}%){x}. Please check.", { name: lang(detection.code).name, pct: pct, x: alt ? tl(", but it could also be {alt}", { alt }) : "" })}
+          {alt
+            ? tl("Probably {name} ({pct}%), but it could also be {alternatives}. Please check.", { name: lang(detection.code).name, pct, alternatives: alt })
+            : tl("Probably {name} ({pct}%). Please check.", { name: lang(detection.code).name, pct })}
         </span>
       </p>
     );
@@ -1759,7 +1787,7 @@ function SourceDetection({
     <p className="detect detect-ok">
       <CheckCircle2 size={16} aria-hidden="true" />
       <span>
-        {tlx("Detected {name}, {pct}% confident, from {x} of the files.", { name: lang(detection.code).name, pct: pct, x: detection.unit === "characters"
+        {tl("Detected {name}, {pct}% confident, from {basis} of the files.", { name: lang(detection.code).name, pct, basis: detection.unit === "characters"
           ? plural(detection.basis, "character", "characters")
           : plural(detection.basis, "word", "words") })}
       </span>

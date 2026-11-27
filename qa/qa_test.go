@@ -105,7 +105,7 @@ func TestNumbers(t *testing.T) {
 	}
 	is := checkOne(t, seg("1", "Rooms 3, 4 and 5.", "Zimmer."), enDe)
 	for _, i := range is {
-		if i.Kind == NumbersMissing && i.Message != "The numbers 3, 4 and 5 from the source are not in the translation." {
+		if i.Kind == NumbersMissing && i.Message != "The numbers “3”, “4”, “5” from the source are not in the translation." {
 			t.Fatalf("message: %q", i.Message)
 		}
 	}

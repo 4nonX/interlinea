@@ -72,6 +72,7 @@ export async function loadLanguage(): Promise<void> {
 export function setCatalog(l: UiLanguage, c: Record<string, string>) {
   current = l;
   catalog = c;
+  templates = null;
 }
 
 type Vars = Record<string, string | number | boolean | null | undefined>;
@@ -105,4 +106,86 @@ export function tlx(s: string, vars: Record<string, ReactNode>): ReactNode {
 /** The locale numbers and dates are written in. */
 export function uiLocale(): string {
   return current === "de" ? "de-DE" : current === "ko" ? "ko-KR" : "en-GB";
+}
+
+// The core's texts (checks, analysis rows, tag descriptions, messages)
+// arrive in English, made from texts it marks with placeholders, such as
+// "Font {value}" filled to "Font Arial". They are recognized by those
+// marked texts and translated with the filled parts kept.
+let templates: { re: RegExp; names: string[]; quoted: boolean[]; key: string }[] | null = null;
+
+function coreTemplates() {
+  if (templates) return templates;
+  templates = [];
+  for (const key of Object.keys(catalog)) {
+    const parts = key.split(/\{([A-Za-z0-9_]+)\}/);
+    if (parts.length < 3) continue;
+    const names: string[] = [];
+    const quoted: boolean[] = [];
+    let src = "^";
+    parts.forEach((p, i) => {
+      if (i % 2) {
+        names.push(p);
+        // Between quotes: words of the text, never translated.
+        quoted.push(parts[i - 1]!.endsWith("“") || parts[i - 1]!.endsWith('"'));
+        src += "(.+?)";
+      } else src += p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    });
+    templates.push({ re: new RegExp(src + "$", "s"), names, quoted, key });
+  }
+  // The longest fixed text first: "Size {n} pt" before "{x}".
+  templates.sort((a, b) => b.key.replace(/\{[^}]+\}/g, "").length - a.key.replace(/\{[^}]+\}/g, "").length);
+  return templates;
+}
+
+// A number the core wrote with a full stop, written as the interface
+// language writes numbers (3.5 is 3,5 in German).
+function localNumber(v: string): string {
+  if (!/^-?\d+\.\d+$/.test(v)) return v;
+  const digits = v.split(".")[1]!.length;
+  return new Intl.NumberFormat(uiLocale(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(v));
+}
+
+/**
+ * A text of the core in the interface language: as it is in the catalog,
+ * or recognized by a marked text with placeholders; a list of such texts
+ * joined with commas is translated part by part. What is not recognized
+ * (a file's own markup, a name) stays as it is.
+ */
+export function tlCore(s: string): string {
+  if (!s || current === "en") return s;
+  const exact = catalog[s];
+  if (exact) return exact;
+  for (const t of coreTemplates()) {
+    const m = t.re.exec(s);
+    if (!m) continue;
+    const vars: Record<string, string> = {};
+    t.names.forEach((n, i) => {
+      const v = m[i + 1]!;
+      vars[n] = t.quoted[i] ? v : localNumber(tlCore(v));
+    });
+    return fill(catalog[t.key]!, vars);
+  }
+  if (s.includes(", ")) {
+    const parts = s.split(", ");
+    const done = parts.map(tlCore);
+    if (done.some((p, i) => p !== parts[i])) return done.join(", ");
+  }
+  return s;
+}
+
+// Key names as the keyboards of the interface language print them:
+// German keyboards say Strg, Umschalt, Einfg, Entf.
+const KEYS: Partial<Record<UiLanguage, Record<string, string>>> = {
+  de: { Ctrl: "Strg", Shift: "Umschalt", Ins: "Einfg", Insert: "Einfg", Del: "Entf", Delete: "Entf", Enter: "Eingabe", Space: "Leertaste", Esc: "Esc" },
+};
+
+/** A key or key combination ("Ctrl+Enter") with the interface language's key names. */
+export function keyName(combo: string): string {
+  const names = KEYS[current];
+  if (!names) return combo;
+  return combo
+    .split("+")
+    .map((k) => names[k] ?? k)
+    .join("+");
 }

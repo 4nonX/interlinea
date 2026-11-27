@@ -518,7 +518,7 @@ function reduce(state: State, action: Action): State {
           ...termbases,
           {
             id,
-            name: `${p.name} (project)`,
+            name: tl("{name} (project)", { name: p.name }),
             kind: "project",
             location: setup.location,
             server:
@@ -701,7 +701,7 @@ function reduce(state: State, action: Action): State {
             id: `c-${Date.now().toString(36)}`,
             at: action.now,
             by: state.userName,
-            summary: action.value ? `Set ${label}` : `Cleared ${label}`,
+            summary: action.value ? tl("Set {label}", { label }) : tl("Cleared {label}", { label }),
           };
           return {
             ...e,
@@ -988,7 +988,7 @@ function reduce(state: State, action: Action): State {
                   commit(
                     state.userName,
                     action.now,
-                    tl("Removed the field {x}", { x: it?.name ?? action.infoTypeId }),
+                    tl("Removed the field {name}", { name: it?.name ?? action.infoTypeId }),
                   ),
                 ],
               }
@@ -1091,7 +1091,7 @@ function reduce(state: State, action: Action): State {
             version: e.version + 1,
             history: [
               ...e.history,
-              commit(state.userName, action.now, tl("Restored the version of {x}", { x: fmtTime(v.at) })),
+              commit(state.userName, action.now, tl("Restored the version of {at}", { at: fmtTime(v.at) })),
             ],
           };
         }),
@@ -1397,13 +1397,15 @@ const WORDS = {
     useProject: tl("Use project version"),
     keepMaster: tl("Keep master version"),
     keepBoth: tl("Keep both"),
+    keepBothSynonyms: tl("Keep both, as synonyms"),
     skip: tl("Leave out"),
     accept: tl("Include"),
     newEntry: tl("New entry"),
     changedEntry: tl("Changed"),
     conflict: tl("Conflict"),
-    change: "change",
-    changes: "changes",
+    conflicts: tl("Conflicts"),
+    projectTermbases: tl("Project termbases"),
+    autoUpdate: tl("Update from the master each time the project opens"),
   },
   git: {
     projectChanges: tl("Branch diff"),
@@ -1418,13 +1420,15 @@ const WORDS = {
     useProject: tl("Use ours"),
     keepMaster: tl("Use theirs"),
     keepBoth: tl("Union"),
+    keepBothSynonyms: tl("Union, as synonyms"),
     skip: tl("Drop"),
     accept: tl("Pick"),
     newEntry: tl("Added"),
     changedEntry: tl("Modified"),
     conflict: tl("Conflict"),
-    change: "commit",
-    changes: "commits",
+    conflicts: tl("Conflicts"),
+    projectTermbases: tl("Branches"),
+    autoUpdate: tl("Pull from master each time the project opens"),
   },
 } as const;
 

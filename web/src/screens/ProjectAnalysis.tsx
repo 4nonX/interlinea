@@ -8,7 +8,7 @@ import { lang, type LangCode } from "../data";
 import { download } from "../core";
 import type { CoreReport } from "../project";
 import { AnalysisTable } from "../components/AnalysisTable";
-import { tl } from "../i18n";
+import { tl, tlCore } from "../i18n";
 import { listOf } from "../format";
 
 export interface LanguageAnalysis {
@@ -26,7 +26,7 @@ export function analysisCsv(all: LanguageAnalysis[]): string {
   for (const a of all)
     for (const f of a.report.files)
       for (const r of f.rows)
-        lines.push([quote(a.lang), quote(f.name), quote(r.name), r.segments, r.words, r.characters].join(","));
+        lines.push([quote(a.lang), quote(f.name), quote(tlCore(r.name)), r.segments, r.words, r.characters].join(","));
   return lines.join("\r\n") + "\r\n";
 }
 
@@ -66,7 +66,7 @@ export function ProjectAnalysis({
           <button
             type="button"
             className="btn btn-quiet btn-small"
-            onClick={() => download(new TextEncoder().encode("﻿" + analysisCsv(all)), `${name} analysis.csv`, "text/csv")}
+            onClick={() => download(new TextEncoder().encode("﻿" + analysisCsv(all)), tl("{name} analysis.csv", { name }), "text/csv")}
           >
             <Download size={14} aria-hidden="true" />{" "}{tl("Save as CSV")}
           </button>

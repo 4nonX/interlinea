@@ -99,7 +99,7 @@ export function ServerReviewNote({ tb }: { tb: Termbase }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     try {
-      const mr = await r.api!.openMergeRequest(tb.name, master || masters[0]!, title.trim() || `${tb.name} into ${master || masters[0]}`);
+      const mr = await r.api!.openMergeRequest(tb.name, master || masters[0]!, title.trim() || tl("{name} into {target}", { name: tb.name, target: master || masters[0]! }));
       notify(tl("Submitted {name} to {target} for review", { name: tb.name, target: mr.target }));
       setTitle("");
       await load();
@@ -119,7 +119,9 @@ export function ServerReviewNote({ tb }: { tb: Termbase }) {
                 <GitPullRequest size={14} aria-hidden="true" /> {m.title}
               </a>{" "}
               <span className="cell-sub">
-                {tlx("{project} into {target}, {x}", { project: m.project, target: m.target, x: m.state === "open" ? tl("open since {createdAt}", { createdAt: fmtDate(m.createdAt) }) : tl("closed {at}", { at: fmtDate(m.closedAt ?? m.createdAt) }) })}</span>
+                {m.state === "open"
+                  ? tl("{project} into {target}, open since {createdAt}", { project: m.project, target: m.target, createdAt: fmtDate(m.createdAt) })
+                  : tl("{project} into {target}, closed {at}", { project: m.project, target: m.target, at: fmtDate(m.closedAt ?? m.createdAt) })}</span>
             </li>
           ))}
         </ul>
@@ -140,10 +142,10 @@ export function ServerReviewNote({ tb }: { tb: Termbase }) {
           )}
           <label className="field">
             <span className="field-label">{tl("Title of the request")}</span>
-            <input value={title} placeholder={`${tb.name} into ${master || masters[0]}`} onChange={(e) => setTitle(e.target.value)} />
+            <input value={title} placeholder={tl("{name} into {target}", { name: tb.name, target: master || masters[0]! })} onChange={(e) => setTitle(e.target.value)} />
           </label>
           <button type="submit" className="btn btn-small">
-            <GitPullRequest size={14} aria-hidden="true" />{" "}{tlx("Submit to {x} for review", { x: masters.length > 1 ? tl("the master") : masters[0] })}
+            <GitPullRequest size={14} aria-hidden="true" />{" "}{masters.length > 1 ? tl("Submit to the master for review") : tl("Submit to {name} for review", { name: masters[0] })}
           </button>
         </form>
       )}

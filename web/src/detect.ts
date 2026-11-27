@@ -329,7 +329,7 @@ export async function readText(file: File): Promise<string | null> {
 }
 
 const unreadable = (e: unknown) =>
-  tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) });
+  tl("{error} Check that the file still exists and is not open in another program.", { error: e instanceof Error ? e.message : String(e) });
 
 /** Reads one bilingual file of a Trados package as a pending document. */
 /** One bilingual file of a Trados package, as a document of the project. */
@@ -447,7 +447,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
         file: file.name,
         words: 0,
         text: null,
-        error: tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) }),
+        error: tl("{error} Check that the file still exists and is not open in another program.", { error: e instanceof Error ? e.message : String(e) }),
       };
     }
     try {
@@ -479,7 +479,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
         file: file.name,
         words: 0,
         text: null,
-        error: tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) }),
+        error: tl("{error} Check that the file still exists and is not open in another program.", { error: e instanceof Error ? e.message : String(e) }),
       };
     }
     try {
@@ -512,7 +512,7 @@ async function readDocument(file: File): Promise<PendingDoc> {
       file: file.name,
       words: 0,
       text: null,
-      error: tl("{x} Check that the file still exists and is not open in another program.", { x: e instanceof Error ? e.message : String(e) }),
+      error: tl("{error} Check that the file still exists and is not open in another program.", { error: e instanceof Error ? e.message : String(e) }),
     };
   }
 }

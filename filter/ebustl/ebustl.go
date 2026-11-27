@@ -37,6 +37,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/i18n"
 	"golang.org/x/text/encoding/charmap"
 )
 
@@ -254,32 +255,32 @@ func codeName(codes []byte) string {
 	for _, c := range codes {
 		switch {
 		case c == crlf:
-			names = append(names, "new row")
+			names = append(names, i18n.N("new row"))
 		case c == 0x80:
-			names = append(names, "italics on")
+			names = append(names, i18n.N("italics on"))
 		case c == 0x81:
-			names = append(names, "italics off")
+			names = append(names, i18n.N("italics off"))
 		case c == 0x82:
-			names = append(names, "underline on")
+			names = append(names, i18n.N("underline on"))
 		case c == 0x83:
-			names = append(names, "underline off")
+			names = append(names, i18n.N("underline off"))
 		case c == 0x84:
-			names = append(names, "boxing on")
+			names = append(names, i18n.N("boxing on"))
 		case c == 0x85:
-			names = append(names, "boxing off")
+			names = append(names, i18n.N("boxing off"))
 		case c <= 0x07:
-			names = append(names, [...]string{"black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"}[c])
+			names = append(names, [...]string{i18n.N("black"), i18n.N("red"), i18n.N("green"), i18n.N("yellow"), i18n.N("blue"), i18n.N("magenta"), i18n.N("cyan"), i18n.N("white")}[c])
 		case c == 0x0A:
-			names = append(names, "end box")
+			names = append(names, i18n.N("end box"))
 		case c == 0x0B:
-			names = append(names, "start box")
+			names = append(names, i18n.N("start box"))
 		case c == 0x0C:
-			names = append(names, "normal height")
+			names = append(names, i18n.N("normal height"))
 		case c == 0x0D:
-			names = append(names, "double height")
+			names = append(names, i18n.N("double height"))
 		case c == ' ':
 		default:
-			names = append(names, fmt.Sprintf("code %02Xh", c))
+			names = append(names, i18n.Fill(i18n.N("code {hex}"), "hex", fmt.Sprintf("%02Xh", c)))
 		}
 	}
 	return strings.Join(names, ", ")
@@ -313,7 +314,7 @@ func unit(table byte, raw []byte) (c content.Content, lead, trail []byte, codes 
 		tag := content.Tag{Kind: content.TagStandalone, ID: id, Type: "code", Desc: codeName(t.codes), Native: fmt.Sprintf("% X", t.codes)}
 		switch name, on, ok := pairOf(t.codes); {
 		case t.brk:
-			tag.Type, tag.Desc = "break", "row break ("+codeName(t.codes)+")"
+			tag.Type, tag.Desc = "break", i18n.Fill(i18n.N("row break ({codes})"), "codes", codeName(t.codes))
 		case ok && on:
 			tag.Kind, tag.Type = content.TagOpen, name
 			open[name] = append(open[name], id)

@@ -22,6 +22,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/i18n"
 	"golang.org/x/text/encoding/charmap"
 )
 
@@ -332,7 +333,7 @@ func lineBreaks(c content.Content) content.Content {
 		for i, line := range strings.Split(r.Text, "\n") {
 			if i > 0 {
 				n++
-				out = out.AppendTag(content.Tag{Kind: content.TagStandalone, ID: "br" + strconv.Itoa(n), Type: "break", Desc: "line break", Native: "\n"})
+				out = out.AppendTag(content.Tag{Kind: content.TagStandalone, ID: "br" + strconv.Itoa(n), Type: "break", Desc: i18n.N("line break"), Native: "\n"})
 			}
 			out = out.Append(line)
 		}

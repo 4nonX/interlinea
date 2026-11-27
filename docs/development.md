@@ -208,14 +208,30 @@ string is looked up by its English text.
 - In the desktop app strings are marked with `tr()` as usual in Qt; a
   catalog translator (`src/interfacelanguage.cpp`) looks them up.
 - A sentence is one string, never put together from pieces, so it can be
-  translated as a whole.
+  translated as a whole. `-check` refuses a string that starts or ends in
+  the middle of a sentence (", due", "; {n} skipped") or has a placeholder
+  that does not say what goes in it (`{x}`).
+- The core's texts the apps show (the checks and their messages, the
+  rows of an analysis, how a tag of a file is described, the history of
+  a termbase on the server) stay English in the core and in the files it
+  writes. They are marked with `i18n.N("…")`, and a part that changes is
+  a named placeholder filled with `i18n.Fill`: `i18n.Fill(i18n.N("Font
+  {value}"), "value", name)`. The catalogs list them like the apps'
+  strings. The browser client shows them through `tlCore()`, which
+  recognizes a filled text by its marked one, translates the parts that
+  are not in quotes and writes numbers as the interface language does.
+- Key names in shortcuts go through `keyName("Ctrl+Enter")`: German
+  keyboards print Strg, Umschalt, Einfg and Entf.
 
 After changing text, `go run ./i18n/gen` adds the new strings to both
 catalogs, with no translation, and takes out those gone; translate what it
 added. `go run ./i18n/gen -todo de` lists what German still lacks, and
 `-check` (run in CI) fails on a missing translation or a translation
 without the placeholders of its string. `tst_interfacelanguage` shows every
-desktop page in German and Korean through the layout check.
+desktop page in German and Korean through the layout check, and the browser
+test `e2e/languages.mjs` opens every page of the browser client and each of
+its tabs in German and Korean and fails on a word left in English or a word
+glued together from a translated word and an English ending.
 
 ## Fuzzing
 

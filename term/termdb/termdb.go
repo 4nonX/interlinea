@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/4nonX/interlinea/i18n"
 	"github.com/4nonX/interlinea/internal/sqlitedb"
 	"github.com/4nonX/interlinea/internal/sqlstore"
 	"github.com/4nonX/interlinea/langtag"
@@ -678,7 +679,7 @@ func (t *Termbase) write(ctx context.Context, by string, fn func(tx *wtx, def *t
 		if err := writeDefinition(ctx, tx, t.id, def); err != nil {
 			return err
 		}
-		if err := logChange(ctx, tx, t.id, def.Name, "", 0, ChangeTermbaseChanged, by, "Changed the termbase's languages, fields or name", t.db.now()); err != nil {
+		if err := logChange(ctx, tx, t.id, def.Name, "", 0, ChangeTermbaseChanged, by, i18n.N("Changed the termbase's languages, fields or name"), t.db.now()); err != nil {
 			return err
 		}
 	}
@@ -717,7 +718,7 @@ func (t *Termbase) RemoveLanguage(ctx context.Context, lang, by string) (int, er
 			}
 			changed++
 			e.Languages = langs
-			summary := "Removed the language " + lang
+			summary := i18n.Fill(i18n.N("Removed the language {language}"), "language", lang)
 			if e.TermCount() == 0 {
 				if err := t.deleteEntry(ctx, tx, s, by, summary+"; no terms were left", now); err != nil {
 					return err
@@ -1016,7 +1017,7 @@ func (t *Termbase) insert(ctx context.Context, tx *wtx, e term.Entry, by, summar
 		return Stored{}, err
 	}
 	if summary == "" {
-		summary = "Created"
+		summary = i18n.N("Created")
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, author, summary, entry_json) VALUES (?, 1, ?, ?, ?, ?)`, row, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return Stored{}, err
@@ -1135,7 +1136,7 @@ func (t *Termbase) update(ctx context.Context, tx *wtx, e term.Entry, version in
 		return Stored{}, err
 	}
 	if summary == "" {
-		summary = "Changed"
+		summary = i18n.N("Changed")
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO versions(entry_row, version, at, author, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, row, next, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return Stored{}, err
@@ -1164,7 +1165,7 @@ func (t *Termbase) deleteEntry(ctx context.Context, tx *wtx, s Stored, by, summa
 		return err
 	}
 	if summary == "" {
-		summary = "Deleted"
+		summary = i18n.N("Deleted")
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO deleted(termbase_id, entry_id, at, author, summary, entry_json) VALUES (?, ?, ?, ?, ?, ?)`, t.id, s.ID, now.Format(timeLayout), by, summary, string(js)); err != nil {
 		return err
@@ -1497,9 +1498,12 @@ func (t *Termbase) Import(ctx context.Context, tb *term.Termbase, p term.Policy,
 		}
 		rep = r
 		now := t.db.now()
-		from := "Imported"
+		from := i18n.N("Imported")
+		merged, replaced := i18n.N("Merged with an entry imported"), i18n.N("Replaced by an entry imported")
 		if source != "" {
-			from += " from " + source
+			from = i18n.Fill(i18n.N("Imported from {name}"), "name", source)
+			merged = i18n.Fill(i18n.N("Merged with an entry imported from {name}"), "name", source)
+			replaced = i18n.Fill(i18n.N("Replaced by an entry imported from {name}"), "name", source)
 		}
 		// Several entries of the file can change the same existing entry;
 		// the plan's last action for it holds the combined result.
@@ -1525,9 +1529,9 @@ func (t *Termbase) Import(ctx context.Context, tb *term.Termbase, p term.Policy,
 				}
 				e := *a.Entry
 				e.ID = cur.ID
-				summary := "Merged with an entry " + strings.ToLower(from[:1]) + from[1:]
+				summary := merged
 				if a.Kind == "overwrite" {
-					summary = "Replaced by an entry " + strings.ToLower(from[:1]) + from[1:]
+					summary = replaced
 				}
 				if _, err := t.update(ctx, tx, e, cur.Version, by, summary, now); err != nil {
 					return err

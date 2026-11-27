@@ -3,6 +3,7 @@
 // translation memory. Every name and entry here is invented. It is added
 // only when the person asks for it.
 
+import { tl } from "./i18n";
 import {
   HOFMANN_BLOCKS,
   HOFMANN_FILE,
@@ -34,7 +35,7 @@ const TERMBASES: Termbase[] = [
     location: "local",
     languages: ["de-DE", "en-GB"],
     client: "Kanzlei Weber",
-    domain: "Tenancy law",
+    domain: tl("Tenancy law"),
     infoTypes: DEFAULT_INFO_TYPES,
   },
   {
@@ -43,7 +44,7 @@ const TERMBASES: Termbase[] = [
     kind: "master",
     location: "local",
     languages: ["de-DE", "en-GB", "fr-FR"],
-    domain: "Tenancy law",
+    domain: tl("Tenancy law"),
     infoTypes: DEFAULT_INFO_TYPES.filter((t) => t.id !== "grammar"),
   },
   {
@@ -72,12 +73,12 @@ const ENTRIES: Entry[] = [
     termbaseId: "tb-weber",
     version: 3,
     concept: {
-      domain: "Tenancy law",
+      domain: tl("Tenancy law"),
       definition:
         "Die Sache, die der Vermieter dem Mieter zum Gebrauch überlässt.",
     },
     terms: {
-      "de-DE": [t("Mietsache", "approved", { grammar: "noun, fem." })],
+      "de-DE": [t("Mietsache", "approved", { grammar: tl("noun, fem.") })],
       "en-GB": [t("leased property"), t("rented property", "proposed")],
     },
     history: [
@@ -85,21 +86,21 @@ const ENTRIES: Entry[] = [
         id: "c1",
         at: d("2025-03-04T09:12:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Created entry",
+        summary: tl("Created entry"),
         project: "Gewerbemietvertrag Lang",
       },
       {
         id: "c2",
         at: d("2025-09-18T14:40:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Added English synonym “rented property” (proposed)",
+        summary: tl("Added English synonym “rented property” (proposed)"),
         project: "Mietvertrag Schuster",
       },
       {
         id: "c3",
         at: d("2026-02-02T11:05:00Z"),
         by: "Eva Brandt",
-        summary: "Added definition",
+        summary: tl("Added definition"),
       },
     ],
   },
@@ -107,10 +108,10 @@ const ENTRIES: Entry[] = [
     id: "e2",
     termbaseId: "tb-weber",
     version: 2,
-    concept: { domain: "Tenancy law" },
+    concept: { domain: tl("Tenancy law") },
     terms: {
       "de-DE": [
-        t("Kaution", "approved", { grammar: "noun, fem." }),
+        t("Kaution", "approved", { grammar: tl("noun, fem.") }),
         t("Mietsicherheit"),
       ],
       "en-GB": [t("deposit"), t("security deposit")],
@@ -120,14 +121,14 @@ const ENTRIES: Entry[] = [
         id: "c4",
         at: d("2025-03-04T09:20:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Created entry",
+        summary: tl("Created entry"),
         project: "Gewerbemietvertrag Lang",
       },
       {
         id: "c5",
         at: d("2025-06-11T08:02:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Added “Mietsicherheit” and “security deposit”",
+        summary: tl("Added “Mietsicherheit” and “security deposit”"),
       },
     ],
   },
@@ -136,12 +137,12 @@ const ENTRIES: Entry[] = [
     termbaseId: "tb-weber",
     version: 1,
     concept: {
-      domain: "Tenancy law",
+      domain: tl("Tenancy law"),
       definition:
         "Kosten, die dem Eigentümer durch das Eigentum am Grundstück laufend entstehen und auf den Mieter umgelegt werden dürfen.",
     },
     terms: {
-      "de-DE": [t("Betriebskosten", "approved", { grammar: "noun, pl." })],
+      "de-DE": [t("Betriebskosten", "approved", { grammar: tl("noun, pl.") })],
       "en-GB": [
         t("service charges"),
         t("operating costs", "forbidden", {
@@ -154,7 +155,7 @@ const ENTRIES: Entry[] = [
         id: "c6",
         at: d("2025-04-22T16:30:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Created entry",
+        summary: tl("Created entry"),
         project: "Mietvertrag Schuster",
       },
     ],
@@ -163,9 +164,9 @@ const ENTRIES: Entry[] = [
     id: "e4",
     termbaseId: "tb-weber",
     version: 2,
-    concept: { domain: "Civil procedure" },
+    concept: { domain: tl("Civil procedure") },
     terms: {
-      "de-DE": [t("Räumungsklage", "approved", { grammar: "noun, fem." })],
+      "de-DE": [t("Räumungsklage", "approved", { grammar: tl("noun, fem.") })],
       "en-GB": [t("action for possession")],
     },
     history: [
@@ -173,14 +174,14 @@ const ENTRIES: Entry[] = [
         id: "c7",
         at: d("2025-05-02T10:00:00Z"),
         by: "Eva Brandt",
-        summary: "Created entry",
+        summary: tl("Created entry"),
       },
       // Changed on the master after the Hofmann project started: produces a conflict.
       {
         id: "c8",
         at: d("2026-11-18T15:22:00Z"),
         by: "Eva Brandt",
-        summary: "Changed English term to “action for possession”",
+        summary: tl("Changed English term to “action for possession”"),
       },
     ],
   },
@@ -188,7 +189,7 @@ const ENTRIES: Entry[] = [
     id: "e5",
     termbaseId: "tb-weber",
     version: 1,
-    concept: { domain: "Tenancy law" },
+    concept: { domain: tl("Tenancy law") },
     terms: {
       "de-DE": [t("ordentliche Kündigung")],
       "en-GB": [t("termination with notice")],
@@ -198,7 +199,7 @@ const ENTRIES: Entry[] = [
         id: "c9",
         at: d("2025-07-14T09:45:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Created entry",
+        summary: tl("Created entry"),
       },
     ],
   },
@@ -206,7 +207,7 @@ const ENTRIES: Entry[] = [
     id: "e6",
     termbaseId: "tb-weber",
     version: 1,
-    concept: { domain: "Tenancy law" },
+    concept: { domain: tl("Tenancy law") },
     terms: {
       "de-DE": [t("außerordentliche Kündigung")],
       "en-GB": [
@@ -219,7 +220,7 @@ const ENTRIES: Entry[] = [
         id: "c10",
         at: d("2025-07-14T09:47:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Created entry",
+        summary: tl("Created entry"),
       },
     ],
   },
@@ -227,7 +228,7 @@ const ENTRIES: Entry[] = [
     id: "e7",
     termbaseId: "tb-weber",
     version: 1,
-    concept: { domain: "Contract law" },
+    concept: { domain: tl("Contract law") },
     terms: {
       "de-DE": [t("Schriftformklausel")],
       "en-GB": [t("written form clause")],
@@ -237,7 +238,7 @@ const ENTRIES: Entry[] = [
         id: "c11",
         at: d("2026-11-20T08:10:00Z"),
         by: "Eva Brandt",
-        summary: "Created entry",
+        summary: tl("Created entry"),
       },
     ],
   },
@@ -245,7 +246,7 @@ const ENTRIES: Entry[] = [
     id: "e8",
     termbaseId: "tb-weber",
     version: 1,
-    concept: { domain: "Contract law" },
+    concept: { domain: tl("Contract law") },
     terms: {
       "de-DE": [t("salvatorische Klausel")],
       "en-GB": [t("severability clause")],
@@ -255,7 +256,7 @@ const ENTRIES: Entry[] = [
         id: "c12",
         at: d("2026-11-20T08:14:00Z"),
         by: "Eva Brandt",
-        summary: "Created entry",
+        summary: tl("Created entry"),
       },
     ],
   },
@@ -265,10 +266,10 @@ const ENTRIES: Entry[] = [
     id: "p1",
     termbaseId: "tb-p-weber-lease",
     version: 1,
-    concept: { domain: "Tenancy law" },
+    concept: { domain: tl("Tenancy law") },
     terms: {
       "de-DE": [
-        t("Schönheitsreparaturen", "proposed", { grammar: "noun, pl." }),
+        t("Schönheitsreparaturen", "proposed", { grammar: tl("noun, pl.") }),
       ],
       "en-GB": [t("decorative repairs", "proposed")],
     },
@@ -277,7 +278,7 @@ const ENTRIES: Entry[] = [
         id: "pc1",
         at: d("2026-11-19T10:31:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Added while translating",
+        summary: tl("Added while translating"),
         project: "Mietvertrag Hofmann",
         segment:
           "Der Mieter übernimmt die Schönheitsreparaturen auf eigene Kosten.",
@@ -288,9 +289,9 @@ const ENTRIES: Entry[] = [
     id: "p2",
     termbaseId: "tb-p-weber-lease",
     version: 1,
-    concept: { domain: "Tenancy law" },
+    concept: { domain: tl("Tenancy law") },
     terms: {
-      "de-DE": [t("Staffelmiete", "proposed", { grammar: "noun, fem." })],
+      "de-DE": [t("Staffelmiete", "proposed", { grammar: tl("noun, fem.") })],
       "en-GB": [t("graduated rent", "proposed")],
     },
     history: [
@@ -298,7 +299,7 @@ const ENTRIES: Entry[] = [
         id: "pc2",
         at: d("2026-11-19T11:02:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Added while translating",
+        summary: tl("Added while translating"),
         project: "Mietvertrag Hofmann",
         segment: "Die Parteien vereinbaren eine Staffelmiete gemäß § 557a BGB.",
       },
@@ -308,7 +309,7 @@ const ENTRIES: Entry[] = [
     id: "p3",
     termbaseId: "tb-p-weber-lease",
     version: 1,
-    concept: { domain: "Tenancy law" },
+    concept: { domain: tl("Tenancy law") },
     terms: {
       "de-DE": [t("Untervermietung", "proposed")],
       "en-GB": [t("subletting", "proposed")],
@@ -318,7 +319,7 @@ const ENTRIES: Entry[] = [
         id: "pc3",
         at: d("2026-11-20T09:15:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Added while translating",
+        summary: tl("Added while translating"),
         project: "Mietvertrag Hofmann",
         segment: "Eine Untervermietung bedarf der Zustimmung des Vermieters.",
       },
@@ -328,7 +329,7 @@ const ENTRIES: Entry[] = [
     id: "p4",
     termbaseId: "tb-p-weber-lease",
     version: 1,
-    concept: { domain: "Tenancy law" },
+    concept: { domain: tl("Tenancy law") },
     terms: {
       "de-DE": [t("Mietminderung", "proposed")],
       "en-GB": [t("rent reduction", "proposed")],
@@ -338,7 +339,7 @@ const ENTRIES: Entry[] = [
         id: "pc4",
         at: d("2026-11-20T14:48:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Added while translating",
+        summary: tl("Added while translating"),
         project: "Mietvertrag Hofmann",
         segment: "Das Recht zur Mietminderung bleibt unberührt.",
       },
@@ -351,13 +352,13 @@ const ENTRIES: Entry[] = [
     version: 3,
     base: { termbaseId: "tb-weber", entryId: "e2", version: 2 },
     concept: {
-      domain: "Tenancy law",
+      domain: tl("Tenancy law"),
       definition:
         "Sicherheitsleistung des Mieters für Ansprüche des Vermieters aus dem Mietverhältnis.",
     },
     terms: {
       "de-DE": [
-        t("Kaution", "approved", { grammar: "noun, fem." }),
+        t("Kaution", "approved", { grammar: tl("noun, fem.") }),
         t("Mietsicherheit"),
       ],
       "en-GB": [
@@ -371,7 +372,7 @@ const ENTRIES: Entry[] = [
         id: "pc5",
         at: d("2026-11-19T10:50:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Added definition and “rental deposit” (proposed)",
+        summary: tl("Added definition and “rental deposit” (proposed)"),
         project: "Mietvertrag Hofmann",
         segment: "Die Kaution beträgt drei Nettokaltmieten.",
       },
@@ -383,9 +384,9 @@ const ENTRIES: Entry[] = [
     termbaseId: "tb-p-weber-lease",
     version: 2,
     base: { termbaseId: "tb-weber", entryId: "e4", version: 1 },
-    concept: { domain: "Civil procedure" },
+    concept: { domain: tl("Civil procedure") },
     terms: {
-      "de-DE": [t("Räumungsklage", "approved", { grammar: "noun, fem." })],
+      "de-DE": [t("Räumungsklage", "approved", { grammar: tl("noun, fem.") })],
       "en-GB": [t("eviction action")],
     },
     history: [
@@ -393,7 +394,7 @@ const ENTRIES: Entry[] = [
         id: "pc6",
         at: d("2026-11-17T16:05:00Z"),
         by: SAMPLE_TRANSLATOR,
-        summary: "Changed English term to “eviction action”",
+        summary: tl("Changed English term to “eviction action”"),
         project: "Mietvertrag Hofmann",
         segment: "Der Vermieter kann Räumungsklage erheben.",
       },
@@ -481,9 +482,9 @@ const BASE_SNAPSHOTS: Record<string, Entry> = {
     id: "e4",
     termbaseId: "tb-weber",
     version: 1,
-    concept: { domain: "Civil procedure" },
+    concept: { domain: tl("Civil procedure") },
     terms: {
-      "de-DE": [t("Räumungsklage", "approved", { grammar: "noun, fem." })],
+      "de-DE": [t("Räumungsklage", "approved", { grammar: tl("noun, fem.") })],
       "en-GB": [t("eviction proceedings")],
     },
     history: [
@@ -491,7 +492,7 @@ const BASE_SNAPSHOTS: Record<string, Entry> = {
         id: "c7",
         at: d("2025-05-02T10:00:00Z"),
         by: "Eva Brandt",
-        summary: "Created entry",
+        summary: tl("Created entry"),
       },
     ],
   },

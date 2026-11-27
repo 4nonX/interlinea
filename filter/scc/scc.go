@@ -39,6 +39,7 @@ import (
 
 	"github.com/4nonX/interlinea/content"
 	"github.com/4nonX/interlinea/filter"
+	"github.com/4nonX/interlinea/i18n"
 )
 
 // Format is the name stored with a project's files.
@@ -958,10 +959,10 @@ func pac(n int, attr byte) word {
 
 // codeName says what a mid-row code does.
 func codeName(lo byte) string {
-	names := [...]string{"white", "green", "blue", "cyan", "red", "yellow", "magenta", "italics"}
+	names := [...]string{i18n.N("white"), i18n.N("green"), i18n.N("blue"), i18n.N("cyan"), i18n.N("red"), i18n.N("yellow"), i18n.N("magenta"), i18n.N("italics")}
 	s := names[(lo-0x20)/2]
 	if lo%2 == 1 {
-		s += ", underlined"
+		s += ", " + i18n.N("underlined")
 	}
 	return s
 }
@@ -974,7 +975,7 @@ func (c *caption) unit() content.Content {
 	for i, r := range c.rows {
 		if i > 0 {
 			n++
-			out = out.AppendTag(content.Tag{Kind: content.TagStandalone, ID: "br" + strconv.Itoa(n), Type: "break", Desc: "new row"})
+			out = out.AppendTag(content.Tag{Kind: content.TagStandalone, ID: "br" + strconv.Itoa(n), Type: "break", Desc: i18n.N("new row")})
 		}
 		text := strings.Builder{}
 		flush := func() {

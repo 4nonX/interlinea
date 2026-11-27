@@ -150,7 +150,7 @@ export async function findDictionaries(
         bundles = unwrap(c.spellArchive(new Uint8Array(await f.arrayBuffer())));
       } catch (e) {
         problems.push(
-          tl("{name} could not be read: {x}", { name: f.name, x: e instanceof Error ? e.message : String(e) }),
+          tl("{name} could not be read: {error}", { name: f.name, error: e instanceof Error ? e.message : String(e) }),
         );
         continue;
       }
@@ -167,13 +167,13 @@ export async function findDictionaries(
     else if (/\.dic$/i.test(f.name)) dics.set(base(f.name), f);
     else
       problems.push(
-        `${f.name} is not a dictionary: choose a LibreOffice extension (.oxt), a ZIP file, or an .aff and a .dic file.`,
+        tl("{name} is not a dictionary: choose a LibreOffice extension (.oxt), a ZIP file, or an .aff and a .dic file.", { name: f.name }),
       );
   }
   for (const [name, aff] of affs) {
     const dic = dics.get(name);
     if (!dic) {
-      problems.push(`${aff.name} needs ${name}.dic as well.`);
+      problems.push(tl("{name} needs {dic} as well.", { name: aff.name, dic: `${name}.dic` }));
       continue;
     }
     dics.delete(name);

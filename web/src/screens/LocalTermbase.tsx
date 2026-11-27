@@ -11,7 +11,7 @@ import { fmtTime } from "../format";
 import { LangChip } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { headOf, ReadEntry, termsLine } from "./ServerTermbase";
-import { tl, tlx } from "../i18n";
+import { tl, tlCore } from "../i18n";
 
 let seq = 0;
 const newId = (p: string) => `${p}-${Date.now().toString(36)}-l${(seq++).toString(36)}`;
@@ -24,11 +24,15 @@ export function LocalHistory({ tb, entry }: { tb: Termbase; entry: Entry }) {
     <ol className="history">
       {[...entry.history].reverse().map((c) => (
         <li key={c.id}>
-          <div className="history-summary">{c.summary || tl("Changed")}</div>
+          <div className="history-summary">{c.summary ? tlCore(c.summary) : tl("Changed")}</div>
           <div className="history-meta">
-            {c.by ? `${c.by}, ` : ""}
-            {fmtTime(c.at)}
-            {c.project && <>{" "}{tl("in")}{" "}{c.project}</>}
+            {c.by && c.project
+              ? tl("{by}, {at} in {project}", { by: c.by, at: fmtTime(c.at), project: c.project })
+              : c.by
+                ? tl("{by}, {at}", { by: c.by, at: fmtTime(c.at) })
+                : c.project
+                  ? tl("{at} in {project}", { at: fmtTime(c.at), project: c.project })
+                  : fmtTime(c.at)}
           </div>
           {c.snapshot && <div className="history-held">{termsLine(toCoreEntry({ ...entry, ...c.snapshot }, tb))}</div>}
           {c.snapshot && c.id !== newest && (
@@ -79,7 +83,13 @@ export function LocalDeleted({ tb }: { tb: Termbase }) {
                 ))}
             </dl>
             <p className="history-meta">
-              {(d.by ? tl("Deleted {at} by {by}", { at: fmtTime(d.at), by: d.by }) : tl("Deleted {at}", { at: fmtTime(d.at) })) + (d.summary && d.summary !== tl("Deleted") ? `. ${d.summary}` : "")}</p>
+              {d.summary && d.summary !== "Deleted" && d.summary !== tl("Deleted")
+                ? d.by
+                  ? tl("Deleted {at} by {by}. {summary}", { at: fmtTime(d.at), by: d.by, summary: tlCore(d.summary) })
+                  : tl("Deleted {at}. {summary}", { at: fmtTime(d.at), summary: tlCore(d.summary) })
+                : d.by
+                  ? tl("Deleted {at} by {by}", { at: fmtTime(d.at), by: d.by })
+                  : tl("Deleted {at}", { at: fmtTime(d.at) })}</p>
             <button
               type="button"
               className="btn btn-small"
@@ -160,7 +170,7 @@ export function LocalMasterList({
                   <span className="entry-term">{parts[0] ?? tl("No term")}</span>
                 </span>
                 {parts.length > 1 && <span className="entry-other">{parts.slice(1).join(" · ")}</span>}
-                <span className="tb-count">{tl("In")}{" "}{master.name}</span>
+                <span className="tb-count">{tl("In {name}", { name: master.name })}</span>
               </button>
             </li>
           );
@@ -214,7 +224,7 @@ export function LocalMasterDetail({ tb, item, onTaken }: { tb: Termbase; item: L
         </div>
         <div className="pane-sub">
           <span>
-            {tlx("In {name}{x}", { name: master.name, x: changed ? tl(", last changed {changed}", { changed: fmtTime(changed) }) : "" })}</span>
+            {changed ? tl("In {name}, last changed {changed}", { name: master.name, changed: fmtTime(changed) }) : tl("In {name}", { name: master.name })}</span>
         </div>
       </div>
       <div className="detail-body">

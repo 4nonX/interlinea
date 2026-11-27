@@ -371,7 +371,7 @@ function ServerProjects() {
 /** What part of a project an assignment is: "all files", "Mietvertrag.docx, en-GB, segments s1 to s4". */
 export function workScope(a: { file?: string; targetLang?: string; fromSegment?: string; toSegment?: string; due?: string }): string {
   const parts = [a.file ?? tl("all files"), a.targetLang ?? tl("all languages")];
-  if (a.fromSegment) parts.push(a.fromSegment === a.toSegment ? `segment ${a.fromSegment}` : `segments ${a.fromSegment} to ${a.toSegment}`);
-  if (a.due) parts.push(`due ${fmtDate(a.due)}`);
+  if (a.fromSegment) parts.push(a.fromSegment === a.toSegment ? tl("segment {id}", { id: a.fromSegment }) : tl("segments {from} to {to}", { from: a.fromSegment, to: a.toSegment ?? "" }));
+  if (a.due) parts.push(tl("due {due}", { due: fmtDate(a.due) }));
   return parts.join(", ");
 }
