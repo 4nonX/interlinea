@@ -8,13 +8,37 @@
 #include "singleinstance.h"
 
 #include <QApplication>
+#include <QFileOpenEvent>
 #include <QDir>
+#include <QFileInfo>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QTimer>
+
+// Files the system asks to open (macOS hands them over as events).
+class FileOpener : public QObject {
+public:
+    explicit FileOpener(Backend *backend)
+        : m_backend(backend)
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *e) override
+    {
+        if (e->type() == QEvent::FileOpen) {
+            m_backend->openFiles({static_cast<QFileOpenEvent *>(e)->file()});
+            return true;
+        }
+        return QObject::eventFilter(watched, e);
+    }
+
+private:
+    Backend *m_backend;
+};
 
 // The person's name for their account on this computer: the one they gave,
 // else their login name.
@@ -44,8 +68,13 @@ int main(int argc, char *argv[])
 
     InterfaceLanguage::install(app);
 
+    // Files named when started, as full paths: the Interlinea already
+    // running may have been started elsewhere.
+    QStringList files;
+    for (const QString &a : app.arguments().mid(1))
+        files << QFileInfo(a).absoluteFilePath();
     SingleInstance instance(QDir::homePath());
-    if (!instance.claim(app.arguments().mid(1)))
+    if (!instance.claim(files))
         return 0;
 
     CoreLauncher core(CoreLauncher::defaultProgram(), CoreLauncher::defaultDataDir(), personName());
@@ -60,6 +89,13 @@ int main(int argc, char *argv[])
     if (engine.rootObjects().isEmpty())
         return 1;
     connections.start();
+    // Documents opened with Interlinea start a project, here or in the
+    // Interlinea already running.
+    FileOpener opener(&backend);
+    app.installEventFilter(&opener);
+    QObject::connect(&instance, &SingleInstance::activated, &backend, &Backend::openFiles);
+    if (!files.isEmpty())
+        QTimer::singleShot(0, &backend, [&backend, files] { backend.openFiles(files); });
     // INTERLINEA_SHOT: a picture of the window, for checking the layout
     // (shothook.h).
     if (!qEnvironmentVariable("INTERLINEA_SHOT").isEmpty())

@@ -12,7 +12,12 @@ T.MenuItem {
     font.family: Theme.font
     font.pixelSize: Theme.body
     opacity: enabled ? 1 : 0.5
-    readonly property string keys: action && action.shortcut ? String(action.shortcut) : ""
+    // The keys that do the same: the action's own, or what it shows (keys)
+    // when the field being typed in does it.
+    readonly property string keys: !action ? ""
+                                   : action.keys !== undefined ? action.keys
+                                   : typeof action.shortcut === "number" ? Backend.keyText(action.shortcut)
+                                   : action.shortcut ? String(action.shortcut) : ""
     contentItem: Item {
         implicitWidth: row.implicitWidth
         Row {

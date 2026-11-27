@@ -25,6 +25,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QKeySequence>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QTemporaryFile>
@@ -760,4 +761,9 @@ QVariantMap Backend::replaceInContent(const QVariantList &content, const QString
             out.append(QVariantMap{{QStringLiteral("text"), next}});
     }
     return {{QStringLiteral("content"), out}, {QStringLiteral("count"), count}};
+}
+
+QString Backend::keyText(int standardKey) const
+{
+    return QKeySequence(QKeySequence::StandardKey(standardKey)).toString(QKeySequence::NativeText);
 }

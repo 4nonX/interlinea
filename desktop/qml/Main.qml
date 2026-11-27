@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Templates as T
+import QtQuick.Dialogs
+import QtCore
 import Interlinea
 
 // The window: the menu bar, the navigation down the side as in the web
@@ -39,6 +41,17 @@ T.ApplicationWindow {
         editorPage.open(cid, id, file, lang)
         show("editor")
     }
+    // Documents opened with Interlinea start a project; a later start
+    // brings the window up.
+    Connections {
+        target: Backend
+        function onFilesOpened(files) {
+            if (files.length) window.newProject(files)
+            if (window.visibility === Window.Minimized) window.showNormal()
+            window.raise()
+            window.requestActivate()
+        }
+    }
     // A project termbase's changes, to review and merge, in Terminology.
     function openMerge(cid, termbase) {
         terminology.open(cid, termbase)
@@ -48,10 +61,25 @@ T.ApplicationWindow {
 
     menuBar: MenuBar {
         Menu {
+            objectName: "fileMenu"
             title: qsTr("File")
             MenuItem { action: newProjectAction }
+            MenuItem { action: openAction }
             MenuSeparator {}
             MenuItem { action: quitAction }
+        }
+        // Edit works on the field being typed in.
+        Menu {
+            objectName: "editMenu"
+            title: qsTr("Edit")
+            MenuItem { action: undoAction }
+            MenuItem { action: redoAction }
+            MenuSeparator {}
+            MenuItem { action: cutAction }
+            MenuItem { action: copyAction }
+            MenuItem { action: pasteAction }
+            MenuSeparator {}
+            MenuItem { action: selectAllAction }
         }
         Menu {
             title: qsTr("View")
@@ -68,6 +96,7 @@ T.ApplicationWindow {
         }
         Menu {
             title: qsTr("Help")
+            MenuItem { text: qsTr("Documentation"); onTriggered: Qt.openUrlExternally("https://github.com/4nonX/interlinea#readme") }
             MenuItem { text: qsTr("About Interlinea"); onTriggered: window.show("settings") }
         }
     }
@@ -78,6 +107,27 @@ T.ApplicationWindow {
         shortcut: StandardKey.New
         onTriggered: window.newProject([])
     }
+    T.Action {
+        id: openAction
+        text: qsTr("Open documents…")
+        shortcut: StandardKey.Open
+        onTriggered: openDialog.open()
+    }
+    FileDialog {
+        id: openDialog
+        title: qsTr("Open documents to translate")
+        fileMode: FileDialog.OpenFiles
+        currentFolder: StandardPaths.writableLocation(StandardPaths.DocumentsLocation)
+        onAccepted: window.newProject(selectedFiles)
+    }
+    // The field with the keyboard, when it can do what is asked.
+    readonly property var editing: activeFocusItem && typeof activeFocusItem.cut === "function" ? activeFocusItem : null
+    T.Action { id: undoAction; readonly property string keys: Backend.keyText(StandardKey.Undo); text: qsTr("Undo"); enabled: !!window.editing && window.editing.canUndo; onTriggered: window.editing.undo() }
+    T.Action { id: redoAction; readonly property string keys: Backend.keyText(StandardKey.Redo); text: qsTr("Redo"); enabled: !!window.editing && window.editing.canRedo; onTriggered: window.editing.redo() }
+    T.Action { id: cutAction; readonly property string keys: Backend.keyText(StandardKey.Cut); text: qsTr("Cut"); enabled: !!window.editing && !window.editing.readOnly && window.editing.selectedText !== ""; onTriggered: window.editing.cut() }
+    T.Action { id: copyAction; readonly property string keys: Backend.keyText(StandardKey.Copy); text: qsTr("Copy"); enabled: !!window.editing && window.editing.selectedText !== ""; onTriggered: window.editing.copy() }
+    T.Action { id: pasteAction; readonly property string keys: Backend.keyText(StandardKey.Paste); text: qsTr("Paste"); enabled: !!window.editing && window.editing.canPaste; onTriggered: window.editing.paste() }
+    T.Action { id: selectAllAction; readonly property string keys: Backend.keyText(StandardKey.SelectAll); text: qsTr("Select all"); enabled: !!window.editing; onTriggered: window.editing.selectAll() }
     T.Action {
         id: quitAction
         text: qsTr("Quit")

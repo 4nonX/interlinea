@@ -184,6 +184,13 @@ public:
     // Starts the core again after it failed.
     Q_INVOKABLE void restartCore();
 
+    // How the system writes a standard key (QKeySequence::StandardKey).
+    Q_INVOKABLE QString keyText(int standardKey) const;
+
+    // Files Interlinea was asked to open: at start, by a later start, or
+    // by the system (filesOpened).
+    void openFiles(const QStringList &files) { emit filesOpened(files); }
+
 signals:
     void connectionsChanged();
     void gitWordsChanged();
@@ -194,6 +201,8 @@ signals:
     void event(const QString &connectionId, const QString &type, const QVariantMap &data);
     // Too much changed while a feed was away: read everything again.
     void reset(const QString &connectionId);
+    // Documents to start a project with; empty when only the window was asked for.
+    void filesOpened(const QStringList &files);
 
 private:
     void watch(Connection *c);
