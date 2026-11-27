@@ -206,7 +206,7 @@ export default () =>
       await sleep(300);
       check(
         (await evaluate(
-          "[...document.querySelectorAll('.entry-term')].filter(e => e.textContent === 'Mietsache').length",
+          "[...document.querySelectorAll('.pane-entries .entry-term')].filter(e => e.textContent === 'Mietsache').length",
         )) === 1,
         "one Mietsache entry left",
       );
@@ -628,7 +628,7 @@ export default () =>
       await sleep(300);
       check(
         (await evaluate("document.querySelector('[role=tab][aria-selected=true]').textContent.trim()")) === "Entries" &&
-          (await evaluate("document.querySelector('#detail-title')?.textContent")) === "Mietsache" &&
+          (await evaluate("[...document.querySelectorAll('#detail-title .entry-term')].map(t => t.textContent).join('|')")).split('|').includes("Mietsache") &&
           (await evaluate("!!document.querySelector('.pane-detail select')")) &&
           (await rows()).split("|").includes("Mietsache"),
         "the project's version opens to be changed",

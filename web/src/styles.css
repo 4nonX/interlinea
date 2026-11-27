@@ -1247,7 +1247,7 @@ input[type="radio"] {
 }
 
 .entry-term {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .entry-targets {
@@ -4857,4 +4857,36 @@ input.mono {
 .subtitle-limit input.penalty {
   flex: none;
   width: 5.5em;
+}
+
+/* An entry's terms, every language on a line of its own and every term
+   alike (EntryTerms). */
+.entry-langs {
+  display: grid;
+  gap: 2px;
+}
+
+.entry-lang {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.entry-lang .lang-chip {
+  flex-shrink: 0;
+}
+
+.entry-langs-big {
+  gap: var(--s1);
+  font-size: 1rem;
+}
+
+.entry-langs-big .entry-term {
+  font-weight: 650;
+}
+
+.entry-term.is-forbidden {
+  color: var(--danger);
+  text-decoration: line-through;
 }

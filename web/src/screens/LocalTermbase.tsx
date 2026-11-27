@@ -8,7 +8,7 @@ import type { Entry, Removal, Termbase } from "../data";
 import { useLocalStore } from "../store";
 import { toCoreEntry } from "../termio";
 import { fmtTime } from "../format";
-import { LangChip } from "../components/ui";
+import { EntryTerms, LangChip } from "../components/ui";
 import { ConfirmButton } from "./TermbaseDialogs";
 import { headOf, ReadEntry, termsLine } from "./ServerTermbase";
 import { tl, tlCore } from "../i18n";
@@ -162,14 +162,10 @@ export function LocalMasterList({
       {masters.length === 0 && <p className="muted pane-pad">{tl("The masters have no entries the project does not have itself.")}</p>}
       <ul className="entry-list entry-list-fit" aria-label={tl("Entries of the masters of {name}", { name: tb.name })}>
         {masters.map(({ entry, master }) => {
-          const parts = tb.languages.map((l) => (entry.terms[l] ?? []).map((t) => t.text).join(", ")).filter(Boolean);
           return (
             <li key={entry.id}>
               <button type="button" className="entry-row" aria-current={entry.id === selected ? "true" : undefined} onClick={() => onSelect(entry.id)}>
-                <span className="entry-head">
-                  <span className="entry-term">{parts[0] ?? tl("No term")}</span>
-                </span>
-                {parts.length > 1 && <span className="entry-other">{parts.slice(1).join(" · ")}</span>}
+                <EntryTerms languages={tb.languages} terms={(l) => entry.terms[l] ?? []} />
                 <span className="tb-count">{tl("In {name}", { name: master.name })}</span>
               </button>
             </li>
@@ -212,14 +208,17 @@ export function LocalMasterDetail({ tb, item, onTaken }: { tb: Termbase; item: L
   const { dispatch, notify } = useLocalStore();
   const { entry, master } = item;
   const core = toCoreEntry(entry, master);
-  const head = headOf(core, tb.languages[0]);
   const changed = entry.history[entry.history.length - 1]?.at;
   return (
     <section className="pane pane-detail" aria-labelledby="master-entry-title">
       <div className="pane-head">
         <div className="pane-head-row">
           <h2 id="master-entry-title" className="pane-title">
-            {head || tl("Entry")}
+            <EntryTerms
+              languages={[...new Set([...tb.languages, ...core.languages.filter((x) => x.terms.length).map((x) => x.lang)])]}
+              terms={(l) => core.languages.find((x) => x.lang === l)?.terms ?? []}
+              big
+            />
           </h2>
         </div>
         <div className="pane-sub">

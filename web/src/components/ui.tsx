@@ -66,6 +66,45 @@ export function InLang({
   );
 }
 
+/** An entry's terms in every language, each language on a line of its
+ * own and every term of it alike: a concept has no source language, and a
+ * synonym is as much a term as the first. Forbidden terms stay, struck
+ * through. */
+export function EntryTerms({
+  languages,
+  terms,
+  big,
+}: {
+  languages: LangCode[];
+  terms: (code: LangCode) => { text: string; status?: string }[];
+  big?: boolean;
+}) {
+  return (
+    <span className={`entry-langs${big ? " entry-langs-big" : ""}`}>
+      {languages.map((code) => {
+        const ts = terms(code);
+        return (
+          <span key={code} className="entry-lang">
+            <LangChip code={code} />
+            {ts.length ? (
+              <InLang code={code}>
+                {ts.map((t, i) => (
+                  <span key={i}>
+                    {i > 0 && ", "}
+                    <span className={`entry-term${t.status === "forbidden" ? " is-forbidden" : ""}`}>{t.text}</span>
+                  </span>
+                ))}
+              </InLang>
+            ) : (
+              <span className="missing">{tl("missing")}</span>
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function PageHeader({
   title,
   children,

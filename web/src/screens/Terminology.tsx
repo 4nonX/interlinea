@@ -32,6 +32,7 @@ import {
 import { useStore, useWords } from "../store";
 import { fmtTime, listOf, plural } from "../format";
 import {
+  EntryTerms,
   InLang,
   LangChip,
   LocationBadge,
@@ -560,6 +561,12 @@ function sourceLangOf(tb: Termbase): string {
   return tb.languages[0] ?? "de-DE";
 }
 
+/** The languages an entry is shown in: the termbase's, then any others
+ * the entry has terms in. */
+function langsOf(entry: Entry, tb: Termbase): LangCode[] {
+  return [...new Set([...tb.languages, ...Object.keys(entry.terms).filter((l) => (entry.terms[l] ?? []).length)])];
+}
+
 function headTerm(
   entry: Entry,
   tb: Termbase,
@@ -700,10 +707,6 @@ function EntryRow({
   tb: Termbase;
   selected: boolean;
 }) {
-  const src = sourceLangOf(tb);
-  const srcTerms = entry.terms[src] ?? [];
-  const others = tb.languages.filter((l) => l !== src);
-  const head = headTerm(entry, tb);
   return (
     <li>
       <a
@@ -711,42 +714,7 @@ function EntryRow({
         className="entry-row"
         aria-current={selected ? "true" : undefined}
       >
-        <span className="entry-head">
-          {srcTerms.length ? (
-            <InLang code={src} className="entry-term">
-              {srcTerms[0]!.text}
-            </InLang>
-          ) : head ? (
-            <InLang code={head.code} className="entry-term">
-              {head.text}
-            </InLang>
-          ) : (
-            <span className="missing">{tl("No term")}</span>
-          )}
-          {srcTerms.length > 1 && (
-            <span className="muted"> +{srcTerms.length - 1}</span>
-          )}
-        </span>
-        <span className="entry-targets">
-          {others.map((l) => {
-            const ts = entry.terms[l] ?? [];
-            return (
-              <span key={l} className="entry-target">
-                <LangChip code={l} />
-                {ts.length ? (
-                  <InLang code={l}>
-                    {ts
-                      .filter((t) => t.status !== "forbidden")
-                      .map((t) => t.text)
-                      .join(", ") || ts[0]!.text}
-                  </InLang>
-                ) : (
-                  <span className="missing">{tl("missing")}</span>
-                )}
-              </span>
-            );
-          })}
-        </span>
+        <EntryTerms languages={langsOf(entry, tb)} terms={(l) => entry.terms[l] ?? []} />
         {entry.concept.domain && (
           <span className="entry-domain">{entry.concept.domain}</span>
         )}
@@ -820,7 +788,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
       <div className="pane-head">
         <div className="pane-head-row">
           <h2 id="detail-title" className="pane-title">
-            {head ? <InLang code={head.code}>{head.text}</InLang> : tl("Entry")}
+            <EntryTerms languages={langsOf(entry, tb)} terms={(l) => entry.terms[l] ?? []} big />
           </h2>
           {may(tb, "edit") && <ConfirmButton
             label={
