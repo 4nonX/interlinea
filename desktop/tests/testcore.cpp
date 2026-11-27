@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QKeyEvent>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSignalSpy>
@@ -157,6 +158,17 @@ QObject *QmlApp::find(const QString &name) const
     return findItem(window->contentItem(), name);
 }
 
+QObject *QmlApp::find(QObject *within, const QString &name) const
+{
+    if (!within)
+        return nullptr;
+    if (QObject *o = within->findChild<QObject *>(name))
+        return o;
+    if (auto *item = qobject_cast<QQuickItem *>(within))
+        return findItem(item, name);
+    return nullptr;
+}
+
 QVariant QmlApp::call(QObject *target, const char *method, const QVariantList &a) const
 {
     if (!target)
@@ -187,6 +199,22 @@ QVariant QmlApp::call(QObject *target, const char *method, const QVariantList &a
     default:
         ok = QMetaObject::invokeMethod(target, method, Q_RETURN_ARG(QVariant, out), arg(0), arg(1), arg(2), arg(3), arg(4), arg(5));
         break;
+    }
+    // A method of C++ that gives nothing back.
+    if (!ok) {
+        switch (args.size()) {
+        case 0:
+            ok = QMetaObject::invokeMethod(target, method);
+            break;
+        case 1:
+            ok = QMetaObject::invokeMethod(target, method, arg(0));
+            break;
+        case 2:
+            ok = QMetaObject::invokeMethod(target, method, arg(0), arg(1));
+            break;
+        default:
+            break;
+        }
     }
     if (!ok)
         qWarning("QmlApp::call: %s has no %s with %lld arguments", qPrintable(target->objectName()), method, static_cast<long long>(args.size()));
@@ -223,4 +251,61 @@ void QmlApp::shot(const QString &name) const
         return;
     QTest::qWait(150);
     window->grabWindow().save(QStringLiteral("%1/%2.png").arg(dir, name));
+}
+
+bool QmlApp::click(QObject *button) const
+{
+    if (!button || !button->property("enabled").toBool() || !button->property("visible").toBool())
+        return false;
+    // As a click does: a checkable button changes, then says it was clicked.
+    if (button->property("checkable").toBool())
+        button->setProperty("checked", !button->property("checked").toBool());
+    // A signal invoked so reports failure even when it was sent.
+    QMetaObject::invokeMethod(button, "clicked");
+    return true;
+}
+
+bool QmlApp::clickable(const QString &name) const
+{
+    QObject *b = find(name);
+    return b && b->property("enabled").toBool() && b->property("visible").toBool();
+}
+
+bool QmlApp::click(const QString &name) const
+{
+    return click(find(name));
+}
+
+bool QmlApp::type(QObject *field, const QString &text, bool clear) const
+{
+    auto *item = qobject_cast<QQuickItem *>(field);
+    if (!item)
+        return false;
+    item->forceActiveFocus();
+    QTest::qWait(20);
+    if (clear)
+        QMetaObject::invokeMethod(item, "selectAll");
+    if (clear && text.isEmpty()) {
+        QTest::keyClick(window, Qt::Key_Delete);
+        return true;
+    }
+    // Each character as a key pressed and let go, with its text.
+    for (const QChar ch : text) {
+        QKeyEvent press(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier, QString(ch));
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_unknown, Qt::NoModifier, QString(ch));
+        QCoreApplication::sendEvent(window, &press);
+        QCoreApplication::sendEvent(window, &release);
+    }
+    QTest::qWait(20);
+    return true;
+}
+
+bool QmlApp::type(const QString &name, const QString &text, bool clear) const
+{
+    return type(find(name), text, clear);
+}
+
+QString QmlApp::notice() const
+{
+    return get(QStringLiteral("toast"), "last").toString();
 }

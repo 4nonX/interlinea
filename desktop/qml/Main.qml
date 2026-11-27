@@ -20,6 +20,14 @@ T.ApplicationWindow {
     font.pixelSize: Theme.body
 
     property string page: "projects"
+    // Where the window was and how large, for the next start.
+    Settings {
+        category: "window"
+        property alias x: window.x
+        property alias y: window.y
+        property alias width: window.width
+        property alias height: window.height
+    }
     readonly property var local: Backend.local
     readonly property bool admin: Backend.connections.some(c => !c.local && c.ready && c.admin)
 
@@ -135,7 +143,7 @@ T.ApplicationWindow {
         onTriggered: Qt.quit()
     }
 
-    Toast { id: toast }
+    Toast { id: toast; objectName: "toast" }
 
     RowLayout {
         anchors.fill: parent
@@ -203,6 +211,21 @@ T.ApplicationWindow {
             }
         }
 
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 0
+        // Something that stops work (the core not running) is said at the top.
+        Note {
+            objectName: "coreProblem"
+            visible: !!window.local && window.local.state === 4
+            Layout.fillWidth: true
+            Layout.margins: Theme.s3
+            kind: "warn"
+            text: window.local ? Fmt.fill(qsTr("Work on this computer can't be opened: {reason}"), { reason: window.local.message }) : ""
+            Accessible.name: qsTr("Message")
+            Button { small: true; text: qsTr("Try again"); onClicked: Backend.restartCore() }
+        }
         StackLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -261,6 +284,7 @@ T.ApplicationWindow {
                 onOpenProject: (c, id) => window.openProject(c, id)
                 onOpenReview: (c, tb) => window.openMerge(c, tb)
             }
+        }
         }
     }
 }

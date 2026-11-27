@@ -53,10 +53,24 @@ public:
     // A part of the window by its objectName, in the object tree or the
     // items views made; null when there is none.
     QObject *find(const QString &name) const;
+    // A part within another.
+    QObject *find(QObject *within, const QString &name) const;
     // Calls a function of a part with up to six arguments; what it gives back.
     QVariant call(QObject *target, const char *method, const QVariantList &args = {}) const;
     QVariant call(const QString &name, const char *method, const QVariantList &args = {}) const;
     QVariant get(const QString &name, const char *property) const;
+    // Clicks a button, as the mouse or the space key does; false when
+    // there is none or it can't be clicked.
+    bool click(const QString &name) const;
+    // Whether a button is there to be clicked.
+    bool clickable(const QString &name) const;
+    bool click(QObject *button) const;
+    // Types into a field, key by key, as a person does: what it does
+    // while typing (onTextEdited) happens. clear empties it first.
+    bool type(QObject *field, const QString &text, bool clear = true) const;
+    bool type(const QString &name, const QString &text, bool clear = true) const;
+    // The last notice the window showed.
+    QString notice() const;
     // Shows a page of the window ("projects", "editor", ...).
     void show(const QString &page) const;
     // Saves a picture of the window under INTERLINEA_SCREENSHOTS, if set.

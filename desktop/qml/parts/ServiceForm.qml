@@ -26,10 +26,17 @@ Rectangle {
     border.color: Theme.border
     Accessible.role: Accessible.Grouping
     Accessible.name: check ? qsTr("A grammar service") : qsTr("A translation service")
+    // The service's own name to begin with. Read from the list here: the
+    // bindings that follow the service may not have caught up yet.
+    function serviceName() {
+        const i = check ? null : kinds.find(k => k.service === service)
+        return !i || service === "own" ? "" : i.name
+    }
     onServiceChanged: {
-        name.text = own ? "" : (info ? info.name : "")
+        name.text = serviceName()
         models = []
     }
+    Component.onCompleted: name.text = serviceName()
 
     GridLayout {
         id: body
@@ -43,6 +50,7 @@ Rectangle {
             visible: !form.check
             label: qsTr("Service")
             ComboBox {
+                objectName: "service"
                 model: form.kinds.map(k => k.name)
                 currentIndex: Math.max(0, form.kinds.findIndex(k => k.service === form.service))
                 onActivated: i => form.service = form.kinds[i].service
@@ -62,13 +70,14 @@ Rectangle {
                               + (form.info.signup ? " <a href=\"" + form.info.signup + "\">" + qsTr("Get a key") + "</a>" : "") : ""
             onLinkActivated: link => Qt.openUrlExternally(link)
         }
-        Field { label: qsTr("Name"); TextField { id: name } }
+        Field { label: qsTr("Name"); TextField { id: name; objectName: "name" } }
         Field {
             visible: form.own || (!!form.info && !!form.info.url)
             label: form.own ? qsTr("Address requests are sent to") : qsTr("Address of a service that speaks the same API")
             optional: !form.own
             TextField {
                 id: url
+                objectName: "url"
                 placeholderText: form.check ? "https://…/v2/check" : form.own ? "https://" : "https://api.openai.com/v1"
             }
         }
@@ -76,15 +85,15 @@ Rectangle {
             visible: form.own
             label: qsTr("Header that signs requests")
             optional: true
-            TextField { id: headerName; placeholderText: "Authorization" }
+            TextField { id: headerName; objectName: "headerName"; placeholderText: "Authorization" }
         }
         Field {
             visible: form.own
             label: qsTr("Its value")
             optional: true
-            TextField { id: headerValue; echoMode: TextInput.Password; placeholderText: qsTr("Bearer …") }
+            TextField { id: headerValue; objectName: "headerValue"; echoMode: TextInput.Password; placeholderText: qsTr("Bearer …") }
         }
-        Field { visible: !form.own; label: qsTr("Key"); TextField { id: key; echoMode: TextInput.Password } }
+        Field { visible: !form.own; label: qsTr("Key"); TextField { id: key; objectName: "key"; echoMode: TextInput.Password } }
         Field {
             visible: !form.own && !!form.info && !!form.info.region
             label: qsTr("Region of the key")
@@ -128,6 +137,7 @@ Rectangle {
             Layout.columnSpan: 2
             spacing: Theme.s2
             Button {
+                objectName: "save"
                 kind: "primary"
                 small: true
                 text: qsTr("Add the service")

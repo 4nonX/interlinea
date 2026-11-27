@@ -182,6 +182,7 @@ Page {
             error: nameError.text
             TextField {
                 id: nameField
+                objectName: "userName"
                 placeholderText: qsTr("Me")
                 enabled: page.local.ready
                 text: page.local.user.name || ""
@@ -491,6 +492,7 @@ Page {
                         visible: svcPlace.admin && !(page.serviceFormAt === svcPlace.cid && page.serviceFormKind === svcPanel.modelData.kind)
                         small: true
                         iconName: "plus"
+                        objectName: (svcPanel.check ? "addChecker:" : "addProvider:") + svcPlace.cid
                         text: svcPanel.check ? qsTr("Add a grammar service") : qsTr("Add a service")
                         onClicked: {
                             page.serviceFormAt = svcPlace.cid
@@ -498,6 +500,7 @@ Page {
                         }
                     }
                     ServiceForm {
+                        objectName: svcPanel.check ? "checkerForm" : "providerForm"
                         visible: svcPlace.admin && page.serviceFormAt === svcPlace.cid && page.serviceFormKind === svcPanel.modelData.kind
                         Layout.fillWidth: true
                         cid: svcPlace.cid
@@ -598,7 +601,7 @@ Page {
                         Layout.fillWidth: false
                         Layout.preferredWidth: 260
                         label: qsTr("Program the token is for")
-                        TextField { id: tokenName }
+                        TextField { id: tokenName; objectName: "tokenName:" + tokPlace.cid }
                     }
                     Field {
                         Layout.fillWidth: false
@@ -607,6 +610,7 @@ Page {
                         ComboBox { id: tokenDays; model: [qsTr("30 days"), qsTr("90 days"), qsTr("A year")]; currentIndex: 1 }
                     }
                     Button {
+                        objectName: "makeToken:" + tokPlace.cid
                         Layout.alignment: Qt.AlignBottom
                         text: qsTr("Make a token")
                         enabled: tokenName.text.trim() !== ""
@@ -746,7 +750,7 @@ Page {
         Txt { Layout.fillWidth: true; role: "muted"; text: qsTr("Copyright © 2026 Dan Dreßen.") }
         Row {
             spacing: Theme.s2
-            Button { small: true; text: qsTr("Read the licence"); onClicked: licenceDialog.open() }
+            Button { objectName: "readLicence"; small: true; text: qsTr("Read the licence"); onClicked: licenceDialog.open() }
             Button { small: true; text: qsTr("Source code"); onClicked: Qt.openUrlExternally("https://github.com/4nonX/interlinea") }
         }
     }
