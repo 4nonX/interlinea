@@ -963,14 +963,22 @@ QWidget *EditorPage::buildPanel()
     m_nextTag = Theme::keyButton(tr("Next tag"), QStringLiteral("F9"), QStringLiteral("tag"), body);
     QPushButton *confirmButton = Theme::keyButton(tr("Confirm"), QStringLiteral("Ctrl+Enter"), QStringLiteral("check"), body);
     Theme::primary(confirmButton);
-    // On the accent, the text, icon and key chip are white.
-    confirmButton->setStyleSheet(QStringLiteral("QLabel { color: #ffffff; background: transparent; }"
-                                                " QLabel[kbd=\"true\"] { border: 1px solid rgba(255,255,255,0.45); border-bottom-width: 2px;"
-                                                " background: rgba(255,255,255,0.12); color: #ffffff; }"));
-    for (QLabel *l : confirmButton->findChildren<QLabel *>()) {
-        if (!l->pixmap().isNull())
-            l->setPixmap(Icons::get(QStringLiteral("check"), QColor(Qt::white)).pixmap(14, 14));
-    }
+    // On the accent, the text, icon and key chip are in the colour made for
+    // it (white in light, dark in dark), and follow when the look changes.
+    const auto onAccent = [confirmButton] {
+        const QColor on = Theme::color("onAccent");
+        const QString rgb = QStringLiteral("%1,%2,%3").arg(on.red()).arg(on.green()).arg(on.blue());
+        confirmButton->setStyleSheet(QStringLiteral("QLabel { color: %1; background: transparent; }"
+                                                    " QLabel[kbd=\"true\"] { border: 1px solid rgba(%2,0.45); border-bottom-width: 2px;"
+                                                    " background: rgba(%2,0.12); color: %1; }")
+                                         .arg(on.name(), rgb));
+        for (QLabel *l : confirmButton->findChildren<QLabel *>()) {
+            if (!l->pixmap().isNull())
+                l->setPixmap(Icons::get(QStringLiteral("check"), on).pixmap(14, 14));
+        }
+    };
+    onAccent();
+    connect(Theme::notifier(), &Theme::Notifier::changed, confirmButton, onAccent);
     connect(copy, &QPushButton::clicked, this, &EditorPage::copySource);
     connect(m_nextTag, &QPushButton::clicked, this, &EditorPage::insertNextTag);
     connect(confirmButton, &QPushButton::clicked, this, &EditorPage::confirm);

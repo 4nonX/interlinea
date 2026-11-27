@@ -138,7 +138,7 @@ QPushButton *button(const QString &t, int kind, QWidget *parent, const QString &
     if (kind & Small)
         Theme::smallButton(b);
     if (!icon.isEmpty()) {
-        b->setIcon(Icons::get(icon, (kind & Quiet) ? Theme::color("accentText") : (kind & Primary) ? QColor(Qt::white) : QColor()));
+        b->setIcon(Icons::get(icon, (kind & Quiet) ? Theme::color("accentText") : (kind & Primary) ? Theme::color("onAccent") : QColor()));
         b->setIconSize(QSize(16, 16));
     }
     return b;

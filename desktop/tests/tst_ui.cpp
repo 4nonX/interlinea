@@ -1,5 +1,6 @@
 #include "apiclient.h"
 #include "connectionmanager.h"
+#include "icons.h"
 #include "options.h"
 #include "webui.h"
 #include "words.h"
@@ -198,7 +199,7 @@ private slots:
         QStringList panels;
         for (QFrame *f : page->findChildren<QFrame *>(QStringLiteral("panel")))
             panels << f->accessibleName();
-        QCOMPARE(panels, (QStringList{QStringLiteral("Interface language"), QStringLiteral("Your name"), QStringLiteral("Terminology wording"), QStringLiteral("Editor"), QStringLiteral("Project templates"),
+        QCOMPARE(panels, (QStringList{QStringLiteral("Interface language"), QStringLiteral("Appearance"), QStringLiteral("Your name"), QStringLiteral("Terminology wording"), QStringLiteral("Editor"), QStringLiteral("Project templates"),
                                       QStringLiteral("Spelling dictionaries"), QStringLiteral("Translation services"), QStringLiteral("Grammar services"), QStringLiteral("Access for programs"),
                                       QStringLiteral("Team server"), QStringLiteral("Saved work"), QStringLiteral("About Interlinea")}));
         // The app says whose it is and under which licence, and has the licence to read.
@@ -426,6 +427,63 @@ private slots:
 
     // Every page holds together from a small window to a large one, in
     // both themes: nothing cut off, over something else or out of place.
+    void appearanceChosen()
+    {
+        // Light or dark is chosen in the settings, kept, and shown at once:
+        // the style, the icons drawn in a colour of the design system and
+        // the texts that name one follow without starting again.
+        qunsetenv("INTERLINEA_THEME");
+        Options::setAppearance(QStringLiteral("dark"));
+        Theme::apply(*qApp);
+        QVERIFY(Theme::dark());
+        TestCore core;
+        ConnectionManager m(&core.launcher);
+        MainWindow w(&m);
+        auto *page = new SettingsPage(&m, &w);
+        w.addPage(QStringLiteral("settings"), QStringLiteral("Settings"), QIcon(), page, QKeySequence());
+        w.show();
+        auto *darkChoice = page->findChild<QRadioButton *>(QStringLiteral("appearance:dark"));
+        auto *lightChoice = page->findChild<QRadioButton *>(QStringLiteral("appearance:light"));
+        auto *systemChoice = page->findChild<QRadioButton *>(QStringLiteral("appearance:system"));
+        QVERIFY(darkChoice && lightChoice && systemChoice);
+        QVERIFY(darkChoice->isChecked());
+        // A text naming a colour, and an icon in one, as pages make them.
+        auto *note = new QLabel(QStringLiteral("<span style=\"color:%1\">optional</span>").arg(Theme::color("text3").name()), page);
+        const QIcon icon = Icons::get(QStringLiteral("plus"), Theme::color("accentText"));
+        const auto iconColour = [&icon] {
+            const QImage img = icon.pixmap(48, 48).toImage();
+            for (int y = 0; y < img.height(); ++y)
+                for (int x = 0; x < img.width(); ++x)
+                    if (qAlpha(img.pixel(x, y)) == 255)
+                        return QColor(img.pixel(x, y));
+            return QColor();
+        };
+        QCOMPARE(iconColour(), Theme::color("accentText"));
+        QSignalSpy changed(Theme::notifier(), &Theme::Notifier::changed);
+
+        lightChoice->click();
+        QVERIFY(!Theme::dark());
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(Options::appearance(), QStringLiteral("light"));
+        QCOMPARE(qApp->palette().color(QPalette::Window).lightness() > 128, true);
+        QVERIFY2(note->text().contains(Theme::color("text3").name()), qPrintable(note->text()));
+        QCOMPARE(iconColour(), Theme::color("accentText"));
+
+        darkChoice->click();
+        QVERIFY(Theme::dark());
+        QCOMPARE(Options::appearance(), QStringLiteral("dark"));
+        QVERIFY2(note->text().contains(Theme::color("text3").name()), qPrintable(note->text()));
+        QCOMPARE(iconColour(), Theme::color("accentText"));
+
+        // The system's setting: nothing kept, and its line says what it shows.
+        systemChoice->click();
+        QVERIFY(Options::appearance().isEmpty());
+        auto *systemLine = page->findChild<QLabel *>(QStringLiteral("systemLook"));
+        QVERIFY(systemLine);
+        QCOMPARE(systemLine->text(), Theme::dark() ? QStringLiteral("Dark now, as the system is set.") : QStringLiteral("Light now, as the system is set."));
+        Theme::apply(*qApp);
+    }
+
     void everyPageAtEverySize()
     {
         for (const char *theme : {"light", "dark"}) {

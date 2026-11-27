@@ -7,8 +7,21 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+### Added
+
+- Light and dark in both clients: Settings, Appearance chooses light,
+  dark, or the system's setting (the default). The browser client, light
+  only until now, has the desktop app's dark colours; the desktop app,
+  which followed the system only, can now be set to either. The change is
+  shown at once.
+
 ### Fixed
 
+- Desktop app, dark: the editor's Confirm button and the mark in the
+  side bar drew white on the light blue accent; they use the dark colour
+  made for it.
+- Site: on phones the rounded corner of the download cards cut into the
+  Windows, macOS and Linux icons.
 - Desktop app: a page could flicker without end when its content was
   about as tall as the window (seen after deleting the last memory): the
   room added for wrapped text brought a scrollbar, the narrower page took

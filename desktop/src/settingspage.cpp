@@ -33,6 +33,7 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QPushButton>
+#include <QApplication>
 #include <QRadioButton>
 #include <QSettings>
 #include <QUrl>
@@ -125,6 +126,54 @@ SettingsPage::SettingsPage(ConnectionManager *manager, QWidget *parent)
         pick->setCurrentIndex(qMax(0, pick->findData(InterfaceLanguage::chosen())));
         body->addWidget(Web::field(tr("Show Interlinea in"), pick, p, false, tr("Takes effect when Interlinea is started again.")));
         connect(pick, &QComboBox::currentIndexChanged, this, [pick](int) { InterfaceLanguage::choose(pick->currentData().toString()); });
+    }
+
+    // Appearance.
+    page.body->addWidget(Web::panel(tr("Appearance"), p, &body));
+    {
+        auto *group = new QWidget(p);
+        group->setObjectName(QStringLiteral("appearance"));
+        group->setAccessibleName(tr("Appearance"));
+        auto *gv = new QVBoxLayout(group);
+        gv->setContentsMargins(0, 0, 0, 0);
+        gv->setSpacing(8);
+        auto *looks = new QButtonGroup(group);
+        // While the system's setting is the choice, what it shows now.
+        const auto systemNow = [] {
+            if (!Options::appearance().isEmpty())
+                return tr("Light or dark, as the system is set.");
+            return Theme::dark() ? tr("Dark now, as the system is set.") : tr("Light now, as the system is set.");
+        };
+        struct Look {
+            QString value, title, desc;
+        };
+        const QList<Look> all{{QString(), tr("Same as the system"), systemNow()},
+                              {QStringLiteral("light"), tr("Light"), tr("Dark text on light surfaces.")},
+                              {QStringLiteral("dark"), tr("Dark"), tr("Light text on dark surfaces, easier on the eyes in a dim room.")}};
+        const auto refresh = [group, systemNow] {
+            if (auto *d = group->findChild<QLabel *>(QStringLiteral("systemLook")))
+                d->setText(systemNow());
+        };
+        const QString chosen = Options::appearance();
+        for (const Look &look : all) {
+            auto *radio = new QRadioButton(look.title, group);
+            radio->setObjectName(QStringLiteral("appearance:%1").arg(look.value.isEmpty() ? QStringLiteral("system") : look.value));
+            radio->setChecked(look.value == chosen);
+            looks->addButton(radio);
+            QFrame *frame = Web::choice(radio, look.desc, group);
+            if (look.value.isEmpty())
+                frame->findChild<QLabel *>()->setObjectName(QStringLiteral("systemLook"));
+            gv->addWidget(frame);
+            const QString value = look.value;
+            connect(radio, &QRadioButton::toggled, this, [value, refresh](bool on) {
+                if (!on)
+                    return;
+                Theme::setAppearance(*qApp, value);
+                refresh();
+            });
+        }
+        body->addWidget(group);
+        connect(Theme::notifier(), &Theme::Notifier::changed, group, refresh);
     }
 
     // Your name.

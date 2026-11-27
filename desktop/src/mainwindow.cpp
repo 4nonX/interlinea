@@ -61,7 +61,9 @@ MainWindow::MainWindow(ConnectionManager *manager, QWidget *parent)
     mark->setObjectName(QStringLiteral("brandMark"));
     mark->setFixedSize(28, 28);
     mark->setAlignment(Qt::AlignCenter);
-    mark->setPixmap(Icons::get(QStringLiteral("editor"), QColor(Qt::white)).pixmap(18, 18));
+    const auto drawMark = [mark] { mark->setPixmap(Icons::get(QStringLiteral("editor"), Theme::color("onAccent")).pixmap(18, 18)); };
+    drawMark();
+    connect(Theme::notifier(), &Theme::Notifier::changed, mark, drawMark);
     auto *name = new QLabel(QStringLiteral("Interlinea"), side);
     name->setObjectName(QStringLiteral("appName"));
     brand->addWidget(mark);

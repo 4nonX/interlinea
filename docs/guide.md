@@ -234,6 +234,10 @@ Nothing of a server project is saved in the browser; the sign-in is.
 
 Settings has:
 
+- the interface language;
+- the appearance: light, dark, or as the system is set (the default); it
+  changes at once, in the desktop app and in the browser client, which
+  keeps the choice in the browser;
 - the wording of the terminology pages: plain words, or the terms of git
   (branch, merge request);
 - the editor's options;

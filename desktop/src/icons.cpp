@@ -1,5 +1,7 @@
 #include "icons.h"
 
+#include "theme.h"
+
 #include <QApplication>
 #include <QIconEngine>
 #include <QPainter>
@@ -449,13 +451,21 @@ void draw(QPainter &p, const QString &name)
 
 class LineIcon : public QIconEngine {
 public:
-    LineIcon(const QString &name, const QColor &color) : m_name(name), m_color(color) {}
-    QIconEngine *clone() const override { return new LineIcon(m_name, m_color); }
+    LineIcon(const QString &name, const QColor &color) : m_name(name), m_color(color), m_token(Theme::nameOf(color)) {}
+    QIconEngine *clone() const override
+    {
+        auto *copy = new LineIcon(m_name, m_color);
+        copy->m_token = m_token;
+        return copy;
+    }
     void paint(QPainter *p, const QRect &rect, QIcon::Mode mode, QIcon::State) override
     {
         const QPalette pal = QApplication::palette();
         QColor c = mode == QIcon::Selected ? pal.color(QPalette::Link) : pal.color(QPalette::WindowText);
-        if (m_color.isValid())
+        // A colour of the design system is taken as the look is now.
+        if (!m_token.isEmpty())
+            c = Theme::color(m_token.constData());
+        else if (m_color.isValid())
             c = m_color;
         if (mode == QIcon::Disabled)
             c = pal.color(QPalette::Disabled, QPalette::WindowText);
@@ -483,6 +493,7 @@ public:
 private:
     QString m_name;
     QColor m_color;
+    QByteArray m_token;
 };
 
 } // namespace

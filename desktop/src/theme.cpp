@@ -1,9 +1,11 @@
 #include "theme.h"
 
 #include "icons.h"
+#include "options.h"
 
 #include <QRegularExpression>
 #include <QApplication>
+#include <QHash>
 
 #include <algorithm>
 #include <vector>
@@ -421,6 +423,91 @@ void setFont(QApplication &app)
     app.setFont(f);
 }
 
+// The colours by name, those icons and texts are drawn in first: a colour
+// several names share is taken for the first.
+QList<std::pair<const char *, const char *>> named(const Tokens &t)
+{
+    return {{"text", t.text},       {"text2", t.text2},         {"text3", t.text3},         {"accentText", t.accentText},
+            {"accent", t.accent},   {"onAccent", t.onAccent},   {"danger", t.danger},       {"ok", t.ok},
+            {"warn", t.warn},       {"server", t.server},       {"bg", t.bg},               {"surface", t.surface},
+            {"surface2", t.surface2}, {"border", t.border},     {"borderStrong", t.borderStrong}, {"accentWeak", t.accentWeak},
+            {"dangerBg", t.dangerBg}, {"okBg", t.okBg},         {"warnBg", t.warnBg},       {"serverBg", t.serverBg},
+            {"rowLine", t.rowLine}, {"activeRow", t.activeRow}, {"termHit", t.termHit},     {"termLine", t.termLine},
+            {"mark", t.mark},       {"tagBg", t.tagBg},         {"count", t.count}};
+}
+
+// What was drawn in the colours of one look, in those of the other: the
+// colours a label's rich text or a widget's own style sheet names (the
+// style sheet of the whole application is set anew). Each colour of the
+// old look becomes the same colour of the new one, in one pass.
+void recolour(const Tokens &from, const Tokens &to)
+{
+    QHash<QString, QString> map;
+    const auto a = named(from), b = named(to);
+    for (int i = 0; i < a.size(); ++i) {
+        const QString old = QString::fromLatin1(a[i].second).toLower();
+        if (!map.contains(old))
+            map.insert(old, QString::fromLatin1(b[i].second).toLower());
+    }
+    static const QRegularExpression hex(QStringLiteral("#[0-9a-fA-F]{6}\\b"));
+    const auto swap = [&map](const QString &text, bool *changed) {
+        QString out;
+        qsizetype last = 0;
+        for (auto it = hex.globalMatch(text); it.hasNext();) {
+            const QRegularExpressionMatch m = it.next();
+            const auto found = map.constFind(m.captured().toLower());
+            if (found == map.constEnd())
+                continue;
+            out += QStringView(text).mid(last, m.capturedStart() - last);
+            out += *found;
+            last = m.capturedEnd();
+            *changed = true;
+        }
+        if (!*changed)
+            return text;
+        out += QStringView(text).mid(last);
+        return out;
+    };
+    for (QWidget *w : QApplication::allWidgets()) {
+        bool changed = false;
+        if (!w->styleSheet().isEmpty()) {
+            const QString sheet = swap(w->styleSheet(), &changed);
+            if (changed)
+                w->setStyleSheet(sheet);
+        }
+        if (auto *l = qobject_cast<QLabel *>(w); l && l->text().contains(QLatin1Char('#'))) {
+            changed = false;
+            const QString text = swap(l->text(), &changed);
+            if (changed)
+                l->setText(text);
+        }
+    }
+}
+
+// Light or dark: INTERLINEA_THEME first, then the settings, then the system.
+bool wantDark()
+{
+    const QString forced = qEnvironmentVariable("INTERLINEA_THEME");
+    if (!forced.isEmpty())
+        return forced == QLatin1String("dark");
+    const QString chosen = Options::appearance();
+    if (!chosen.isEmpty())
+        return chosen == QLatin1String("dark");
+    return systemDark();
+}
+
+// The window frames (the title bar on Windows) in the chosen scheme too,
+// where Qt can set it; following the system, they are left to it.
+void showScheme()
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    const QString chosen = qEnvironmentVariable("INTERLINEA_THEME").isEmpty() ? Options::appearance() : qEnvironmentVariable("INTERLINEA_THEME");
+    QGuiApplication::styleHints()->setColorScheme(chosen == QLatin1String("dark")    ? Qt::ColorScheme::Dark
+                                                  : chosen == QLatin1String("light") ? Qt::ColorScheme::Light
+                                                                                     : Qt::ColorScheme::Unknown);
+#endif
+}
+
 void polish(QApplication &app)
 {
     const Tokens &t = g_dark ? dark : light;
@@ -440,18 +527,48 @@ void apply(QApplication &app)
     // Fusion draws the same on every system, so the sheet looks the same.
     app.setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
     setFont(app);
-    // INTERLINEA_THEME=light or dark sets it; otherwise the system does.
-    const QString forced = qEnvironmentVariable("INTERLINEA_THEME");
-    g_dark = forced.isEmpty() ? systemDark() : forced == QLatin1String("dark");
+    g_dark = wantDark();
+    showScheme();
     polish(app);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-    QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, &app, [&app](Qt::ColorScheme s) {
-        if (s == Qt::ColorScheme::Unknown || !qEnvironmentVariable("INTERLINEA_THEME").isEmpty())
-            return;
-        g_dark = s == Qt::ColorScheme::Dark;
-        polish(app);
-    });
+    static bool following = false;
+    if (!following) {
+        following = true;
+        QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, &app, [&app](Qt::ColorScheme) {
+            // Only when the system is what the settings follow.
+            if (!g_active || !qEnvironmentVariable("INTERLINEA_THEME").isEmpty() || !Options::appearance().isEmpty())
+                return;
+            const bool dark = systemDark();
+            if (dark == g_dark)
+                return;
+            g_dark = dark;
+            polish(app);
+            recolour(dark ? light : ::dark, dark ? ::dark : light);
+            emit notifier()->changed();
+        });
+    }
 #endif
+}
+
+void setAppearance(QApplication &app, const QString &appearance)
+{
+    Options::setAppearance(appearance);
+    if (!g_active)
+        return;
+    showScheme();
+    const bool dark = wantDark();
+    if (dark == g_dark)
+        return;
+    g_dark = dark;
+    polish(app);
+    recolour(dark ? light : ::dark, dark ? ::dark : light);
+    emit notifier()->changed();
+}
+
+Notifier *notifier()
+{
+    static Notifier n;
+    return &n;
 }
 
 bool active()
@@ -501,22 +618,25 @@ void quietButton(QWidget *button)
     button->setProperty("quiet", true);
 }
 
+
 QColor color(const char *name)
 {
-    const Tokens &t = tokens();
-    const std::pair<const char *, const char *> all[] = {
-        {"bg", t.bg},           {"surface", t.surface},     {"surface2", t.surface2},   {"border", t.border},
-        {"borderStrong", t.borderStrong}, {"text", t.text}, {"text2", t.text2},         {"text3", t.text3},
-        {"accent", t.accent},   {"accentWeak", t.accentWeak}, {"accentText", t.accentText}, {"danger", t.danger},
-        {"dangerBg", t.dangerBg}, {"ok", t.ok},             {"okBg", t.okBg},           {"warn", t.warn},
-        {"warnBg", t.warnBg},   {"server", t.server},       {"serverBg", t.serverBg},   {"rowLine", t.rowLine},
-        {"activeRow", t.activeRow}, {"termHit", t.termHit}, {"termLine", t.termLine},   {"mark", t.mark},
-        {"tagBg", t.tagBg},     {"count", t.count}};
-    for (const auto &[k, v] : all) {
+    for (const auto &[k, v] : named(tokens())) {
         if (qstrcmp(k, name) == 0)
             return QColor(QLatin1String(v));
     }
-    return QColor(QLatin1String(t.text));
+    return QColor(QLatin1String(tokens().text));
+}
+
+QByteArray nameOf(const QColor &c)
+{
+    if (!c.isValid())
+        return {};
+    for (const auto &[k, v] : named(tokens())) {
+        if (QColor(QLatin1String(v)) == c)
+            return QByteArray(k);
+    }
+    return {};
 }
 
 namespace {

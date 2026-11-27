@@ -22,6 +22,7 @@ import { LangChip, PageHeader } from "../components/ui";
 import { TeamServer } from "./TeamServer";
 import { fmtDate } from "../format";
 import { browserLanguage, chooseLanguage, chosenLanguage, tl, tlx, UI_LANGUAGES, type UiLanguage } from "../i18n";
+import { chooseAppearance, useAppearance, type Appearance as Look } from "../theme";
 
 /** The language the interface is shown in. */
 function InterfaceLanguage() {
@@ -54,6 +55,44 @@ function InterfaceLanguage() {
   );
 }
 
+/** Light or dark, or as the system is set. */
+function Appearance() {
+  const { chosen, shown } = useAppearance();
+  const choices: { value: Look; title: string; desc: string }[] = [
+    {
+      value: "",
+      title: tl("Same as the system"),
+      desc: shown === "dark" ? tl("Dark now, as the system is set.") : tl("Light now, as the system is set."),
+    },
+    { value: "light", title: tl("Light"), desc: tl("Dark text on light surfaces.") },
+    { value: "dark", title: tl("Dark"), desc: tl("Light text on dark surfaces, easier on the eyes in a dim room.") },
+  ];
+  return (
+    <section className="panel" aria-labelledby="s-look">
+      <h2 id="s-look" className="panel-title">
+        {tl("Appearance")}
+      </h2>
+      <fieldset className="field">
+        <legend className="sr-only">{tl("Appearance")}</legend>
+        {choices.map((c) => (
+          <label className="choice" key={c.value || "system"}>
+            <input
+              type="radio"
+              name="appearance"
+              checked={chosen === c.value}
+              onChange={() => chooseAppearance(c.value)}
+            />
+            <span className="choice-body">
+              <span className="choice-title">{c.title}</span>
+              <span className="choice-desc">{c.desc}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+    </section>
+  );
+}
+
 export function Settings() {
   const { state, dispatch } = useStore();
   return (
@@ -61,6 +100,8 @@ export function Settings() {
       <PageHeader title={tl("Settings")} />
 
       <InterfaceLanguage />
+
+      <Appearance />
 
       <YourName />
 

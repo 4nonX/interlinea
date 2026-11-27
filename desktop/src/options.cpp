@@ -45,4 +45,18 @@ void setContextRule(const QString &rule)
     QSettings().setValue(QStringLiteral("projects/contextRule"), rule == QLatin1String("both") ? rule : QStringLiteral("previous"));
 }
 
+QString appearance()
+{
+    const QString a = QSettings().value(QStringLiteral("interface/appearance")).toString();
+    return a == QLatin1String("light") || a == QLatin1String("dark") ? a : QString();
+}
+
+void setAppearance(const QString &appearance)
+{
+    if (appearance == QLatin1String("light") || appearance == QLatin1String("dark"))
+        QSettings().setValue(QStringLiteral("interface/appearance"), appearance);
+    else
+        QSettings().remove(QStringLiteral("interface/appearance"));
+}
+
 } // namespace Options
