@@ -1,5 +1,7 @@
 #include "webui.h"
 
+#include "flowlayout.h"
+
 #include "layoutcheck.h"
 
 #include "icons.h"
@@ -780,10 +782,8 @@ Tabs::Tabs(const QString &label, QWidget *parent, bool small)
 {
     Theme::role(this, "tabs");
     setAccessibleName(label);
-    m_row = new QHBoxLayout(this);
+    m_row = new FlowLayout(this, S1);
     m_row->setContentsMargins(S3, 0, S3, 0);
-    m_row->setSpacing(S1);
-    m_row->addStretch();
 }
 
 QPushButton *Tabs::add(const QString &text, const QString &icon)
@@ -800,7 +800,7 @@ QPushButton *Tabs::add(const QString &text, const QString &icon)
     const int index = m_tabs.size();
     m_tabs << b;
     b->setChecked(index == m_current);
-    m_row->insertWidget(index, b);
+    m_row->addWidget(b);
     connect(b, &QPushButton::clicked, this, [this, index] {
         const bool was = m_current == index;
         setCurrent(index);

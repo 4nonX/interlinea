@@ -150,6 +150,34 @@ private slots:
                         projects.grab().save(QStringLiteral("%1/%2-editor-%3.png").arg(dir, QLatin1String(lang)).arg(size.width()));
                     QVERIFY2(broken.isEmpty(), qPrintable(QStringLiteral("%1, editor at %2x%3:\n%4").arg(QLatin1String(lang)).arg(size.width()).arg(size.height()).arg(broken)));
                 }
+                // After work: the first translated and confirmed, the next
+                // two left as drafts, the fourth confirmed, and back to the
+                // first. Each row shows its whole text, the open one too.
+                auto put = [ed](const QString &text) { ed->target()->setContent(QJsonArray{QJsonObject{{"text", text}}}); };
+                put(QStringLiteral("HA-Setup Pro and Contra"));
+                ed->confirm();
+                QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), 1, 10000);
+                put(QStringLiteral("+"));
+                ed->move(1);
+                QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), 2, 10000);
+                put(QStringLiteral("-"));
+                ed->move(1);
+                QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), 3, 10000);
+                put(QStringLiteral("Better understanding of the system for third parties."));
+                ed->confirm();
+                QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), 4, 10000);
+                for (int back = 4; back > 0; back--) {
+                    ed->move(-1);
+                    QTRY_COMPARE_WITH_TIMEOUT(ed->activeRow(), back - 1, 10000);
+                }
+                for (const QSize size : {QSize(1280, 820), QSize(1920, 1032)}) {
+                    projects.resize(size);
+                    QTest::qWait(300);
+                    const QString broken = layoutProblems(&projects);
+                    if (const QString dir = qEnvironmentVariable("INTERLINEA_SCREENSHOTS"); !dir.isEmpty())
+                        projects.grab().save(QStringLiteral("%1/%2-editor-worked-%3.png").arg(dir, QLatin1String(lang)).arg(size.width()));
+                    QVERIFY2(broken.isEmpty(), qPrintable(QStringLiteral("%1, editor after work at %2x%3:\n%4").arg(QLatin1String(lang)).arg(size.width()).arg(size.height()).arg(broken)));
+                }
             }
             QCoreApplication::removeTranslator(&tr);
         }

@@ -12,6 +12,8 @@
 
 #include <functional>
 
+class FlowLayout;
+
 class QAbstractButton;
 class QBoxLayout;
 class QLabel;
@@ -166,7 +168,8 @@ protected:
 };
 
 // .tabs: tabs over a line, the chosen one underlined in blue. small is
-// .tabs-small.
+// .tabs-small. Tabs that don't fit side by side go on in a second line,
+// never squeezed below their text.
 class Tabs : public QFrame {
     Q_OBJECT
 public:
@@ -182,7 +185,7 @@ signals:
     void changed(int index);
 
 private:
-    QBoxLayout *m_row;
+    FlowLayout *m_row;
     QList<QPushButton *> m_tabs;
     int m_current = 0;
     bool m_small;
