@@ -702,6 +702,16 @@ export default () =>
       await sleep(100);
       await evaluate(`${control("Seiten")}.querySelector('input').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))`);
       check(await waitFor(`${control("Seiten")}.innerText.includes('Type a number, such as 12 or 0.5.')`), "a number field refuses what is no number");
+      // A field added from an entry is removed from it again, with its values.
+      const row = (name) => `[...document.querySelectorAll('#panel-entry .field-row')].find(r => r.querySelector('label')?.textContent === ${JSON.stringify(name)})`;
+      await evaluate(`${row("Geprüft")}.querySelector('dd > button:last-child').click()`);
+      check(
+        await waitFor(`${row("Geprüft")}?.innerText.includes('Remove “Geprüft” and 1 value?')`),
+        "removing a field from the entry says how many values go with it: " + (await evaluate(`${row("Geprüft")}?.innerText ?? 'no row'`)),
+      );
+      await evaluate(`[...${row("Geprüft")}.querySelectorAll('.confirm button')].find(b => b.textContent.trim() === 'Remove').click()`);
+      check(await toast("Removed the field “Geprüft”"), "and says it is removed");
+      check(await waitFor(`!${row("Geprüft")}`), "the field is gone from the entry");
       await click(".pane-tools button", "Settings");
       check(
         await waitFor("[...document.querySelectorAll('dialog[open] tr')].find(r => r.querySelector('input')?.value === 'Register')?.querySelector('textarea')?.value === 'formal\\ninformal'"),

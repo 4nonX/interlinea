@@ -467,7 +467,7 @@ function TermbaseList({
   const groups: [string, Termbase[]][] = [
     [tl("Masters"), state.termbases.filter((t) => t.kind === "master" && !t.remote)],
     [
-      `${w("projectTermbase")}s`,
+      w("projectTermbases"),
       state.termbases.filter((t) => t.kind === "project" && !t.remote),
     ],
   ];
@@ -809,8 +809,8 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
       entryId: entry.id,
       content: { concept: entry.concept, terms: entry.terms, langFields },
       summary: value
-        ? `Set ${label} (${lang(code).name})`
-        : `Cleared ${label} (${lang(code).name})`,
+        ? tl("Set {label} ({language})", { label, language: lang(code).name })
+        : tl("Cleared {label} ({language})", { label, language: lang(code).name }),
       now: now(),
     });
   };
@@ -902,6 +902,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
               <FieldRow
                 key={it.id}
                 it={it}
+                tb={may(tb, "manage") ? tb : undefined}
                 value={entry.concept[it.id] ?? ""}
                 onSave={(v) =>
                   dispatch({
@@ -935,6 +936,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
                       <FieldRow
                         key={it.id}
                         it={it}
+                        tb={may(tb, "manage") ? tb : undefined}
                         value={entry.langFields?.[code]?.[it.id] ?? ""}
                         onSave={(v) => saveLangField(code, it.id, v, it.name)}
                       />
@@ -987,6 +989,7 @@ function EntryDetail({ entry, tb }: { entry: Entry; tb: Termbase }) {
                               <FieldRow
                                 key={it.id}
                                 it={it}
+                                tb={may(tb, "manage") ? tb : undefined}
                                 value={t.fields?.[it.id] ?? ""}
                                 onSave={(v) =>
                                   dispatch({
@@ -1173,7 +1176,7 @@ function TermItem({
               label={
                 <>
                   <Trash2 size={14} aria-hidden="true" />
-                  <span className="sr-only">{tl("Remove")}{" "}{text}</span>
+                  <span className="sr-only">{tl("Remove {name}", { name: text })}</span>
                 </>
               }
               confirm={tl("Remove “{text}”?", { text })}
@@ -1429,10 +1432,13 @@ function FieldRow({
   it,
   value,
   onSave,
+  tb,
 }: {
   it: InfoType;
   value: string;
   onSave: (v: string) => void;
+  /** Given to those who manage the termbase: the field can be removed here. */
+  tb?: Termbase;
 }) {
   const id = useId();
   return (
@@ -1440,10 +1446,74 @@ function FieldRow({
       <dt>
         <label htmlFor={id}>{it.name}</label>
       </dt>
-      <dd>
+      <dd className={tb ? "field-with-remove" : undefined}>
         <FieldValue it={it} value={value} onSave={onSave} id={id} long={it.level === "concept"} />
+        {tb && <RemoveField tb={tb} it={it} />}
       </dd>
     </div>
+  );
+}
+
+/**
+ * Removes a field from the termbase, where it is shown in an entry: from
+ * every entry, after saying how many values go with it.
+ */
+function RemoveField({ tb, it }: { tb: Termbase; it: InfoType }) {
+  const { state, dispatch, notify } = useStore();
+  const r = useRemote();
+  const used = tb.remote
+    ? 0
+    : state.entries
+        .filter((e) => e.termbaseId === tb.id)
+        .reduce(
+          (n, e) =>
+            n +
+            (e.concept[it.id] ? 1 : 0) +
+            Object.values(e.langFields ?? {}).filter((f) => f[it.id]).length +
+            Object.values(e.terms)
+              .flat()
+              .filter((t) => t.fields?.[it.id]).length,
+          0,
+        );
+  return (
+    <ConfirmButton
+      label={
+        <>
+          <Trash2 size={14} aria-hidden="true" />
+          <span className="sr-only">{tl("Remove the field “{name}” from {termbase}", { name: it.name, termbase: tb.name })}</span>
+        </>
+      }
+      confirm={
+        tb.remote
+          ? tl("Remove “{name}” from {termbase}? Every entry loses its value.", { name: it.name, termbase: tb.name })
+          : used
+            ? tl("Remove “{name}” and {used}?", { name: it.name, used: plural(used, "value", "values") })
+            : tl("Remove “{name}”?", { name: it.name })
+      }
+      onConfirm={() => {
+        if (tb.remote && r.api) {
+          const api = r.api;
+          void api
+            .termbase(tb.name)
+            .then((d) =>
+              api.setDefinition(tb.name, {
+                ...d.definition,
+                fields: (d.definition.fields ?? []).filter((f) => f.name !== it.name),
+              }),
+            )
+            .then(
+              () => {
+                notify(tl("Removed the field “{name}”", { name: it.name }));
+                return r.openTermbase(tb.name);
+              },
+              (e) => notify(errorText(e)),
+            );
+          return;
+        }
+        dispatch({ type: "removeInfoType", termbaseId: tb.id, infoTypeId: it.id, now: new Date().toISOString() });
+        notify(tl("Removed the field “{name}”", { name: it.name }));
+      }}
+    />
   );
 }
 

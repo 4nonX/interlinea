@@ -1359,6 +1359,24 @@ textarea::placeholder {
   font-size: 0.8125rem;
 }
 
+/* A field those who manage the termbase can remove where it is shown. */
+.field-with-remove {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.field-with-remove > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Asked whether to remove it, under the field rather than squeezing it. */
+.field-with-remove > .confirm {
+  flex-basis: 100%;
+}
+
 .fields-term .field-row {
   grid-template-columns: 96px minmax(0, 1fr);
 }
