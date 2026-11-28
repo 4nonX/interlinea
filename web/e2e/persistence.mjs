@@ -228,11 +228,22 @@ export default () =>
         "and by code, and what is chosen is shown",
       );
       await click("dialog[open] button", "Continue");
-      await waitFor("!!document.querySelector('dialog[open] input[name=ntb-start]')");
-      await evaluate("[...document.querySelectorAll('dialog[open] input[name=ntb-start]')][2].click()");
+      await waitFor("!!document.querySelector('dialog[open] input[name=ntb-group]')");
+      const rows = () => evaluate("document.querySelectorAll('dialog[open] .field-table tbody tr').length");
+      const group = (id) => evaluate(`document.querySelector('dialog[open] input[name=ntb-group][value=${id}]').click(), true`);
+      // Groups of fields, in any combination.
+      await group("definitions");
+      await group("grammar");
+      check(await waitFor("document.querySelectorAll('dialog[open] .field-table tbody tr').length === 5"), "definitions and grammar together give their fields: " + (await rows()));
+      await group("definitions");
       check(
-        await waitFor("document.querySelectorAll('dialog[open] .field-table tbody tr').length === 10"),
-        "a ready-made structure gives its fields",
+        await waitFor("document.querySelectorAll('dialog[open] .field-table tbody tr').length === 3 && !document.querySelector('dialog[open] input[name=ntb-group][value=definitions]').checked"),
+        "a group taken away takes its fields with it, and leaves the others",
+      );
+      for (const id of ["definitions", "note", "subject", "usage", "checked"]) await group(id);
+      check(
+        await waitFor("document.querySelectorAll('dialog[open] .field-table tbody tr').length === 10 && [...document.querySelectorAll('dialog[open] input[name=ntb-group]')].every(i => i.checked)"),
+        "all the groups give all their fields: " + (await rows()),
       );
       check(
         await evaluate("[...document.querySelectorAll('dialog[open] .field-table tbody tr')].find(r => r.querySelector('input').value === 'Gender')?.querySelector('textarea')?.value.split('\\n').length === 4"),

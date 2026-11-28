@@ -4,7 +4,7 @@ import Interlinea
 
 // The fields of a termbase as the web app makes and edits them
 // (TermbaseFields.tsx): the kinds of value, where a field belongs, and the
-// ready-made structures a termbase starts from.
+// groups of fields a termbase is made with.
 QtObject {
     function kinds() {
         return [{ id: "text", name: qsTr("Text") }, { id: "picklist", name: qsTr("A list of values") }, { id: "number", name: qsTr("Number") },
@@ -37,21 +37,44 @@ QtObject {
             if (v && out.indexOf(v) < 0) out.push(v)
         return out
     }
-    function structures() {
+    // Groups of fields a termbase can have, chosen in any combination, as
+    // on the web: each puts its fields into the termbase's list, where they
+    // can be changed, and more of one's own added.
+    function groups() {
         const text = (name, level) => ({ name: name, level: level, kind: "text", values: [] })
         const list = (name, level, values) => ({ name: name, level: level, kind: "picklist", values: values })
         return [
-            { id: "terms", name: qsTr("Terms only"), text: qsTr("A glossary: the terms of each language, each with its status. Fields can be added later."), fields: [] },
-            { id: "definitions", name: qsTr("Terms with definitions and notes"), text: qsTr("A definition and its source for each language, and a note on the entry."),
-              fields: [text(qsTr("Definition"), "language"), text(qsTr("Source"), "language"), text(qsTr("Note"), "entry")] },
-            { id: "grammar", name: qsTr("Terminology with grammar"),
-              text: qsTr("Subject field, notes and the date it was last checked; definitions per language; part of speech, gender, number, context and usage per term."),
-              fields: [text(qsTr("Subject field"), "entry"), text(qsTr("Note"), "entry"), { name: qsTr("Last checked"), level: "entry", kind: "date", values: [] },
-                       text(qsTr("Definition"), "language"), text(qsTr("Source of the definition"), "language"),
-                       list(qsTr("Part of speech"), "term", [qsTr("noun"), qsTr("verb"), qsTr("adjective"), qsTr("adverb"), qsTr("proper noun"), qsTr("other")]),
+            { id: "definitions", name: qsTr("Definitions"), text: qsTr("A definition for each language, with where it is from."),
+              fields: [text(qsTr("Definition"), "language"), text(qsTr("Source of the definition"), "language")] },
+            { id: "note", name: qsTr("Notes"), text: qsTr("A note on the entry."), fields: [text(qsTr("Note"), "entry")] },
+            { id: "subject", name: qsTr("Subject field"), text: qsTr("What the entry belongs to, such as tenancy law or cardiology."),
+              fields: [text(qsTr("Subject field"), "entry")] },
+            { id: "grammar", name: qsTr("Grammar"), text: qsTr("Part of speech, gender and number of each term."),
+              fields: [list(qsTr("Part of speech"), "term", [qsTr("noun"), qsTr("verb"), qsTr("adjective"), qsTr("adverb"), qsTr("proper noun"), qsTr("other")]),
                        list(qsTr("Gender"), "term", [qsTr("masculine"), qsTr("feminine"), qsTr("neuter"), qsTr("common")]),
-                       list(qsTr("Number"), "term", [qsTr("singular"), qsTr("plural")]), text(qsTr("Context"), "term"), text(qsTr("Usage note"), "term")] }
+                       list(qsTr("Number"), "term", [qsTr("singular"), qsTr("plural")])] },
+            { id: "usage", name: qsTr("Context and usage"), text: qsTr("A sentence a term is used in, and a note on how to use it."),
+              fields: [text(qsTr("Context"), "term"), text(qsTr("Usage note"), "term")] },
+            { id: "checked", name: qsTr("Date last checked"), text: qsTr("When the entry was last checked."),
+              fields: [{ name: qsTr("Last checked"), level: "entry", kind: "date", values: [] }] }
         ]
+    }
+    function sameName(a, b) { return (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase() }
+    // Whether the fields hold all of a group's (by name).
+    function hasGroup(fields, group) { return group.fields.every(g => fields.some(f => sameName(f.name, g.name))) }
+    // The fields with a group's added (those not there yet, after the
+    // others) or taken out (those of its names).
+    function withGroup(fields, group, on) {
+        if (!on) return fields.filter(f => !group.fields.some(g => sameName(f.name, g.name)))
+        return withFields(fields, group.fields)
+    }
+    // The fields with others added: those whose names are not there yet.
+    function withFields(fields, more) {
+        const out = fields.slice()
+        for (const m of more)
+            if (!out.some(f => sameName(f.name, m.name)))
+                out.push({ name: m.name, level: m.level || "entry", kind: m.kind || "text", values: (m.values || []).slice() })
+        return out
     }
 
     // The formats a termbase is exported to for other tools.

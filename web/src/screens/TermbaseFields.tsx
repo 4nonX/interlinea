@@ -50,39 +50,44 @@ const list = (
   values: string[],
 ): Shape => ({ name, level, kind: "picklist", values });
 
-/** Structures to start a termbase from, from a plain glossary to full terminology. */
-export const STRUCTURES: {
+/**
+ * Groups of fields a termbase can have, chosen in any combination: each
+ * puts its fields into the termbase's list, where they can be changed,
+ * and more of one's own added. With none, entries hold their terms and
+ * each term's status.
+ */
+export const FIELD_GROUPS: {
   id: string;
   name: string;
   text: string;
   fields: Shape[];
 }[] = [
   {
-    id: "terms",
-    name: tl("Terms only"),
-    text: tl("A glossary: the terms of each language, each with its status. Fields can be added later."),
-    fields: [],
-  },
-  {
-    id: "notes",
-    name: tl("Terms with definitions and notes"),
-    text: tl("A definition and its source for each language, and a note on the entry."),
+    id: "definitions",
+    name: tl("Definitions"),
+    text: tl("A definition for each language, with where it is from."),
     fields: [
       text(tl("Definition"), "language"),
-      text(tl("Source"), "language"),
-      text(tl("Note"), "concept"),
+      text(tl("Source of the definition"), "language"),
     ],
   },
   {
-    id: "terminology",
-    name: tl("Terminology with grammar"),
-    text: tl("Subject field, notes and the date it was last checked; definitions per language; part of speech, gender, number, context and usage per term."),
+    id: "note",
+    name: tl("Notes"),
+    text: tl("A note on the entry."),
+    fields: [text(tl("Note"), "concept")],
+  },
+  {
+    id: "subject",
+    name: tl("Subject field"),
+    text: tl("What the entry belongs to, such as tenancy law or cardiology."),
+    fields: [text(tl("Subject field"), "concept")],
+  },
+  {
+    id: "grammar",
+    name: tl("Grammar"),
+    text: tl("Part of speech, gender and number of each term."),
     fields: [
-      text(tl("Subject field"), "concept"),
-      text(tl("Note"), "concept"),
-      { name: tl("Last checked"), level: "concept", kind: "date", values: [] },
-      text(tl("Definition"), "language"),
-      text(tl("Source of the definition"), "language"),
       list(tl("Part of speech"), "term", [
         "noun",
         "verb",
@@ -93,11 +98,60 @@ export const STRUCTURES: {
       ]),
       list(tl("Gender"), "term", ["masculine", "feminine", "neuter", "common"]),
       list(tl("Number"), "term", ["singular", "plural"]),
-      text(tl("Context"), "term"),
-      text(tl("Usage note"), "term"),
+    ],
+  },
+  {
+    id: "usage",
+    name: tl("Context and usage"),
+    text: tl("A sentence a term is used in, and a note on how to use it."),
+    fields: [text(tl("Context"), "term"), text(tl("Usage note"), "term")],
+  },
+  {
+    id: "checked",
+    name: tl("Date last checked"),
+    text: tl("When the entry was last checked."),
+    fields: [
+      { name: tl("Last checked"), level: "concept", kind: "date", values: [] },
     ],
   },
 ];
+
+const sameName = (a: string, b: string) =>
+  a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+
+/** Whether the fields hold all of a group's (by name). */
+export function hasGroup(
+  fields: Pick<FieldDraft, "name">[],
+  group: (typeof FIELD_GROUPS)[number],
+): boolean {
+  return group.fields.every((g) => fields.some((f) => sameName(f.name, g.name)));
+}
+
+/**
+ * The fields with a group's added (those not there yet, after the others)
+ * or taken out (those of its names).
+ */
+export function withGroup(
+  fields: FieldDraft[],
+  group: (typeof FIELD_GROUPS)[number],
+  on: boolean,
+): FieldDraft[] {
+  if (!on)
+    return fields.filter((f) => !group.fields.some((g) => sameName(f.name, g.name)));
+  const missing = group.fields.filter(
+    (g) => !fields.some((f) => sameName(f.name, g.name)),
+  );
+  return [...fields, ...missing.map((g) => newDraft({ ...g, values: [...g.values] }))];
+}
+
+/** The fields with others added: those whose names are not there yet. */
+export function withFields(fields: FieldDraft[], more: Shape[]): FieldDraft[] {
+  const out = [...fields];
+  for (const m of more)
+    if (!out.some((f) => sameName(f.name, m.name)))
+      out.push(newDraft({ ...m, values: [...m.values] }));
+  return out;
+}
 
 /** What keeps a field from being saved, or nothing. */
 export function fieldProblem(

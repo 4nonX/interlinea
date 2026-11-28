@@ -159,9 +159,12 @@ desktop app alike:
 2. **Languages** (masters only), chosen from the list of languages with
    a search by name or code. A termbase has languages, not a source and
    a target.
-3. **Fields.** A master starts from a ready-made structure (terms only;
-   terms with definitions and notes; terminology with grammar) or from
-   the fields of another master, and every field can be changed. A field
+3. **Fields.** Groups of fields are ticked in any combination:
+   definitions with their source, notes, subject field, grammar (part
+   of speech, gender, number), context and usage, and the date last
+   checked. Each puts its fields in the list, and takes them out again
+   when it is unticked; the fields of another master can be added too,
+   and fields of one's own. With none, an entry holds its terms. A field
    belongs to the entry, to each language or to each term, and takes
    text, a value from a list, a number, a date, or yes or no. A project
    termbase can add fields of its own; such a field reaches a master

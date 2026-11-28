@@ -18,8 +18,10 @@ import { Modal } from "./TermbaseDialogs";
 import {
   FieldTable,
   fieldProblem,
-  newDraft,
-  STRUCTURES,
+  FIELD_GROUPS,
+  hasGroup,
+  withFields,
+  withGroup,
   type FieldDraft,
 } from "./TermbaseFields";
 import { tl, tlx } from "../i18n";
@@ -156,7 +158,8 @@ export function NewTermbaseDialog({
   const [loc, setLoc] = useState<Location>(r.api ? "server" : "local");
   const [kind, setKind] = useState<Kind>(firstKind);
   const [langs, setLangs] = useState<LangCode[]>([]);
-  const [start, setStart] = useState("terms");
+  // The termbase whose fields are to be added, as it is chosen.
+  const [copyFrom, setCopyFrom] = useState("");
   const [fields, setFields] = useState<FieldDraft[]>([]);
   const [masters, setMasters] = useState<
     { name: string; languages: string[] }[] | null
@@ -243,43 +246,26 @@ export function NewTermbaseDialog({
     (t) => !t.remote && t.infoTypes.length > 0,
   );
   const serverSources = (masters ?? []).map((m) => m.name);
-  const chooseStart = async (id: string) => {
-    setStart(id);
+  // The fields of a termbase there is, added to those chosen.
+  const addFieldsOf = async (id: string) => {
     setProblem("");
-    const ready = STRUCTURES.find((s) => s.id === id);
-    if (ready) {
-      setFields(
-        ready.fields.map((f) => newDraft({ ...f, values: [...f.values] })),
-      );
-      return;
-    }
+    const shapes = (fs: InfoType[]) =>
+      fs.map((it) => ({
+        name: it.name,
+        level: it.level,
+        kind: it.kind,
+        values: [...(it.values ?? [])],
+      }));
     if (id.startsWith("local:")) {
       const tb = state.termbases.find((t) => t.id === id.slice(6));
-      setFields(
-        (tb?.infoTypes ?? []).map((it) =>
-          newDraft({
-            name: it.name,
-            level: it.level,
-            kind: it.kind,
-            values: [...(it.values ?? [])],
-          }),
-        ),
-      );
+      setFields((now) => withFields(now, shapes(tb?.infoTypes ?? [])));
       return;
     }
     if (id.startsWith("server:") && r.api) {
       try {
         const d = await r.api.termbase(id.slice(7));
-        setFields(
-          infoTypesFromCore(d.definition.fields as never).map((it) =>
-            newDraft({
-              name: it.name,
-              level: it.level,
-              kind: it.kind,
-              values: [...(it.values ?? [])],
-            }),
-          ),
-        );
+        const fs = infoTypesFromCore(d.definition.fields as never);
+        setFields((now) => withFields(now, shapes(fs)));
       } catch (e) {
         setProblem(errorText(e));
       }
@@ -531,49 +517,32 @@ export function NewTermbaseDialog({
         <>
           {kind === "master" ? (
             <fieldset className="field">
-              <legend>{tl("Start from")}</legend>
-              {STRUCTURES.map((s) => (
-                <label key={s.id} className="check">
+              <legend>{tl("What entries hold")}</legend>
+              {FIELD_GROUPS.map((g) => (
+                <label key={g.id} className="check">
                   <input
-                    type="radio"
-                    name="ntb-start"
-                    checked={start === s.id}
-                    onChange={() => void chooseStart(s.id)}
+                    type="checkbox"
+                    name="ntb-group"
+                    value={g.id}
+                    checked={hasGroup(fields, g)}
+                    onChange={(e) =>
+                      setFields((now) => withGroup(now, g, e.target.checked))
+                    }
                   />
                   <span>
-                    <strong>{s.name}.</strong> {s.text}
+                    <strong>{g.name}.</strong> {g.text}
                   </span>
                 </label>
               ))}
               {(loc === "local"
                 ? localSources.length > 0
                 : serverSources.length > 0) && (
-                <label className="check check-select">
-                  <input
-                    type="radio"
-                    name="ntb-start"
-                    checked={
-                      start.startsWith("local:") || start.startsWith("server:")
-                    }
-                    onChange={() =>
-                      void chooseStart(
-                        loc === "local"
-                          ? `local:${localSources[0]!.id}`
-                          : `server:${serverSources[0]}`,
-                      )
-                    }
-                  />
-                  <span>{tl("The fields of")}</span>
+                <div className="row check-select">
+                  <label htmlFor="ntb-copy">{tl("Add the fields of")}</label>
                   <select
-                    aria-label={tl("The termbase to take the fields from")}
-                    value={
-                      start.startsWith("local:") || start.startsWith("server:")
-                        ? start
-                        : ""
-                    }
-                    onChange={(e) =>
-                      e.target.value && void chooseStart(e.target.value)
-                    }
+                    id="ntb-copy"
+                    value={copyFrom}
+                    onChange={(e) => setCopyFrom(e.target.value)}
                   >
                     <option value="">{tl("a termbase…")}</option>
                     {loc === "local"
@@ -588,10 +557,21 @@ export function NewTermbaseDialog({
                           </option>
                         ))}
                   </select>
-                </label>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    disabled={!copyFrom}
+                    onClick={() => {
+                      void addFieldsOf(copyFrom);
+                      setCopyFrom("");
+                    }}
+                  >
+                    {tl("Add")}
+                  </button>
+                </div>
               )}
               <p className="help">
-                {tl("Choosing a start sets the fields below; change them as you need. Every term has a status (approved, proposed or forbidden) without a field for it.")}
+                {tl("Tick any of them, in any combination: their fields go into the list below, where you can change them, take them out, or add fields of your own. With none, an entry holds its terms. Every term has a status (approved, proposed or forbidden) without a field for it.")}
               </p>
             </fieldset>
           ) : (

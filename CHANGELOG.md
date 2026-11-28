@@ -31,6 +31,16 @@ takes its notes from its section here.
   entries, and an account's details and the role form wrap; the roles
   table scrolls sideways where it can't.
 
+### Changed
+
+- New termbase: the fields are no longer one of three ready-made
+  structures. Definitions, notes, subject field, grammar, context and
+  usage, and the date last checked are groups ticked in any combination,
+  each putting its fields in the list (and taking them out again), where
+  they can be changed and fields of one's own added; the fields of a
+  termbase there is are added to them, not put in their place. In the
+  desktop app and the browser client.
+
 ### Fixed
 
 - Desktop app: the lists of a choice (the languages above all) opened

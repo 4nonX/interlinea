@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QQuickWindow>
+#include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTest>
@@ -94,6 +95,49 @@ private slots:
         app.backend.setGitWords(false);
         // The editor's choices, on unless turned off.
         QVERIFY(app.backend.option(QStringLiteral("autoInsert")).toBool() && app.backend.option(QStringLiteral("autoPropagate")).toBool());
+    }
+
+    void fieldsOfANewTermbase()
+    {
+        // The fields of a new master are groups ticked in any combination,
+        // each putting its fields in the list and taking them out again.
+        TestCore core;
+        QmlApp app(&core.launcher);
+        QString why;
+        QVERIFY2(app.start(&why), qPrintable(why));
+        app.show(QStringLiteral("terminology"));
+        QObject *dlg = app.find(QStringLiteral("newTermbase"));
+        QVERIFY(dlg);
+        app.call(dlg, "start", {false});
+        QTRY_VERIFY(dlg->property("opened").toBool());
+        dlg->setProperty("step", 2);
+        QTRY_COMPARE(dlg->property("stepName").toString(), QStringLiteral("fields"));
+        const auto names = [dlg] {
+            QStringList out;
+            for (const QVariant &f : dlg->property("fieldDrafts").toList())
+                out << f.toMap().value("name").toString();
+            return out;
+        };
+        const auto group = [&](const char *id) {
+            QObject *box = app.find(dlg, QStringLiteral("fieldGroup:") + QLatin1String(id));
+            QVERIFY(box);
+            QVERIFY(app.click(box));
+        };
+        group("definitions");
+        group("grammar");
+        QTRY_COMPARE(names(), (QStringList{"Definition", "Source of the definition", "Part of speech", "Gender", "Number"}));
+        QVERIFY(app.find(dlg, QStringLiteral("fieldGroup:definitions"))->property("checked").toBool());
+        // Taken away, a group takes its fields and leaves the others.
+        group("definitions");
+        QTRY_COMPARE(names(), (QStringList{"Part of speech", "Gender", "Number"}));
+        QVERIFY(!app.find(dlg, QStringLiteral("fieldGroup:definitions"))->property("checked").toBool());
+        // With every group, every field of them, and no field twice.
+        for (const char *id : {"definitions", "note", "subject", "usage", "checked"})
+            group(id);
+        QTRY_COMPARE(names().size(), 10);
+        QCOMPARE(QSet<QString>(names().begin(), names().end()).size(), 10);
+        QVERIFY2(layoutProblems(app.window).isEmpty(), qPrintable(layoutProblems(app.window)));
+        app.call(dlg, "close");
     }
 
     void terminology()

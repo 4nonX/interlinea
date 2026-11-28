@@ -19,7 +19,6 @@ Dialog {
     property var based: []
     property var langs: []
     property var fieldDrafts: []
-    property string startFrom: "terms"
     property var inheritedLanguages: []
     property var inheritedFields: []
     property bool busy: false
@@ -35,7 +34,6 @@ Dialog {
         based = []
         langs = []
         fieldDrafts = []
-        startFrom = "terms"
         inheritedLanguages = []
         inheritedFields = []
         error = ""
@@ -61,15 +59,12 @@ Dialog {
         }
         return ""
     }
-    function chooseStart(id) {
-        dlg.startFrom = id
+    // The fields of a termbase there is, added to those chosen.
+    function addFieldsOf(tb) {
         error = ""
-        const s = Fields.structures().find(x => x.id === id)
-        if (s) { fieldDrafts = TermData.copy(s.fields); return }
-        if (!id.startsWith("tb:")) return
-        Api.get(place, "/api/termbases/" + Api.seg(id.slice(3)), r => {
+        Api.get(place, "/api/termbases/" + Api.seg(tb), r => {
             if (!r.ok) { error = r.error.message; return }
-            fieldDrafts = ((r.data.definition || {}).fields || []).map(f => ({ name: f.name, level: f.level || "entry", kind: f.kind || "text", values: f.values || [] }))
+            fieldDrafts = Fields.withFields(fieldDrafts, (r.data.definition || {}).fields || [])
         })
     }
     // In the order the masters were chosen: the first comes first.
@@ -188,30 +183,39 @@ Dialog {
         Layout.fillWidth: true
         visible: dlg.stepName === "fields"
         spacing: Theme.s3
-        Txt { visible: !dlg.project; role: "label"; text: qsTr("Start from") }
+        Txt { visible: !dlg.project; role: "label"; text: qsTr("What entries hold") }
         Repeater {
-            model: dlg.project ? [] : Fields.structures()
-            RadioButton {
+            model: dlg.project ? [] : Fields.groups()
+            CheckBox {
                 required property var modelData
+                objectName: "fieldGroup:" + modelData.id
                 text: modelData.name
                 description: modelData.text
                 bold: true
-                checked: dlg.startFrom === modelData.id
-                onClicked: dlg.chooseStart(modelData.id)
+                checked: Fields.hasGroup(dlg.fieldDrafts, modelData)
+                onToggled: dlg.fieldDrafts = Fields.withGroup(dlg.fieldDrafts, modelData, checked)
             }
         }
-        RowLayout {
+        FitRow {
             visible: !dlg.project && (dlg.lists[dlg.place] || []).length > 0
-            spacing: Theme.s2
-            RadioButton { text: qsTr("The fields of"); bold: true; checked: dlg.startFrom.startsWith("tb:"); onClicked: if (fromTb.currentIndex > 0) dlg.chooseStart("tb:" + fromTb.model[fromTb.currentIndex]) }
+            Txt { Layout.alignment: Qt.AlignVCenter; text: qsTr("Add the fields of"); wrapMode: Text.NoWrap }
             ComboBox {
                 id: fromTb
+                Layout.alignment: Qt.AlignVCenter
                 model: [qsTr("a termbase…")].concat((dlg.lists[dlg.place] || []).map(t => t.name))
                 Accessible.name: qsTr("The termbase to take the fields from")
-                onActivated: i => { if (i > 0) dlg.chooseStart("tb:" + model[i]) }
             }
+            Button {
+                Layout.alignment: Qt.AlignVCenter
+                small: true
+                text: qsTr("Add")
+                enabled: fromTb.currentIndex > 0
+                Accessible.name: qsTr("Add the fields of the termbase chosen")
+                onClicked: { dlg.addFieldsOf(fromTb.model[fromTb.currentIndex]); fromTb.currentIndex = 0 }
+            }
+            Item { Layout.fillWidth: true; visible: parent.fits }
         }
-        Txt { visible: !dlg.project; Layout.fillWidth: true; role: "help"; text: qsTr("Choosing a start sets the fields below; change them as you need. Every term has a status (approved, proposed or forbidden) without a field for it.") }
+        Txt { visible: !dlg.project; Layout.fillWidth: true; role: "help"; text: qsTr("Tick any of them, in any combination: their fields go into the list below, where you can change them, take them out, or add fields of your own. With none, an entry holds its terms. Every term has a status (approved, proposed or forbidden) without a field for it.") }
         Txt { visible: dlg.project; role: "label"; text: Fmt.fill(qsTr("From {masters}"), { masters: Fmt.listOf(dlg.based) }) }
         Txt {
             visible: dlg.project
@@ -275,7 +279,6 @@ Dialog {
                 if (dlg.step < dlg.steps.length - 1) {
                     dlg.step++
                     if (dlg.stepName === "fields" && dlg.project) dlg.loadInherited()
-                    if (dlg.stepName === "fields" && !dlg.project && !dlg.fieldDrafts.length && dlg.startFrom !== "terms") dlg.chooseStart(dlg.startFrom)
                 } else {
                     dlg.create()
                 }
