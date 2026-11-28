@@ -145,6 +145,7 @@ Page {
         Icon { name: "upload"; color: Theme.accent; size: 22; Layout.alignment: Qt.AlignVCenter }
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 240
             spacing: 2
             Txt { Layout.fillWidth: true; text: qsTr("Start a project from files"); role: "h3"; Accessible.role: Accessible.Heading }
             Txt {
@@ -153,9 +154,21 @@ Page {
                 role: "muted"
             }
         }
-        Row {
+        // The buttons: beside the text where they fit, under it and onto
+        // more lines where the window is narrow.
+        Flow {
+            id: startButtons
             spacing: Theme.s2
             Layout.alignment: Qt.AlignVCenter
+            // As wide as all on one line, and narrowed by the row, down to
+            // nothing, where it has less: then the buttons wrap.
+            Layout.minimumWidth: 0
+            Layout.maximumWidth: parent ? parent.width : Number.POSITIVE_INFINITY
+            Layout.preferredWidth: {
+                let w = 0
+                for (let i = 0; i < children.length; i++) w += children[i].implicitWidth
+                return w + Math.max(0, children.length - 1) * spacing
+            }
             Button { text: qsTr("Choose files"); kind: "primary"; onClicked: filesDialog.open() }
             Button { text: qsTr("Choose a folder"); iconName: "folder-open"; onClicked: folderDialog.open() }
             Button { text: qsTr("New project without files"); kind: "quiet"; onClicked: page.newProject([]) }

@@ -12,16 +12,35 @@ Rectangle {
     default property alias rows: body.data
     property string name: ""
     // The widths the columns get: fixed ones as asked, the rest shared by
-    // their fill weights.
+    // their fill weights. Where the table is too narrow for that (a small
+    // window, a large font), the wide fixed columns, those of buttons,
+    // give way, down to what one button needs, so that the others keep
+    // some room and nothing runs out of the table: their buttons go onto
+    // more lines.
+    readonly property int keepFilled: 100
+    readonly property int wideColumn: 200
+    readonly property int narrowestWide: 160
     readonly property var widths: {
         const inner = width - 2
-        let fixed = 0, weights = 0
+        let fixed = 0, wide = 0, weights = 0, fills = 0
         for (const c of columns) {
-            if (c.width) fixed += c.width
-            else weights += (c.fill || 1)
+            if (c.width) {
+                fixed += c.width
+                if (c.width >= wideColumn) wide += c.width
+            } else {
+                weights += (c.fill || 1)
+                fills++
+            }
         }
-        const left = Math.max(0, inner - fixed)
-        return columns.map(c => c.width ? c.width : left * (c.fill || 1) / weights)
+        let squeeze = 1
+        if (wide > 0 && inner - fixed < fills * keepFilled)
+            squeeze = Math.max(0, inner - fills * keepFilled - (fixed - wide)) / wide
+        const fixedWidth = c => c.width >= wideColumn && squeeze < 1 ? Math.max(narrowestWide, c.width * squeeze) : c.width
+        let taken = 0
+        for (const c of columns)
+            if (c.width) taken += fixedWidth(c)
+        const left = Math.max(0, inner - taken)
+        return columns.map(c => c.width ? fixedWidth(c) : left * (c.fill || 1) / weights)
     }
     function colX(i) {
         let s = 1

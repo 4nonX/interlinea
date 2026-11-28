@@ -45,7 +45,7 @@ private slots:
                 app.call(app.window, "newProject", {QVariantList{}});
             else
                 app.show(page);
-            for (const QSize size : {QSize(900, 600), QSize(1280, 800), QSize(1920, 1080)}) {
+            for (const QSize size : {QSize(800, 520), QSize(900, 600), QSize(1280, 800), QSize(1920, 1080)}) {
                 app.window->resize(size);
                 const QString broken = layoutProblems(app.window);
                 QVERIFY2(broken.isEmpty(), qPrintable(QStringLiteral("%1 at %2x%3:\n%4").arg(page).arg(size.width()).arg(size.height()).arg(broken)));

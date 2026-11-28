@@ -631,8 +631,7 @@ Page {
                         Button { small: true; kind: "quiet"; text: qsTr("Done"); onClicked: page.madeToken = null }
                     }
                 }
-                RowLayout {
-                    spacing: Theme.s3
+                FitRow {
                     Accessible.name: qsTr("A new access token")
                     Field {
                         Layout.fillWidth: false

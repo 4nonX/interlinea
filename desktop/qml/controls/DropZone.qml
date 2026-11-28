@@ -3,7 +3,9 @@ import QtQuick.Layouts
 import Interlinea
 
 // The web's .dropzone: a dashed box that takes dropped files and folders,
-// blue while something is dragged over it. Its parts are its children.
+// blue while something is dragged over it. Its parts are its children,
+// in a FitRow: a part that stretches says the least it takes with
+// Layout.minimumWidth.
 Item {
     id: zone
     default property alias content: row.data
@@ -36,12 +38,13 @@ Item {
             ctx.stroke()
         }
     }
-    RowLayout {
+    // Side by side while they fit, one under another in a narrow window.
+    FitRow {
         id: row
         x: Theme.s5
         y: Theme.s5
         width: zone.width - 2 * Theme.s5
-        spacing: Theme.s4
+        columnSpacing: Theme.s4
     }
     DropArea {
         id: drop

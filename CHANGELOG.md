@@ -33,6 +33,14 @@ takes its notes from its section here.
 
 ### Fixed
 
+- Desktop app in a small window (its least, 800 by 520, as on a laptop at
+  150 % scaling) and with the wider letters of Windows: rows of fields
+  and buttons ran out of their panel. Such rows now put their parts one
+  under another where they do not fit (the search over a memory's units,
+  the row that makes an access token, the box to start a project, which
+  all four boxes for dropping files use); the buttons' column of a table
+  gives way to the others, its buttons going onto more lines; the line
+  under a term entry that says when it last changed wraps.
 - Desktop app on macOS: settings saved by Interlinea 0.4 or earlier come
   along again when it starts for the first time; the move to Qt Quick had
   left this out.

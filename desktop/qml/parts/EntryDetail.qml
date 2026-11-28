@@ -72,20 +72,24 @@ Rectangle {
                 spacing: Theme.s2
                 readonly property string when: detail.entry ? Fmt.time(detail.entry.changedAt || detail.entry.createdAt) : ""
                 readonly property string by: detail.entry ? (detail.entry.changedBy || detail.entry.createdBy || "") : ""
+                // Each as wide as it is, and no wider than the pane: in a
+                // narrow one it goes onto a second line.
                 Txt {
                     visible: !detail.masterView && parent.when !== ""
+                    width: Math.min(implicitWidth, parent.width)
                     role: "sub"
-                    wrapMode: Text.NoWrap
                     text: parent.by ? Fmt.fill(qsTr("Last changed {when} by {who}"), { when: parent.when, who: parent.by }) : Fmt.fill(qsTr("Last changed {when}"), { when: parent.when })
                 }
                 Txt {
                     visible: detail.masterView
+                    width: Math.min(implicitWidth, parent.width)
                     role: "sub"
                     text: detail.entry ? (parent.when ? Fmt.fill(qsTr("In {master}, last changed {when}"), { master: detail.entry.termbase, when: parent.when })
                                                       : Fmt.fill(qsTr("In {master}"), { master: detail.entry.termbase })) : ""
                 }
                 Txt {
                     visible: !detail.masterView && !!detail.entry && !!tb.bases[detail.entry.id]
+                    width: Math.min(implicitWidth, parent.width)
                     role: "sub"
                     text: detail.entry ? Words.get("basedOn") + " " + (tb.bases[detail.entry.id] || "") : ""
                 }

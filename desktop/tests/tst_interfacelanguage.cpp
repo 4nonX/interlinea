@@ -63,7 +63,7 @@ private slots:
             QCOMPARE(QCoreApplication::translate("Main", "Settings"), QString::fromUtf8(lang == QLatin1String("de") ? "Einstellungen" : "설정"));
             for (const QString page : {"projects", "memories", "terminology", "settings"}) {
                 app.show(page);
-                for (const QSize size : {QSize(1024, 680), QSize(1366, 768)}) {
+                for (const QSize size : {QSize(800, 520), QSize(1024, 680), QSize(1366, 768)}) {
                     app.window->resize(size);
                     const QString broken = layoutProblems(app.window);
                     QVERIFY2(broken.isEmpty(), qPrintable(QStringLiteral("%1, %2 at %3x%4:\n%5").arg(QLatin1String(lang), page).arg(size.width()).arg(size.height()).arg(broken)));

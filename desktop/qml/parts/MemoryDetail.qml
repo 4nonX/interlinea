@@ -34,9 +34,8 @@ Panel {
         return [u.changedBy || "", u.changedAt ? Fmt.date(u.changedAt) : ""].filter(x => x).join(", ")
     }
 
-    RowLayout {
-        Layout.fillWidth: true
-        spacing: Theme.s3
+    FitRow {
+        id: searchRow
         Accessible.name: Fmt.fill(qsTr("Search {name}"), { name: detail.name })
         Field {
             Layout.fillWidth: false
@@ -46,7 +45,7 @@ Panel {
         }
         CheckBox { id: inTarget; objectName: "inTranslations"; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 6; text: qsTr("In the translations") }
         Button { Layout.alignment: Qt.AlignBottom; iconName: "search"; text: qsTr("Search"); enabled: query.text.trim() !== ""; onClicked: detail.search() }
-        Item { Layout.fillWidth: true }
+        Item { Layout.fillWidth: true; visible: searchRow.fits }
         Button { objectName: "addUnitButton"; visible: detail.edit; Layout.alignment: Qt.AlignBottom; iconName: "plus"; text: qsTr("Add a unit"); onClicked: addUnit.open() }
         Button { visible: detail.edit; Layout.alignment: Qt.AlignBottom; iconName: "columns"; text: qsTr("Align documents"); onClicked: detail.align() }
     }
@@ -67,7 +66,7 @@ Panel {
                 SegmentEdit { framed: false; readOnly: true; content: urow.modelData.source; language: detail.memory.sourceLang; minimumLines: 1 }
                 SegmentEdit { framed: false; readOnly: true; content: urow.modelData.target; language: detail.memory.targetLang; minimumLines: 1 }
                 Txt { role: "sub"; text: detail.changed(urow.modelData) }
-                Row {
+                Flow {
                     visible: detail.edit
                     spacing: Theme.s1
                     Button {
@@ -99,8 +98,10 @@ Panel {
         role: "sub"
         text: qsTr("The first 50 units found. Search for more of the sentence to narrow it down.")
     }
-    // Memory files out and in, and deleting, for those who may.
-    Row {
+    // Memory files out and in, and deleting, for those who may: onto more
+    // lines where the panel is narrow.
+    Flow {
+        Layout.fillWidth: true
         visible: !detail.local
         spacing: Theme.s2
         Button { iconName: "download"; text: qsTr("Export TMX"); onClicked: detail.askExport("tmx") }

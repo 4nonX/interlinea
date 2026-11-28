@@ -141,7 +141,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(app.notice(), QStringLiteral("Added field “Subject” to Kanzlei Weber"), 10000);
         app.call(tb, "removeField", {QStringLiteral("Subject")});
         QTRY_COMPARE_WITH_TIMEOUT(app.notice(), QStringLiteral("Removed the field “Subject”"), 10000);
-        for (const QSize size : {QSize(1024, 700), QSize(1366, 860)}) {
+        for (const QSize size : {QSize(800, 520), QSize(1024, 700), QSize(1366, 860)}) {
             app.window->resize(size);
             const QString broken = layoutProblems(app.window);
             QVERIFY2(broken.isEmpty(), qPrintable(broken));
