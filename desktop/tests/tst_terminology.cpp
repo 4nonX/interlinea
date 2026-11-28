@@ -135,7 +135,8 @@ private slots:
         for (const char *id : {"definitions", "note", "subject", "usage", "checked"})
             group(id);
         QTRY_COMPARE(names().size(), 10);
-        QCOMPARE(QSet<QString>(names().begin(), names().end()).size(), 10);
+        const QStringList all = names();
+        QCOMPARE(QSet<QString>(all.begin(), all.end()).size(), 10);
         // A field of a group taken out of the list unticks the group, after a click too.
         QVariantList kept;
         for (const QVariant &f : dlg->property("fieldDrafts").toList())
