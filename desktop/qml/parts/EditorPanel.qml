@@ -596,7 +596,7 @@ Rectangle {
                             ["F9", qsTr("Insert the next missing tag")],
                             ["Ctrl+E", qsTr("Add a term from the selections")],
                             ["Ctrl+H", qsTr("Find and replace in the translations")],
-                            ["Alt+Shift+S, Alt+Shift+J", qsTr("Split the segment at any place, join it with the next one of its paragraph")],
+                            ["Alt+Shift+S, Alt+Shift+J", qsTr("Split the segment at any place, join it with the next one")],
                             ["Ctrl+K or F3", qsTr("Search the memory for the selection")]]
                     delegate: Item {
                         required property var modelData

@@ -1208,12 +1208,13 @@ export function useResegment(project: Project | undefined, fileId: string, lang:
   return useCallback(
     async (how: Resegment, segId: string, before: Run[] = []): Promise<string | undefined> => {
       const p = latest.current.projects.find((x) => x.id === projectId);
-      const segments = p?.files.find((f) => f.id === fileId)?.segments[lang] ?? [];
+      const file = p?.files.find((f) => f.id === fileId);
+      const segments = file?.segments[lang] ?? [];
       const index = segments.findIndex((x) => x.id === segId);
       if (!p || index < 0) return tl("The segment is not there any more.");
       try {
         if (remote) await resegment(p, fileId, lang, segId, how, before);
-        else dispatch({ type: "resegmented", at: { projectId, fileId, lang }, segments: await resegmentHere(how, segments, index, before) });
+        else dispatch({ type: "resegmented", at: { projectId, fileId, lang }, segments: await resegmentHere(how, segments, index, before, file?.kind === "xliff") });
       } catch (e) {
         return e instanceof Error ? e.message : String(e);
       }

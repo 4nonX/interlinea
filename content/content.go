@@ -136,6 +136,27 @@ func (c Content) Tags() []Tag {
 	return out
 }
 
+// Bare returns the content without its text: its tags, in order.
+func (c Content) Bare() Content {
+	out := Content{}
+	for _, t := range c.Tags() {
+		out = out.AppendTag(t)
+	}
+	return out
+}
+
+// Standalones returns the content's standalone tags (placeholders:
+// pictures, fields, breaks), in order, without its text and pairs.
+func (c Content) Standalones() Content {
+	out := Content{}
+	for _, t := range c.Tags() {
+		if t.Kind == TagStandalone {
+			out = out.AppendTag(t)
+		}
+	}
+	return out
+}
+
 // HasTags reports whether the content contains at least one tag.
 func (c Content) HasTags() bool {
 	for _, r := range c {

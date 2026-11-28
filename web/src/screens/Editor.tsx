@@ -365,9 +365,11 @@ export function Editor({
   const cuttable = file?.kind === "docx" || file?.kind === "xliff";
   const fixed = kept || !!active?.file?.fixed;
   const cuts = cuttable && !fixed && !!active && !active.locked;
+  // Any two segments are joined, across paragraphs too; in XLIFF only
+  // within one unit, which the program the file goes back to keeps.
   const joins =
     cuts && !!after && !after.locked && !after.file?.fixed &&
-    ((!!active.split && active.split.unit === after.split?.unit) || (!!active.block && active.block === after.block));
+    (file?.kind !== "xliff" || (!!active.split && active.split.unit === after.split?.unit) || (!!active.block && active.block === after.block));
   // A segment that was split or joined has another name: the one in its place is the open one.
   const place = useRef(0);
   useEffect(() => {
@@ -1954,7 +1956,7 @@ export function Editor({
                     <dd>{tl("Find and replace in the translations")}</dd>
                     <dt>{tl("Alt+Shift+S, Alt+Shift+J")}</dt>
                     <dd>
-                      {tl("Split the segment at any place, join it with the next one of its paragraph")}
+                      {tl("Split the segment at any place, join it with the next one")}
                     </dd>
                     <dt>{tl("Ctrl+K or F3")}</dt>
                     <dd>{tl("Search the memory for the selection")}</dd>

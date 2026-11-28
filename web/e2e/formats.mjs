@@ -253,12 +253,14 @@ export default () =>
         const activeSource = () => evaluate("document.querySelector('.seg.is-active .seg-source').innerText.replace(/\\s+/g, ' ').trim()");
         await setValue("#ed-file", await evaluate(`[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes("app.properties")).value`));
         await waitFor("document.querySelectorAll('.seg').length === 2");
+        await pick("Guten Tag");
+        check(await evaluate(`!${button("Join with next")}.disabled && !${button("Split")}.disabled`), "strings of a properties file are joined and split like sentences");
         await pick("Auf Wiedersehen");
-        check(await evaluate(`${button("Join with next")}.disabled && !${button("Split")}.disabled`), "strings of a properties file are not joined, each is its own paragraph");
+        check(await evaluate(`${button("Join with next")}.disabled`), "the last string has none after it to be joined with");
         await setValue("#ed-file", await evaluate(`[...document.querySelectorAll('#ed-file option')].find(o => o.textContent.includes("LIESMICH.md")).value`));
         await waitFor("document.querySelector('#ed-file option:checked')?.textContent.includes('LIESMICH.md') && document.querySelectorAll('.seg').length === 3");
         await pick("Mietvertrag");
-        check(await evaluate(`${button("Join with next")}.disabled`), "a heading is not joined with the paragraph after it");
+        check(await evaluate(`!${button("Join with next")}.disabled`), "a heading is joined with the paragraph after it too");
         await pick("zahlt die Miete");
         await evaluate(`${button("Join with next")}.click()`);
         check(await waitFor("document.querySelectorAll('.seg').length === 2", 5000), "two sentences of a paragraph are joined");

@@ -75,9 +75,6 @@ func TestSplitAndJoinSegments(t *testing.T) {
 		if len(segs) != 3 {
 			t.Fatalf("text segments %+v", segs)
 		}
-		if r := te.do("POST", at("join", "Hinweise.txt", segs[1].ID, 1), te.pm, nil); r.status != 422 || !strings.Contains(r.err().Message, "different paragraphs") {
-			t.Fatalf("two lines of a text joined: %d %s", r.status, r.body)
-		}
 		var cut []projectdb.StoredSegment
 		te.call("POST", at("join", "Hinweise.txt", segs[0].ID, 1), te.pm, nil, 200, &cut)
 		te.call("POST", at("split", "Hinweise.txt", cut[1].ID, 1), te.pm, map[string]any{"before": content.Text("Bitte")}, 200, &cut)
@@ -91,14 +88,15 @@ func TestSplitAndJoinSegments(t *testing.T) {
 			t.Fatalf("the text: %q", r.body)
 		}
 	}
-	// So is a plain XLIFF file, within its units.
+	// So is a plain XLIFF file, within its units: the program it goes back
+	// to reads a unit without a translation as not translated.
 	{
 		var segs []projectdb.StoredSegment
 		te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=Plain.xlf&lang=en-GB", p.ID), te.pm, nil, 200, &segs)
 		if len(segs) != 3 || segs[0].File == nil || segs[0].File.Fixed {
 			t.Fatalf("xliff segments %+v", segs)
 		}
-		if r := te.do("POST", at("join", "Plain.xlf", segs[1].ID, segs[1].Version), te.pm, nil); r.status != 422 || !strings.Contains(r.err().Message, "different paragraphs") {
+		if r := te.do("POST", at("join", "Plain.xlf", segs[1].ID, segs[1].Version), te.pm, nil); r.status != 422 || !strings.Contains(r.err().Message, "different units") {
 			t.Fatalf("two units of an XLIFF file joined: %d %s", r.status, r.body)
 		}
 		var cut []projectdb.StoredSegment
@@ -115,9 +113,6 @@ func TestSplitAndJoinSegments(t *testing.T) {
 		if back.Units[0].Target.Plain() != "Both sentences as one." || len(back.Units[1].Target) != 0 || back.Units[1].State != filter.StateTranslated || back.Units[2].Target.Plain() != "Draft deposit" {
 			t.Fatalf("the XLIFF file: %s", r.body)
 		}
-	}
-	if r := te.do("POST", at("join", "Mietvertrag.docx", second, 1), te.pm, nil); r.status != 422 || !strings.Contains(r.err().Message, "different paragraphs") {
-		t.Fatalf("across paragraphs: %d %s", r.status, r.body)
 	}
 	if r := te.do("POST", at("split", "Mietvertrag.docx", third, 1), te.pm, map[string]any{"before": content.Text("Etwas anderes")}); r.status != 422 || !strings.Contains(r.err().Message, "not in the segment") {
 		t.Fatalf("a place that is not there: %d %s", r.status, r.body)
@@ -221,5 +216,83 @@ func TestSplitAndJoinSegments(t *testing.T) {
 	ruled.Settings.Segmentation = []project.SegmentationRule{{Break: true, Before: `(`}}
 	if r := te.do("POST", "/api/projects", te.pm, ruled); r.status != 422 || r.err().Problems[0].Field != "segmentation[0]" {
 		t.Fatalf("a rule that is no regular expression: %d %s", r.status, r.body)
+	}
+}
+
+// Segments of two paragraphs are joined, as a translation may have in one
+// paragraph what the source has in two: the document has the translation
+// in the first, and the second goes. Split where the paragraphs met, they
+// stand apart again.
+func TestJoinAcrossParagraphs(t *testing.T) {
+	te := newTeam(t)
+	lease := docxtest.Document(docxtest.Parts{Lang: "de-DE", Body: docxtest.P("", docxtest.R("Der Mieter zahlt die Miete")) +
+		docxtest.P("", docxtest.R("bis zum dritten Werktag.")) + docxtest.P("", docxtest.R("Der Vermieter haftet nicht."))})
+	req := leaseRequest()
+	req.Files = []fileUpload{
+		{Name: "Mietvertrag.docx", Role: project.Translatable, Data: lease},
+		{Name: "Hinweise.txt", Role: project.Translatable, Data: []byte("Die Heizung läuft\n\nbis zum Abend. Bitte lüften.\n\nDanke.\n")},
+	}
+	var p projectView
+	te.call("POST", "/api/projects", te.pm, req, 201, &p)
+	at := func(what, file, seg string, version int) string {
+		return fmt.Sprintf("/api/projects/%d/segments/%s?file=%s&lang=en-GB&segment=%s&version=%d", p.ID, what, file, url.QueryEscape(seg), version)
+	}
+	units := func(file string) string {
+		r := te.download(fmt.Sprintf("/api/projects/%d/files/translated?name=%s&lang=en-GB", p.ID, file), te.pm)
+		back, err := docx.Extract(r.body, "en-GB", docx.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		all := ""
+		for _, u := range back.Units {
+			all += u.Source.Plain() + "|"
+		}
+		return all
+	}
+
+	var word, got []projectdb.StoredSegment
+	te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=Mietvertrag.docx&lang=en-GB", p.ID), te.pm, nil, 200, &word)
+	if len(word) != 3 || word[0].Block == word[1].Block {
+		t.Fatalf("segments %+v", word)
+	}
+	te.call("POST", at("join", "Mietvertrag.docx", word[0].ID, 1), te.pm, nil, 200, &got)
+	if len(got) != 2 || len(got[0].Joined) != 2 || got[0].Source.Plain() != "Der Mieter zahlt die Miete bis zum dritten Werktag." {
+		t.Fatalf("joined across paragraphs %+v", got)
+	}
+	te.call("PUT", segPath(p.ID, "Mietvertrag.docx", "en-GB", url.QueryEscape(got[0].ID), got[0].Version), te.pm, project.Edit{Target: content.Text("The tenant pays the rent by the third working day."), Status: project.StatusConfirmed}, 200, nil)
+	if all := units("Mietvertrag.docx"); all != "The tenant pays the rent by the third working day.|Der Vermieter haftet nicht.|" {
+		t.Fatalf("the document: %s", all)
+	}
+	// Split where the paragraphs met, each is its own segment again.
+	var apart []projectdb.StoredSegment
+	te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=Mietvertrag.docx&lang=en-GB", p.ID), te.pm, nil, 200, &got)
+	te.call("POST", at("split", "Mietvertrag.docx", got[0].ID, got[0].Version), te.pm, map[string]any{"before": content.Text("Der Mieter zahlt die Miete")}, 200, &apart)
+	if len(apart) != 3 || apart[0].ID != word[0].ID || apart[1].ID != word[1].ID || apart[0].Joined != nil || apart[1].Joined != nil {
+		t.Fatalf("apart again %+v", apart)
+	}
+	te.call("PUT", segPath(p.ID, "Mietvertrag.docx", "en-GB", url.QueryEscape(apart[1].ID), apart[1].Version), te.pm, project.Edit{Target: content.Text("by the third working day."), Status: project.StatusConfirmed}, 200, nil)
+	if all := units("Mietvertrag.docx"); all != "The tenant pays the rent by the third working day.|by the third working day.|Der Vermieter haftet nicht.|" {
+		t.Fatalf("the document apart: %s", all)
+	}
+
+	// In a text, a paragraph whose sentences all went is taken out with
+	// the blank line before it; one with a sentence left keeps it.
+	var text []projectdb.StoredSegment
+	te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=Hinweise.txt&lang=en-GB", p.ID), te.pm, nil, 200, &text)
+	if len(text) != 4 {
+		t.Fatalf("text segments %+v", text)
+	}
+	te.call("POST", at("join", "Hinweise.txt", text[0].ID, 1), te.pm, nil, 200, &got)
+	te.call("PUT", segPath(p.ID, "Hinweise.txt", "en-GB", url.QueryEscape(got[0].ID), got[0].Version), te.pm, project.Edit{Target: content.Text("The heating is on until the evening."), Status: project.StatusConfirmed}, 200, nil)
+	r := te.download(fmt.Sprintf("/api/projects/%d/files/translated?name=Hinweise.txt&lang=en-GB", p.ID), te.pm)
+	if string(r.body) != "The heating is on until the evening.\n\nBitte lüften.\n\nDanke.\n" {
+		t.Fatalf("the text: %q", r.body)
+	}
+	te.call("GET", fmt.Sprintf("/api/projects/%d/segments?file=Hinweise.txt&lang=en-GB", p.ID), te.pm, nil, 200, &got)
+	te.call("POST", at("join", "Hinweise.txt", got[1].ID, got[1].Version), te.pm, nil, 200, &got)
+	te.call("PUT", segPath(p.ID, "Hinweise.txt", "en-GB", url.QueryEscape(got[1].ID), got[1].Version), te.pm, project.Edit{Target: content.Text("Please air the rooms. Thank you."), Status: project.StatusConfirmed}, 200, nil)
+	r = te.download(fmt.Sprintf("/api/projects/%d/files/translated?name=Hinweise.txt&lang=en-GB", p.ID), te.pm)
+	if string(r.body) != "The heating is on until the evening.\n\nPlease air the rooms. Thank you.\n" {
+		t.Fatalf("the text with a paragraph gone: %q", r.body)
 	}
 }

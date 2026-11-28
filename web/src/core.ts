@@ -689,6 +689,11 @@ export async function reviewCsv(files: Reviewed): Promise<string> {
 /** How a file's segments are cut differently. */
 export type Resegment = "split" | "join";
 
+/** How the core joins: within one unit of an XLIFF file, across paragraphs elsewhere. */
+function coreWay(how: Resegment, xliff: boolean): string {
+  return how === "join" && xliff ? "join-in-paragraph" : how;
+}
+
 /** What a segment is, to tell which segments an operation left alone. */
 function cutKey(id: string, source: string, split: Segment["split"], joined: { id: string }[] | undefined): string {
   return JSON.stringify([id, source, split?.unit ?? "", split?.space ?? "", (joined ?? []).map((j) => j.id)]);
@@ -696,14 +701,15 @@ function cutKey(id: string, source: string, split: Segment["split"], joined: { i
 
 /**
  * Splits segment index where before, the start of its source, ends, or
- * joins it with the one after it. The answer is the file's segments as
+ * joins it with the one after it, across paragraphs too (in an XLIFF
+ * file, xliff, only within one of its units). The answer is the file's segments as
  * they are then: those the change left alone are the same objects. Other
  * parts of the same stretch of the file may be named anew. What the
  * segments do not allow is thrown, as the sentence to show.
  */
-export async function resegment(how: Resegment, segments: Segment[], index: number, before: Run[] = []): Promise<Segment[]> {
+export async function resegment(how: Resegment, segments: Segment[], index: number, before: Run[] = [], xliff = false): Promise<Segment[]> {
   const core = await loadCore();
-  const r = core.resegment(how, JSON.stringify(segments.map(coreSegment)), index, JSON.stringify(runsToCoreWhole(before)));
+  const r = core.resegment(coreWay(how, xliff), JSON.stringify(segments.map(coreSegment)), index, JSON.stringify(runsToCoreWhole(before)));
   if (!r.ok) throw new Error(r.error);
   const out = JSON.parse(r.value) as CoreCut[];
   const was = segments.map((x) => cutKey(x.id, plain(x.source), x.split, x.joined) + JSON.stringify(plain(x.target)));

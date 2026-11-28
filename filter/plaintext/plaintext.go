@@ -109,8 +109,10 @@ func Extract(data []byte, lang string) (*filter.Extraction, error) {
 
 // Merge returns the text with its sentences replaced by their
 // translations. Sentences without one stay; sentences joined to the one
-// before them are written with it, as one translation. lang must be the
-// language used for Extract.
+// before them are written with it, as one translation. Where that one is
+// in an earlier paragraph, they are left out of their own, and a
+// paragraph left with no sentence goes, with the blank line before it.
+// lang must be the language used for Extract.
 func Merge(data []byte, lang string, tr filter.Translations) ([]byte, error) {
 	text, bom, err := Decode(data)
 	if err != nil {
@@ -121,7 +123,28 @@ func Merge(data []byte, lang string, tr filter.Translations) ([]byte, error) {
 	at := 0
 	for i := 0; i < len(all); i++ {
 		target, ok := tr[fmt.Sprintf("s%d", i+1)]
-		if !ok || len(target) == 0 || filter.IsJoined(target) {
+		if filter.IsJoined(target) {
+			// Sentences that start their paragraph joined to one in an
+			// earlier paragraph have their translation there.
+			j := i
+			for j+1 < len(all) && all[j+1].block == all[i].block && filter.IsJoined(tr[fmt.Sprintf("s%d", j+2)]) {
+				j++
+			}
+			if i > 0 && (j+1 >= len(all) || all[j+1].block != all[i].block) {
+				// The whole paragraph goes, with what parted it from the one before.
+				b.WriteString(text[at:all[i-1].end])
+				at = all[j].end
+			} else {
+				b.WriteString(text[at:all[i].start])
+				at = all[j].end
+				if j+1 < len(all) {
+					at = all[j+1].start
+				}
+			}
+			i = j
+			continue
+		}
+		if !ok || len(target) == 0 {
 			continue
 		}
 		start, end := all[i].start, all[i].end

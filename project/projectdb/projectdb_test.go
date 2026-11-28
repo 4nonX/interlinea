@@ -655,8 +655,8 @@ func TestResegment(t *testing.T) {
 		t.Errorf("stale: %v", err)
 	}
 	var no *project.ErrResegment
-	if _, err := db.Resegment(ctx, p.ID, file, "en-GB", "p1/s2", ResegmentJoin, nil, 1, "ben"); !errors.As(err, &no) {
-		t.Errorf("across paragraphs: %v", err)
+	if _, err := db.Resegment(ctx, p.ID, file, "en-GB", "p1/s2", ResegmentJoinInParagraph, nil, 1, "ben"); !errors.As(err, &no) {
+		t.Errorf("across paragraphs where the file keeps them: %v", err)
 	}
 	if _, err := db.Resegment(ctx, p.ID, file, "en-GB", "nope", ResegmentJoin, nil, 1, "ben"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown: %v", err)

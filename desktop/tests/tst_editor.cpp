@@ -326,9 +326,10 @@ private slots:
         QObject *ed = app.find(QStringLiteral("editorPage"));
         QTRY_COMPARE_WITH_TIMEOUT(ed->property("segments").toList().size(), 3, 10000);
         QTRY_COMPARE(ed->property("activeRow").toInt(), 0);
-        // A heading is not joined with the paragraph after it.
+        // A heading is joined with the paragraph after it too: a
+        // translation may divide a text into paragraphs differently.
         QVERIFY(ed->property("cut").toMap().value("shown").toBool());
-        QVERIFY(!ed->property("cut").toMap().value("join").toBool());
+        QVERIFY(ed->property("cut").toMap().value("join").toBool());
         // Two sentences of a paragraph are joined; what was typed is joined with them.
         app.call(ed, "move", {1});
         QTRY_COMPARE(ed->property("activeRow").toInt(), 1);

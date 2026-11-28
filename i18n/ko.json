@@ -1772,7 +1772,7 @@
   "Split": "나누기",
   "Split in two segments": "세그먼트 두 개로 나누기",
   "Split the segment": "세그먼트 나누기",
-  "Split the segment at any place, join it with the next one of its paragraph": "세그먼트를 원하는 곳에서 나누기, 같은 단락의 다음 세그먼트와 합치기",
+  "Split the segment at any place, join it with the next one": "세그먼트를 원하는 곳에서 나누기, 다음 세그먼트와 합치기",
   "Split where two joined segments met, they stand apart again.": "합친 두 세그먼트가 만나던 곳에서 나누면 다시 따로 떨어집니다.",
   "Split{kbd}": "나누기{kbd}",
   "Start": "시작",

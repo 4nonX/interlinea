@@ -19,6 +19,9 @@ const (
 	ResegmentSplit = "split"
 	// ResegmentJoin makes one segment of a segment and the one after it.
 	ResegmentJoin = "join"
+	// ResegmentJoinInParagraph joins only segments of one paragraph, for
+	// files whose paragraphs the program they go back to decides (XLIFF).
+	ResegmentJoinInParagraph = "join-in-paragraph"
 )
 
 // Resegment splits a segment where before, the start of its source, ends,
@@ -65,6 +68,8 @@ func (d *DB) Resegment(ctx context.Context, projectID int64, file, target, segID
 			changed, err = project.Split(segs, at, before)
 		case ResegmentJoin:
 			changed, err = project.Join(segs, at)
+		case ResegmentJoinInParagraph:
+			changed, err = project.JoinInParagraph(segs, at)
 		default:
 			return fmt.Errorf("projectdb: unknown way to resegment %q", how)
 		}

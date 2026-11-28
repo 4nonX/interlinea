@@ -21,6 +21,20 @@ translated byte for byte; a bilingual file gets only its changed targets
 and states written. How matches, terms and checks work is in
 [matching.md](matching.md).
 
+A translator splits a segment anywhere and joins it with the next one,
+in the same paragraph or across paragraphs, since languages divide a text
+into paragraphs differently. A segment joined across paragraphs is written
+in the first: the paragraphs after it lose what was joined, along with the
+space before what follows it, and a paragraph left with nothing is empty
+(in plain text it goes, with its blank line). Word and PowerPoint write the
+formatting, fields and pictures of what was joined where the translation
+puts them; the other documents write its text there and keep its
+placeholders (a picture, a field) in its own paragraph. In software
+strings and subtitles the later string or subtitle is left empty. XLIFF is
+joined only within a unit, since the program the file goes back to would
+read a unit without a translation as not translated; the bilingual files
+of Trados, memoQ and the other programs below are not split or joined.
+
 ## Documents
 
 ### Word

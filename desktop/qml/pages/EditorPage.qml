@@ -744,7 +744,9 @@ Item {
         const cuts = row >= 0 && !s.locked && !fixed
         const joinedFrom = (s.joined || []).length
         const part = (s.split || {}).unit || "", nextPart = next ? (next.split || {}).unit || "" : ""
-        const joins = cuts && !!next && !next.locked && !kept(next) && ((part && part === nextPart) || (s.block && s.block === next.block))
+        // Any two segments are joined, across paragraphs too; in XLIFF
+        // only within one unit, which the program the file goes back to keeps.
+        const joins = cuts && !!next && !next.locked && !kept(next) && (!isBilingual(file) || (part && part === nextPart) || (s.block && s.block === next.block))
         const note = fixed ? qsTr("The program this file comes from keeps its own record of every segment, so its segments stay as they are.")
                    : part && joinedFrom > 0 ? Fmt.fill(qsTr("A part of {n} segments of the file that were joined."), { n: joinedFrom })
                    : joinedFrom > 0 ? Fmt.fill(qsTr("Joined from {n} segments of the file. Split it where they met to have them apart again."), { n: joinedFrom })

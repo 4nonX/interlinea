@@ -70,6 +70,56 @@ type runWriter struct {
 	// dir is "rtl" or "ltr" when the paragraph has a translation, whose
 	// direction its runs then take; empty leaves them as they are.
 	dir string
+	// far holds the byte ranges of placeholders of units in later
+	// paragraphs joined to one of this paragraph, by the IDs farID gives.
+	far map[string][]span
+}
+
+// farID names a tag of unit m, in a later paragraph, where the
+// translation it was joined to is written.
+func farID(m int, pid string) string { return fmt.Sprintf("far/%d/%s", m, pid) }
+
+// skipped is the ID of a tag of a joined unit that is not written where
+// the translation is: it is in another part of the file.
+const skipped = ""
+
+// unitPlace is where a unit of the extraction stands.
+type unitPlace struct {
+	part *part
+	pa   *para
+	pc   piece
+}
+
+// placeOf finds the paragraph and piece of unit m outside mirrors.
+func (d *document) placeOf(m int) (unitPlace, bool) {
+	if d.places == nil {
+		d.places = map[int]unitPlace{}
+		for _, p := range d.parts {
+			for _, pa := range p.paras {
+				if pa.mirror {
+					continue
+				}
+				for _, pc := range pa.pieces {
+					if _, seen := d.places[pc.unit]; pc.unit >= 0 && !seen {
+						d.places[pc.unit] = unitPlace{p, pa, pc}
+					}
+				}
+			}
+		}
+	}
+	u, ok := d.places[m]
+	return u, ok
+}
+
+// carried reports whether unit m, joined to a unit in an earlier
+// paragraph, has its tags written there: the paragraph is in part p too.
+func (d *document) carried(m int, p *part, tr filter.Translations) bool {
+	h := m
+	for h > 0 && filter.IsJoined(tr[d.ext.Units[h].ID]) {
+		h--
+	}
+	head, ok := d.placeOf(h)
+	return ok && head.part == p
 }
 
 func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Translations, lang string) {
@@ -110,20 +160,41 @@ func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Transl
 	}
 	paraLevel := tagSource{src: all}
 	rw.write(pa.prefix, paraLevel, -1)
+	// moved: the units so far were joined to one in an earlier
+	// paragraph, which has their translation; they and what stands
+	// between them are written without their text.
+	moved := false
 	for i := 0; i < len(pa.pieces); i++ {
 		pc := pa.pieces[i]
 		switch {
 		case pc.unit == -1:
-			rw.write(pc.gap, paraLevel, -1)
+			if moved {
+				rw.write(pc.gap.Bare(), paraLevel, -1)
+			} else {
+				rw.write(pc.gap, paraLevel, -1)
+			}
 			continue
 		case pc.unit < 0: // a mirror unit without a twin keeps its source
+			moved = false
 			rw.write(pc.src, tagSource{src: pc.src, ids: pc.ids}, i)
 			rw.end(i)
 			continue
 		}
 		owner := i
 		target, ok := tr[d.ext.Units[pc.unit].ID]
-		if !ok || len(target) == 0 || filter.IsJoined(target) {
+		if filter.IsJoined(target) {
+			// Its text, and its tags where they can go along, are in the
+			// translation of an earlier paragraph; else its placeholders
+			// stay here.
+			moved = true
+			if !d.carried(pc.unit, p, tr) {
+				rw.write(pc.src.Standalones(), tagSource{src: pc.src, ids: pc.ids}, owner)
+			}
+			rw.end(owner)
+			continue
+		}
+		moved = false
+		if !ok || len(target) == 0 {
 			rw.write(pc.src, tagSource{src: pc.src, ids: pc.ids}, owner)
 			rw.end(owner)
 			continue
@@ -140,7 +211,38 @@ func (pa *para) render(out *bytes.Buffer, p *part, d *document, tr filter.Transl
 				gap = append(gap, pa.pieces[k].gap...)
 				k++
 			}
-			if k >= len(pa.pieces) || pa.pieces[k].unit < 0 || !filter.IsJoined(tr[d.ext.Units[pa.pieces[k].unit].ID]) {
+			if k >= len(pa.pieces) {
+				// The units of the paragraphs after this one joined to it:
+				// their tags count on too, written here from their own
+				// paragraph's markup where it is in this part of the file.
+				for m := pa.pieces[i].unit + 1; m < len(d.ext.Units) && filter.IsJoined(tr[d.ext.Units[m].ID]); m++ {
+					far, ok := d.placeOf(m)
+					if !ok {
+						break
+					}
+					more, back := filter.JoinTags(src, far.pc.src)
+					joined := map[string]string{}
+					for id, pid := range ids {
+						joined[id] = pid
+					}
+					for id, own := range back {
+						joined[id] = skipped
+						if far.part == p {
+							pid := far.pc.ids[own]
+							joined[id] = farID(m, pid)
+							if spans, ok := far.pa.ranges[pid]; ok {
+								if rw.far == nil {
+									rw.far = map[string][]span{}
+								}
+								rw.far[farID(m, pid)] = spans
+							}
+						}
+					}
+					src, ids = append(src.Clone(), more...), joined
+				}
+				break
+			}
+			if pa.pieces[k].unit < 0 || !filter.IsJoined(tr[d.ext.Units[pa.pieces[k].unit].ID]) {
 				break
 			}
 			more, back := filter.JoinTags(src, pa.pieces[k].src)
@@ -203,8 +305,8 @@ func (rw *runWriter) write(c content.Content, ts tagSource, owner int) {
 			continue
 		}
 		t, pid, ok := ts.find(r.Tag.Kind, r.Tag.ID)
-		if !ok {
-			continue // a tag the source does not have
+		if !ok || (ts.ids != nil && pid == skipped) {
+			continue // a tag the source does not have, or not here
 		}
 		switch t.Kind {
 		case content.TagOpen:
@@ -229,7 +331,11 @@ func (rw *runWriter) write(c content.Content, ts tagSource, owner int) {
 				rw.dropFmt(key(t.ID))
 			}
 		case content.TagStandalone:
-			if spans, ok := rw.pa.ranges[pid]; ok && len(spans) > 0 {
+			spans, ok := rw.pa.ranges[pid]
+			if !ok {
+				spans, ok = rw.far[pid]
+			}
+			if ok && len(spans) > 0 {
 				for _, s := range spans {
 					rw.part.writeRange(rw.out, rw.doc, rw.tr, rw.lang, s[0], s[1])
 				}

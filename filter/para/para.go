@@ -111,7 +111,8 @@ func (p *Para) Translated(ex *filter.Extraction, tr filter.Translations) bool {
 }
 
 // Build returns the whole paragraph with each unit replaced by its
-// translation; units without one keep their source. Every tag carries the
+// translation; units without one keep their source, and units joined to
+// one in an earlier paragraph are left out (filter.Joined). Every tag carries the
 // paragraph's markup in Native. A tag the source does not have is left
 // out, a pair the translation opens and does not close is closed at the
 // end of its unit, and pairs that overlap are closed and opened again so
@@ -119,15 +120,30 @@ func (p *Para) Translated(ex *filter.Extraction, tr filter.Translations) bool {
 func (p *Para) Build(ex *filter.Extraction, tr filter.Translations) content.Content {
 	out := append(content.Content{}, p.Prefix...)
 	n := 0
+	// moved: the units so far were joined to one in an earlier
+	// paragraph, which has their translation.
+	moved := false
 	for i := 0; i < len(p.Pieces); i++ {
 		pc := p.Pieces[i]
 		if !pc.Unit {
-			out = append(out, pc.Content...)
+			if moved {
+				out = append(out, pc.Content.Bare()...)
+			} else {
+				out = append(out, pc.Content...)
+			}
 			continue
 		}
 		target, ok := tr[ex.Units[p.First+n].ID]
 		n++
-		if !ok || len(target) == 0 || filter.IsJoined(target) {
+		if filter.IsJoined(target) {
+			// Its text is in the earlier paragraph's translation; its
+			// placeholders stay here, so a picture or a field is kept.
+			moved = true
+			out = append(out, nest(pc.Content.Standalones(), pc)...)
+			continue
+		}
+		moved = false
+		if !ok || len(target) == 0 {
 			out = append(out, nest(pc.Content, pc)...)
 			continue
 		}

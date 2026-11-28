@@ -288,3 +288,29 @@ func TestUnchangedCaption(t *testing.T) {
 		t.Errorf("%v\n%s", err, out)
 	}
 }
+
+// A caption joined to the one before it has its text there: it is sent
+// without text, so the screen is cleared when it was shown, and the
+// first caption keeps its time.
+func TestJoinedCaption(t *testing.T) {
+	for _, tc := range []struct {
+		name, data string
+	}{{"pop-on", sample}, {"roll-up", rollSample}} {
+		ex, err := Extract([]byte(tc.data), "en-US")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tr := filter.Translations{ex.Units[0].ID: content.Text("Bis bald."), ex.Units[1].ID: filter.Joined()}
+		out, err := Merge([]byte(tc.data), "en-US", "de-DE", tr)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		back, err := Extract(out, "de-DE")
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", tc.name, err, out)
+		}
+		if len(back.Units) != 1 || back.Units[0].Source.Plain() != "Bis bald." || back.Units[0].Timing.Start != ex.Units[0].Timing.Start {
+			t.Errorf("%s: %+v\n%s", tc.name, back.Units, out)
+		}
+	}
+}

@@ -99,6 +99,8 @@ type document struct {
 	labels []labelRef
 	// noLabels leaves the names a chart shows from its data unread.
 	noLabels bool
+	// places finds a unit's paragraph, made when first asked (placeOf).
+	places map[int]unitPlace
 }
 
 // labelRef points at a chart label unit, for updating the chart's data.

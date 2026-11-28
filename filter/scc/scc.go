@@ -1600,6 +1600,11 @@ func (f *file) onChannel(out []word) []word {
 // compose writes a pop-on or paint-on caption's translation as pairs: a
 // row's address, its text and codes, row by row.
 func (f *file) compose(c *caption, t content.Content) ([]word, error) {
+	// A caption joined to an earlier one has its text there: it is sent
+	// without any, its codes kept, so the screen is cleared where it was.
+	if filter.IsJoined(t) {
+		return nil, nil
+	}
 	var lines [][]piece
 	for _, r := range c.translatedRows(t) {
 		// Rows too long for the screen are wrapped at a space.
@@ -1665,6 +1670,9 @@ func (f *file) compose(c *caption, t content.Content) ([]word, error) {
 // where it is longer than the row has columns from where the line starts,
 // a carriage return and the rest on the next line.
 func (f *file) composeRoll(c *caption, t content.Content) (ws []word, moved bool, err error) {
+	if filter.IsJoined(t) {
+		return nil, false, nil
+	}
 	rows := c.translatedRows(t)
 	if len(rows) == 0 {
 		return nil, false, fmt.Errorf("the translation is empty")

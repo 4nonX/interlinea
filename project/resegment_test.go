@@ -169,10 +169,14 @@ func TestSplitAndJoinBack(t *testing.T) {
 	refused(t, err, "locked")
 	_, err = project.Join(segs, 1)
 	refused(t, err, "no segment after")
+	// Across paragraphs a join is made, but not across the units of an XLIFF file.
 	other := append([]project.Segment{}, segs...)
 	other[1].Block = "p2"
-	_, err = project.Join(other, 0)
-	refused(t, err, "different paragraphs")
+	if across, err := project.Join(other, 0); err != nil || len(across) != len(other)-1 || len(across[0].Joined) != 2 {
+		t.Fatalf("across paragraphs: %v %+v", err, across)
+	}
+	_, err = project.JoinInParagraph(other, 0)
+	refused(t, err, "different units")
 	held := append([]project.Segment{}, segs...)
 	held[0].File = &project.FileState{State: "new", Fixed: true}
 	_, err = project.Split(held, 0, c("Die Miete,"))
@@ -360,9 +364,6 @@ func TestResegmentedWordDocument(t *testing.T) {
 	if sources(segs) != "Erster {1}Satz{/1}.|Zweiter {1}Satz{/1} hier.|Dritter Satz.|Anderer Absatz." {
 		t.Fatalf("units: %s", sources(segs))
 	}
-	if _, err := project.Join(segs, 2); err == nil {
-		t.Error("segments of two paragraphs were joined")
-	}
 	segs, err = project.Join(segs, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -402,6 +403,108 @@ func TestResegmentedWordDocument(t *testing.T) {
 	}
 	if got := markup.ReplaceAllString(documentXML(t, plain), ""); !strings.Contains(got, "Erster Satz. Zweiter Satz hier. Dritter Satz.Anderer Absatz.") {
 		t.Errorf("untranslated: %s", got)
+	}
+}
+
+// Segments of two paragraphs joined: the translation stands in the first
+// paragraph, in Word with the formatting of both, and the second keeps
+// only what was not joined, without the space before it. A paragraph
+// joined whole is left empty.
+func TestJoinedAcrossParagraphs(t *testing.T) {
+	data := Document(Parts{Body: P("", R("Erster Satz.")) + P("", R("Zweiter "), B("Satz"), R(" hier. Dritter Satz.")) + P("", R("Anderer Absatz.")) + P("", R("Letzter Absatz.")), Lang: "de-DE"})
+	ex, err := docx.Extract(data, "de-DE", docx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	segs := segmentsOf(ex)
+	if sources(segs) != "Erster Satz.|Zweiter {1}Satz{/1} hier.|Dritter Satz.|Anderer Absatz.|Letzter Absatz." {
+		t.Fatalf("units: %s", sources(segs))
+	}
+	if segs, err = project.Join(segs, 0); err != nil {
+		t.Fatal(err)
+	}
+	if segs, err = project.Join(segs, 2); err != nil {
+		t.Fatal(err)
+	}
+	if sources(segs) != "Erster Satz. Zweiter {1}Satz{/1} hier.|Dritter Satz.|Anderer Absatz. Letzter Absatz." {
+		t.Fatalf("joined: %s", sources(segs))
+	}
+	segs[0].Target = c("The first and the second {1}sentence{/1}.")
+	segs[2].Target = c("Two paragraphs in one.")
+	out, err := docx.Merge(data, "de-DE", "en-GB", project.Translations(segs), docx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := documentXML(t, out)
+	paras := regexp.MustCompile(`(?s)<w:p[ >].*?</w:p>`).FindAllString(doc, -1)
+	var texts []string
+	for _, p := range paras {
+		texts = append(texts, markup.ReplaceAllString(p, ""))
+	}
+	if strings.Join(texts, "|") != "The first and the second sentence.|Dritter Satz.|Two paragraphs in one.|" {
+		t.Errorf("paragraphs: %q", texts)
+	}
+	bold := regexp.MustCompile(`<w:r><w:rPr>[^/]*<w:b/>.*?</w:rPr><w:t[^>]*>sentence</w:t>`)
+	if !bold.MatchString(paras[0]) {
+		t.Errorf("the second paragraph's bold is in the first: %s", paras[0])
+	}
+	back, err := docx.Extract(out, "en-GB", docx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(back.Units) != 3 {
+		t.Errorf("the translated document reads %d units", len(back.Units))
+	}
+
+	// A field in the joined paragraph is written once, where the
+	// translation puts it.
+	fielded := Document(Parts{Body: P("", R("Siehe dazu")) + P("", R("Seite "), Field("PAGE", "3"), R(" unten.")), Lang: "de-DE"})
+	fex, err := docx.Extract(fielded, "de-DE", docx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fs := segmentsOf(fex)
+	if fs, err = project.Join(fs, 0); err != nil {
+		t.Fatal(err)
+	}
+	if sources(fs) != "Siehe dazu Seite {1/} unten." {
+		t.Fatalf("with a field: %s", sources(fs))
+	}
+	fs[0].Target = c("See page {1/} below for this.")
+	fout, err := docx.Merge(fielded, "de-DE", "en-GB", project.Translations(fs), docx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fdoc := documentXML(t, fout)
+	fparas := regexp.MustCompile(`(?s)<w:p[ >].*?</w:p>`).FindAllString(fdoc, -1)
+	if len(fparas) != 2 || strings.Count(fdoc, "PAGE") != 1 || !strings.Contains(fparas[0], "PAGE") || markup.ReplaceAllString(fparas[0], "") != "See page  PAGE 3 below for this." || markup.ReplaceAllString(fparas[1], "") != "" {
+		t.Errorf("the field: %s", fdoc)
+	}
+
+	// A web page the same way. Its writer finds a tag's markup in the
+	// paragraph it is in, so the formatting of what was joined from the
+	// second paragraph is not carried into the first; a placeholder would
+	// stay in its own.
+	page := []byte("<html><body><p>Erster Satz.</p><p>Zweiter <b>Satz</b> hier. Dritter Satz.</p><p>Anderer Absatz.</p><p>Letzter Absatz.</p></body></html>")
+	pex, err := formats.Extract("html", page, "de-DE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps := segmentsOf(pex)
+	if ps, err = project.Join(ps, 0); err != nil {
+		t.Fatal(err)
+	}
+	if ps, err = project.Join(ps, 2); err != nil {
+		t.Fatal(err)
+	}
+	ps[0].Target = c("The first and the second {1}sentence{/1}.")
+	ps[2].Target = c("Two paragraphs in one.")
+	html, err := formats.Merge("html", page, "de-DE", "en-GB", project.Translations(ps))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "<p>The first and the second sentence.</p><p>Dritter Satz.</p><p>Two paragraphs in one.</p><p></p>"; !strings.Contains(string(html), want) {
+		t.Errorf("the page: %s", html)
 	}
 }
 
@@ -515,7 +618,7 @@ func TestResegmentedXLIFF(t *testing.T) {
 	if len(segs) != 3 || segs[0].Block != segs[1].Block || segs[1].Block == segs[2].Block {
 		t.Fatalf("units: %s", sources(segs))
 	}
-	if _, err := project.Join(segs, 1); err == nil {
+	if _, err := project.JoinInParagraph(segs, 1); err == nil {
 		t.Error("segments of two units of the file were joined")
 	}
 	segs, err = project.Join(segs, 0)

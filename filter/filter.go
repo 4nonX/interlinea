@@ -190,9 +190,15 @@ type Translations map[string]content.Content
 const joinedType = "interlinea:joined"
 
 // Joined is the translation of a unit that was joined to the unit before
-// it in its paragraph: the two are translated as one, and the translation
-// stands under the first unit. The first unit's translation uses the tag
-// IDs JoinTags gives.
+// it: the two are translated as one, and the translation stands under the
+// first unit. The first unit's translation uses the tag IDs JoinTags
+// gives. The unit before may be in an earlier paragraph, as where the
+// translation puts in one paragraph what the source has in two: a unit
+// that starts its paragraph joined is written without its text there,
+// and so is what stands between it and the next unit that is not joined.
+// A filter that can write the unit's tags where the translation is (Word)
+// does so; others keep the unit's placeholders (a picture, a field) in
+// its own paragraph.
 func Joined() content.Content {
 	return content.Content{{Tag: &content.Tag{Kind: content.TagStandalone, ID: "0", Type: joinedType}}}
 }

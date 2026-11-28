@@ -1772,7 +1772,7 @@
   "Split": "Teilen",
   "Split in two segments": "In zwei Segmente teilen",
   "Split the segment": "Segment teilen",
-  "Split the segment at any place, join it with the next one of its paragraph": "Segment an beliebiger Stelle teilen, mit dem nächsten seines Absatzes verbinden",
+  "Split the segment at any place, join it with the next one": "Segment an beliebiger Stelle teilen, mit dem nächsten verbinden",
   "Split where two joined segments met, they stand apart again.": "Beim Teilen an der Stelle, an der zwei verbundene Segmente aufeinandertrafen, werden sie wieder getrennt.",
   "Split{kbd}": "Teilen{kbd}",
   "Start": "Start",

@@ -13,7 +13,8 @@ import (
 )
 
 // A file's segments start as the units its filter read. A translator may
-// split any of them, and join any two of a paragraph, as often as wanted:
+// split any of them, and join any two that follow each other, in one
+// paragraph or across paragraphs, as often as wanted:
 // a stretch of one or more units of the file is then translated as one
 // segment or as parts cut wherever the translator chose. The file itself
 // is never read differently: the translations of a stretch's parts go
@@ -527,12 +528,27 @@ func mergeNotes(a, b []string) []string {
 	return out
 }
 
-// Join makes one segment of segment i and the one after it, which must
-// be of the same paragraph. Their translations are put together. Two
-// parts of what was split become one part; otherwise the two stretches
-// of the file they belong to become one, with all their parts. It
-// returns the file's segments as they are then.
+// Join makes one segment of segment i and the one after it, in one
+// paragraph or not: what the source has in two paragraphs a translation
+// may have in one, as languages divide a text differently. Their
+// translations are put together. Two parts of what was split become one
+// part; otherwise the two stretches of the file they belong to become
+// one, with all their parts. The file is written with the translation
+// where the first stood, the paragraphs after it without what was joined
+// to it (filter.Joined). It returns the file's segments as they are then.
 func Join(segs []Segment, i int) ([]Segment, error) {
+	return join(segs, i, false)
+}
+
+// JoinInParagraph joins as Join does, but only segments of one paragraph:
+// in XLIFF a unit is a paragraph of the program that made the file, which
+// reads a unit without a translation as not translated, and so writes its
+// source again.
+func JoinInParagraph(segs []Segment, i int) ([]Segment, error) {
+	return join(segs, i, true)
+}
+
+func join(segs []Segment, i int, inParagraph bool) ([]Segment, error) {
 	if i < 0 || i+1 >= len(segs) {
 		return nil, refuse("There is no segment after this one to join it with.")
 	}
@@ -544,8 +560,8 @@ func Join(segs []Segment, i int) ([]Segment, error) {
 		return nil, refuse("%s", FixedMessage)
 	}
 	rx, ry := runAt(segs, i), runAt(segs, i+1)
-	if rx.lo != ry.lo && (x.Block == "" || x.Block != y.Block) {
-		return nil, refuse("The two segments are in different paragraphs, which the file keeps apart.")
+	if inParagraph && rx.lo != ry.lo && (x.Block == "" || x.Block != y.Block) {
+		return nil, refuse("The two segments are in different units of the file. The program the file goes back to would read the second as not translated.")
 	}
 	glue := func(a, b content.Content, space string) content.Content {
 		switch {

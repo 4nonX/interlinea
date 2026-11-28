@@ -40,6 +40,13 @@ takes its notes from its section here.
   they can be changed and fields of one's own added; the fields of a
   termbase there is are added to them, not put in their place. In the
   desktop app and the browser client.
+- Segments are joined across paragraphs too, as languages divide a text
+  into paragraphs differently (and a PDF's lines often come in as
+  paragraphs of their own). The translation is written in the first
+  paragraph, the later ones without what was joined; in Word and
+  PowerPoint with its formatting and fields. Split where the paragraphs
+  met, the segments stand apart again. XLIFF stays joined only within a
+  unit.
 
 ### Fixed
 

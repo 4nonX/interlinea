@@ -815,9 +815,9 @@ Access: edit on the project, or the segment's assignee.
 
 ### `POST /api/projects/{id}/segments/join`
 
-Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it in the same paragraph (in XLIFF, the same unit of the file), whether they are whole sentences or parts of ones that were split.
+Makes one segment of a segment (?file=, ?lang=, ?segment=) and the one after it, in one paragraph or across paragraphs (in XLIFF, only in one unit of the file), whether they are whole sentences or parts of ones that were split.
 
-Their translations are put together, and the file is written with one translation where they stood. The answer is the file's segments as they are now.
+Their translations are put together, and the file is written with the translation where the first stood, the paragraphs after it without what was joined to it. The answer is the file's segments as they are now.
 
 Access: edit on the project, or the assignee of both segments.
 
