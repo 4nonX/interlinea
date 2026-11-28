@@ -16,9 +16,9 @@ ColumnLayout {
         fields = next
         changed(next)
     }
-    Txt { visible: table.fields.length === 0; Layout.fillWidth: true; role: "help"; text: qsTr("No fields: entries hold their terms and each term's status.") }
+    Txt { visible: (table.fields || []).length === 0; Layout.fillWidth: true; role: "help"; text: qsTr("No fields: entries hold their terms and each term's status.") }
     Table {
-        visible: table.fields.length > 0
+        visible: (table.fields || []).length > 0
         columns: [{ title: qsTr("Name"), fill: 1 }, { title: qsTr("Belongs to"), width: 150 }, { title: qsTr("Values"), fill: 1 }, { title: "", width: 48 }]
         Repeater {
             model: table.fields
@@ -27,7 +27,7 @@ ColumnLayout {
                 required property var modelData
                 required property int index
                 readonly property string label: (modelData.name || "").trim() || Fmt.fill(qsTr("field {n}"), { n: index + 1 })
-                last: index === table.fields.length - 1
+                last: index === (table.fields || []).length - 1
                 TextField {
                     text: frow.modelData.name
                     placeholderText: qsTr("Name of the field")

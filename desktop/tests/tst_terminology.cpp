@@ -1,5 +1,6 @@
 #include "testcore.h"
 
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJSValue>
 #include <QJsonArray>
@@ -233,11 +234,20 @@ private slots:
                 ids << d.toMap().value("entryId").toString();
             return ids;
         };
-        QTRY_VERIFY_WITH_TIMEOUT([&] {
+        // Each asking empties the list until its answer is there, so each
+        // answer is waited for before it is read; a slow one is not asked
+        // over.
+        bool among = false;
+        QElapsedTimer clock;
+        clock.start();
+        while (!among && clock.elapsed() < 30000) {
             app.call(tb, "loadDeleted");
-            QTest::qWait(300);
-            return deletedIds().contains(id);
-        }(), 15000);
+            QTRY_VERIFY_WITH_TIMEOUT(!tb->property("deleted").isNull(), 10000);
+            among = deletedIds().contains(id);
+            if (!among)
+                QTest::qWait(300);
+        }
+        QVERIFY2(among, qPrintable(deletedIds().join(QLatin1Char(' '))));
         app.call(tb, "bringBack", {id});
         QTRY_VERIFY_WITH_TIMEOUT(waitFor(api->get(QStringLiteral("/api/termbases/Kanzlei%20Weber/entries/") + id)).ok(), 10000);
 
