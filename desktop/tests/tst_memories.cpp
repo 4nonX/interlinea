@@ -1,5 +1,7 @@
 #include "testcore.h"
 
+#include <algorithm>
+
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -64,18 +66,29 @@ private slots:
             QVERIFY(popup);
             app.call(popup, "open");
             QTRY_VERIFY(popup->property("opened").toBool());
-            QObject *list = popup->property("contentItem").value<QObject *>();
+            auto *list = qobject_cast<QQuickItem *>(popup->property("contentItem").value<QObject *>());
             QTRY_VERIFY(list && list->property("count").toInt() > 10);
+            // The rows the list has made, top down, and their texts.
+            const auto rows = [list] {
+                QList<QQuickItem *> out;
+                auto *content = list->property("contentItem").value<QQuickItem *>();
+                if (!content)
+                    return out;
+                for (QQuickItem *c : content->childItems())
+                    if (c->inherits("QQuickItemDelegate") && c->isVisible())
+                        out << c;
+                std::sort(out.begin(), out.end(), [](QQuickItem *x, QQuickItem *y) { return x->y() < y->y(); });
+                return out;
+            };
+            QTRY_VERIFY2(rows().size() >= 5, qPrintable(QStringLiteral("rows made: %1; the list %2x%3, its content %4 high, the popup %5 high")
+                                                             .arg(rows().size()).arg(list->width()).arg(list->height())
+                                                             .arg(list->property("contentHeight").toReal()).arg(popup->property("height").toReal())));
+            const QVariantList languages = source->property("model").toList();
             QStringList shown;
-            for (int i = 0; i < 5; ++i) {
-                // The list makes its rows as it opens.
-                QQuickItem *row = nullptr;
-                QTRY_VERIFY2([&] {
-                    QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, row), Q_ARG(int, i));
-                    return row != nullptr;
-                }(), qPrintable(QStringLiteral("row %1 is not there").arg(i)));
+            for (QQuickItem *row : rows().mid(0, 5)) {
+                const int i = row->property("index").toInt();
                 shown << row->property("contentItem").value<QObject *>()->property("text").toString();
-                QCOMPARE(shown.last(), source->property("model").toList().at(i).toMap().value("label").toString());
+                QCOMPARE(shown.last(), languages.at(i).toMap().value("label").toString());
             }
             QVERIFY2(!shown.contains(QString()), qPrintable(shown.join(QLatin1Char('|'))));
             app.call(popup, "close");
