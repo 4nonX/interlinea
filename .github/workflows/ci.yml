@@ -171,6 +171,9 @@ jobs:
           if [ -n "$INTERLINEA_SCREENSHOTS" ]; then mkdir -p "$INTERLINEA_SCREENSHOTS"; fi
           ctest --test-dir build/desktop -C Release --output-on-failure || {
             grep -a -E "FAIL!|Loc:|Actual|Expected|QFATAL|Totals|Exception|crashed" build/desktop/Testing/Temporary/LastTest.log | head -60
+            # A test that crashed may have taken what it printed with it:
+            # once more, writing straight to a file, with how it ended.
+            "$(command -v python3 || command -v python)" desktop/tests/rerun-failed.py build/desktop Release || true
             exit 1
           }
       - name: keep the screenshots
