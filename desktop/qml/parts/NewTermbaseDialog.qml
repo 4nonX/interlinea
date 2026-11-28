@@ -193,7 +193,13 @@ Dialog {
                 description: modelData.text
                 bold: true
                 checked: Fields.hasGroup(dlg.fieldDrafts, modelData)
-                onToggled: dlg.fieldDrafts = Fields.withGroup(dlg.fieldDrafts, modelData, checked)
+                // A click sets the box and cuts its binding; the box then
+                // follows the list again, so taking out one of the group's
+                // fields, or adding the fields of another termbase, shows.
+                onClicked: {
+                    dlg.fieldDrafts = Fields.withGroup(dlg.fieldDrafts, modelData, checked)
+                    checked = Qt.binding(() => Fields.hasGroup(dlg.fieldDrafts, modelData))
+                }
             }
         }
         FitRow {

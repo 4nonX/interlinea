@@ -136,6 +136,14 @@ private slots:
             group(id);
         QTRY_COMPARE(names().size(), 10);
         QCOMPARE(QSet<QString>(names().begin(), names().end()).size(), 10);
+        // A field of a group taken out of the list unticks the group, after a click too.
+        QVariantList kept;
+        for (const QVariant &f : dlg->property("fieldDrafts").toList())
+            if (f.toMap().value("name").toString() != QStringLiteral("Note"))
+                kept << f;
+        dlg->setProperty("fieldDrafts", kept);
+        QTRY_VERIFY(!app.find(dlg, QStringLiteral("fieldGroup:note"))->property("checked").toBool());
+        QVERIFY(app.find(dlg, QStringLiteral("fieldGroup:usage"))->property("checked").toBool());
         QVERIFY2(layoutProblems(app.window).isEmpty(), qPrintable(layoutProblems(app.window)));
         app.call(dlg, "close");
     }
