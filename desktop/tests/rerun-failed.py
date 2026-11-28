@@ -77,6 +77,14 @@ def main():
     all_tests = tests(build, config)
     logs = tempfile.mkdtemp(prefix="interlinea-tests-")
     for name in names:
+        # What it said in the run that failed, kept in a file as written.
+        first = os.path.join(build, "test-logs", f"{name}.txt")
+        if os.path.exists(first):
+            with open(first, encoding="utf-8", errors="replace") as f:
+                lines = f.read().splitlines()
+            print(f"== {name}, as it failed: the end of its log")
+            print("\n".join(lines[-60:]) if lines else "(empty)", flush=True)
+    for name in names:
         if name not in all_tests:
             print(f"== {name}: not found")
             continue
@@ -86,9 +94,19 @@ def main():
         env.update(extra)
         log = os.path.join(logs, f"{name}.txt")
         print(f"== {name}, run again, its log written to a file", flush=True)
+        # The command as ctest has it, without its own log options.
+        bare, skip = [], 0
+        for i, a in enumerate(command):
+            if skip:
+                skip -= 1
+                continue
+            if a == "-o" and i > 0:
+                skip = 1
+                continue
+            bare.append(a)
         try:
             r = subprocess.run(
-                command + ["-o", f"{log},txt", "-maxwarnings", "0"],
+                bare + ["-o", f"{log},txt", "-maxwarnings", "0"],
                 env=env,
                 cwd=cwd,
                 timeout=300,

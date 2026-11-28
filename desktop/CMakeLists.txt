@@ -164,13 +164,18 @@ else()
 endif()
 
 enable_testing()
+# Each test's log also goes to a file as it is written, besides the
+# screen: a test that ends abruptly (on Windows its output to a pipe is
+# held back until the end) leaves what it said up to then.
+set(test_logs "${CMAKE_BINARY_DIR}/test-logs")
+file(MAKE_DIRECTORY "${test_logs}")
 foreach(name apiclient eventfeed secretstore providersignin connections interfacelanguage ui editor memories terminology endtoend)
     qt_add_executable(tst_${name} tests/tst_${name}.cpp tests/testcore.cpp)
     target_include_directories(tst_${name} PRIVATE tests)
     target_link_libraries(tst_${name} PRIVATE interlinea_ui interlinea_uiplugin Qt6::Test)
     # One small document of every format, shared with the browser tests.
     target_compile_definitions(tst_${name} PRIVATE INTERLINEA_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../web/e2e/fixtures")
-    add_test(NAME ${name} COMMAND tst_${name})
+    add_test(NAME ${name} COMMAND tst_${name} -o "${test_logs}/${name}.txt,txt" -o -,txt)
     # A small folder of included dictionaries, the same in every run.
     # Without a screen; on Windows on the real one, the only way the
     # windows get the system's fonts there (offscreen has none, and draws
@@ -191,7 +196,7 @@ foreach(name apiclient eventfeed secretstore providersignin connections interfac
     # finds what only breaks there. Not the end-to-end test: it works on
     # one team server, whose state a second run would find changed.
     if(NOT name STREQUAL "endtoend")
-        add_test(NAME ${name}_150 COMMAND tst_${name})
+        add_test(NAME ${name}_150 COMMAND tst_${name} -o "${test_logs}/${name}_150.txt,txt" -o -,txt)
         set_tests_properties(${name}_150 PROPERTIES ENVIRONMENT "${test_env};QT_SCALE_FACTOR=1.5" TIMEOUT 180)
     endif()
 endforeach()

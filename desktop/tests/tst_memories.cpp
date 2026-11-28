@@ -180,7 +180,15 @@ private slots:
         QCOMPARE(app.get(QStringLiteral("editUnit"), "error").toString(), QStringLiteral("A unit needs a translation. Delete the unit instead."));
         app.call(QStringLiteral("editUnit"), "close");
 
-        // Deleting a unit asks first.
+        // Deleting a unit asks first. Its row is the one the search after
+        // the change made (the rows are made again with each search): a
+        // button of a row made before would be gone before it answered.
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            for (const QVariant &u : detail->property("found").toList())
+                if (plain(u.toMap().value("target")) == QLatin1String("The deposit was due."))
+                    return true;
+            return false;
+        }(), 10000);
         QObject *del = app.find(QStringLiteral("deleteUnit:") + tagged.value("id").toString());
         QVERIFY(del);
         // Its button asks; the question's own button deletes.

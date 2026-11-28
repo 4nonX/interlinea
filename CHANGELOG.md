@@ -40,7 +40,9 @@ takes its notes from its section here.
   the row that makes an access token, the box to start a project, which
   all four boxes for dropping files use); the buttons' column of a table
   gives way to the others, its buttons going onto more lines; the line
-  under a term entry that says when it last changed wraps.
+  under a term entry that says when it last changed wraps; tabs wider
+  than their pane scroll sideways and bring the chosen one into view; in
+  Terminology the entry keeps more of a narrow window.
 - Desktop app on macOS: settings saved by Interlinea 0.4 or earlier come
   along again when it starts for the first time; the move to Qt Quick had
   left this out.
