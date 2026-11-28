@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
@@ -54,6 +55,28 @@ private slots:
         // A new memory for a client, filled from a TMX file whose languages it takes.
         QVERIFY(app.click(app.find(form, QStringLiteral("newMemory"))));
         QTRY_VERIFY(form->property("opened").toBool());
+        // A choice of language opened shows its languages: every row of
+        // its list has its name.
+        {
+            QObject *source = app.find(form, QStringLiteral("memorySource"));
+            QVERIFY(source);
+            QObject *popup = source->property("popup").value<QObject *>();
+            QVERIFY(popup);
+            app.call(popup, "open");
+            QTRY_VERIFY(popup->property("opened").toBool());
+            QObject *list = popup->property("contentItem").value<QObject *>();
+            QTRY_VERIFY(list && list->property("count").toInt() > 10);
+            QStringList shown;
+            for (int i = 0; i < 5; ++i) {
+                QQuickItem *row = nullptr;
+                QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, row), Q_ARG(int, i));
+                QVERIFY2(row, qPrintable(QStringLiteral("row %1 is not there").arg(i)));
+                shown << row->property("contentItem").value<QObject *>()->property("text").toString();
+                QCOMPARE(shown.last(), source->property("model").toList().at(i).toMap().value("label").toString());
+            }
+            QVERIFY2(!shown.contains(QString()), qPrintable(shown.join(QLatin1Char('|'))));
+            app.call(popup, "close");
+        }
         app.call(form, "choose", {QUrl::fromLocalFile(QStringLiteral(INTERLINEA_FIXTURES "/test.tmx")).toString()});
         QVERIFY(app.type(app.find(form, QStringLiteral("memoryName")), QStringLiteral("Weber DE-EN")));
         QVERIFY(app.type(app.find(form, QStringLiteral("memoryClient")), QStringLiteral("Kanzlei Weber")));

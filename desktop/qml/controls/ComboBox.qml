@@ -16,8 +16,10 @@ T.ComboBox {
     opacity: enabled ? 1 : 0.55
     Accessible.name: displayText
 
+    // A row's text is the combo box's own for it (textAt): right for
+    // every kind of list, strings, objects or a model with roles, where a
+    // required modelData is not given and the row would stay empty.
     delegate: T.ItemDelegate {
-        required property var modelData
         required property int index
         width: ListView.view ? ListView.view.width : implicitWidth
         implicitHeight: 30
@@ -26,7 +28,7 @@ T.ComboBox {
         highlighted: control.highlightedIndex === index
         hoverEnabled: true
         contentItem: Text {
-            text: control.textRole ? (Array.isArray(control.model) ? modelData[control.textRole] : model[control.textRole]) : modelData
+            text: control.textAt(index)
             color: Theme.text
             font.family: Theme.font
             font.pixelSize: Theme.body

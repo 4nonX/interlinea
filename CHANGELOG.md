@@ -33,6 +33,10 @@ takes its notes from its section here.
 
 ### Fixed
 
+- Desktop app: the lists of a choice (the languages above all) opened
+  empty: their rows asked for what a list with named fields does not
+  give, and stayed without text. They show the choice's own text for
+  each row now.
 - Desktop app in a small window (its least, 800 by 520, as on a laptop at
   150 % scaling) and with the wider letters of Windows: rows of fields
   and buttons ran out of their panel. Such rows now put their parts one
