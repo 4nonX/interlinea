@@ -344,6 +344,15 @@ private slots:
         QTRY_VERIFY(app.get(QStringLiteral("splitDialog"), "opened").toBool());
         app.call(QStringLiteral("splitDialog"), "placeAt", {18});
         QTRY_VERIFY(app.get(QStringLiteral("splitDialog"), "ok").toBool());
+        // The place it is split at is seen: a line where the cursor is.
+        {
+            QObject *caret = app.find(QStringLiteral("splitCaret"));
+            QVERIFY(caret);
+            QTRY_VERIFY(caret->property("visible").toBool());
+            QObject *source = app.find(QStringLiteral("splitSource"));
+            QCOMPARE(caret->property("x").toReal(), source->property("cursorRectangle").toRectF().x());
+            QVERIFY(caret->property("height").toReal() > 5);
+        }
         QVERIFY2(layoutProblems(app.window).isEmpty(), qPrintable(layoutProblems(app.window)));
         app.call(QStringLiteral("splitDialog"), "split");
         QTRY_COMPARE_WITH_TIMEOUT(ed->property("segments").toList().size(), 3, 10000);

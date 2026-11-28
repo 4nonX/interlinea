@@ -65,7 +65,9 @@ Dialog {
                 CellTitle { title: mrow.name; sub: mrow.isProject ? qsTr("project memory") : "" }
                 Txt { text: dlg.uses(mrow.modelData); wrapMode: Text.Wrap }
                 Txt { text: dlg.units[mrow.name] || "…"; horizontalAlignment: Text.AlignRight }
-                Row {
+                // At the right of their column, and onto a second line
+                // rather than over the units where the column is too narrow.
+                Flow {
                     spacing: Theme.s1
                     layoutDirection: Qt.RightToLeft
                     Button { small: true; kind: "quiet"; iconName: "download"; text: qsTr("Export .txt"); Accessible.name: Fmt.fill(qsTr("Export {name} as a .txt memory"), { name: mrow.name }); onClicked: dlg.askExport(mrow.name, "wordfast") }

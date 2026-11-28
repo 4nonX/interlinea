@@ -37,6 +37,12 @@ takes its notes from its section here.
   empty: their rows asked for what a list with named fields does not
   give, and stayed without text. They show the choice's own text for
   each row now.
+- Desktop app: the box where a segment is split showed no cursor (Qt
+  draws none in a text that cannot be changed); a blinking line now shows
+  where it will be split.
+- Desktop app: in the editor's list of translation memories, the buttons
+  of a memory covered its number of units; they go onto a second line
+  where the column is narrow.
 - Desktop app in a small window (its least, 800 by 520, as on a laptop at
   150 % scaling) and with the wider letters of Windows: rows of fields
   and buttons ran out of their panel. Such rows now put their parts one

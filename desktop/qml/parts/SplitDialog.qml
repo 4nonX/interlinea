@@ -64,7 +64,6 @@ Dialog {
             x: Theme.s3; y: Theme.s2
             width: parent.width - 2 * Theme.s3
             readOnly: true
-            cursorVisible: true
             selectByMouse: true
             selectByKeyboard: true
             objectName: "splitSource"
@@ -76,7 +75,32 @@ Dialog {
             font.pixelSize: Theme.body
             Accessible.name: qsTr("Source of the segment")
             Accessible.description: how.text
-            onCursorPositionChanged: dlg.divide()
+            onCursorPositionChanged: {
+                dlg.divide()
+                caretBlink.on = true
+                caretBlink.restart()
+            }
+            // Where it is split: Qt draws no cursor in a text that cannot
+            // be changed, so the line is drawn here, blinking while the box
+            // has the focus.
+            Rectangle {
+                objectName: "splitCaret"
+                x: edit.cursorRectangle.x
+                y: edit.cursorRectangle.y
+                width: 2
+                height: edit.cursorRectangle.height
+                color: Theme.text
+                visible: edit.activeFocus && edit.selectionStart === edit.selectionEnd && caretBlink.on
+                Timer {
+                    id: caretBlink
+                    property bool on: true
+                    interval: 530
+                    repeat: true
+                    running: edit.activeFocus
+                    onTriggered: on = !on
+                    onRunningChanged: on = true
+                }
+            }
         }
         SegmentDocument { id: doc; document: edit.textDocument }
     }

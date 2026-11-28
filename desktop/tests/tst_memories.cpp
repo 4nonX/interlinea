@@ -68,9 +68,12 @@ private slots:
             QTRY_VERIFY(list && list->property("count").toInt() > 10);
             QStringList shown;
             for (int i = 0; i < 5; ++i) {
+                // The list makes its rows as it opens.
                 QQuickItem *row = nullptr;
-                QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, row), Q_ARG(int, i));
-                QVERIFY2(row, qPrintable(QStringLiteral("row %1 is not there").arg(i)));
+                QTRY_VERIFY2([&] {
+                    QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem *, row), Q_ARG(int, i));
+                    return row != nullptr;
+                }(), qPrintable(QStringLiteral("row %1 is not there").arg(i)));
                 shown << row->property("contentItem").value<QObject *>()->property("text").toString();
                 QCOMPARE(shown.last(), source->property("model").toList().at(i).toMap().value("label").toString());
             }
