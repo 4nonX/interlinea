@@ -169,6 +169,14 @@ QObject *QmlApp::find(QObject *within, const QString &name) const
         return o;
     if (auto *item = qobject_cast<QQuickItem *>(within))
         return findItem(item, name);
+    // A dialog or a menu is no item: what it shows hangs below the item
+    // that carries its content, with its header and footer beside it.
+    if (auto *content = within->property("contentItem").value<QQuickItem *>()) {
+        QQuickItem *top = content->parentItem() ? content->parentItem() : content;
+        if (top->objectName() == name)
+            return top;
+        return findItem(top, name);
+    }
     return nullptr;
 }
 
