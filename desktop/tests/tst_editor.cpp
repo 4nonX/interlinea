@@ -283,6 +283,10 @@ private slots:
         QObject *te = nullptr;
         QTRY_VERIFY_WITH_TIMEOUT((te = app.find(QStringLiteral("targetEdit"))), 10000);
         QObject *edit = te->property("textEdit").value<QObject *>();
+        // The editor makes its own list once the segment's matches and
+        // terms are in; the words here come after that, not before it.
+        QTRY_VERIFY_WITH_TIMEOUT(!ed->property("activeId").toString().isEmpty(), 10000);
+        QTRY_COMPARE_WITH_TIMEOUT(ed->property("looking").toInt(), 0, 10000);
         ed->setProperty("completions", QStringList{QStringLiteral("contract"), QStringLiteral("contractor"), QStringLiteral("continue")});
         QVERIFY(app.type(edit, QStringLiteral("The con")));
         // The shortest first, then as the alphabet has them.

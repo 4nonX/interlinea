@@ -61,6 +61,8 @@ Item {
     property var conflicts: ({})
     property string conflictId: ""
     property var completions: []
+    // Lookups of the active segment (matches, terms) still under way.
+    property int looking: 0
     property var misspellings: []
     property var services: []
     property string asking: ""
@@ -272,7 +274,9 @@ Item {
     function lookup() {
         if (!activeId) return
         const serial = ++lookupSerial
+        looking++
         Api.post(cid, base + "/lookup", { lang: targetLang, source: activeSegment.source, limit: 9 }, r => {
+            looking--
             if (serial !== lookupSerial) return
             const out = r.ok ? r.data.map(m => Object.assign({ kind: "match" }, m)) : []
             results = out.concat(results.filter(x => x.kind === "term"))
@@ -290,7 +294,9 @@ Item {
     function recognize() {
         if (!activeId) return
         const id = activeId
+        looking++
         Api.post(cid, base + "/recognize", { lang: targetLang, text: Fmt.plain(activeSegment.source) }, r => {
+            looking--
             if (id !== activeId || !r.ok) return
             marks = r.data.map(t => ({ start: t.start16, end: t.end16, cssClass: "term" }))
             results = results.filter(x => x.kind === "match").concat(r.data.map(t => Object.assign({ kind: "term" }, t)))
