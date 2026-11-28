@@ -171,15 +171,20 @@ private slots:
                 kaution = v.toMap();
         app.call(tb, "deleteEntry", {kaution, QStringLiteral("Kaution")});
         QTRY_COMPARE_WITH_TIMEOUT(app.notice(), QStringLiteral("Deleted the entry “Kaution”"), 10000);
-        app.call(tb, "loadDeleted");
-        // The entry merged into another is among the deleted as well.
+        // The entry merged into another is among the deleted as well. Asked
+        // again until it is there: a reload on the server's news of the
+        // change may come after the first answer and take its place.
         const auto deletedIds = [tb] {
             QStringList ids;
             for (const QVariant &d : tb->property("deleted").toList())
                 ids << d.toMap().value("entryId").toString();
             return ids;
         };
-        QTRY_VERIFY_WITH_TIMEOUT(deletedIds().contains(id), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT([&] {
+            app.call(tb, "loadDeleted");
+            QTest::qWait(300);
+            return deletedIds().contains(id);
+        }(), 15000);
         app.call(tb, "bringBack", {id});
         QTRY_VERIFY_WITH_TIMEOUT(waitFor(api->get(QStringLiteral("/api/termbases/Kanzlei%20Weber/entries/") + id)).ok(), 10000);
 

@@ -379,6 +379,10 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 readonly property bool wide: (parent ? parent.width : width) >= 1000
+                // Two columns: the termbases and entries take what the
+                // entry leaves them, between 220 and 300 px, so that the
+                // entry keeps room for its terms in a small window.
+                readonly property real side: Math.max(220, Math.min(300, (parent ? parent.width : width) - columnSpacing - 300))
                 columns: wide ? 3 : 2
                 columnSpacing: Theme.s3
                 rowSpacing: Theme.s3
@@ -386,7 +390,7 @@ Item {
                 TermbaseLists {
                     Layout.row: 0
                     Layout.column: 0
-                    Layout.preferredWidth: workspace.wide ? 220 : 300
+                    Layout.preferredWidth: workspace.wide ? 220 : workspace.side
                     Layout.fillHeight: workspace.wide
                     Layout.preferredHeight: workspace.wide ? -1 : 220
                     page: tb
@@ -396,7 +400,7 @@ Item {
                 Rectangle {
                     Layout.row: workspace.wide ? 0 : 1
                     Layout.column: workspace.wide ? 1 : 0
-                    Layout.preferredWidth: workspace.wide ? 360 : 300
+                    Layout.preferredWidth: workspace.wide ? 360 : workspace.side
                     Layout.fillHeight: true
                     radius: Theme.rPanel
                     color: Theme.surface
