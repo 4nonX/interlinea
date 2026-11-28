@@ -263,8 +263,8 @@ The screenshots in `docs/screenshots` are taken from the builds, so they
 can be taken again after a change:
 
 - the browser client's (`editor.png`, `terminology.png`,
-  `glossary-export.png`, `merge-review.png`, `projects.png`,
-  `memories.png`): `cd web && npm run build && npm run screenshots`, on
+  `glossary-export.png`, `merge-review.png`, `termbase-fields.png`,
+  `projects.png`, `memories.png`): `cd web && npm run build && npm run screenshots`, on
   the sample project;
 - the desktop app's (`desktop-*.png`): the desktop tests save every page
   they reach to `INTERLINEA_SCREENSHOTS=<folder>`, with

@@ -7,6 +7,8 @@ takes its notes from its section here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-28
+
 ### Added
 
 - Light and dark in both clients: Settings, Appearance chooses light,
@@ -30,9 +32,10 @@ takes its notes from its section here.
   search on a line of their own, Terminology puts the termbases over the
   entries, and an account's details and the role form wrap; the roles
   table scrolls sideways where it can't.
-
-### Changed
-
+- Terminology in the browser client: an entry's row and the head of its
+  details show each language with all its terms, in the termbase's
+  order, where they showed one term and a count; forbidden terms are
+  struck through.
 - New termbase: the fields are no longer one of three ready-made
   structures. Definitions, notes, subject field, grammar, context and
   usage, and the date last checked are groups ticked in any combination,
@@ -590,7 +593,8 @@ version 3.
   a test, and the steps of each store's schema can no longer be changed
   once recorded.
 
-[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/4nonX/interlinea/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/4nonX/interlinea/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/4nonX/interlinea/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/4nonX/interlinea/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/4nonX/interlinea/compare/v0.3.0...v0.4.0

@@ -96,7 +96,13 @@ translators know from the common desktop tools:
 - the project's checks run as you type and again on confirm (consistency
   across the file included), and stay on the segment as warnings until
   fixed or ignored;
-- confirmed segments go into the memories the project updates.
+- confirmed segments go into the memories the project updates;
+- a segment is split at any place and joined with the next one, in its
+  paragraph or across paragraphs, since languages divide a text into
+  paragraphs differently: the translation stands in the first, and the
+  later paragraphs lose what was joined ([formats.md](formats.md) says
+  what each format writes). Split again where they met, the segments
+  stand apart again.
 
 A project with several files or target languages switches between them in
 the editor's header. Analysis counts the matches of all files of a
@@ -170,6 +176,8 @@ desktop app alike:
    termbase can add fields of its own; such a field reaches a master
    with the first entry that uses it, once a reviewer approves the entry.
 4. **Review** of what will be made, before it is made.
+
+![New termbase: groups of fields, ticked in any combination](screenshots/termbase-fields.png)
 
 Fields are added, renamed, given another kind or taken out later in the
 termbase's settings, and added from any entry. Each kind of field has its

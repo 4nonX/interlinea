@@ -6,7 +6,7 @@ import { start } from "./harness.mjs";
 
 const dir = resolve(process.argv[2] ?? "../docs/screenshots");
 const h = await start();
-const { send, open, waitFor, sleep, click, finish } = h;
+const { send, open, waitFor, sleep, click, evaluate, setValue, finish } = h;
 
 const shot = async (name) => {
   const { data } = await send("Page.captureScreenshot", { format: "png" });
@@ -58,6 +58,39 @@ try {
     throw new Error("the merge review did not open");
   await sleep(1500);
   await shot("merge-review.png");
+
+  // A new master at the step of its fields, with three groups ticked.
+  // The steps are worked in its own dialog, as others may stay in the page.
+  const ntb = "[...document.querySelectorAll('dialog[open]')].find(d => d.innerText.includes('New termbase'))";
+  const next = async () => {
+    for (let t = 0; t < 10000; t += 100) {
+      if (await evaluate(`(() => { const b = [...${ntb}.querySelectorAll('button')].find(b => b.textContent === 'Continue'); if (!b || b.disabled) return false; b.click(); return true; })()`)) return;
+      await sleep(100);
+    }
+    throw new Error("Continue of the new termbase stays greyed out");
+  };
+  await open("/terminology", { reload: false, wait: 500 });
+  await click("button", "New master");
+  if (!(await waitFor(`!!${ntb}`, 10000))) throw new Error("the new termbase dialog did not open");
+  await setValue("#ntb-name", "Arbeitsrecht");
+  await next();
+  await waitFor(`${ntb}.querySelectorAll('.lang-pick-list label.check').length > 50`);
+  for (const code of ["de-DE", "en-GB"]) {
+    await evaluate(`(() => { const i = ${ntb}.querySelector('.search-field input'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, '${code.toLowerCase()}'); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await sleep(150);
+    await evaluate(`[...${ntb}.querySelectorAll('.lang-pick-list label.check')].find(l => l.textContent.includes('${code}')).querySelector('input').click()`);
+    await sleep(150);
+  }
+  await next();
+  await waitFor(`!!${ntb}.querySelector('input[name=ntb-group]')`);
+  for (const id of ["definitions", "grammar", "usage"])
+    await evaluate(`${ntb}.querySelector('input[name=ntb-group][value=${id}]').click()`);
+  if (!(await waitFor(`${ntb}.querySelectorAll('.field-table tbody tr').length === 7`, 5000)))
+    throw new Error("the groups did not give their fields");
+  await sleep(500);
+  await shot("termbase-fields.png");
+  await evaluate(`[...${ntb}.querySelectorAll('button')].find(b => b.textContent === 'Cancel').click()`);
+  await sleep(300);
 
   // The projects, and the memories with their units.
   await open("/projects", { reload: false, wait: 500 });
